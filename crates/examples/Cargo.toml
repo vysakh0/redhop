@@ -20,6 +20,7 @@ neorag-diagnostics = { workspace = true }
 neorag-storage     = { workspace = true }
 neorag-pipeline      = { workspace = true }
 neorag-orchestration = { workspace = true }
+neorag-calibration   = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
@@ -49,3 +50,7 @@ path = "examples/regime_classification.rs"
 [[example]]
 name = "adaptive_loop"
 path = "examples/adaptive_loop.rs"
+
+[[example]]
+name = "calibration_sweep"
+path = "examples/calibration_sweep.rs"

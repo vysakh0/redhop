@@ -1,0 +1,27 @@
+[package]
+name = "neorag-calibration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Calibration and evaluation harness for NeoRAG adaptive retrieval"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neorag-core          = { workspace = true }
+neorag-chunking      = { workspace = true }
+neorag-retrieval     = { workspace = true }
+neorag-reranking     = { workspace = true }
+neorag-diagnostics   = { workspace = true }
+neorag-orchestration = { workspace = true }
+serde                = { workspace = true }
+serde_json           = { workspace = true }
+tokio                = { workspace = true }
+async-trait          = "0.1"
+tracing              = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
