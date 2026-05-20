@@ -177,3 +177,32 @@ pub trait DiagnosticsEngine: Send + Sync {
     /// Human-readable name, used in diagnostics.
     fn name(&self) -> &'static str;
 }
+
+/// Maps a retrieval state's *measurements* (diagnostics + confidence) to a
+/// soft distribution over [`RetrievalRegime`][rrg]s.
+///
+/// Classifiers are intentionally narrow: they see the same observations the
+/// human dashboard sees and nothing else. They do *not* read the chunk text
+/// or the query embedding directly — only the metrics the diagnostics
+/// engines produced. This is what makes them swappable and what keeps
+/// later learned versions auditable: the input contract is small and
+/// stable.
+///
+/// Implementations must populate the returned distribution's
+/// [`ClassificationTrace`][trc] — interpretability is a hard requirement,
+/// not optional.
+///
+/// [rrg]: crate::state::RetrievalRegime
+/// [trc]: crate::state::ClassificationTrace
+pub trait RegimeClassifier: Send + Sync {
+    /// Produce a regime distribution from the given diagnostics and
+    /// confidence inputs.
+    fn classify(
+        &self,
+        diagnostics: &crate::types::DiagnosticsReport,
+        confidence: &crate::state::ConfidenceProfile,
+    ) -> crate::state::RegimeDistribution;
+
+    /// Human-readable name, used in diagnostics.
+    fn name(&self) -> &'static str;
+}

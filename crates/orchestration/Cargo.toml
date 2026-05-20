@@ -1,0 +1,16 @@
+[package]
+name = "neorag-orchestration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Retrieval-state observation and regime classification for NeoRAG"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neorag-core = { workspace = true }
+serde       = { workspace = true }
+tracing     = { workspace = true }

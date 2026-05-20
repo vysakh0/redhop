@@ -20,13 +20,18 @@
 #![warn(missing_docs)]
 
 pub mod error;
+pub mod state;
 pub mod traits;
 pub mod types;
 
 pub use error::{Error, Result};
+pub use state::{
+    ClassificationTrace, ConfidenceProfile, RegimeDistribution, RetrievalRegime, RetrievalState,
+    RuleFire,
+};
 pub use traits::{
-    Chunker, DiagnosticsEngine, EmbeddingProvider, Reranker, Retriever, TokenizerBackend,
-    VectorIndex,
+    Chunker, DiagnosticsEngine, EmbeddingProvider, RegimeClassifier, Reranker, Retriever,
+    TokenizerBackend, VectorIndex,
 };
 pub use types::{
     Chunk, ChunkId, ChunkMetadata, DiagnosticsReport, DiagnosticsWarning, Document, Embedding,

@@ -37,10 +37,11 @@
 use std::sync::Arc;
 
 use neorag_core::{
-    Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query, Reranker, Result,
-    RetrievalResult, Retriever,
+    Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query, RegimeClassifier,
+    Reranker, Result, RetrievalResult, RetrievalState, Retriever,
 };
 use neorag_diagnostics::DefaultDiagnosticsEngine;
+use neorag_orchestration::compute_confidence;
 
 /// Builder for [`NeoRAG`].
 ///
@@ -52,6 +53,7 @@ pub struct NeoRAGBuilder {
     retriever: Option<Arc<dyn Retriever>>,
     reranker: Option<Arc<dyn Reranker>>,
     diagnostics: Option<Arc<dyn DiagnosticsEngine>>,
+    classifier: Option<Arc<dyn RegimeClassifier>>,
     candidate_k: usize,
 }
 
@@ -62,6 +64,7 @@ impl Default for NeoRAGBuilder {
             retriever: None,
             reranker: None,
             diagnostics: None,
+            classifier: None,
             candidate_k: 32,
         }
     }
@@ -98,6 +101,18 @@ impl NeoRAGBuilder {
         self
     }
 
+    /// Optional: attach a regime classifier.
+    ///
+    /// Configuring a classifier turns on regime annotation in
+    /// [`NeoRAG::retrieve_with_state`]. The static `retrieve` and
+    /// `diagnose` APIs are unaffected — they continue to behave exactly as
+    /// they did before Phase 7. This is the read-only on-ramp to the
+    /// adaptive layer.
+    pub fn with_classifier(mut self, c: Arc<dyn RegimeClassifier>) -> Self {
+        self.classifier = Some(c);
+        self
+    }
+
     /// Optional: how many candidates to pull from the retriever before
     /// passing into the reranker. Ignored when no reranker is configured.
     pub fn with_candidate_k(mut self, k: usize) -> Self {
@@ -121,6 +136,7 @@ impl NeoRAGBuilder {
             retriever,
             reranker: self.reranker,
             diagnostics,
+            classifier: self.classifier,
             candidate_k: self.candidate_k,
         })
     }
@@ -137,6 +153,7 @@ pub struct NeoRAG {
     retriever: Arc<dyn Retriever>,
     reranker: Option<Arc<dyn Reranker>>,
     diagnostics: Arc<dyn DiagnosticsEngine>,
+    classifier: Option<Arc<dyn RegimeClassifier>>,
     candidate_k: usize,
 }
 
@@ -199,6 +216,34 @@ impl NeoRAG {
         self.diagnostics.diagnose(query, results)
     }
 
+    /// Run retrieval and return a full [`RetrievalState`] — candidates,
+    /// diagnostics, confidence profile, and (if a classifier is
+    /// configured) regime distribution.
+    ///
+    /// This is the **read-only on-ramp to the adaptive layer**: it is the
+    /// same call shape that the Phase 8 adaptive orchestrator will use
+    /// internally on every iteration. Today the state is observed and
+    /// returned; no part of the pipeline mutates retrieval based on it.
+    ///
+    /// Static `retrieve` and `diagnose` keep their existing contracts and
+    /// are unaffected by whether a classifier is configured.
+    pub async fn retrieve_with_state(
+        &self,
+        query: impl Into<Query>,
+        top_k: usize,
+    ) -> Result<RetrievalState> {
+        let query = query.into();
+        let candidates = self.retrieve(query.clone(), top_k).await?;
+        let diagnostics = self.diagnostics.diagnose(&query, &candidates)?;
+        let confidence = compute_confidence(&candidates);
+        let mut state = RetrievalState::new(query, candidates, diagnostics, confidence);
+        if let Some(cls) = &self.classifier {
+            let dist = cls.classify(&state.diagnostics, &state.confidence);
+            state = state.with_regime(dist);
+        }
+        Ok(state)
+    }
+
     /// Names of the configured components, for logging / diagnostics.
     pub fn component_names(&self) -> ComponentNames {
         ComponentNames {
@@ -206,6 +251,7 @@ impl NeoRAG {
             retriever: self.retriever.name(),
             reranker: self.reranker.as_ref().map(|r| r.name()),
             diagnostics: self.diagnostics.name(),
+            classifier: self.classifier.as_ref().map(|c| c.name()),
         }
     }
 }
@@ -221,6 +267,8 @@ pub struct ComponentNames {
     pub reranker: Option<&'static str>,
     /// Diagnostics engine name.
     pub diagnostics: &'static str,
+    /// Regime classifier name, if any.
+    pub classifier: Option<&'static str>,
 }
 
 #[cfg(test)]

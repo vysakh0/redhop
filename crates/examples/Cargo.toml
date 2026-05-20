@@ -18,7 +18,8 @@ neorag-retrieval   = { workspace = true }
 neorag-reranking   = { workspace = true }
 neorag-diagnostics = { workspace = true }
 neorag-storage     = { workspace = true }
-neorag-pipeline    = { workspace = true }
+neorag-pipeline      = { workspace = true }
+neorag-orchestration = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
@@ -39,3 +40,7 @@ path = "examples/rag_with_claude.rs"
 [[example]]
 name = "layered_diagnostics"
 path = "examples/layered_diagnostics.rs"
+
+[[example]]
+name = "regime_classification"
+path = "examples/regime_classification.rs"

@@ -16,6 +16,7 @@ neorag-chunking    = { workspace = true }
 neorag-retrieval   = { workspace = true }
 neorag-reranking   = { workspace = true }
 neorag-diagnostics = { workspace = true }
+neorag-orchestration = { workspace = true }
 neorag-storage     = { workspace = true }
 tokio              = { workspace = true }
 async-trait        = "0.1"
@@ -25,3 +26,8 @@ anyhow             = { workspace = true }
 [dev-dependencies]
 parking_lot          = "0.12"
 unicode-segmentation = { workspace = true }
+neorag-chunking      = { workspace = true }
+neorag-retrieval     = { workspace = true }
+neorag-storage       = { workspace = true }
+neorag-diagnostics   = { workspace = true }
+neorag-reranking     = { workspace = true }
