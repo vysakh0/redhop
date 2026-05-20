@@ -37,11 +37,14 @@
 use std::sync::Arc;
 
 use neorag_core::{
-    Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query, RegimeClassifier,
-    Reranker, Result, RetrievalResult, RetrievalState, Retriever,
+    Budget, Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query,
+    RegimeClassifier, Reranker, RerankerLevel, Result, RetrievalResult, RetrievalState, Retriever,
 };
 use neorag_diagnostics::DefaultDiagnosticsEngine;
-use neorag_orchestration::compute_confidence;
+use neorag_orchestration::{
+    compute_confidence, AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy,
+    RuleBasedClassifier,
+};
 
 /// Builder for [`NeoRAG`].
 ///
@@ -54,6 +57,14 @@ pub struct NeoRAGBuilder {
     reranker: Option<Arc<dyn Reranker>>,
     diagnostics: Option<Arc<dyn DiagnosticsEngine>>,
     classifier: Option<Arc<dyn RegimeClassifier>>,
+    /// Adaptive-only: rerankers keyed by their escalation tier. Used by
+    /// the [`AdaptiveOrchestrator`] through [`NeoRAG::adaptive_run`]; the
+    /// static `retrieve` path uses the single `reranker` field above.
+    rerankers_cascade: Vec<(RerankerLevel, Arc<dyn Reranker>)>,
+    /// Adaptive-only: the policy. Defaults to [`ConservativeRulePolicy`].
+    policy: Option<Arc<dyn Policy>>,
+    /// Adaptive-only: budget override.
+    adaptive_budget: Option<Budget>,
     candidate_k: usize,
 }
 
@@ -65,6 +76,9 @@ impl Default for NeoRAGBuilder {
             reranker: None,
             diagnostics: None,
             classifier: None,
+            rerankers_cascade: Vec::new(),
+            policy: None,
+            adaptive_budget: None,
             candidate_k: 32,
         }
     }
@@ -113,6 +127,31 @@ impl NeoRAGBuilder {
         self
     }
 
+    /// Adaptive-only: register a reranker at a specific escalation tier.
+    ///
+    /// Multiple rerankers may be registered at distinct tiers; the policy
+    /// chooses which tier to escalate to. Used exclusively by
+    /// [`NeoRAG::adaptive_run`]; the static [`NeoRAG::retrieve`] path
+    /// ignores this list and uses the single reranker (if any) configured
+    /// via [`with_reranker`][`NeoRAGBuilder::with_reranker`].
+    pub fn with_reranker_at(mut self, level: RerankerLevel, r: Arc<dyn Reranker>) -> Self {
+        self.rerankers_cascade.push((level, r));
+        self
+    }
+
+    /// Adaptive-only: override the policy. Defaults to
+    /// [`ConservativeRulePolicy`].
+    pub fn with_policy(mut self, p: Arc<dyn Policy>) -> Self {
+        self.policy = Some(p);
+        self
+    }
+
+    /// Adaptive-only: override the per-session compute budget.
+    pub fn with_adaptive_budget(mut self, budget: Budget) -> Self {
+        self.adaptive_budget = Some(budget);
+        self
+    }
+
     /// Optional: how many candidates to pull from the retriever before
     /// passing into the reranker. Ignored when no reranker is configured.
     pub fn with_candidate_k(mut self, k: usize) -> Self {
@@ -137,6 +176,9 @@ impl NeoRAGBuilder {
             reranker: self.reranker,
             diagnostics,
             classifier: self.classifier,
+            rerankers_cascade: self.rerankers_cascade,
+            policy: self.policy,
+            adaptive_budget: self.adaptive_budget,
             candidate_k: self.candidate_k,
         })
     }
@@ -154,6 +196,9 @@ pub struct NeoRAG {
     reranker: Option<Arc<dyn Reranker>>,
     diagnostics: Arc<dyn DiagnosticsEngine>,
     classifier: Option<Arc<dyn RegimeClassifier>>,
+    rerankers_cascade: Vec<(RerankerLevel, Arc<dyn Reranker>)>,
+    policy: Option<Arc<dyn Policy>>,
+    adaptive_budget: Option<Budget>,
     candidate_k: usize,
 }
 
@@ -244,6 +289,43 @@ impl NeoRAG {
         Ok(state)
     }
 
+    /// Run the **adaptive** retrieval loop. This is the Phase 8 entrypoint.
+    ///
+    /// The orchestrator behind this call is conservative by design: easy
+    /// queries take exactly one terminal `Stop` action, sparse queries
+    /// abstain immediately, distractor-heavy queries escalate the reranker
+    /// at most once, and ambiguous queries expand top-k at most once.
+    /// Inspect [`RetrievalState::history`] for the full audit trail.
+    ///
+    /// Requires a classifier (configure with
+    /// [`NeoRAGBuilder::with_classifier`]). Falls back to the default
+    /// [`ConservativeRulePolicy`] if no policy was set.
+    pub async fn adaptive_run(&self, query: impl Into<Query>) -> Result<RetrievalState> {
+        let classifier = self
+            .classifier
+            .clone()
+            .ok_or(Error::MissingComponent("classifier"))?;
+        let policy = self
+            .policy
+            .clone()
+            .unwrap_or_else(|| Arc::new(ConservativeRulePolicy::new()));
+        let actuator = Arc::new(DefaultActuator::new(
+            self.retriever.clone(),
+            self.rerankers_cascade.clone(),
+        ));
+        let mut orchestrator = AdaptiveOrchestrator::new(
+            self.diagnostics.clone(),
+            classifier,
+            policy,
+            actuator,
+        )
+        .with_initial_top_k(self.candidate_k);
+        if let Some(budget) = &self.adaptive_budget {
+            orchestrator = orchestrator.with_budget(budget.clone());
+        }
+        orchestrator.run(query.into()).await
+    }
+
     /// Names of the configured components, for logging / diagnostics.
     pub fn component_names(&self) -> ComponentNames {
         ComponentNames {
@@ -252,7 +334,26 @@ impl NeoRAG {
             reranker: self.reranker.as_ref().map(|r| r.name()),
             diagnostics: self.diagnostics.name(),
             classifier: self.classifier.as_ref().map(|c| c.name()),
+            rerankers_cascade_size: self.rerankers_cascade.len(),
+            policy: self.policy.as_ref().map(|p| p.name()),
         }
+    }
+
+    /// Construct a fully-default adaptive setup from the configured
+    /// chunker + retriever. Adds a `LayeredDiagnosticsEngine` (lexical +
+    /// semantic) and a `RuleBasedClassifier` if none were set. Convenience
+    /// for callers that want the canonical adaptive configuration without
+    /// wiring every component by hand.
+    pub fn defaults_for_adaptive() -> NeoRAGBuilder {
+        use neorag_diagnostics::{
+            LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
+        };
+        let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
+        let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
+        let layered = LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic);
+        NeoRAGBuilder::default()
+            .with_diagnostics(Arc::new(layered))
+            .with_classifier(Arc::new(RuleBasedClassifier::new()))
     }
 }
 
@@ -269,6 +370,10 @@ pub struct ComponentNames {
     pub diagnostics: &'static str,
     /// Regime classifier name, if any.
     pub classifier: Option<&'static str>,
+    /// Number of rerankers registered in the adaptive cascade.
+    pub rerankers_cascade_size: usize,
+    /// Policy name, if any.
+    pub policy: Option<&'static str>,
 }
 
 #[cfg(test)]

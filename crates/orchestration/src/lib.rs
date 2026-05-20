@@ -31,8 +31,14 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod actuator;
 pub mod classifier;
 pub mod confidence;
+pub mod orchestrator;
+pub mod policy;
 
+pub use actuator::{ActuationOutcome, Actuator, DefaultActuator};
 pub use classifier::{ClassifierThresholds, RuleBasedClassifier};
 pub use confidence::compute_confidence;
+pub use orchestrator::AdaptiveOrchestrator;
+pub use policy::{ConservativeRulePolicy, Policy, PolicyDecision, PolicyThresholds};

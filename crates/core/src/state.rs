@@ -201,20 +201,269 @@ impl RegimeDistribution {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Phase 8: actions, budget, taken-action history
+// ─────────────────────────────────────────────────────────────────────
+
+/// Reranker tiers in escalation order. `None < Lexical < Semantic <
+/// CrossEncoder`.
+///
+/// The ordering is meaningful: the orchestrator only escalates *up* the
+/// ladder, never down, and the [`RuleBasedClassifier`][rbc] uses the
+/// current level to decide whether escalation is still possible.
+///
+/// [rbc]: ../../neorag_orchestration/struct.RuleBasedClassifier.html
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
+)]
+pub enum RerankerLevel {
+    /// No reranker applied.
+    None,
+    /// Cheap lexical reranker (term overlap / grounding).
+    Lexical,
+    /// Embedding-based reranker (cosine over chunk vectors).
+    Semantic,
+    /// Heavy cross-encoder. Not implemented in Phase 8; reserved.
+    CrossEncoder,
+}
+
+impl RerankerLevel {
+    /// Stable machine-readable code.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Lexical => "lexical",
+            Self::Semantic => "semantic",
+            Self::CrossEncoder => "cross_encoder",
+        }
+    }
+
+    /// Next-higher tier, if any.
+    pub fn escalate(self) -> Option<RerankerLevel> {
+        match self {
+            Self::None => Some(Self::Lexical),
+            Self::Lexical => Some(Self::Semantic),
+            Self::Semantic => Some(Self::CrossEncoder),
+            Self::CrossEncoder => None,
+        }
+    }
+}
+
+impl std::fmt::Display for RerankerLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
+    }
+}
+
+/// Why the controller decided to stop iterating.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum StopReason {
+    /// Easy regime: retrieval looks done.
+    Confident,
+    /// Saturated regime: more retrieval will not help.
+    SaturatedNoBenefit,
+    /// No regime fired with enough probability to act on.
+    NoSignal,
+    /// Iteration budget exhausted.
+    BudgetExhausted,
+    /// Last action did not improve evidence quality.
+    NoImprovement,
+}
+
+impl StopReason {
+    /// Stable machine-readable code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Confident => "confident",
+            Self::SaturatedNoBenefit => "saturated_no_benefit",
+            Self::NoSignal => "no_signal",
+            Self::BudgetExhausted => "budget_exhausted",
+            Self::NoImprovement => "no_improvement",
+        }
+    }
+}
+
+/// Why the controller decided to abstain — i.e. emit the result set with
+/// an explicit "evidence insufficient" flag rather than letting a downstream
+/// LLM hallucinate over it.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum AbstainReason {
+    /// Sparse regime: corpus likely does not contain the answer.
+    Sparse,
+    /// Grounding signals stayed low through every iteration attempted.
+    PersistentLowGrounding,
+}
+
+impl AbstainReason {
+    /// Stable machine-readable code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Sparse => "sparse",
+            Self::PersistentLowGrounding => "persistent_low_grounding",
+        }
+    }
+}
+
+/// The action catalog the policy may choose from.
+///
+/// **Phase 8 intentionally restricts the action space to four members.**
+/// Query rewriting, chunk mutation, and graph traversal are deliberately
+/// excluded until the four below are empirically validated. The space is
+/// designed to be conservative — every action either terminates (Stop /
+/// Abstain) or performs exactly one bounded retrieval mutation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RetrievalAction {
+    /// Terminate iteration. The current candidates are the final evidence.
+    Stop {
+        /// Why we stopped.
+        reason: StopReason,
+    },
+    /// Terminate and emit a structured "insufficient evidence" outcome.
+    Abstain {
+        /// Why we abstained.
+        reason: AbstainReason,
+    },
+    /// Re-retrieve with a larger top-k.
+    ExpandTopK {
+        /// Current top-k.
+        from: usize,
+        /// New top-k.
+        to: usize,
+    },
+    /// Apply the next reranker tier to the current candidates.
+    EscalateReranker {
+        /// Current reranker level.
+        from: RerankerLevel,
+        /// Target reranker level.
+        to: RerankerLevel,
+    },
+}
+
+impl RetrievalAction {
+    /// Stable machine-readable code, suitable for logs and FFI.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Stop { .. } => "stop",
+            Self::Abstain { .. } => "abstain",
+            Self::ExpandTopK { .. } => "expand_top_k",
+            Self::EscalateReranker { .. } => "escalate_reranker",
+        }
+    }
+
+    /// True iff this action terminates the loop.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Stop { .. } | Self::Abstain { .. })
+    }
+}
+
+/// Bookkeeping of work performed by a single action.
+///
+/// These counters are essential for later policy evaluation — without
+/// them you cannot decide whether `EscalateReranker` is paying for itself
+/// on the workloads where it fires.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ActionCost {
+    /// Number of additional retrieval calls this action triggered.
+    pub retrieval_calls: u32,
+    /// Number of reranker calls this action triggered.
+    pub rerank_calls: u32,
+    /// Net change in candidate-set size (`new − old`); may be negative
+    /// when reranking trims tail candidates.
+    pub chunks_delta: i32,
+}
+
+/// A complete record of one action's effect on the retrieval state.
+///
+/// `TakenAction` is the unit of evidence the policy-evaluation layer
+/// later consumes. Each record holds the policy's *prediction*
+/// (`expected_gain`), the controller's *measurement*
+/// (`actual_gain`), and enough context to recompute either offline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TakenAction {
+    /// The action that was applied.
+    pub action: RetrievalAction,
+    /// Zero-indexed iteration at which this action ran.
+    pub iteration: u32,
+    /// The policy's predicted gain in evidence quality, in `[0, 1]`.
+    /// Terminal actions report `0.0`.
+    pub expected_gain: f32,
+    /// Measured gain after the action ran, in `[-1, 1]`. `None` for
+    /// terminal actions where there is no "after" to measure against.
+    pub actual_gain: Option<f32>,
+    /// Diagnostics observed before the action ran.
+    pub pre_diagnostics: DiagnosticsReport,
+    /// Diagnostics observed after the action ran. `None` for terminal
+    /// actions.
+    pub post_diagnostics: Option<DiagnosticsReport>,
+    /// Wall-clock time the action spent.
+    pub latency_ms: u64,
+    /// Work performed by the action.
+    pub cost: ActionCost,
+    /// The policy's human-readable rationale for choosing this action.
+    pub rationale: String,
+}
+
+/// Compute budget for one adaptive retrieval session.
+///
+/// Defaults are deliberately tight: 3 iterations, 50 top-k cap, 2 rerank
+/// calls. The whole point of the adaptive controller is to do *less*
+/// work, not more — a profligate budget invites runaway iteration on
+/// genuinely sparse queries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Budget {
+    /// Iterations the orchestrator is allowed to run.
+    pub max_iterations: u32,
+    /// Hard cap on top-k after expansion.
+    pub max_top_k: usize,
+    /// Hard cap on reranker invocations.
+    pub max_rerank_calls: u32,
+    /// Remaining iterations. Mutated by the orchestrator.
+    pub remaining_iterations: u32,
+    /// Remaining reranker calls. Mutated by the orchestrator.
+    pub remaining_rerank_calls: u32,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            max_iterations: 3,
+            max_top_k: 50,
+            max_rerank_calls: 2,
+            remaining_iterations: 3,
+            remaining_rerank_calls: 2,
+        }
+    }
+}
+
+impl Budget {
+    /// Construct a budget with custom limits; `remaining_*` start full.
+    pub fn new(max_iterations: u32, max_top_k: usize, max_rerank_calls: u32) -> Self {
+        Self {
+            max_iterations,
+            max_top_k,
+            max_rerank_calls,
+            remaining_iterations: max_iterations,
+            remaining_rerank_calls: max_rerank_calls,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+
 /// The state object that flows through the adaptive retrieval loop.
 ///
-/// In Phase 7 this struct is *populated but inert* — no part of NeoRAG
-/// mutates it after creation. Phase 8 adds the action/budget/history
-/// fields and the orchestrator that mutates them in place.
+/// Phase 7 introduced the read-only fields (`query`, `candidates`,
+/// `diagnostics`, `confidence`, `regime`); Phase 8 added `history`,
+/// `budget`, and the current `reranker_level`. The orchestrator mutates
+/// these in place across iterations.
 ///
-/// Construction goes through [`RetrievalState::new`] or
-/// [`RetrievalState::builder`]; fields are public so consumers can read
-/// them directly without going through getters.
+/// Fields are public so consumers can read them directly without going
+/// through getters; mutation is the orchestrator's job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalState {
     /// The query that produced this state.
     pub query: Query,
-    /// Zero-indexed iteration counter. Phase 7 only ever sees `0`.
+    /// Zero-indexed iteration counter.
     pub iteration: u32,
     /// Current working set of retrieval results.
     pub candidates: Vec<RetrievalResult>,
@@ -225,6 +474,22 @@ pub struct RetrievalState {
     /// Optional regime classification. `None` when no classifier was
     /// configured.
     pub regime: Option<RegimeDistribution>,
+    /// Full audit trail of actions the orchestrator has taken.
+    #[serde(default)]
+    pub history: Vec<TakenAction>,
+    /// Current top-k in effect for retrieval.
+    #[serde(default)]
+    pub current_top_k: usize,
+    /// Current reranker tier in effect.
+    #[serde(default = "default_reranker_level")]
+    pub reranker_level: RerankerLevel,
+    /// Compute budget; counters mutate with each iteration.
+    #[serde(default)]
+    pub budget: Budget,
+}
+
+fn default_reranker_level() -> RerankerLevel {
+    RerankerLevel::None
 }
 
 impl RetrievalState {
@@ -235,6 +500,7 @@ impl RetrievalState {
         diagnostics: DiagnosticsReport,
         confidence: ConfidenceProfile,
     ) -> Self {
+        let n = candidates.len();
         Self {
             query,
             iteration: 0,
@@ -242,6 +508,10 @@ impl RetrievalState {
             diagnostics,
             confidence,
             regime: None,
+            history: Vec::new(),
+            current_top_k: n,
+            reranker_level: RerankerLevel::None,
+            budget: Budget::default(),
         }
     }
 
@@ -251,8 +521,30 @@ impl RetrievalState {
         self
     }
 
+    /// Override the budget for this session.
+    pub fn with_budget(mut self, budget: Budget) -> Self {
+        self.budget = budget;
+        self
+    }
+
     /// Convenience: the headline regime label, if any.
     pub fn regime_label(&self) -> Option<RetrievalRegime> {
         self.regime.as_ref().map(|r| r.argmax)
+    }
+
+    /// True iff the orchestrator terminated this session via `Abstain`.
+    pub fn abstained(&self) -> bool {
+        self.history
+            .last()
+            .map(|t| matches!(t.action, RetrievalAction::Abstain { .. }))
+            .unwrap_or(false)
+    }
+
+    /// The terminal action, if the session has terminated.
+    pub fn terminal_action(&self) -> Option<&RetrievalAction> {
+        self.history
+            .last()
+            .map(|t| &t.action)
+            .filter(|a| a.is_terminal())
     }
 }

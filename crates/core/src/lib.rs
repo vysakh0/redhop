@@ -26,8 +26,9 @@ pub mod types;
 
 pub use error::{Error, Result};
 pub use state::{
-    ClassificationTrace, ConfidenceProfile, RegimeDistribution, RetrievalRegime, RetrievalState,
-    RuleFire,
+    AbstainReason, ActionCost, Budget, ClassificationTrace, ConfidenceProfile,
+    RegimeDistribution, RerankerLevel, RetrievalAction, RetrievalRegime, RetrievalState, RuleFire,
+    StopReason, TakenAction,
 };
 pub use traits::{
     Chunker, DiagnosticsEngine, EmbeddingProvider, RegimeClassifier, Reranker, Retriever,

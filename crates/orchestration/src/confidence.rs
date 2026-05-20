@@ -47,9 +47,14 @@ pub fn compute_confidence(results: &[RetrievalResult]) -> ConfidenceProfile {
 
     if scores.len() >= 2 {
         // Decision margin on the *raw* scores so it stays interpretable.
+        // `max(EPS)` (rather than `+ EPS`) keeps the denominator equal to
+        // `|s0|` whenever the score is comfortably above zero; the EPS
+        // only kicks in for near-zero degenerate cases. Without this, a
+        // 10 vs 8 split was returning a margin of 0.19999998 instead of
+        // 0.2 — close enough to defeat any threshold set at exactly 0.2.
         let s0 = scores[0];
         let s1 = scores[1];
-        let denom = s0.abs() + EPS;
+        let denom = s0.abs().max(EPS);
         let margin = ((s0 - s1) / denom).clamp(0.0, 1.0);
         p.decision_margin = Some(margin);
 

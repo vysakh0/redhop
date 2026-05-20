@@ -14,3 +14,5 @@ path = "src/lib.rs"
 neorag-core = { workspace = true }
 serde       = { workspace = true }
 tracing     = { workspace = true }
+async-trait = "0.1"
+tokio       = { workspace = true }
