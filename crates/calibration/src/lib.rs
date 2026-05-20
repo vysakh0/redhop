@@ -67,8 +67,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod analysis;
 pub mod dataset;
 pub mod fixtures;
+pub mod loaders;
 pub mod reliability;
 pub mod report;
 pub mod runner;

@@ -54,3 +54,7 @@ path = "examples/adaptive_loop.rs"
 [[example]]
 name = "calibration_sweep"
 path = "examples/calibration_sweep.rs"
+
+[[example]]
+name = "real_corpus_calibration"
+path = "examples/real_corpus_calibration.rs"
