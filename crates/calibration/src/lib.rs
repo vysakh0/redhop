@@ -69,6 +69,7 @@
 
 pub mod analysis;
 pub mod dataset;
+pub mod embedder;
 pub mod fixtures;
 pub mod loaders;
 pub mod reliability;

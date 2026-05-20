@@ -62,3 +62,15 @@ path = "examples/real_corpus_calibration.rs"
 [[example]]
 name = "neotrace_import"
 path = "examples/neotrace_import.rs"
+
+[[example]]
+name = "adaptive_eval_hotpotqa"
+path = "examples/adaptive_eval_hotpotqa.rs"
+
+[[example]]
+name = "adaptive_eval_musique"
+path = "examples/adaptive_eval_musique.rs"
+
+[[example]]
+name = "method_pair_regret"
+path = "examples/method_pair_regret.rs"
