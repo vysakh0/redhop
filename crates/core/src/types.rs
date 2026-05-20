@@ -334,13 +334,31 @@ pub struct DiagnosticsWarning {
 /// must treat `NaN` and "metric not computed" as equivalent by using
 /// `Option`.
 ///
+/// The report is split into two tiers:
+///
+/// 1. **Lexical tier** (`lexical_grounding`, `chunk_purity`,
+///    `answer_density`, `distractor_ratio`, …): computed from text alone,
+///    no embeddings needed. Populated by
+///    [`DefaultDiagnosticsEngine`][def].
+/// 2. **Semantic tier** (`semantic_grounding`, `semantic_redundancy`,
+///    `centroid_dispersion`, `semantic_distractor_ratio`): computed from
+///    embeddings on the [`Query`] and [`Chunk`]s. Populated by
+///    [`SemanticDiagnosticsEngine`][sem].
+///
+/// Either tier may be absent. A typical production deployment uses a
+/// [`LayeredDiagnosticsEngine`][lay] that composes both.
+///
 /// [`DiagnosticsEngine`]: crate::traits::DiagnosticsEngine
+/// [def]: ../../neorag_diagnostics/struct.DefaultDiagnosticsEngine.html
+/// [sem]: ../../neorag_diagnostics/struct.SemanticDiagnosticsEngine.html
+/// [lay]: ../../neorag_diagnostics/struct.LayeredDiagnosticsEngine.html
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiagnosticsReport {
     /// Fraction of retrieved tokens that are query-relevant (proxy for
     /// answer-bearing evidence density).
     pub answer_density: Option<f32>,
-    /// Fraction of retrieved chunks that appear to be off-topic distractors.
+    /// Fraction of retrieved chunks that appear to be off-topic distractors,
+    /// judged by lexical grounding. *Lower is better.*
     pub distractor_ratio: Option<f32>,
     /// Aggregate confidence that the retrieved set contains the answer.
     pub retrieval_confidence: Option<f32>,
@@ -354,6 +372,34 @@ pub struct DiagnosticsReport {
     pub lexical_grounding: Option<f32>,
     /// Average per-chunk topical purity (low cross-talk between sentences).
     pub chunk_purity: Option<f32>,
+
+    // ---- Semantic tier (Phase 6) ----
+    //
+    // The semantic-tier metrics close the paraphrase blind spot in the
+    // lexical tier: a chunk like "Tim Cook earned $99M" has zero lexical
+    // grounding against "What is the CEO's salary?" but high semantic
+    // grounding. They require both query and chunk embeddings to be
+    // populated; if either is missing the field stays `None`.
+    /// Mean cosine similarity between the query embedding and each retrieved
+    /// chunk embedding, scaled to `[0, 1]`. Captures evidence relevance that
+    /// the lexical signal misses.
+    pub semantic_grounding: Option<f32>,
+    /// Mean pairwise cosine similarity between the embeddings of all
+    /// retrieved chunks, scaled to `[0, 1]`. The semantic counterpart to
+    /// `retrieval_saturation`; high values indicate the top-k is rehashing
+    /// the same evidence.
+    pub semantic_redundancy: Option<f32>,
+    /// Spread of retrieved chunks around their centroid in embedding space,
+    /// scaled to `[0, 1]`. The semantic counterpart to
+    /// `evidence_concentration` viewed from the other side: high dispersion
+    /// indicates the retriever is hedging across semantically distinct
+    /// candidates.
+    pub centroid_dispersion: Option<f32>,
+    /// Fraction of retrieved chunks whose query-similarity falls below a
+    /// configurable cosine threshold. *Lower is better.* Semantic version
+    /// of `distractor_ratio`.
+    pub semantic_distractor_ratio: Option<f32>,
+
     /// Advisory warnings.
     pub warnings: Vec<DiagnosticsWarning>,
 }
@@ -365,6 +411,38 @@ impl DiagnosticsReport {
             code: code.to_string(),
             message: message.into(),
         });
+        self
+    }
+
+    /// Merge another report into this one, preferring `Some` values already
+    /// present here and pulling in `Some` values from `other` where this
+    /// report had `None`. Warnings are concatenated.
+    ///
+    /// Used by [`LayeredDiagnosticsEngine`][lay] to compose lexical and
+    /// semantic tiers into a single report without one engine overwriting
+    /// fields populated by the other.
+    ///
+    /// [lay]: ../../neorag_diagnostics/struct.LayeredDiagnosticsEngine.html
+    pub fn merge(mut self, other: DiagnosticsReport) -> Self {
+        macro_rules! prefer_existing {
+            ($field:ident) => {
+                if self.$field.is_none() {
+                    self.$field = other.$field;
+                }
+            };
+        }
+        prefer_existing!(answer_density);
+        prefer_existing!(distractor_ratio);
+        prefer_existing!(retrieval_confidence);
+        prefer_existing!(retrieval_saturation);
+        prefer_existing!(evidence_concentration);
+        prefer_existing!(lexical_grounding);
+        prefer_existing!(chunk_purity);
+        prefer_existing!(semantic_grounding);
+        prefer_existing!(semantic_redundancy);
+        prefer_existing!(centroid_dispersion);
+        prefer_existing!(semantic_distractor_ratio);
+        self.warnings.extend(other.warnings);
         self
     }
 }

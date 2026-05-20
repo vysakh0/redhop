@@ -75,7 +75,10 @@ impl DiagnosticsEngine for DefaultDiagnosticsEngine {
             evidence_concentration: concentration,
             lexical_grounding: grounding,
             chunk_purity: purity,
-            warnings: Vec::new(),
+            // Semantic-tier fields are owned by SemanticDiagnosticsEngine;
+            // this engine leaves them None and lets a LayeredDiagnosticsEngine
+            // fill them in.
+            ..Default::default()
         };
 
         if let Some(g) = grounding {

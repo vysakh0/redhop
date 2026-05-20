@@ -31,3 +31,11 @@ path = "examples/quickstart.rs"
 [[example]]
 name = "diagnostics"
 path = "examples/diagnostics.rs"
+
+[[example]]
+name = "rag_with_claude"
+path = "examples/rag_with_claude.rs"
+
+[[example]]
+name = "layered_diagnostics"
+path = "examples/layered_diagnostics.rs"

@@ -2,38 +2,38 @@
 //!
 //! Retrieval-quality diagnostics — *first-class*, not optional.
 //!
-//! The premise: retrieval failure is almost never "the right chunk wasn't
-//! in the index". It is "the right chunk was *there* but buried under
-//! distractors, or the chunk had too little lexical grounding for the
-//! reader model to anchor on, or the top-k saturated on near-duplicates."
-//! Each of those failure modes is observable post-retrieval, before any LLM
-//! is invoked. This module provides the primitives.
+//! Diagnostics in NeoRAG are split into two tiers:
 //!
-//! Six metrics are computed (each in `[0, 1]`, higher is better unless
-//! noted):
+//! - **Lexical tier** ([`DefaultDiagnosticsEngine`]) — computed from text
+//!   alone. Cheap, deterministic, no embedding model required. Catches
+//!   missing query-term grounding, off-topic distractors, evidence
+//!   saturation, and concentration.
+//! - **Semantic tier** ([`SemanticDiagnosticsEngine`]) — computed from
+//!   embeddings already present on the [`Query`] and [`Chunk`]s.
+//!   Closes the paraphrase blind spot of the lexical tier without
+//!   pulling in any model dependency: it consumes the embeddings the
+//!   dense retriever already produces.
 //!
-//! - [`metrics::lexical_grounding`] — average query-term overlap with the
-//!   retrieved chunks. Low values predict reader hallucination.
-//! - [`metrics::chunk_purity`] — average per-chunk topical coherence,
-//!   estimated as intra-chunk sentence-term overlap. Low values mean
-//!   chunks straddle topic boundaries (a chunker problem).
-//! - [`metrics::answer_density`] — fraction of retrieved tokens that are
-//!   query-relevant (proxy for answer-bearing evidence density).
-//! - [`metrics::distractor_ratio`] — fraction of retrieved chunks whose
-//!   per-chunk grounding is below a confidence threshold. *Lower is
-//!   better*; the metric is reported as a 0..1 fraction.
-//! - [`metrics::retrieval_saturation`] — does the tail of results add new
-//!   information, or just rehash the head? `1.0` means saturated (no new
-//!   information at the bottom).
-//! - [`metrics::evidence_concentration`] — how peaked the top scores are.
-//!   `1.0` means a single dominant result, `0.0` means a flat plateau.
+//! [`LayeredDiagnosticsEngine`] composes both tiers into a single unified
+//! [`DiagnosticsReport`]. This is the recommended production setup once a
+//! pipeline has dense embeddings in flight.
 //!
-//! [`DefaultDiagnosticsEngine`] runs all six.
+//! The two-tier split exists for a specific reason: it lets retrieval
+//! diagnose itself even when embeddings are absent (BM25-only deployments,
+//! cold start, OCR'd corpora), and adds *strictly more* signal when
+//! embeddings are available. No tier overwrites the other.
+//!
+//! [`Query`]: neorag_core::Query
+//! [`Chunk`]: neorag_core::Chunk
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod engine;
+pub mod layered;
 pub mod metrics;
+pub mod semantic;
 
-pub use engine::DefaultDiagnosticsEngine;
+pub use engine::{DefaultDiagnosticsEngine, DiagnosticsThresholds};
+pub use layered::LayeredDiagnosticsEngine;
+pub use semantic::{SemanticDiagnosticsConfig, SemanticDiagnosticsEngine};
