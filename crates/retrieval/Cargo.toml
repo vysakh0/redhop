@@ -1,0 +1,21 @@
+[package]
+name = "neorag-retrieval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Retrieval engines for NeoRAG"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neorag-core    = { workspace = true }
+neorag-storage = { workspace = true }
+tantivy        = { workspace = true }
+tokio          = { workspace = true }
+async-trait    = "0.1"
+futures        = { workspace = true }
+tracing        = { workspace = true }
+parking_lot    = "0.12"
