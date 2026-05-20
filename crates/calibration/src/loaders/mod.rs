@@ -33,3 +33,4 @@
 pub mod hotpotqa;
 pub mod jsonl;
 pub mod musique;
+pub mod neotrace;
