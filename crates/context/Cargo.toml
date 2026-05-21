@@ -1,0 +1,19 @@
+[package]
+name = "neorag-context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Finite-attention-aware context construction and evidence allocation for NeoRAG"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neorag-core          = { workspace = true }
+serde                = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+neorag-core = { workspace = true }

@@ -29,6 +29,7 @@ neorag-pipeline      = { workspace = true }
 neorag-orchestration = { workspace = true }
 neorag-calibration   = { workspace = true }
 neorag-observability = { workspace = true }
+neorag-context       = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
@@ -92,6 +93,15 @@ path = "examples/observability_report.rs"
 [[example]]
 name = "ingestion_diagnostics"
 path = "examples/ingestion_diagnostics.rs"
+
+[[example]]
+name = "distractor_answer_correlation"
+path = "examples/distractor_answer_correlation.rs"
+
+[[example]]
+name = "context_economics"
+path = "examples/context_economics.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "real_pdf_validation"
