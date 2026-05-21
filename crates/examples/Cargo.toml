@@ -79,3 +79,7 @@ path = "examples/method_pair_regret.rs"
 [[example]]
 name = "observability_report"
 path = "examples/observability_report.rs"
+
+[[example]]
+name = "ingestion_diagnostics"
+path = "examples/ingestion_diagnostics.rs"

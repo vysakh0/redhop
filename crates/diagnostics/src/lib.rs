@@ -30,10 +30,12 @@
 #![warn(missing_docs)]
 
 pub mod engine;
+pub mod ingestion;
 pub mod layered;
 pub mod metrics;
 pub mod semantic;
 
 pub use engine::{DefaultDiagnosticsEngine, DiagnosticsThresholds};
+pub use ingestion::{diagnose_ingestion, IngestionReport, IngestionThresholds};
 pub use layered::LayeredDiagnosticsEngine;
 pub use semantic::{SemanticDiagnosticsConfig, SemanticDiagnosticsEngine};
