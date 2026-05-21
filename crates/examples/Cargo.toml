@@ -11,6 +11,12 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+# Enables ONNX-backed examples (real embedding bakeoff). Pulls the onnx
+# feature through neorag-embeddings.
+onnx = ["neorag-embeddings/onnx"]
+
 [dependencies]
 neorag-core        = { workspace = true }
 neorag-chunking    = { workspace = true }
@@ -18,6 +24,7 @@ neorag-retrieval   = { workspace = true }
 neorag-reranking   = { workspace = true }
 neorag-diagnostics = { workspace = true }
 neorag-storage     = { workspace = true }
+neorag-embeddings    = { workspace = true }
 neorag-pipeline      = { workspace = true }
 neorag-orchestration = { workspace = true }
 neorag-calibration   = { workspace = true }
@@ -88,3 +95,8 @@ path = "examples/ingestion_diagnostics.rs"
 [[example]]
 name = "real_pdf_validation"
 path = "examples/real_pdf_validation.rs"
+
+[[example]]
+name = "real_embedding_bakeoff"
+path = "examples/real_embedding_bakeoff.rs"
+required-features = ["onnx"]
