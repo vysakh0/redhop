@@ -105,3 +105,8 @@ required-features = ["onnx"]
 name = "adaptive_real_vs_hashing"
 path = "examples/adaptive_real_vs_hashing.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "bge_recalibration"
+path = "examples/bge_recalibration.rs"
+required-features = ["onnx"]
