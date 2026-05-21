@@ -68,6 +68,7 @@
 #![warn(missing_docs)]
 
 pub mod analysis;
+pub mod corruption;
 pub mod dataset;
 pub mod economics;
 pub mod embedder;
