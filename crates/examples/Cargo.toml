@@ -100,3 +100,8 @@ path = "examples/real_pdf_validation.rs"
 name = "real_embedding_bakeoff"
 path = "examples/real_embedding_bakeoff.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "adaptive_real_vs_hashing"
+path = "examples/adaptive_real_vs_hashing.rs"
+required-features = ["onnx"]
