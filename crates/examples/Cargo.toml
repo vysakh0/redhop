@@ -104,6 +104,10 @@ path = "examples/context_economics.rs"
 required-features = ["onnx"]
 
 [[example]]
+name = "emit_qa_contexts"
+path = "examples/emit_qa_contexts.rs"
+
+[[example]]
 name = "real_pdf_validation"
 path = "examples/real_pdf_validation.rs"
 
