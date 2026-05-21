@@ -7,6 +7,7 @@ members = [
     "crates/reranking",
     "crates/calibration",
     "crates/diagnostics",
+    "crates/embeddings",
     "crates/observability",
     "crates/orchestration",
     "crates/storage",
@@ -32,6 +33,7 @@ neorag-retrieval   = { path = "crates/retrieval" }
 neorag-reranking   = { path = "crates/reranking" }
 neorag-calibration    = { path = "crates/calibration" }
 neorag-diagnostics    = { path = "crates/diagnostics" }
+neorag-embeddings     = { path = "crates/embeddings" }
 neorag-observability  = { path = "crates/observability" }
 neorag-orchestration  = { path = "crates/orchestration" }
 neorag-storage        = { path = "crates/storage" }

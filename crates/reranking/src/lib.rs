@@ -16,14 +16,23 @@
 //! - [`EvidenceDensityReranker`] — boosts candidates whose chunks have a
 //!   higher per-token query-term density (denser evidence per token of
 //!   context).
+//! - [`cross_encoder::OnnxCrossEncoder`] (feature `onnx`) — a real
+//!   cross-encoder reranker over an ONNX model. The cheap decision
+//!   logic ([`cross_encoder::apply_scores`]) is always available and
+//!   unit-tested; only the model inference is feature-gated.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod cross_encoder;
 pub mod evidence_density;
 pub mod lexical;
 pub mod score_fusion;
 
+pub use cross_encoder::apply_scores;
 pub use evidence_density::EvidenceDensityReranker;
 pub use lexical::LexicalGroundingReranker;
 pub use score_fusion::ScoreFusionReranker;
+
+#[cfg(feature = "onnx")]
+pub use cross_encoder::OnnxCrossEncoder;

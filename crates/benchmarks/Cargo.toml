@@ -17,6 +17,7 @@ neorag-chunking    = { workspace = true }
 neorag-retrieval   = { workspace = true }
 neorag-pipeline    = { workspace = true }
 neorag-diagnostics = { workspace = true }
+neorag-embeddings  = { workspace = true }
 tokio              = { workspace = true }
 
 [dev-dependencies]
@@ -28,4 +29,8 @@ harness = false
 
 [[bench]]
 name    = "retrieval"
+harness = false
+
+[[bench]]
+name    = "embeddings"
 harness = false

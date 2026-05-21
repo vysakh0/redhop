@@ -10,11 +10,21 @@ description = "Reranking strategies for NeoRAG"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+# ONNX cross-encoder reranker (e.g. ms-marco MiniLM). Pulls in
+# `ort` + `tokenizers`; not in the default build.
+onnx = ["dep:ort", "dep:tokenizers"]
+
 [dependencies]
 neorag-core = { workspace = true }
 async-trait          = "0.1"
 tracing              = { workspace = true }
 unicode-segmentation = { workspace = true }
+
+# ── optional, behind the `onnx` feature ──
+ort        = { version = "=2.0.0-rc.10", optional = true, default-features = false, features = ["std", "download-binaries"] }
+tokenizers = { version = "0.20", optional = true, default-features = false, features = ["onig"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -71,6 +71,7 @@ pub mod analysis;
 pub mod dataset;
 pub mod economics;
 pub mod embedder;
+pub mod embedder_bench;
 pub mod fixtures;
 pub mod htmlreport;
 pub mod loaders;

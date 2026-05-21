@@ -17,6 +17,7 @@ neorag-retrieval     = { workspace = true }
 neorag-reranking     = { workspace = true }
 neorag-diagnostics   = { workspace = true }
 neorag-orchestration = { workspace = true }
+neorag-storage       = { workspace = true }
 unicode-segmentation = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }
