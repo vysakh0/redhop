@@ -13,9 +13,9 @@ path = "src/lib.rs"
 
 [features]
 default = []
-# Enables ONNX-backed examples (real embedding bakeoff). Pulls the onnx
-# feature through neorag-embeddings.
-onnx = ["neorag-embeddings/onnx"]
+# Enables ONNX-backed examples (real embedding bakeoff + cross-encoder).
+# Pulls the onnx feature through neorag-embeddings + neorag-reranking.
+onnx = ["neorag-embeddings/onnx", "neorag-reranking/onnx"]
 
 [dependencies]
 neorag-core        = { workspace = true }
@@ -115,4 +115,14 @@ required-features = ["onnx"]
 [[example]]
 name = "bge_dense_retrieval"
 path = "examples/bge_dense_retrieval.rs"
+required-features = ["onnx"]
+
+[[example]]
+name = "ce_smoke"
+path = "examples/ce_smoke.rs"
+required-features = ["onnx"]
+
+[[example]]
+name = "ce_escalation_economics"
+path = "examples/ce_escalation_economics.rs"
 required-features = ["onnx"]
