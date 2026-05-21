@@ -1,0 +1,16 @@
+[package]
+name = "neorag-observability"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Per-query retrieval traces and renderers for NeoRAG"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+neorag-core = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }

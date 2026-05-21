@@ -69,8 +69,10 @@
 
 pub mod analysis;
 pub mod dataset;
+pub mod economics;
 pub mod embedder;
 pub mod fixtures;
+pub mod htmlreport;
 pub mod loaders;
 pub mod reliability;
 pub mod report;
