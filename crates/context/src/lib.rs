@@ -221,6 +221,93 @@ pub struct ContextReport {
     pub economics: ContextEconomics,
 }
 
+impl ContextReport {
+    /// Render a human-readable "Context Optimization Report" — makes the
+    /// invisible visible. Pass the `analyze_context` report as `before` to
+    /// show the token/density deltas; pass `None` for the assembled view only.
+    pub fn render(&self, before: Option<&ContextReport>) -> String {
+        let mut s = String::new();
+        s.push_str("Context Optimization Report\n");
+        s.push_str("───────────────────────────\n");
+        s.push_str(&format!("Strategy: {:?}\n\n", self.strategy));
+
+        let in_chunks = before.map(|b| b.n_input_chunks).unwrap_or(self.n_input_chunks);
+        s.push_str(&format!("Input chunks:        {in_chunks}\n"));
+        s.push_str(&format!("Output chunks:       {}\n", self.n_selected));
+        if let Some(b) = before {
+            // Negative = fewer tokens than the raw input (the usual, good case).
+            let pct = if b.total_tokens > 0 {
+                100.0 * (self.total_tokens as f32 - b.total_tokens as f32) / b.total_tokens as f32
+            } else {
+                0.0
+            };
+            s.push_str(&format!(
+                "Tokens:              {} → {}  ({pct:+.0}%)\n",
+                b.total_tokens, self.total_tokens
+            ));
+        } else {
+            s.push_str(&format!("Tokens:              {}\n", self.total_tokens));
+        }
+        s.push_str(&format!("Distractors pruned:  {}\n", self.removed.distractor));
+        if self.removed.redundant > 0 {
+            s.push_str(&format!("Duplicates pruned:   {}\n", self.removed.redundant));
+        }
+        if self.removed.budget > 0 {
+            s.push_str(&format!("Budget-trimmed:      {}\n", self.removed.budget));
+        }
+        s.push_str(&format!("Reasoning rescues:   {}\n\n", self.second_hop_rescue_count));
+
+        if let Some(b) = before {
+            s.push_str(&format!(
+                "Evidence density:    {:.2} → {:.2}\n",
+                b.economics.evidence_density, self.economics.evidence_density
+            ));
+        } else {
+            s.push_str(&format!("Evidence density:    {:.2}\n", self.economics.evidence_density));
+        }
+        s.push_str(&format!(
+            "Retained evidence:   {:.0}%\n",
+            self.retained_evidence_ratio * 100.0
+        ));
+        s.push_str(&format!("Token utilization:   {:.0}%\n", self.token_utilization * 100.0));
+        s.push_str(&format!(
+            "Estimated waste:     {} tokens on distractors\n",
+            self.economics.estimated_waste_tokens
+        ));
+
+        // Warnings — surface what the optimizer did and didn't do.
+        let mut warnings: Vec<String> = Vec::new();
+        if self.second_hop_rescue_count > 0 {
+            warnings.push(format!(
+                "rescued {} low-relevance linked chunk(s) (possible second hops)",
+                self.second_hop_rescue_count
+            ));
+        }
+        if self.removed.redundant > 0 {
+            warnings.push(format!("{} near-duplicate chunk(s) pruned", self.removed.redundant));
+        }
+        if self.removed.budget > 0 {
+            warnings.push(format!(
+                "{} chunk(s) dropped for token budget — consider raising it",
+                self.removed.budget
+            ));
+        }
+        if self.economics.distractor_ratio > 0.05 && self.removed.distractor == 0 {
+            warnings.push(format!(
+                "context still contains distractors (ratio {:.2}); strategy did not filter",
+                self.economics.distractor_ratio
+            ));
+        }
+        if !warnings.is_empty() {
+            s.push_str("\nWarnings:\n");
+            for w in warnings {
+                s.push_str(&format!("- {w}\n"));
+            }
+        }
+        s
+    }
+}
+
 /// The result of context construction: the selected chunks plus the
 /// [`ContextReport`] telemetry.
 #[derive(Debug, Clone)]
@@ -953,6 +1040,27 @@ mod tests {
         assert_eq!(ctx.report.removed.budget, 0, "filter_context must not drop for budget");
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"), "junk still filtered");
         assert_eq!(ctx.chunks.len(), 2);
+    }
+
+    #[test]
+    fn render_shows_token_delta_and_rescue() {
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let cfg = ContextConfig {
+            token_budget: 1000,
+            strategy: ContextStrategy::ReasoningPreserving,
+            distractor_min_grounding: 0.25,
+            link_min_jaccard: 0.05,
+            redundancy_max_cosine: 1.0,
+        };
+        let before = analyze_context(&q, &bridge_chunks(), &cfg);
+        let after = build_context(&q, &bridge_chunks(), &cfg);
+        let s = after.report.render(Some(&before));
+        assert!(s.contains("Context Optimization Report"));
+        assert!(s.contains("ReasoningPreserving"));
+        assert!(s.contains("Reasoning rescues:"));
+        // before has 3 chunks, after drops the junk → token delta is negative.
+        assert!(s.contains('→'));
+        assert!(after.report.render(None).contains("Tokens:"));
     }
 
     #[test]
