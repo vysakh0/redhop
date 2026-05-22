@@ -13,6 +13,7 @@ benchmark fixtures/configs that aren't code.
 
 | Harness | Kind | Measures | Finding |
 | ------- | ---- | -------- | ------- |
+| [`bench_context_strategies`](context/) | Rust, hermetic | all 4 strategies × budgets × populations via the public API; writes JSON + markdown + CIs | [SECOND_HOP_TAX](../docs/findings/SECOND_HOP_TAX.md), [REASONING_PRESERVATION](../docs/findings/REASONING_PRESERVATION.md) |
 | `second_hop_retention` | Rust, hermetic | second-hop retention vs junk suppression by strategy (n=1327, CIs) | [SECOND_HOP_TAX](../docs/findings/SECOND_HOP_TAX.md) |
 | `emit_reasoning_qa` + `score_reasoning_qa.py` | Rust + lab LLM | end-to-end answer quality: reasoning-preserving vs aggressive filtering | [REASONING_PRESERVATION](../docs/findings/REASONING_PRESERVATION.md) |
 | `context_economics` | Rust, BGE | token-efficiency / gold-retention curves by strategy | [CONTEXT_ECONOMICS](../docs/findings/CONTEXT_ECONOMICS.md) |
