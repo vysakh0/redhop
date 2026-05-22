@@ -1,0 +1,21 @@
+──── downstream QA by condition (n=300, meta-llama/llama-3.3-70b-instruct) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.699        12%
+  ctx_polluted          0.648        15%
+  ctx_filtered          0.586        24%
+  ctx_reasoning         0.603        21%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  distractors hurt   (gold_only − polluted):  +0.051  [+0.018, +0.084]
+  REASONING vs FILTER (reasoning − filtered):  +0.016  [-0.016, +0.047]
+      → ~ reasoning vs filter within noise at this n (CI includes 0) — report honestly
+
+──── mechanism: reachability → reasoning success (full-gold split) ────
+  RESCUED subset (reasoning kept MORE gold than filtered):  n=26
+     reasoning − filtered on rescued:  +0.154  [+0.000, +0.346]
+  CONTROL subset (IDENTICAL gold retention):                n=274
+     reasoning − filtered on control:  +0.003  [-0.026, +0.033]
+  Theory: the gain should concentrate in RESCUED (gold reachability
+  differs) and CONTROL should be ~0 (same gold). A non-zero CONTROL now
+  means the residual is NOT gold loss but junk readmission / reordering.
