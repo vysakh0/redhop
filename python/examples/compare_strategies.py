@@ -39,7 +39,8 @@ def main() -> None:
                f"{r.distractor_ratio:.2f}", str(r.second_hop_rescue_count), f"{r.evidence_density:.2f}")
         print("  ".join(v.ljust(w) for v, w in zip(row, widths)))
 
-    print("\n* reasoning_preserving's distr counts the rescued second hop (low-relevance by nature).")
+    print("\n* distr = TRUE distractor ratio; rescued second hops are reasoning")
+    print("  evidence and are excluded (note reasoning_preserving's low distr + rescued≥1).")
     print("\nDid the context keep the second hop (the '%s' fact)?" % GOLD_ANSWER)
     for strat in STRATEGIES:
         kept = GOLD_ANSWER in contexts[strat].text()

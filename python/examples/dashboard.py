@@ -88,10 +88,10 @@ def main() -> None:
  <tr><th>strategy</th><th>chunks</th><th>tokens</th><th>distractors pruned</th><th>rescues</th><th>distr ratio</th><th>evidence density</th><th>efficiency</th><th>2nd hop kept</th></tr>
  {cards}
 </table>
-<p class="note">reasoning_preserving's distractor ratio counts the deliberately-rescued second
- hop (low-relevance by nature, but reasoning-critical). "2nd hop kept" = does the context still
- contain the "{GOLD_ANSWER}" fact the multi-hop answer needs. Efficiency is a display heuristic.
- Generated offline by RedHop from the sample corpus.</p>
+<p class="note">distr ratio is the TRUE distractor ratio — deliberately-rescued second hops are
+ reasoning evidence and are excluded (so reasoning_preserving shows low distr with rescues &ge; 1).
+ "2nd hop kept" = does the context still contain the "{GOLD_ANSWER}" fact the multi-hop answer needs.
+ Efficiency is a display heuristic. Generated offline by RedHop from the sample corpus.</p>
 </body></html>
 """
     OUT.write_text(html)

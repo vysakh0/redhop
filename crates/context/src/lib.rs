@@ -391,6 +391,11 @@ pub fn build_context(
                     .iter()
                     .any(|s| jaccard(&i.c_terms, s) >= cfg.link_min_jaccard)
             });
+            // Every below-bar chunk that survived was kept because it linked
+            // to a seed → mark it rescued (reasoning evidence, not junk).
+            for i in items.iter_mut().filter(|i| i.is_distractor) {
+                i.rescued = true;
+            }
             // Order: seeds (by grounding desc) first, then rescued.
             items.sort_by(|a, b| {
                 let a_seed = !a.is_distractor;
@@ -468,14 +473,9 @@ fn make_report(
     } else {
         seeds_kept as f32 / n_input_seed as f32
     };
-    // Rescued = low-relevance chunks kept *on purpose* (only ReasoningPreserving
-    // deliberately keeps below-bar chunks; for other strategies a kept
-    // below-bar chunk is unfiltered junk, not a rescue).
-    let rescued = if cfg.strategy == ContextStrategy::ReasoningPreserving {
-        selected.iter().filter(|i| i.is_distractor).count()
-    } else {
-        0
-    };
+    // Rescued = below-bar chunks kept *on purpose* because linked to a seed
+    // (flagged during the ReasoningPreserving pass; 0 for other strategies).
+    let rescued = selected.iter().filter(|i| i.rescued).count();
     ContextReport {
         strategy: cfg.strategy,
         token_budget: cfg.token_budget,
@@ -577,6 +577,11 @@ struct Item {
     grounding: f32,
     density: f32,
     is_distractor: bool,
+    /// True iff this chunk is below the grounding bar but was *deliberately
+    /// kept* because it is linked to a seed (a rescued second hop). Such a
+    /// chunk is reasoning-critical evidence, not junk, so the economics must
+    /// not count it as a distractor.
+    rescued: bool,
     c_terms: HashSet<String>,
 }
 
@@ -607,6 +612,7 @@ fn characterize(
                 grounding,
                 density: relevant as f32 / tok as f32,
                 is_distractor: grounding < cfg.distractor_min_grounding,
+                rescued: false,
                 c_terms,
             }
         })
@@ -658,10 +664,13 @@ fn economics(
     } else {
         0.0
     };
-    let n_distractor = selected.iter().filter(|i| i.is_distractor).count();
+    // A rescued second hop is below the grounding bar but is reasoning
+    // evidence, not junk — exclude it from the distractor ratio and waste.
+    let is_true_distractor = |i: &&Item| i.is_distractor && !i.rescued;
+    let n_distractor = selected.iter().filter(is_true_distractor).count();
     let waste_tokens: usize = selected
         .iter()
-        .filter(|i| i.is_distractor)
+        .filter(is_true_distractor)
         .map(|i| i.tokens)
         .sum();
 
@@ -1041,6 +1050,39 @@ mod tests {
         assert_eq!(ctx.report.removed.budget, 0, "filter_context must not drop for budget");
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"), "junk still filtered");
         assert_eq!(ctx.chunks.len(), 2);
+    }
+
+    #[test]
+    fn rescued_second_hop_is_not_counted_as_a_distractor() {
+        // The metric-correctness contract: a deliberately-rescued second hop
+        // is reasoning evidence, not junk — economics must not count it.
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let cfg = ContextConfig {
+            token_budget: 1000,
+            strategy: ContextStrategy::ReasoningPreserving,
+            distractor_min_grounding: 0.25,
+            link_min_jaccard: 0.05,
+            redundancy_max_cosine: 1.0,
+        };
+        let rp = build_context(&q, &bridge_chunks(), &cfg);
+        // hop2 is below the bar but rescued → kept, and NOT a distractor.
+        assert!(rp.chunks.iter().any(|c| c.id.as_str() == "hop2"));
+        assert!(rp.report.second_hop_rescue_count >= 1);
+        assert_eq!(
+            rp.report.economics.distractor_ratio, 0.0,
+            "rescued hop must not inflate distractor_ratio"
+        );
+        assert_eq!(rp.report.economics.estimated_waste_tokens, 0);
+
+        // RawTopK keeps the same below-bar chunk as *unrescued* junk → it
+        // SHOULD count as a distractor.
+        let raw = build_context(
+            &q,
+            &bridge_chunks(),
+            &ContextConfig { strategy: ContextStrategy::RawTopK, ..cfg },
+        );
+        assert!(raw.report.economics.distractor_ratio > 0.0);
+        assert_eq!(raw.report.second_hop_rescue_count, 0);
     }
 
     #[test]
