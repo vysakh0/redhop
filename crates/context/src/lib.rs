@@ -63,8 +63,10 @@
 #![warn(missing_docs)]
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use redhop_core::{Chunk, Embedding, Query, RetrievalResult};
+use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -603,7 +605,7 @@ fn characterize(
                 .chunk
                 .text
                 .unicode_words()
-                .filter(|w| q_terms.contains(&w.to_lowercase()))
+                .filter_map(normalize).filter(|t| q_terms.contains(t))
                 .count();
             Item {
                 chunk: r.chunk.clone(),
@@ -655,7 +657,7 @@ fn economics(
             i.chunk
                 .text
                 .unicode_words()
-                .filter(|w| q_terms.contains(&w.to_lowercase()))
+                .filter_map(normalize).filter(|t| q_terms.contains(t))
                 .count()
         })
         .sum();
@@ -700,11 +702,41 @@ fn economics(
     }
 }
 
+// High-frequency English function words that inflate raw lexical overlap.
+// Dropping them sharpens the grounding/linkage signal — validated by the
+// signal_ablation harness (gold-vs-distractor AUC 0.935→0.968 HotpotQA,
+// 0.672→0.734 MuSiQue), CI-clear on both datasets.
+const STOPWORDS: &[&str] = &[
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or", "but", "is", "are", "was",
+    "were", "be", "been", "being", "as", "by", "with", "from", "that", "this", "these", "those",
+    "it", "its", "he", "she", "they", "them", "his", "her", "their", "which", "who", "whom",
+    "what", "when", "where", "how", "why", "into", "than", "then", "there", "here", "out", "up",
+    "down", "over", "under", "do", "does", "did", "has", "have", "had", "not", "no", "can", "will",
+    "would", "should", "could", "may", "might", "about", "between", "during", "such", "also",
+];
+
+fn stopword_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| STOPWORDS.iter().copied().collect())
+}
+
+/// Normalize a surface token into its matching term, or `None` if it carries
+/// no signal (too short, or a stopword). Lowercases, drops stopwords, and
+/// applies Snowball (Porter2) stemming so morphological variants
+/// ("invented"/"invention"/"invents") match. Snowball stemming was validated
+/// over a crude stand-in in the ablation harness (AUC 0.973→0.975 HotpotQA,
+/// 0.762→0.768 MuSiQue).
+fn normalize(w: &str) -> Option<String> {
+    let lower = w.to_lowercase();
+    if lower.chars().count() <= 1 || stopword_set().contains(lower.as_str()) {
+        return None;
+    }
+    thread_local!(static STEMMER: Stemmer = Stemmer::create(Algorithm::English));
+    Some(STEMMER.with(|s| s.stem(&lower).into_owned()))
+}
+
 fn terms(text: &str) -> HashSet<String> {
-    text.unicode_words()
-        .map(|w| w.to_lowercase())
-        .filter(|w| w.chars().count() > 1)
-        .collect()
+    text.unicode_words().filter_map(normalize).collect()
 }
 
 fn grounding(q: &HashSet<String>, c: &HashSet<String>) -> f32 {

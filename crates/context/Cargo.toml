@@ -17,6 +17,7 @@ path = "src/lib.rs"
 redhop-core          = { workspace = true }
 serde                = { workspace = true }
 unicode-segmentation = { workspace = true }
+rust-stemmers        = "1.2"
 
 [dev-dependencies]
 redhop-core = { workspace = true }

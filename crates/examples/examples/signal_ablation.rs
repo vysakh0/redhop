@@ -25,6 +25,7 @@ use redhop_calibration::loaders::hotpotqa::{default_regime as hp_regime, HotpotQ
 use redhop_calibration::loaders::musique::{default_regime as mq_regime, MuSiQueDataset};
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_core::{Chunk, ChunkId, Chunker, TokenizerBackend};
+use rust_stemmers::{Algorithm, Stemmer};
 use unicode_segmentation::UnicodeSegmentation;
 
 const HOTPOTQA_PATH: &str =
@@ -51,6 +52,7 @@ enum Variant {
     Idf,             // IDF-weighted overlap (keeps stopwords; lets IDF down-weight them)
     StopwordsIdf,    // both
     StopwordsStem,   // stopwords + crude stemming
+    StopwordsSnowball, // stopwords + Snowball (Porter2) stemming
 }
 
 impl Variant {
@@ -60,18 +62,33 @@ impl Variant {
             Variant::Stopwords => "+ stopwords",
             Variant::Idf => "+ idf",
             Variant::StopwordsIdf => "+ stopwords + idf",
-            Variant::StopwordsStem => "+ stopwords + stem",
+            Variant::StopwordsStem => "+ stopwords + stem (crude)",
+            Variant::StopwordsSnowball => "+ stopwords + stem (snowball)",
         }
     }
     fn drop_stop(self) -> bool {
-        matches!(self, Variant::Stopwords | Variant::StopwordsIdf | Variant::StopwordsStem)
+        matches!(
+            self,
+            Variant::Stopwords | Variant::StopwordsIdf | Variant::StopwordsStem | Variant::StopwordsSnowball
+        )
     }
     fn use_idf(self) -> bool {
         matches!(self, Variant::Idf | Variant::StopwordsIdf)
     }
-    fn stem(self) -> bool {
-        matches!(self, Variant::StopwordsStem)
+    fn stem_mode(self) -> StemMode {
+        match self {
+            Variant::StopwordsStem => StemMode::Crude,
+            Variant::StopwordsSnowball => StemMode::Snowball,
+            _ => StemMode::Off,
+        }
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum StemMode {
+    Off,
+    Crude,
+    Snowball,
 }
 
 /// Crude suffix-stripping stemmer (a Porter stand-in to test whether stemming
@@ -95,11 +112,21 @@ fn raw_terms(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn term_set(text: &str, drop_stop: bool, stem: bool, stop: &HashSet<&str>) -> HashSet<String> {
+fn term_set(
+    text: &str,
+    drop_stop: bool,
+    stem: StemMode,
+    stop: &HashSet<&str>,
+    stemmer: &Stemmer,
+) -> HashSet<String> {
     raw_terms(text)
         .into_iter()
         .filter(|w| !drop_stop || !stop.contains(w.as_str()))
-        .map(|w| if stem { crude_stem(&w) } else { w })
+        .map(|w| match stem {
+            StemMode::Off => w,
+            StemMode::Crude => crude_stem(&w),
+            StemMode::Snowball => stemmer.stem(&w).into_owned(),
+        })
         .collect()
 }
 
@@ -179,6 +206,7 @@ fn auc_ci(cases: &[QCase], rng: &mut Lcg) -> (f32, f32, f32) {
 
 fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Vec<QCase> {
     let stop: HashSet<&str> = STOPWORDS.iter().copied().collect();
+    let stemmer = Stemmer::create(Algorithm::English);
     let by_id: HashMap<&ChunkId, &Chunk> = chunks.iter().map(|c| (&c.id, c)).collect();
 
     // IDF over the chunk corpus (document = chunk), using the variant's term set.
@@ -186,7 +214,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
     let mut df: HashMap<String, u32> = HashMap::new();
     if variant.use_idf() {
         for c in chunks {
-            for t in term_set(&c.text, variant.drop_stop(), variant.stem(), &stop) {
+            for t in term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer) {
                 *df.entry(t).or_insert(0) += 1;
             }
         }
@@ -202,7 +230,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
         if lq.gold_chunk_ids.len() < 2 {
             continue;
         }
-        let q = term_set(&lq.text, variant.drop_stop(), variant.stem(), &stop);
+        let q = term_set(&lq.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer);
         let gold_chunks: Vec<&Chunk> =
             lq.gold_chunk_ids.iter().filter_map(|id| by_id.get(id).copied()).collect();
         if gold_chunks.len() < 2 {
@@ -211,7 +239,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
         let gold_docs: HashSet<&str> = gold_chunks.iter().map(|c| c.source.as_str()).collect();
         let gold: Vec<f32> = gold_chunks
             .iter()
-            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem(), &stop), variant.use_idf(), &idf))
+            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer), variant.use_idf(), &idf))
             .collect();
 
         // Inject off-document distractors.
@@ -224,7 +252,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
         let distractor: Vec<f32> = pool
             .iter()
             .take(N_DISTRACTORS)
-            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem(), &stop), variant.use_idf(), &idf))
+            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer), variant.use_idf(), &idf))
             .collect();
         if gold.is_empty() || distractor.is_empty() {
             continue;
@@ -239,7 +267,7 @@ fn run(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
     println!("  {:<24} {:>22}", "variant", "AUC [95% CI]");
     println!("  {}", "─".repeat(50));
     let mut rng = Lcg(0x5EED);
-    for v in [Variant::Baseline, Variant::Stopwords, Variant::Idf, Variant::StopwordsIdf, Variant::StopwordsStem] {
+    for v in [Variant::Baseline, Variant::Stopwords, Variant::Idf, Variant::StopwordsIdf, Variant::StopwordsStem, Variant::StopwordsSnowball] {
         let cases = build_cases(corpus, chunks, v);
         let (m, lo, hi) = auc_ci(&cases, &mut rng);
         println!("  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})", v.label(), m, lo, hi, cases.len());

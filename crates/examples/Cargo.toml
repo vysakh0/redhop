@@ -39,6 +39,7 @@ serde              = { workspace = true, features = ["derive"] }
 serde_json         = { workspace = true }
 parking_lot        = "0.12"
 unicode-segmentation = "1.11"
+rust-stemmers      = "1.2"
 
 [[example]]
 name = "quickstart"

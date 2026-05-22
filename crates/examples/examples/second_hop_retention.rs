@@ -51,12 +51,25 @@ const N_DISTRACTORS: usize = 8;
 const GENEROUS_BUDGET: usize = 100_000;
 const TIGHT_BUDGET: usize = 220; // ~half of (2 gold + 8 distractors) @ ~45 tok
 
-// Same term/grounding primitive redhop-context uses internally, so our
-// second-hop labels match the strategies' notion of query relevance.
+// Same term/grounding primitive redhop-context uses internally (stopword
+// removal + Snowball stemming), so our second-hop labels match the
+// strategies' notion of query relevance.
+const STOPWORDS: &[&str] = &[
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or", "but", "is", "are", "was",
+    "were", "be", "been", "being", "as", "by", "with", "from", "that", "this", "these", "those",
+    "it", "its", "he", "she", "they", "them", "his", "her", "their", "which", "who", "whom",
+    "what", "when", "where", "how", "why", "into", "than", "then", "there", "here", "out", "up",
+    "down", "over", "under", "do", "does", "did", "has", "have", "had", "not", "no", "can", "will",
+    "would", "should", "could", "may", "might", "about", "between", "during", "such", "also",
+];
 fn terms(text: &str) -> HashSet<String> {
+    use rust_stemmers::{Algorithm, Stemmer};
+    thread_local!(static ST: Stemmer = Stemmer::create(Algorithm::English));
+    let stop: HashSet<&str> = STOPWORDS.iter().copied().collect();
     text.unicode_words()
         .map(|w| w.to_lowercase())
-        .filter(|w| w.chars().count() > 1)
+        .filter(|w| w.chars().count() > 1 && !stop.contains(w.as_str()))
+        .map(|w| ST.with(|s| s.stem(&w).into_owned()))
         .collect()
 }
 fn grounding(q: &HashSet<String>, c: &HashSet<String>) -> f32 {
