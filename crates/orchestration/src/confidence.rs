@@ -25,7 +25,7 @@
 //!   zero" from "we couldn't measure". With fewer than two results,
 //!   `decision_margin` and `score_entropy` are honestly undefined.
 
-use neorag_core::{ConfidenceProfile, RetrievalResult};
+use redhop_core::{ConfidenceProfile, RetrievalResult};
 
 const EPS: f32 = 1e-6;
 
@@ -108,7 +108,7 @@ fn softmax_with_fitted_temperature(scores: &[f32]) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{
+    use redhop_core::{
         Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
     };
 

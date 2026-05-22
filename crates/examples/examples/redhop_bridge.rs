@@ -1,9 +1,9 @@
-//! JSON bridge: the entry point the Python `neorag` shim calls.
+//! JSON bridge: the entry point the Python `redhop` shim calls.
 //!
 //! Reads one request from stdin, runs `analyze_context` (before) and
 //! `build_context` (after) through the public API, and writes the assembled
 //! context text, the `ContextReport` telemetry, and a pretty rendering to
-//! stdout. This is the minimal thing that makes `neorag.build_context(...)`
+//! stdout. This is the minimal thing that makes `redhop.build_context(...)`
 //! work from Python today; pyo3 bindings are the future packaging path.
 //!
 //! Request (stdin):
@@ -23,12 +23,12 @@
 //!
 //! Response (stdout): { "text": "...", "report": {...}, "rendered": "..." }
 //!
-//! Run:  echo '<json>' | cargo run -q -p neorag-examples --example context_bridge --release
+//! Run:  echo '<json>' | cargo run -q -p redhop-examples --example context_bridge --release
 
 use std::io::Read;
 
-use neorag_context::{analyze_context, build_context, ContextConfig, ContextStrategy};
-use neorag_core::{Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown, TokenCount};
+use redhop_context::{analyze_context, build_context, ContextConfig, ContextStrategy};
+use redhop_core::{Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown, TokenCount};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

@@ -4,7 +4,7 @@
 //! single [`DiagnosticsReport`]. Configurable thresholds drive warning
 //! emission; the actual numeric values are always reported.
 
-use neorag_core::{
+use redhop_core::{
     DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult,
 };
 
@@ -125,7 +125,7 @@ impl DiagnosticsEngine for DefaultDiagnosticsEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {

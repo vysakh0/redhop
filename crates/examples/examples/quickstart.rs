@@ -1,13 +1,13 @@
-//! Minimal end-to-end NeoRAG example.
+//! Minimal end-to-end RedHop example.
 //!
-//! Run with: `cargo run -p neorag-examples --example quickstart`
+//! Run with: `cargo run -p redhop-examples --example quickstart`
 
 use std::sync::Arc;
 
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{Document, TokenizerBackend};
-use neorag_pipeline::NeoRAG;
-use neorag_retrieval::Bm25Retriever;
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{Document, TokenizerBackend};
+use redhop_pipeline::RedHop;
+use redhop_retrieval::Bm25Retriever;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let chunker = Arc::new(SentenceChunker::new(tok, 80, 120, 0)?);
     let retriever = Arc::new(Bm25Retriever::new()?);
 
-    let mut rag = NeoRAG::builder()
+    let mut rag = RedHop::builder()
         .with_chunker(chunker)
         .with_retriever(retriever)
         .build()?;

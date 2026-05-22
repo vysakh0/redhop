@@ -18,7 +18,7 @@ from pathlib import Path
 
 _PY = Path(__file__).resolve().parents[1] / "python"
 sys.path.insert(0, str(_PY))
-import neorag  # noqa: E402
+import redhop  # noqa: E402
 from sample_corpus import (  # noqa: E402
     QUERY,
     RETRIEVED,
@@ -52,7 +52,7 @@ def bar(value: float, max_value: float, color: str, width: int = 220) -> str:
 def main() -> None:
     runs = {}
     for strat in STRATEGIES:
-        runs[strat] = neorag.build_context(
+        runs[strat] = redhop.build_context(
             query=QUERY,
             retrieved_chunks=RETRIEVED,
             token_budget=12000,
@@ -87,7 +87,7 @@ def main() -> None:
     saved_pct = 0 if input_tokens == 0 else round(100 * saved / input_tokens)
 
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>NeoRAG — Context Economics</title>
+<html><head><meta charset="utf-8"><title>RedHop — Context Economics</title>
 <style>
  body {{ font-family: -apple-system, system-ui, sans-serif; margin: 40px; color:#222; max-width: 1000px }}
  h1 {{ font-size: 22px; margin-bottom: 2px }}
@@ -104,7 +104,7 @@ def main() -> None:
  code {{ background:#f0f2f4; padding:1px 5px; border-radius:4px }}
  .tag {{ display:inline-block; background:#eef3ff; color:#2b50aa; border-radius:6px; padding:2px 8px; font-size:12px }}
 </style></head><body>
-<h1>NeoRAG — Context Optimization Report</h1>
+<h1>RedHop — Context Optimization Report</h1>
 <p class="sub">a reasoning-preserving context optimization layer &middot; sits between retrieval and generation</p>
 <p><span class="tag">query</span> &nbsp;{QUERY}</p>
 

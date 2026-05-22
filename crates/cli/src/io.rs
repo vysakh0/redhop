@@ -15,8 +15,8 @@
 //! Only `text` is required per chunk.
 
 use anyhow::Context as _;
-use neorag_context::ContextStrategy;
-use neorag_core::{
+use redhop_context::ContextStrategy;
+use redhop_core::{
     Chunk, ChunkId, Embedding, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown, TokenCount,
 };
 use serde::Deserialize;

@@ -1,12 +1,12 @@
-# NeoRAG examples — where it fits in a real RAG stack
+# RedHop examples — where it fits in a real RAG stack
 
 ```text
-   your retriever  →  NeoRAG.build_context  →  your LLM
+   your retriever  →  RedHop.build_context  →  your LLM
    (vector DB/BM25)    (this library)           (OpenAI/local/…)
 ```
 
-**NeoRAG is NOT** a retriever, a vector DB, an agent framework, or a workflow
-engine. **NeoRAG is a reasoning-preserving context optimization layer.** You
+**RedHop is NOT** a retriever, a vector DB, an agent framework, or a workflow
+engine. **RedHop is a reasoning-preserving context optimization layer.** You
 hand it the chunks your retriever returned plus a token budget; it assembles
 the prompt context — pruning distractors, preserving the reasoning-critical
 "second hop", and reporting exactly what it did.
@@ -33,10 +33,10 @@ context_bridge --release`); subsequent runs are instant.
 ## The API
 
 ```python
-import neorag
+import redhop
 
 chunks = retriever.retrieve(query)              # your stack
-ctx = neorag.build_context(
+ctx = redhop.build_context(
     query=query,
     retrieved_chunks=chunks,                    # strings, dicts, or LangChain Docs
     token_budget=12000,
@@ -62,15 +62,15 @@ Retained evidence:   100%
 ...
 ```
 
-Also available: `neorag.analyze_context(query, chunks)` — pure, non-destructive
+Also available: `redhop.analyze_context(query, chunks)` — pure, non-destructive
 diagnostics (what you have + what reasoning-preservation *would* rescue).
 
-## How it works under the hood (and the path to `pip install neorag`)
+## How it works under the hood (and the path to `pip install redhop`)
 
 These examples wrap the Rust engine through a thin JSON bridge (the
 `context_bridge` example binary) — the minimal thing that makes
-`neorag.build_context(...)` work today. The Python API here is exactly the one
-that native wheels (`pip install neorag`, backed by pyo3) will expose; the
+`redhop.build_context(...)` work today. The Python API here is exactly the one
+that native wheels (`pip install redhop`, backed by pyo3) will expose; the
 bridge is an implementation detail you won't see once wheels ship.
 
 ## Why a strategy matters (the evidence)

@@ -2,24 +2,24 @@
 //!
 //! [`DenseRetriever`] is a thin orchestrator over two collaborators:
 //!
-//! 1. A [`VectorIndex`] (typically `FlatVectorIndex` from `neorag-storage`,
+//! 1. A [`VectorIndex`] (typically `FlatVectorIndex` from `redhop-storage`,
 //!    or any user-supplied ANN implementation).
 //! 2. A [`ChunkStore`] that owns the chunk payloads, keyed by id.
 //!
-//! Embeddings must be precomputed on the chunk side. NeoRAG does *not* embed
+//! Embeddings must be precomputed on the chunk side. RedHop does *not* embed
 //! text itself; that is intentionally pushed to a user-supplied
 //! [`EmbeddingProvider`] so the library stays neutral about model choice.
 //!
-//! [`EmbeddingProvider`]: neorag_core::EmbeddingProvider
+//! [`EmbeddingProvider`]: redhop_core::EmbeddingProvider
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_core::{
+use redhop_core::{
     Chunk, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown,
     VectorIndex,
 };
-use neorag_storage::ChunkStore;
+use redhop_storage::ChunkStore;
 use parking_lot::RwLock;
 
 /// Dense retriever pairing a [`VectorIndex`] with a [`ChunkStore`].
@@ -37,7 +37,7 @@ impl DenseRetriever {
 
 #[async_trait]
 impl Retriever for DenseRetriever {
-    async fn index(&mut self, chunks: &[Chunk]) -> neorag_core::Result<()> {
+    async fn index(&mut self, chunks: &[Chunk]) -> redhop_core::Result<()> {
         for c in chunks {
             let emb = c.embedding.clone().ok_or_else(|| {
                 Error::Embedding(format!(
@@ -55,7 +55,7 @@ impl Retriever for DenseRetriever {
         &self,
         query: &Query,
         top_k: usize,
-    ) -> neorag_core::Result<Vec<RetrievalResult>> {
+    ) -> redhop_core::Result<Vec<RetrievalResult>> {
         let qe = query.embedding.as_ref().ok_or_else(|| {
             Error::Embedding(
                 "dense retrieval requires a precomputed query embedding".into(),
@@ -93,8 +93,8 @@ impl Retriever for DenseRetriever {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Embedding, TokenCount};
-    use neorag_storage::FlatVectorIndex;
+    use redhop_core::{Embedding, TokenCount};
+    use redhop_storage::FlatVectorIndex;
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()

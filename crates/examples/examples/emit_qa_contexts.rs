@@ -1,6 +1,6 @@
 //! Emit controlled-distractor contexts for downstream QA scoring.
 //!
-//! The NeoRAG (Rust) half of the end-to-end distractor experiment. For
+//! The RedHop (Rust) half of the end-to-end distractor experiment. For
 //! each HotpotQA query we build, from KNOWN gold chunks plus injected
 //! off-topic distractors (chunks from unrelated documents):
 //!
@@ -14,19 +14,19 @@
 //! off-topic (near-zero query overlap), so absolute-threshold filtering
 //! removes them while keeping the gold. No embeddings needed.
 //!
-//! The Python lab (../neorag/scripts/score_context_qa.py) then calls an
-//! LLM on each context and scores answer quality. NeoRAG builds
+//! The Python lab (../redhop/scripts/score_context_qa.py) then calls an
+//! LLM on each context and scores answer quality. RedHop builds
 //! contexts; the lab judges answers.
 //!
-//! Run:  cargo run -p neorag-examples --example emit_qa_contexts --release
+//! Run:  cargo run -p redhop-examples --example emit_qa_contexts --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_context::{build_context, ContextConfig, ContextStrategy};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
@@ -194,6 +194,6 @@ fn main() -> anyhow::Result<()> {
         filtered_kept_gold as f32 / gold_total.max(1) as f32 * 100.0,
         filtered_removed_total
     );
-    println!("next: python ../neorag/scripts/score_context_qa.py");
+    println!("next: python ../redhop/scripts/score_context_qa.py");
     Ok(())
 }

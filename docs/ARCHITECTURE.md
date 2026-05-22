@@ -1,15 +1,15 @@
-# NeoRAG Architecture
+# RedHop Architecture
 
-## What NeoRAG is
+## What RedHop is
 
-NeoRAG is a Rust library for **retrieval infrastructure**: chunking,
+RedHop is a Rust library for **retrieval infrastructure**: chunking,
 retrieval, reranking, and diagnostics. It does not generate text, embed
 text, or store vectors persistently — those concerns are pushed to the
 caller through trait boundaries. The library's contribution is the
 *orchestration* layer between them and the *diagnostics* engine that makes
 retrieval quality observable.
 
-## What NeoRAG is not
+## What RedHop is not
 
 - Not an LLM framework. There is no model in this repository.
 - Not an agent framework. There is no planner, no tool dispatch.
@@ -22,7 +22,7 @@ retrieval quality observable.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  neorag-pipeline           NeoRAG facade + builder           │
+│  redhop-pipeline           RedHop facade + builder           │
 └────────┬──────────┬──────────┬──────────┬───────────────────-┘
          │          │          │          │
          ▼          ▼          ▼          ▼
@@ -31,18 +31,18 @@ retrieval quality observable.
    └────┬────┘ └─────┬─────┘ └─────┬────┘ └──────┬───────┘
         │            │             │             │
         └────────────▼─────────────▼─────────────▼
-                     neorag-core (traits + types)
+                     redhop-core (traits + types)
                                 ▲
                                 │
-                  neorag-storage (ChunkStore, VectorIndex)
+                  redhop-storage (ChunkStore, VectorIndex)
 ```
 
-Every box above the `neorag-core` line depends on the trait surface
+Every box above the `redhop-core` line depends on the trait surface
 defined there. Crates do not depend on each other's implementations.
 
 ## Trait surface
 
-`neorag-core` defines six pluggable abstractions:
+`redhop-core` defines six pluggable abstractions:
 
 | Trait                | Owns                                          |
 | -------------------- | --------------------------------------------- |
@@ -98,7 +98,7 @@ async and batch-friendly so any of those can plug in cleanly.
 
 Retrieval failure modes are observable from text alone — you do not need
 the LLM to know whether you served it a context full of distractors.
-`neorag-diagnostics` computes six metrics on every query without any
+`redhop-diagnostics` computes six metrics on every query without any
 model dependence. `DefaultDiagnosticsEngine` also emits *warnings* with
 machine-readable codes (`low_lexical_grounding`,
 `high_distractor_ratio`, `retrieval_saturated`) intended for monitoring,
@@ -130,7 +130,7 @@ Higher-throughput ANN (`usearch`, `hnswlib-rs`) plugs in by implementing
 
 ## Performance
 
-NeoRAG uses `tokio` for I/O concurrency and `rayon` for CPU-bound batch
+RedHop uses `tokio` for I/O concurrency and `rayon` for CPU-bound batch
 work (chunking, multi-document indexing). The hybrid retriever fans out
 sub-retrievers in parallel by default. Tantivy indexing happens on
 blocking workers via `tokio::task::spawn_blocking` so the runtime is not
@@ -144,10 +144,10 @@ throughput and BM25 retrieval latency; run with `cargo bench`.
 `Chunk`, `Document`, `Query`, `RetrievalResult`, and `DiagnosticsReport`
 are all `Serialize + Deserialize`. The intent is that:
 
-- `neorag-python-bindings` (`pyo3 + maturin`) exposes `NeoRAG`,
-  `NeoRAGBuilder`, and the trait-shaped factory functions as a Python
+- `redhop-python-bindings` (`pyo3 + maturin`) exposes `RedHop`,
+  `RedHopBuilder`, and the trait-shaped factory functions as a Python
   class hierarchy, with chunkers/retrievers selectable by string name.
-- `neorag-node-bindings` (`napi-rs`) does the same for Node.
+- `redhop-node-bindings` (`napi-rs`) does the same for Node.
 
 The data model already crosses FFI cleanly; the wrappers themselves are
 mostly mechanical.
@@ -158,5 +158,5 @@ mostly mechanical.
   conservative lexical-cohesion gate today and roadmaps the rest.
 - Speculative topology systems, knowledge-graph retrieval, or
   semantic-continuity heuristics. Those are research, not infrastructure.
-- LLM integrations. Once retrieval returns, NeoRAG is done; whatever
+- LLM integrations. Once retrieval returns, RedHop is done; whatever
   comes after is the caller's problem.

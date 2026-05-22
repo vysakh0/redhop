@@ -14,7 +14,7 @@
 //! whatever the caller already produced for dense retrieval; the chunk
 //! embeddings are whatever the caller persisted at ingest time. If either
 //! is missing the engine leaves the relevant fields as `None` and returns
-//! cleanly. This keeps NeoRAG retrieval-centric: we observe what other
+//! cleanly. This keeps RedHop retrieval-centric: we observe what other
 //! parts of the pipeline already paid for, we do not pay again.
 //!
 //! ## Metrics
@@ -33,7 +33,7 @@
 //! - **`semantic_distractor_ratio`** — fraction of chunks with
 //!   `cosine(query, chunk) < threshold`. *Lower is better.*
 
-use neorag_core::{
+use redhop_core::{
     DiagnosticsEngine, DiagnosticsReport, Embedding, Query, Result, RetrievalResult,
 };
 
@@ -263,7 +263,7 @@ fn unit_clamp(x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{
+    use redhop_core::{
         Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
     };
 

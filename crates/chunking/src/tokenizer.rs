@@ -1,6 +1,6 @@
 //! Tokenizer backends.
 //!
-//! NeoRAG itself does not bind to any specific tokenizer family. This module
+//! RedHop itself does not bind to any specific tokenizer family. This module
 //! provides one zero-dependency default ([`WhitespaceTokenizer`]) that is good
 //! enough for development, tests, and lexical retrieval; downstream crates
 //! can implement [`TokenizerBackend`] against HuggingFace `tokenizers` or
@@ -13,7 +13,7 @@
 //! Unicode-aware word splitter is sufficient for the first, and
 //! `unicode-segmentation` handles the second.
 
-use neorag_core::{Result, Sentence, TokenCount, TokenizerBackend};
+use redhop_core::{Result, Sentence, TokenCount, TokenizerBackend};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Unicode-aware whitespace tokenizer.

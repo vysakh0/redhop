@@ -24,8 +24,8 @@
 
 use std::sync::Arc;
 
-use neorag_core::{DiagnosticsEngine, RegimeClassifier, Reranker, RerankerLevel, Result, Retriever};
-use neorag_orchestration::{ConservativeRulePolicy, Policy, PolicyThresholds};
+use redhop_core::{DiagnosticsEngine, RegimeClassifier, Reranker, RerankerLevel, Result, Retriever};
+use redhop_orchestration::{ConservativeRulePolicy, Policy, PolicyThresholds};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::LabeledCorpus;

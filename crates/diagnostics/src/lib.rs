@@ -1,8 +1,8 @@
-//! # neorag-diagnostics
+//! # redhop-diagnostics
 //!
 //! Retrieval-quality diagnostics — *first-class*, not optional.
 //!
-//! Diagnostics in NeoRAG are split into two tiers:
+//! Diagnostics in RedHop are split into two tiers:
 //!
 //! - **Lexical tier** ([`DefaultDiagnosticsEngine`]) — computed from text
 //!   alone. Cheap, deterministic, no embedding model required. Catches
@@ -23,8 +23,8 @@
 //! cold start, OCR'd corpora), and adds *strictly more* signal when
 //! embeddings are available. No tier overwrites the other.
 //!
-//! [`Query`]: neorag_core::Query
-//! [`Chunk`]: neorag_core::Chunk
+//! [`Query`]: redhop_core::Query
+//! [`Chunk`]: redhop_core::Chunk
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

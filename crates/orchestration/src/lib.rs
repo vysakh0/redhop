@@ -1,4 +1,4 @@
-//! # neorag-orchestration
+//! # redhop-orchestration
 //!
 //! Retrieval-state observation and regime classification.
 //!
@@ -20,13 +20,13 @@
 //!    different — this crate touches neither chunkers nor retrievers.
 //! 2. The forthcoming `AdaptiveOrchestrator`, `Actuator`, and policy
 //!    implementations will share this crate's home, but should not pull
-//!    `neorag-diagnostics` deeper into the dependency graph.
+//!    `redhop-diagnostics` deeper into the dependency graph.
 //! 3. Bindings (Python, Node) will frequently want orchestration alone
 //!    when they're wrapping an external retriever — pulling Tantivy via
-//!    `neorag-retrieval` would be wasteful.
+//!    `redhop-retrieval` would be wasteful.
 //!
-//! [cp]: neorag_core::ConfidenceProfile
-//! [rr]: neorag_core::RetrievalResult
+//! [cp]: redhop_core::ConfidenceProfile
+//! [rr]: redhop_core::RetrievalResult
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

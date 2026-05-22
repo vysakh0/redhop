@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::future::try_join_all;
-use neorag_core::{Chunk, Error, Query, RetrievalResult, Retriever};
+use redhop_core::{Chunk, Error, Query, RetrievalResult, Retriever};
 
 use crate::fusion::{reciprocal_rank_fusion, weighted_sum_fusion, FusionStrategy};
 
@@ -45,7 +45,7 @@ impl HybridRetriever {
         retrievers: Vec<Arc<dyn Retriever>>,
         weights: Vec<f32>,
         candidate_k: usize,
-    ) -> neorag_core::Result<Self> {
+    ) -> redhop_core::Result<Self> {
         if retrievers.len() != weights.len() {
             return Err(Error::InvalidConfig(
                 "weights length must match retrievers length".into(),
@@ -65,7 +65,7 @@ impl HybridRetriever {
 
 #[async_trait]
 impl Retriever for HybridRetriever {
-    async fn index(&mut self, _chunks: &[Chunk]) -> neorag_core::Result<()> {
+    async fn index(&mut self, _chunks: &[Chunk]) -> redhop_core::Result<()> {
         // Hybrid is a composition; indexing happens on the sub-retrievers
         // directly. We intentionally do not duplicate writes here because
         // the sub-retrievers may have wildly different ingest costs (e.g.
@@ -80,7 +80,7 @@ impl Retriever for HybridRetriever {
         &self,
         query: &Query,
         top_k: usize,
-    ) -> neorag_core::Result<Vec<RetrievalResult>> {
+    ) -> redhop_core::Result<Vec<RetrievalResult>> {
         let k = self.candidate_k.max(top_k).max(1);
         let futures = self.retrievers.iter().map(|r| {
             let r = r.clone();
@@ -106,7 +106,7 @@ impl Retriever for HybridRetriever {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{
+    use redhop_core::{
         ChunkId, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
     };
 
@@ -121,10 +121,10 @@ mod tests {
             &self,
             _q: &Query,
             top_k: usize,
-        ) -> neorag_core::Result<Vec<RetrievalResult>> {
+        ) -> redhop_core::Result<Vec<RetrievalResult>> {
             Ok(self.results.iter().take(top_k).cloned().collect())
         }
-        async fn index(&mut self, _c: &[Chunk]) -> neorag_core::Result<()> {
+        async fn index(&mut self, _c: &[Chunk]) -> redhop_core::Result<()> {
             Ok(())
         }
         fn name(&self) -> &'static str {

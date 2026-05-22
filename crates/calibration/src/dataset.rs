@@ -14,7 +14,7 @@
 //! the same as a classic IR test set; only the labels are required up
 //! front.
 
-use neorag_core::{ChunkId, Document, Embedding, RetrievalRegime};
+use redhop_core::{ChunkId, Document, Embedding, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 /// One labeled query: text, optional precomputed embedding, ground-truth

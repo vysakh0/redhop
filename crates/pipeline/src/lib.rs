@@ -1,10 +1,10 @@
-//! # neorag-pipeline
+//! # redhop-pipeline
 //!
 //! Top-level facade composing chunking, retrieval, optional reranking, and
 //! diagnostics into a single ergonomic API.
 //!
-//! Most users should interact with NeoRAG through [`NeoRAG`] and its builder
-//! [`NeoRAGBuilder`]; everything else in the workspace is reachable from here
+//! Most users should interact with RedHop through [`RedHop`] and its builder
+//! [`RedHopBuilder`]; everything else in the workspace is reachable from here
 //! through the underlying traits, which keeps every component swappable
 //! without forking this facade.
 //!
@@ -12,15 +12,15 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-//! use neorag_core::{Document, TokenizerBackend};
-//! use neorag_pipeline::NeoRAG;
-//! use neorag_retrieval::Bm25Retriever;
+//! use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+//! use redhop_core::{Document, TokenizerBackend};
+//! use redhop_pipeline::RedHop;
+//! use redhop_retrieval::Bm25Retriever;
 //! # async fn run() -> anyhow::Result<()> {
 //! let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
 //! let chunker = Arc::new(SentenceChunker::new(tok.clone(), 256, 384, 0)?);
 //! let retriever = Bm25Retriever::new()?;
-//! let mut rag = NeoRAG::builder()
+//! let mut rag = RedHop::builder()
 //!     .with_chunker(chunker)
 //!     .with_retriever(Arc::new(retriever))
 //!     .build()?;
@@ -36,29 +36,29 @@
 
 use std::sync::Arc;
 
-use neorag_core::{
+use redhop_core::{
     Budget, Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query,
     RegimeClassifier, Reranker, RerankerLevel, Result, RetrievalResult, RetrievalState, Retriever,
 };
-use neorag_diagnostics::DefaultDiagnosticsEngine;
-use neorag_orchestration::{
+use redhop_diagnostics::DefaultDiagnosticsEngine;
+use redhop_orchestration::{
     compute_confidence, AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy,
     RuleBasedClassifier,
 };
 
-/// Builder for [`NeoRAG`].
+/// Builder for [`RedHop`].
 ///
 /// The builder enforces the *required* components (chunker, retriever) at
 /// `build()` time. Optional components (reranker, custom diagnostics engine)
 /// default to sensible no-ops.
-pub struct NeoRAGBuilder {
+pub struct RedHopBuilder {
     chunker: Option<Arc<dyn Chunker>>,
     retriever: Option<Arc<dyn Retriever>>,
     reranker: Option<Arc<dyn Reranker>>,
     diagnostics: Option<Arc<dyn DiagnosticsEngine>>,
     classifier: Option<Arc<dyn RegimeClassifier>>,
     /// Adaptive-only: rerankers keyed by their escalation tier. Used by
-    /// the [`AdaptiveOrchestrator`] through [`NeoRAG::adaptive_run`]; the
+    /// the [`AdaptiveOrchestrator`] through [`RedHop::adaptive_run`]; the
     /// static `retrieve` path uses the single `reranker` field above.
     rerankers_cascade: Vec<(RerankerLevel, Arc<dyn Reranker>)>,
     /// Adaptive-only: the policy. Defaults to [`ConservativeRulePolicy`].
@@ -68,7 +68,7 @@ pub struct NeoRAGBuilder {
     candidate_k: usize,
 }
 
-impl Default for NeoRAGBuilder {
+impl Default for RedHopBuilder {
     fn default() -> Self {
         Self {
             chunker: None,
@@ -84,7 +84,7 @@ impl Default for NeoRAGBuilder {
     }
 }
 
-impl NeoRAGBuilder {
+impl RedHopBuilder {
     /// Set the chunker (required).
     pub fn with_chunker(mut self, c: Arc<dyn Chunker>) -> Self {
         self.chunker = Some(c);
@@ -93,7 +93,7 @@ impl NeoRAGBuilder {
 
     /// Set the retriever (required).
     ///
-    /// The retriever is wrapped in an `Arc` because [`NeoRAG`] needs shared
+    /// The retriever is wrapped in an `Arc` because [`RedHop`] needs shared
     /// ownership: indexing and retrieval may race in concurrent callers.
     /// If you also need mutable access for indexing, keep a separate handle
     /// to a `Bm25Retriever` (etc.) outside the facade and call its
@@ -118,7 +118,7 @@ impl NeoRAGBuilder {
     /// Optional: attach a regime classifier.
     ///
     /// Configuring a classifier turns on regime annotation in
-    /// [`NeoRAG::retrieve_with_state`]. The static `retrieve` and
+    /// [`RedHop::retrieve_with_state`]. The static `retrieve` and
     /// `diagnose` APIs are unaffected — they continue to behave exactly as
     /// they did before Phase 7. This is the read-only on-ramp to the
     /// adaptive layer.
@@ -131,9 +131,9 @@ impl NeoRAGBuilder {
     ///
     /// Multiple rerankers may be registered at distinct tiers; the policy
     /// chooses which tier to escalate to. Used exclusively by
-    /// [`NeoRAG::adaptive_run`]; the static [`NeoRAG::retrieve`] path
+    /// [`RedHop::adaptive_run`]; the static [`RedHop::retrieve`] path
     /// ignores this list and uses the single reranker (if any) configured
-    /// via [`with_reranker`][`NeoRAGBuilder::with_reranker`].
+    /// via [`with_reranker`][`RedHopBuilder::with_reranker`].
     pub fn with_reranker_at(mut self, level: RerankerLevel, r: Arc<dyn Reranker>) -> Self {
         self.rerankers_cascade.push((level, r));
         self
@@ -160,7 +160,7 @@ impl NeoRAGBuilder {
     }
 
     /// Finalize the configuration and build the facade.
-    pub fn build(self) -> Result<NeoRAG> {
+    pub fn build(self) -> Result<RedHop> {
         let chunker = self
             .chunker
             .ok_or(Error::MissingComponent("chunker"))?;
@@ -170,7 +170,7 @@ impl NeoRAGBuilder {
         let diagnostics = self
             .diagnostics
             .unwrap_or_else(|| Arc::new(DefaultDiagnosticsEngine::new()));
-        Ok(NeoRAG {
+        Ok(RedHop {
             chunker,
             retriever,
             reranker: self.reranker,
@@ -184,13 +184,21 @@ impl NeoRAGBuilder {
     }
 }
 
-/// The top-level NeoRAG facade.
+/// Deprecated alias for [`RedHop`] (project renamed NeoRAG → RedHop).
+#[deprecated(since = "0.1.0", note = "NeoRAG was renamed to RedHop; use `RedHop`")]
+pub type NeoRAG = RedHop;
+
+/// Deprecated alias for [`RedHopBuilder`] (project renamed NeoRAG → RedHop).
+#[deprecated(since = "0.1.0", note = "NeoRAGBuilder was renamed to RedHopBuilder; use `RedHopBuilder`")]
+pub type NeoRAGBuilder = RedHopBuilder;
+
+/// The top-level RedHop facade.
 ///
 /// Holds a chunker, a retriever, optionally a reranker, and a diagnostics
 /// engine. All components are accessed through traits, so users can swap
 /// any of them — including replacing the entire retriever with a remote
 /// service that implements [`Retriever`] — without touching this struct.
-pub struct NeoRAG {
+pub struct RedHop {
     chunker: Arc<dyn Chunker>,
     retriever: Arc<dyn Retriever>,
     reranker: Option<Arc<dyn Reranker>>,
@@ -202,10 +210,10 @@ pub struct NeoRAG {
     candidate_k: usize,
 }
 
-impl NeoRAG {
+impl RedHop {
     /// Start building a new pipeline.
-    pub fn builder() -> NeoRAGBuilder {
-        NeoRAGBuilder::default()
+    pub fn builder() -> RedHopBuilder {
+        RedHopBuilder::default()
     }
 
     /// Ingest a batch of documents: chunk them, then hand the chunks to the
@@ -298,7 +306,7 @@ impl NeoRAG {
     /// Inspect [`RetrievalState::history`] for the full audit trail.
     ///
     /// Requires a classifier (configure with
-    /// [`NeoRAGBuilder::with_classifier`]). Falls back to the default
+    /// [`RedHopBuilder::with_classifier`]). Falls back to the default
     /// [`ConservativeRulePolicy`] if no policy was set.
     pub async fn adaptive_run(&self, query: impl Into<Query>) -> Result<RetrievalState> {
         let classifier = self
@@ -344,20 +352,20 @@ impl NeoRAG {
     /// semantic) and a `RuleBasedClassifier` if none were set. Convenience
     /// for callers that want the canonical adaptive configuration without
     /// wiring every component by hand.
-    pub fn defaults_for_adaptive() -> NeoRAGBuilder {
-        use neorag_diagnostics::{
+    pub fn defaults_for_adaptive() -> RedHopBuilder {
+        use redhop_diagnostics::{
             LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
         };
         let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
         let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
         let layered = LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic);
-        NeoRAGBuilder::default()
+        RedHopBuilder::default()
             .with_diagnostics(Arc::new(layered))
             .with_classifier(Arc::new(RuleBasedClassifier::new()))
     }
 }
 
-/// Names of the components in a [`NeoRAG`] pipeline.
+/// Names of the components in a [`RedHop`] pipeline.
 #[derive(Debug, Clone)]
 pub struct ComponentNames {
     /// Chunker name.
@@ -379,9 +387,9 @@ pub struct ComponentNames {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-    use neorag_core::TokenizerBackend;
-    use neorag_retrieval::Bm25Retriever;
+    use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+    use redhop_core::TokenizerBackend;
+    use redhop_retrieval::Bm25Retriever;
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()
@@ -397,7 +405,7 @@ mod tests {
             let chunker = Arc::new(SentenceChunker::new(tok.clone(), 16, 24, 0).unwrap());
             let retriever = Arc::new(Bm25Retriever::new().unwrap());
 
-            let mut rag = NeoRAG::builder()
+            let mut rag = RedHop::builder()
                 .with_chunker(chunker)
                 .with_retriever(retriever)
                 .build()
@@ -430,7 +438,7 @@ mod tests {
 
     #[test]
     fn build_fails_without_required_components() {
-        let r = NeoRAG::builder().build();
+        let r = RedHop::builder().build();
         assert!(r.is_err());
     }
 }

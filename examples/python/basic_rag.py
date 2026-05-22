@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Deliverable A — where NeoRAG fits in a RAG stack.
+"""Deliverable A — where RedHop fits in a RAG stack.
 
-    retrieval  →  NeoRAG.build_context  →  generation
+    retrieval  →  RedHop.build_context  →  generation
 
-NeoRAG sits between your retriever and your LLM. You give it the retrieved
+RedHop sits between your retriever and your LLM. You give it the retrieved
 chunks and a token budget; it returns the prompt context to generate from,
 having removed distractors and preserved reasoning-critical evidence.
 
@@ -16,8 +16,8 @@ to also see a real generation (optional).
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # make `neorag` importable
-import neorag  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # make `redhop` importable
+import redhop  # noqa: E402
 from sample_corpus import (  # noqa: E402
     QUERY,
     RETRIEVED,
@@ -38,8 +38,8 @@ def main() -> None:
     # 1. Retrieve (your existing stack).
     chunks = fake_retriever(query)
 
-    # 2. NeoRAG: optimize the context.
-    ctx = neorag.build_context(
+    # 2. RedHop: optimize the context.
+    ctx = redhop.build_context(
         query=query,
         retrieved_chunks=chunks,
         token_budget=12000,
@@ -50,7 +50,7 @@ def main() -> None:
 
     # 3. Generate (your existing LLM).
     print("=" * 70)
-    print("NeoRAG sits between retrieval and generation.")
+    print("RedHop sits between retrieval and generation.")
     print("=" * 70)
     print(f"\nQuery: {query}\n")
     print(ctx.report)  # the Context Optimization Report

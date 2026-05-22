@@ -1,6 +1,6 @@
 # Embedding & Cross-Encoder Runtime (Phases A + B)
 
-Real model backends for NeoRAG, behind feature flags. The default build
+Real model backends for RedHop, behind feature flags. The default build
 stays dependency-light and fully offline; the `onnx` feature adds
 ONNX-Runtime-backed BGE/E5 embeddings and a cross-encoder reranker.
 
@@ -8,15 +8,15 @@ ONNX-Runtime-backed BGE/E5 embeddings and a cross-encoder reranker.
 
 | Component | Crate | Always available? | Status |
 | --------- | ----- | ----------------- | ------ |
-| `pooling` (mean/CLS + L2, mask-aware) | `neorag-embeddings` | ✅ | unit-tested |
-| `EmbedderConfig` (BGE/E5/mxbai presets, prefixes) | `neorag-embeddings` | ✅ | unit-tested |
-| `HashingProvider` (zero-dep TF baseline) | `neorag-embeddings` | ✅ | unit-tested |
-| `CachedEmbedder<E>` (bounded LRU) | `neorag-embeddings` | ✅ | unit-tested |
-| `OnnxEmbedder` (BGE/E5/jina/mxbai) | `neorag-embeddings` | feature `onnx` | **compile-verified** vs `ort` 2.0.0-rc.10 |
-| `apply_scores` (rerank decision logic) | `neorag-reranking` | ✅ | unit-tested |
-| `OnnxCrossEncoder` (ms-marco MiniLM etc.) | `neorag-reranking` | feature `onnx` | **compile-verified** |
-| `bench_embedder` / `compare_embedders` | `neorag-calibration` | ✅ | unit-tested |
-| criterion embedding benches | `neorag-benchmarks` | ✅ | runs |
+| `pooling` (mean/CLS + L2, mask-aware) | `redhop-embeddings` | ✅ | unit-tested |
+| `EmbedderConfig` (BGE/E5/mxbai presets, prefixes) | `redhop-embeddings` | ✅ | unit-tested |
+| `HashingProvider` (zero-dep TF baseline) | `redhop-embeddings` | ✅ | unit-tested |
+| `CachedEmbedder<E>` (bounded LRU) | `redhop-embeddings` | ✅ | unit-tested |
+| `OnnxEmbedder` (BGE/E5/jina/mxbai) | `redhop-embeddings` | feature `onnx` | **compile-verified** vs `ort` 2.0.0-rc.10 |
+| `apply_scores` (rerank decision logic) | `redhop-reranking` | ✅ | unit-tested |
+| `OnnxCrossEncoder` (ms-marco MiniLM etc.) | `redhop-reranking` | feature `onnx` | **compile-verified** |
+| `bench_embedder` / `compare_embedders` | `redhop-calibration` | ✅ | unit-tested |
+| criterion embedding benches | `redhop-benchmarks` | ✅ | runs |
 
 "Compile-verified" means `cargo check --features onnx` passes against
 the pinned `ort` and the ONNX Runtime binary downloads and links. It
@@ -32,7 +32,7 @@ unvalidated surface is tokenization + tensor-shape glue.
   `onnx` feature. `cargo build` (no features) never compiles them and
   works offline.
 - **No new abstractions.** Both backends implement the existing
-  `EmbeddingProvider` / `Reranker` traits. Nothing new in `neorag-core`.
+  `EmbeddingProvider` / `Reranker` traits. Nothing new in `redhop-core`.
 - **Math separated from inference.** The ONNX modules delegate every
   numeric operation to the hermetic `pooling` / `apply_scores`
   functions, shrinking the unverifiable surface to glue.
@@ -65,7 +65,7 @@ tokenizers = { version = "0.20", default-features = false,
 
 ## Getting models
 
-NeoRAG ships no models. Export or download ONNX variants:
+RedHop ships no models. Export or download ONNX variants:
 
 ```bash
 # Option A: HuggingFace ONNX exports (many models ship model.onnx + tokenizer.json)
@@ -81,8 +81,8 @@ Then:
 ```rust
 # #[cfg(feature = "onnx")]
 # {
-use neorag_embeddings::{OnnxEmbedder, EmbedderConfig};
-use neorag_reranking::OnnxCrossEncoder;
+use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
+use redhop_reranking::OnnxCrossEncoder;
 
 // BGE-small: CLS pooling, normalize, 384-dim.
 let embedder = OnnxEmbedder::load("bge/model.onnx", "bge/tokenizer.json",
@@ -102,7 +102,7 @@ let reranker = OnnxCrossEncoder::load("ce/model.onnx", "ce/tokenizer.json", 512)
 
 The harness is in place; the numbers below are what you fill in.
 
-**(a) Embedding bake-off** (`neorag-calibration::embedder_bench`):
+**(a) Embedding bake-off** (`redhop-calibration::embedder_bench`):
 
 ```rust
 let cmp = compare_embedders(
@@ -118,10 +118,10 @@ arms plus the recall delta and latency multiple. Run it on the
 HotpotQA/MuSiQue `LabeledCorpus` (from the loaders) to get the real
 quality lift of BGE/E5 over the hashing baseline.
 
-**(b) Throughput/latency** (`neorag-benchmarks`, criterion):
+**(b) Throughput/latency** (`redhop-benchmarks`, criterion):
 
 ```bash
-cargo bench -p neorag-benchmarks --bench embeddings
+cargo bench -p redhop-benchmarks --bench embeddings
 ```
 
 Hermetic numbers today (this machine, hashing baseline):

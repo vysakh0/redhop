@@ -12,41 +12,41 @@
 //!      selective-escalation ROI vs uniform reranking.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example observability_report --release
+//!     cargo run -p redhop-examples --example observability_report --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_calibration::{
+use redhop_calibration::{
     economics::{economics, selective_escalation_roi, CostModel},
     embedder::HashingEmbedder,
     htmlreport::{render_html, ReportOptions},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
     runner::{run_query, RunnerConfig},
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RegimeClassifier, Reranker,
     RerankerLevel, Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_observability::{render::cli, render::json, RetrievalTrace};
-use neorag_orchestration::{
+use redhop_observability::{render::cli, render::json, RetrievalTrace};
+use redhop_orchestration::{
     AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy, PolicyThresholds,
 };
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
 const SAMPLE_SIZE: usize = 150;
 const TOP_K: usize = 4;
-const HTML_OUT: &str = "/Users/vysakh/projects/neorag1/target/neorag_report.html";
-const TRACE_OUT: &str = "/Users/vysakh/projects/neorag1/target/neorag_traces.jsonl";
+const HTML_OUT: &str = "/Users/vysakh/projects/neorag1/target/redhop_report.html";
+const TRACE_OUT: &str = "/Users/vysakh/projects/neorag1/target/redhop_traces.jsonl";
 // Uniform-rerank lift baseline measured by method_pair_regret on this corpus.
 const UNIFORM_RERANK_LIFT: f32 = 0.046;
 
@@ -197,7 +197,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── HTML report ───────────────────────────────────────────────
     let opts = ReportOptions {
-        title: "NeoRAG — HotpotQA Adaptive Retrieval Report".into(),
+        title: "RedHop — HotpotQA Adaptive Retrieval Report".into(),
         workload: format!("HotpotQA dev (distractor), first {} items", corpus.queries.len()),
         cost,
         uniform_rerank_lift: Some(UNIFORM_RERANK_LIFT),

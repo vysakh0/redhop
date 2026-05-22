@@ -162,7 +162,7 @@ pub fn selective_escalation_roi(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{RerankerLevel, RetrievalRegime};
+    use redhop_core::{RerankerLevel, RetrievalRegime};
 
     fn outcome(rerank_calls: u32, lift: f32) -> QueryOutcome {
         QueryOutcome {

@@ -6,7 +6,7 @@
 //!
 //! All renderers read the same [`RetrievalTrace`] fields; there is no
 //! view-specific recomputation, so the CLI, JSON, and (in
-//! `neorag-calibration`) HTML views always agree on the numbers.
+//! `redhop-calibration`) HTML views always agree on the numbers.
 //!
 //! [`RetrievalTrace`]: crate::trace::RetrievalTrace
 

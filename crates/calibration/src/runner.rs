@@ -21,11 +21,11 @@
 
 use std::sync::Arc;
 
-use neorag_core::{
+use redhop_core::{
     ChunkId, DiagnosticsEngine, Query, RegimeClassifier, Reranker, RerankerLevel, Result,
     RetrievalAction, RetrievalRegime, RetrievalResult, Retriever, TakenAction,
 };
-use neorag_orchestration::{AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy};
+use redhop_orchestration::{AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::LabeledQuery;
@@ -239,7 +239,7 @@ pub fn default_runner_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn rr(id: &str) -> RetrievalResult {
         RetrievalResult {

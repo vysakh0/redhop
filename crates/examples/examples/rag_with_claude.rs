@@ -1,22 +1,22 @@
-//! End-to-end NeoRAG demo that hands its retrieved evidence to a real LLM
+//! End-to-end RedHop demo that hands its retrieved evidence to a real LLM
 //! via the local `claude` CLI.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example rag_with_claude
-//!     cargo run -p neorag-examples --example rag_with_claude -- "your question here"
+//!     cargo run -p redhop-examples --example rag_with_claude
+//!     cargo run -p redhop-examples --example rag_with_claude -- "your question here"
 //!
-//! NeoRAG is responsible for chunking + retrieval + reranking + diagnostics.
+//! RedHop is responsible for chunking + retrieval + reranking + diagnostics.
 //! The LLM only sees the assembled prompt; it has no other access to the
-//! corpus, which is exactly the contract NeoRAG was designed around.
+//! corpus, which is exactly the contract RedHop was designed around.
 
 use std::process::Command;
 use std::sync::Arc;
 
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{Document, Query, TokenizerBackend};
-use neorag_pipeline::NeoRAG;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{Document, Query, TokenizerBackend};
+use redhop_pipeline::RedHop;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 fn corpus() -> Vec<Document> {
     vec![
@@ -72,7 +72,7 @@ fn corpus() -> Vec<Document> {
     ]
 }
 
-fn build_prompt(query: &str, results: &[neorag_core::RetrievalResult]) -> String {
+fn build_prompt(query: &str, results: &[redhop_core::RetrievalResult]) -> String {
     let mut s = String::new();
     s.push_str(
         "You will answer a question using ONLY the evidence chunks below. \
@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
     let retriever = Arc::new(Bm25Retriever::new()?);
     let reranker = Arc::new(LexicalGroundingReranker::default());
 
-    let mut rag = NeoRAG::builder()
+    let mut rag = RedHop::builder()
         .with_chunker(chunker)
         .with_retriever(retriever)
         .with_reranker(reranker)
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
     let results = rag.retrieve(q.clone(), 4).await?;
     let report = rag.diagnose(&q, &results)?;
 
-    println!("================ NeoRAG ================");
+    println!("================ RedHop ================");
     println!("query:      {query}");
     println!("components: {:?}", rag.component_names());
     println!();

@@ -12,7 +12,7 @@ is identical across arms; any difference in controller behavior is
 attributable to diagnostic sharpness alone.
 
 ```bash
-cargo run -p neorag-examples --example adaptive_real_vs_hashing \
+cargo run -p redhop-examples --example adaptive_real_vs_hashing \
     --features onnx --release
 ```
 

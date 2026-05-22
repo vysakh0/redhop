@@ -3,7 +3,7 @@
 //! A cross-encoder scores a `(query, passage)` pair jointly, which is
 //! far more accurate than the bi-encoder cosine used for first-stage
 //! retrieval — and far more expensive. That cost asymmetry is exactly
-//! why NeoRAG's selective escalation matters: the cross-encoder should
+//! why RedHop's selective escalation matters: the cross-encoder should
 //! fire only on the queries the controller judges worth it.
 //!
 //! This module splits the cheap, testable decision logic
@@ -12,7 +12,7 @@
 //! arithmetic — pairing scores back to candidates, sorting, truncating
 //! — is unit-tested without a model.
 
-use neorag_core::{RetrievalMethod, RetrievalResult, Score};
+use redhop_core::{RetrievalMethod, RetrievalResult, Score};
 
 /// Given candidates and a parallel vector of cross-encoder relevance
 /// scores, produce the reranked top-`k`.
@@ -48,7 +48,7 @@ pub fn apply_scores(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(id: &str, retrieval_score: f32) -> RetrievalResult {
         RetrievalResult {
@@ -91,7 +91,7 @@ mod onnx_impl {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
-    use neorag_core::{Error, Query, Reranker, Result, RetrievalResult};
+    use redhop_core::{Error, Query, Reranker, Result, RetrievalResult};
     use ort::session::{builder::GraphOptimizationLevel, Session};
     use ort::value::Tensor;
     use tokenizers::Tokenizer;

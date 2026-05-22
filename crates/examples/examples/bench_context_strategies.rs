@@ -18,17 +18,17 @@
 //!   results.json  — metadata + per-(population,strategy,budget) metrics + CIs
 //!   SUMMARY.md    — human-readable tables
 //!
-//! Run:  cargo run -p neorag-examples --example bench_context_strategies --release
+//! Run:  cargo run -p redhop-examples --example bench_context_strategies --release
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_context::{build_context, ContextConfig, ContextStrategy};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
@@ -209,7 +209,7 @@ fn main() -> anyhow::Result<()> {
     let mut md = String::new();
     writeln!(md, "# Benchmark: context strategies\n")?;
     writeln!(md, "Hermetic (no LLM/embeddings), HotpotQA dev. Generated from")?;
-    writeln!(md, "`cargo run -p neorag-examples --example bench_context_strategies --release`.\n")?;
+    writeln!(md, "`cargo run -p redhop-examples --example bench_context_strategies --release`.\n")?;
     writeln!(md, "- multihop_gap: n={n_gap}  ·  shallow_nogap: n={n_nogap}")?;
     writeln!(md, "- distractors/query={N_DISTRACTORS}, distractor_min_grounding={DISTRACTOR_MIN_GROUNDING}, link_min_jaccard={LINK_MIN_JACCARD}\n")?;
     writeln!(md, "second_hop_ret and gold_ret are means with 95% bootstrap CIs.\n")?;

@@ -1,6 +1,6 @@
-//! # neorag-calibration
+//! # redhop-calibration
 //!
-//! Calibration and evaluation harness for NeoRAG adaptive retrieval.
+//! Calibration and evaluation harness for RedHop adaptive retrieval.
 //!
 //! ## What this crate is for
 //!

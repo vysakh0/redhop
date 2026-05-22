@@ -21,7 +21,7 @@
 //! Corruption is deterministic given a seed, so the study is
 //! reproducible.
 
-use neorag_core::{Chunk, ChunkId, TokenCount};
+use redhop_core::{Chunk, ChunkId, TokenCount};
 use serde::{Deserialize, Serialize};
 
 /// Which corruption to apply.
@@ -196,9 +196,9 @@ pub fn run_degradation_study(
     top_k: usize,
     seed: u64,
 ) -> DegradationStudy {
-    use neorag_core::VectorIndex;
-    use neorag_diagnostics::{diagnose_ingestion, IngestionThresholds};
-    use neorag_storage::FlatVectorIndex;
+    use redhop_core::VectorIndex;
+    use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
+    use redhop_storage::FlatVectorIndex;
 
     let cfg = IngestionThresholds::default();
     let dim = embedder.dim;
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn ocr_corruption_increases_with_severity() {
-        use neorag_diagnostics::{diagnose_ingestion, IngestionThresholds};
+        use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
         let cfg = IngestionThresholds::default();
         let base = clean();
         let low = corrupt(&base, CorruptionKind::OcrNoise, 0.1, 1);

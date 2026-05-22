@@ -9,7 +9,7 @@
 //!
 //! Unlike the per-query [`DiagnosticsEngine`][de] tier, ingestion
 //! diagnostics run **once over the whole chunk corpus** at index time.
-//! They are deliberately *text-only* — NeoRAG does not parse PDFs (that
+//! They are deliberately *text-only* — RedHop does not parse PDFs (that
 //! stays in the Python ingestion layer); these metrics work on whatever
 //! text the chunker produced regardless of source.
 //!
@@ -39,7 +39,7 @@
 
 use std::collections::HashMap;
 
-use neorag_core::{Chunk, ChunkId, DiagnosticsWarning};
+use redhop_core::{Chunk, ChunkId, DiagnosticsWarning};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -536,7 +536,7 @@ fn push_warning(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::TokenCount;
+    use redhop_core::TokenCount;
 
     fn chunk(id: &str, text: &str) -> Chunk {
         Chunk::new(id, text, "doc", TokenCount(text.split_whitespace().count()))

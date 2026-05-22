@@ -1,13 +1,13 @@
-"""neorag — a reasoning-preserving context optimization layer.
+"""redhop — a reasoning-preserving context optimization layer.
 
-NeoRAG is NOT a retriever, a vector DB, an agent framework, or a workflow
+RedHop is NOT a retriever, a vector DB, an agent framework, or a workflow
 engine. It sits *between retrieval and generation*: you hand it the chunks
 your retriever returned and a token budget, and it assembles the prompt
 context — removing distractors, preserving reasoning-critical "second hop"
 evidence, and reporting exactly what it did.
 
     chunks = retriever.retrieve(query)            # your retriever
-    ctx = neorag.build_context(                   # NeoRAG
+    ctx = redhop.build_context(                   # RedHop
         query=query,
         retrieved_chunks=chunks,
         token_budget=12000,
@@ -17,8 +17,8 @@ evidence, and reporting exactly what it did.
     print(ctx.report)                             # observability
 
 This module is a thin shim over the Rust engine, invoked through a JSON
-bridge (the `context_bridge` example binary). It is the "minimal thing that
-works today"; native wheels (`pip install neorag`, backed by pyo3) are the
+bridge (the `redhop_bridge` example binary). It is the "minimal thing that
+works today"; native wheels (`pip install redhop`, backed by pyo3) are the
 future packaging path — the API here is the one those wheels will expose.
 """
 
@@ -33,12 +33,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-# Repo root: examples/python/neorag/__init__.py -> repo root is 3 parents up.
+# Repo root: examples/python/redhop/__init__.py -> repo root is 3 parents up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_BRIDGE_BIN_NAMES = ("context_bridge",)
+_BRIDGE_BIN_NAMES = ("redhop_bridge",)
 
 
-class NeoragError(RuntimeError):
+class RedhopError(RuntimeError):
     """Raised when the Rust bridge cannot be located or fails."""
 
 
@@ -46,7 +46,7 @@ class NeoragError(RuntimeError):
 def _bridge_path() -> str:
     """Locate the compiled bridge binary, building it once if necessary."""
     # Allow an explicit override.
-    env = os.environ.get("NEORAG_BRIDGE")
+    env = os.environ.get("REDHOP_BRIDGE")
     if env and Path(env).exists():
         return env
     for profile in ("release", "debug"):
@@ -56,18 +56,18 @@ def _bridge_path() -> str:
                 return str(cand)
     # Not built yet — build it (release) once.
     if shutil.which("cargo") is None:
-        raise NeoragError(
-            "neorag bridge not found and `cargo` is unavailable. Build it with:\n"
-            "  cargo build -p neorag-examples --example context_bridge --release"
+        raise RedhopError(
+            "redhop bridge not found and `cargo` is unavailable. Build it with:\n"
+            "  cargo build -p redhop-examples --example redhop_bridge --release"
         )
     subprocess.run(
-        ["cargo", "build", "-p", "neorag-examples", "--example", "context_bridge", "--release"],
+        ["cargo", "build", "-p", "redhop-examples", "--example", "redhop_bridge", "--release"],
         cwd=_REPO_ROOT,
         check=True,
     )
-    cand = _REPO_ROOT / "target" / "release" / "examples" / "context_bridge"
+    cand = _REPO_ROOT / "target" / "release" / "examples" / "redhop_bridge"
     if not cand.exists():
-        raise NeoragError("bridge build succeeded but binary not found")
+        raise RedhopError("bridge build succeeded but binary not found")
     return str(cand)
 
 
@@ -140,7 +140,7 @@ def _normalize_chunk(c: Any, i: int) -> dict[str, Any]:
     # LangChain Document and friends.
     text = getattr(c, "page_content", None) or getattr(c, "text", None)
     if text is None:
-        raise NeoragError(f"chunk {i} has no text (.page_content/.text/dict['text'])")
+        raise RedhopError(f"chunk {i} has no text (.page_content/.text/dict['text'])")
     meta = getattr(c, "metadata", {}) or {}
     return {"id": str(meta.get("id", f"c{i}")), "text": text, "source": str(meta.get("source", "input"))}
 
@@ -153,7 +153,7 @@ def _call_bridge(request: Mapping[str, Any]) -> dict[str, Any]:
         text=True,
     )
     if proc.returncode != 0:
-        raise NeoragError(f"bridge failed: {proc.stderr.strip() or proc.stdout.strip()}")
+        raise RedhopError(f"bridge failed: {proc.stderr.strip() or proc.stdout.strip()}")
     return json.loads(proc.stdout)
 
 
@@ -206,4 +206,4 @@ def analyze_context(
     return ContextReport(out["report"], out["rendered"])
 
 
-__all__ = ["build_context", "analyze_context", "BuiltContext", "ContextReport", "NeoragError"]
+__all__ = ["build_context", "analyze_context", "BuiltContext", "ContextReport", "RedhopError"]

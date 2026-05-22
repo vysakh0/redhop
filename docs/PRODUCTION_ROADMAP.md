@@ -1,4 +1,4 @@
-# NeoRAG Production Runtime Roadmap
+# RedHop Production Runtime Roadmap
 
 **Premise.** The architecture is done. The moat is **calibrated adaptive
 retrieval control** — deciding *when not to spend compute*. Every item
@@ -13,7 +13,7 @@ The single empirical fact that anchors all of it:
 > while reranking only ~44% of queries. 63% of reranks change nothing.
 > Harmful-intervention lift is ≈0.
 
-NeoRAG's value is *not* "rerankers are good." It's "most reranking is
+RedHop's value is *not* "rerankers are good." It's "most reranking is
 waste, and we can tell which." Every engineering decision optimizes
 that.
 
@@ -109,12 +109,12 @@ Key invariants preserved:
 
 Two harnesses, two questions.
 
-**(a) Throughput/latency** — extend `neorag-benchmarks` (criterion):
+**(a) Throughput/latency** — extend `redhop-benchmarks` (criterion):
 - `embed_batch` throughput (texts/sec) per backend, per batch size.
 - `cross_encoder_rerank` latency p50/p99 per candidate-count.
 - `cosine_search` over FlatVectorIndex vs usearch at 1k/10k/100k vectors.
 
-**(b) Retrieval quality + economics** — extend `neorag-calibration`:
+**(b) Retrieval quality + economics** — extend `redhop-calibration`:
 - **Embedder bake-off:** hashing-TF vs BGE-small vs E5-small on the
   HotpotQA/MuSiQue adaptive eval. Report a single table:
 
@@ -161,10 +161,10 @@ Measure, then optimize.
 ## 6. Enterprise PDF strategy
 
 **The boundary holds: Rust does not parse PDFs.** Parsing is a Python
-(or `pdftotext`) job that emits clean text. NeoRAG's value on messy
+(or `pdftotext`) job that emits clean text. RedHop's value on messy
 corpora is the *diagnostics*, which operate on text regardless of source.
 
-Build an **ingestion-diagnostics tier** in `neorag-diagnostics`
+Build an **ingestion-diagnostics tier** in `redhop-diagnostics`
 (text-only, hermetic):
 
 | Metric | Detects | Cheap signal |
@@ -182,7 +182,7 @@ optionally fall back to a more robust chunker. They do **not** introduce
 a new regime or a new controller — they extend the diagnostics surface.
 
 This is the highest commercial-value direction precisely because it's
-where production RAG silently fails and nobody has visibility. NeoRAG's
+where production RAG silently fails and nobody has visibility. RedHop's
 diagnostics-first design is already the right tool; we just point it at
 ingestion.
 
@@ -194,7 +194,7 @@ The `EmbeddingProvider` trait already exists in core with batch `embed`,
 `dim`, and `name`. We add implementations, not trait changes.
 
 ```rust
-// neorag-embeddings, feature "onnx"
+// redhop-embeddings, feature "onnx"
 pub struct OnnxEmbedder {
     session: Arc<ort::Session>,
     tokenizer: tokenizers::Tokenizer,
@@ -230,7 +230,7 @@ pub struct CachedEmbedder<E> {
 Validation strategy in a no-network sandbox: ship the config + pooling +
 prefix logic with unit tests on *synthetic* hidden-state tensors (verify
 mean/CLS pooling and L2 norm math), plus a `#[ignore]`-by-default
-integration test that runs only when `NEORAG_ONNX_MODEL` env var points
+integration test that runs only when `REDHOP_ONNX_MODEL` env var points
 at a real model file. CI without models still passes; CI with models
 validates end-to-end.
 
@@ -241,7 +241,7 @@ validates end-to-end.
 The `Reranker` trait already exists. Add one implementation.
 
 ```rust
-// neorag-reranking, feature "onnx"
+// redhop-reranking, feature "onnx"
 pub struct OnnxCrossEncoder {
     session: Arc<ort::Session>,
     tokenizer: tokenizers::Tokenizer,
@@ -281,7 +281,7 @@ The named "killer feature." Pure assembly of data we already produce —
 `QueryOutcome`. No behavior change to the controller.
 
 ```
-neorag-observability
+redhop-observability
   RetrievalTrace          serde-serializable record of one query's journey:
                             query, per-iteration {diagnostics, regime dist,
                             confidence, policy decision + rationale,
@@ -337,7 +337,7 @@ Two headline metrics:
    `(uniform recall lift) / (uniform rerank cost)`.
    From current data: adaptive ≈ +0.112 at ~0.44 reranks/query; uniform
    ≈ +0.046 at 1.0 reranks/query. ROI ratio ≈ `(0.112/0.44) / (0.046/1.0)`
-   ≈ **5.5×**. NeoRAG delivers ~2.5× the quality at ~0.44× the cost — a
+   ≈ **5.5×**. RedHop delivers ~2.5× the quality at ~0.44× the cost — a
    ~5× efficiency multiple.
 
 2. **Cost-quality Pareto frontier.** Extend the existing Pareto renderer
@@ -348,7 +348,7 @@ Two headline metrics:
 
 Headline framing for any deployment:
 
-> "NeoRAG matched uniform-rerank recall while reranking 44% of queries
+> "RedHop matched uniform-rerank recall while reranking 44% of queries
 > — a 56% reduction in cross-encoder compute — and actually *exceeded*
 > uniform-rerank quality by firing on the right queries."
 

@@ -1,6 +1,6 @@
 //! NeoTrace JSONL loader.
 //!
-//! NeoTrace is the canonical interchange format with the Python NeoRAG
+//! NeoTrace is the canonical interchange format with the Python RedHop
 //! research repo. See `docs/NEOTRACE_SCHEMA.md` for the full
 //! specification.
 //!
@@ -39,7 +39,7 @@
 
 use std::collections::BTreeMap;
 
-use neorag_core::{
+use redhop_core::{
     ChunkId, Document, Embedding, Error, Result, RetrievalRegime,
 };
 use serde::{Deserialize, Serialize};
@@ -469,7 +469,7 @@ fn to_outcome(
         retrieval_calls_adaptive: retrieval_calls.max(1),
         rerank_calls_adaptive: rerank_calls,
         sum_actual_gain,
-        final_reranker_level: neorag_core::RerankerLevel::None,
+        final_reranker_level: redhop_core::RerankerLevel::None,
         action_trace,
     }
 }

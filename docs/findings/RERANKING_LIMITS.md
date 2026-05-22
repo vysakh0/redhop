@@ -10,7 +10,7 @@ dissimilar-but-relevant chunk up into the final top-k.
 deepest systems result in the project.
 
 ```bash
-cargo run -p neorag-examples --example ce_escalation_economics --features onnx --release
+cargo run -p redhop-examples --example ce_escalation_economics --features onnx --release
 ```
 
 ## Numbers (60 HotpotQA items, dense BGE, wide net = top-20, k_final = 4)
@@ -49,7 +49,7 @@ This generalizes the action-path finding to its limit: not only does
 cross-encoder) fails *hardest*, because it's the most confident about
 demoting low-query-relevance chunks. The correct action for multi-hop
 is something else entirely (query decomposition / iterative retrieval),
-which NeoRAG deliberately does **not** have and should not grow
+which RedHop deliberately does **not** have and should not grow
 speculatively.
 
 ## The selective-escalation premise is REAFFIRMED (by the oracle)
@@ -147,7 +147,7 @@ Three experiments, one law, sharpened each time:
    wrong signal for second-hop recovery.
 
 **Retriever, failure geometry, and corrective-action geometry must all
-align. NeoRAG's value is recognizing when they don't — and the
+align. RedHop's value is recognizing when they don't — and the
 conservative controller's job is to refuse to spend compute on
 misaligned actions.** That refusal is exactly what a correctly-gated
 selective escalator would do here (fire on the 12%, skip the 88%); the

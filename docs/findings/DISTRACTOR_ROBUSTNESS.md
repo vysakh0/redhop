@@ -1,13 +1,13 @@
 # End-to-End QA: Do Distractors Hurt, and Does Filtering Help?
 
-The correlation→causation closer for context economics. NeoRAG (Rust)
+The correlation→causation closer for context economics. RedHop (Rust)
 built, per HotpotQA query, four contexts from KNOWN gold chunks +
 controlled off-topic distractor injection; the Python lab called
 `claude haiku` on each and scored answer quality (gold-keyword recall)
 + refusal rate.
 
 ```bash
-cargo run -p neorag-examples --example emit_qa_contexts --release   # Rust: build contexts
+cargo run -p redhop-examples --example emit_qa_contexts --release   # Rust: build contexts
 python ../neorag/scripts/score_context_qa.py --n 30                 # lab: LLM + score
 ```
 

@@ -1,11 +1,11 @@
 [package]
-name = "neorag-reranking"
+name = "redhop-reranking"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Reranking strategies for NeoRAG"
+description = "Reranking strategies for RedHop"
 
 [lib]
 path = "src/lib.rs"
@@ -17,7 +17,7 @@ default = []
 onnx = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]
-neorag-core = { workspace = true }
+redhop-core = { workspace = true }
 async-trait          = "0.1"
 tracing              = { workspace = true }
 unicode-segmentation = { workspace = true }

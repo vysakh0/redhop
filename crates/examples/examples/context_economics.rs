@@ -22,21 +22,21 @@
 //! Requires `--features onnx` + BGE-small.
 //!
 //! Run:
-//!   cargo run -p neorag-examples --example context_economics --features onnx --release
+//!   cargo run -p redhop-examples --example context_economics --features onnx --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_context::{build_context, ContextConfig, ContextStrategy};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_core::{
     Chunker, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenizerBackend,
     VectorIndex,
 };
-use neorag_embeddings::{EmbedderConfig, OnnxEmbedder};
-use neorag_retrieval::DenseRetriever;
-use neorag_storage::{ChunkStore, FlatVectorIndex};
+use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop_retrieval::DenseRetriever;
+use redhop_storage::{ChunkStore, FlatVectorIndex};
 use parking_lot::RwLock;
 
 const HOTPOTQA_PATH: &str =
@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     dense.index(&chunks).await?;
 
     // Pre-retrieve the wide net for each query once.
-    let mut wide_nets: Vec<(Vec<ChunkId>, Vec<neorag_core::RetrievalResult>)> = Vec::new();
+    let mut wide_nets: Vec<(Vec<ChunkId>, Vec<redhop_core::RetrievalResult>)> = Vec::new();
     for lq in &corpus.queries {
         if lq.gold_chunk_ids.is_empty() {
             continue;

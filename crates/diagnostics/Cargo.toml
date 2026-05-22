@@ -1,17 +1,17 @@
 [package]
-name = "neorag-diagnostics"
+name = "redhop-diagnostics"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Retrieval diagnostics for NeoRAG"
+description = "Retrieval diagnostics for RedHop"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core          = { workspace = true }
+redhop-core          = { workspace = true }
 unicode-segmentation = { workspace = true }
 tracing              = { workspace = true }
 serde                = { workspace = true }

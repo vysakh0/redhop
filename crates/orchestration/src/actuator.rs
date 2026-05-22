@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use neorag_core::{
+use redhop_core::{
     ActionCost, Error, Reranker, RerankerLevel, Result, RetrievalAction, RetrievalResult,
     RetrievalState, Retriever,
 };
@@ -71,7 +71,7 @@ pub trait Actuator: Send + Sync {
     /// `state`; the orchestrator merges the [`ActuationOutcome`] into
     /// the state and records a [`TakenAction`][ta].
     ///
-    /// [ta]: neorag_core::TakenAction
+    /// [ta]: redhop_core::TakenAction
     async fn apply(
         &self,
         action: &RetrievalAction,
@@ -84,7 +84,7 @@ pub trait Actuator: Send + Sync {
     /// the policy for no benefit.
     async fn initial_retrieve(
         &self,
-        query: &neorag_core::Query,
+        query: &redhop_core::Query,
         top_k: usize,
     ) -> Result<Vec<RetrievalResult>>;
 
@@ -137,7 +137,7 @@ impl DefaultActuator {
 impl Actuator for DefaultActuator {
     async fn initial_retrieve(
         &self,
-        query: &neorag_core::Query,
+        query: &redhop_core::Query,
         top_k: usize,
     ) -> Result<Vec<RetrievalResult>> {
         self.retriever.retrieve(query, top_k).await
@@ -223,7 +223,7 @@ fn elapsed_ms(start: Instant) -> u64 {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use neorag_core::{
+    use redhop_core::{
         Chunk, ChunkId, Query, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
     };
     use std::sync::Mutex;
@@ -310,7 +310,7 @@ mod tests {
             let outcome = act
                 .apply(
                     &RetrievalAction::Stop {
-                        reason: neorag_core::StopReason::Confident,
+                        reason: redhop_core::StopReason::Confident,
                     },
                     &state,
                 )

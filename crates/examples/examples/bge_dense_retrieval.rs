@@ -20,34 +20,34 @@
 //! Requires `--features onnx` + the BGE-small model.
 //!
 //! Run:
-//!   cargo run -p neorag-examples --example bge_dense_retrieval \
+//!   cargo run -p redhop-examples --example bge_dense_retrieval \
 //!       --features onnx --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_calibration::{
+use redhop_calibration::{
     analysis::regret_summary,
     economics::{economics, CostModel},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
     reliability::reliability_diagram,
     runner::{run_query, QueryOutcome, RunnerConfig},
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, EmbeddingProvider, Query,
     RegimeClassifier, Reranker, RerankerLevel, Result as CoreResult, RetrievalResult, Retriever,
     TokenizerBackend, VectorIndex,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_embeddings::{EmbedderConfig, OnnxEmbedder};
-use neorag_orchestration::{ConservativeRulePolicy, Policy, RuleBasedClassifier};
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::{Bm25Retriever, DenseRetriever};
-use neorag_storage::{ChunkStore, FlatVectorIndex};
+use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop_orchestration::{ConservativeRulePolicy, Policy, RuleBasedClassifier};
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::{Bm25Retriever, DenseRetriever};
+use redhop_storage::{ChunkStore, FlatVectorIndex};
 use parking_lot::RwLock;
 
 const HOTPOTQA_PATH: &str =
@@ -126,7 +126,7 @@ async fn run_eval(
     diagnostics: Arc<dyn DiagnosticsEngine>,
     classifier: Arc<dyn RegimeClassifier>,
     policy: Arc<dyn Policy>,
-    corpus: &neorag_calibration::dataset::LabeledCorpus,
+    corpus: &redhop_calibration::dataset::LabeledCorpus,
 ) -> anyhow::Result<Metrics> {
     let rerankers: Vec<(RerankerLevel, Arc<dyn Reranker>)> =
         vec![(RerankerLevel::Lexical, Arc::new(LexicalGroundingReranker::default()))];

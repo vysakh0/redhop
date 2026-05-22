@@ -1,7 +1,7 @@
-//! # neorag-embeddings
+//! # redhop-embeddings
 //!
 //! Pluggable embedding backends implementing
-//! [`neorag_core::EmbeddingProvider`].
+//! [`redhop_core::EmbeddingProvider`].
 //!
 //! Two always-available, zero-heavyweight-dep pieces:
 //!
@@ -27,7 +27,7 @@
 //!
 //! ## Philosophy
 //!
-//! NeoRAG is a retrieval *controller/runtime*, not an embedding library.
+//! RedHop is a retrieval *controller/runtime*, not an embedding library.
 //! These backends exist so the controller has real vectors to reason
 //! over — they are not a model zoo. One strong default (BGE/E5 via ONNX)
 //! plus a no-dep baseline is the whole scope.

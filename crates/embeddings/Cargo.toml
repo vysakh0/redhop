@@ -1,11 +1,11 @@
 [package]
-name = "neorag-embeddings"
+name = "redhop-embeddings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Pluggable embedding backends for NeoRAG (hashing baseline + optional ONNX)"
+description = "Pluggable embedding backends for RedHop (hashing baseline + optional ONNX)"
 
 [lib]
 path = "src/lib.rs"
@@ -19,7 +19,7 @@ default = []
 onnx = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]
-neorag-core          = { workspace = true }
+redhop-core          = { workspace = true }
 serde                = { workspace = true }
 async-trait          = "0.1"
 unicode-segmentation = { workspace = true }

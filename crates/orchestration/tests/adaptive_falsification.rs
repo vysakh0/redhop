@@ -21,12 +21,12 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use neorag_core::{
+use redhop_core::{
     Chunk, ChunkId, DiagnosticsEngine, DiagnosticsReport, Query, Reranker, RerankerLevel,
     Result as CoreResult, RetrievalAction, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown, StopReason, TokenCount,
 };
-use neorag_orchestration::{
+use redhop_orchestration::{
     AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, RuleBasedClassifier,
 };
 

@@ -7,7 +7,7 @@
 //! have produced, without re-running the candidate retrieval.
 
 use async_trait::async_trait;
-use neorag_core::{
+use redhop_core::{
     Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score,
 };
 

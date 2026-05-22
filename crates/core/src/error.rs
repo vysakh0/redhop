@@ -2,10 +2,10 @@
 
 use thiserror::Error;
 
-/// Result alias used throughout NeoRAG.
+/// Result alias used throughout RedHop.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Top-level error type for the NeoRAG library.
+/// Top-level error type for the RedHop library.
 ///
 /// Concrete implementations (Tantivy-backed BM25, HF tokenizers, etc.) wrap
 /// their own failures into one of these variants so that downstream callers —

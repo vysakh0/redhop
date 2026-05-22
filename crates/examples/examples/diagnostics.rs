@@ -2,21 +2,21 @@
 //! a clean one, side by side. Useful as a smoke test that the warnings are
 //! firing for the right reasons.
 //!
-//! Run with: `cargo run -p neorag-examples --example diagnostics`
+//! Run with: `cargo run -p redhop-examples --example diagnostics`
 
 use std::sync::Arc;
 
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{Document, Query, TokenizerBackend};
-use neorag_pipeline::NeoRAG;
-use neorag_retrieval::Bm25Retriever;
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{Document, Query, TokenizerBackend};
+use redhop_pipeline::RedHop;
+use redhop_retrieval::Bm25Retriever;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = Arc::new(SentenceChunker::new(tok, 40, 60, 0)?);
     let retriever = Arc::new(Bm25Retriever::new()?);
-    let mut rag = NeoRAG::builder()
+    let mut rag = RedHop::builder()
         .with_chunker(chunker)
         .with_retriever(retriever)
         .build()?;
@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_report(r: &neorag_core::DiagnosticsReport) {
+fn print_report(r: &redhop_core::DiagnosticsReport) {
     println!("  lexical_grounding:      {:?}", r.lexical_grounding);
     println!("  chunk_purity:           {:?}", r.chunk_purity);
     println!("  answer_density:         {:?}", r.answer_density);

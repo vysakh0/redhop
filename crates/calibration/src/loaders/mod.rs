@@ -1,6 +1,6 @@
 //! Loaders for real-world QA datasets.
 //!
-//! Each loader turns a workload-specific file format into a NeoRAG
+//! Each loader turns a workload-specific file format into a RedHop
 //! [`LabeledCorpus`][lc]. The conversion is faithful but not lossy in
 //! the regime label — the loaders apply a default heuristic mapping
 //! from each dataset's native labels to [`RetrievalRegime`][rr] which
@@ -28,7 +28,7 @@
 //!   points the loader at a local file they already have.
 //!
 //! [lc]: crate::dataset::LabeledCorpus
-//! [rr]: neorag_core::RetrievalRegime
+//! [rr]: redhop_core::RetrievalRegime
 
 pub mod hotpotqa;
 pub mod jsonl;

@@ -1,13 +1,13 @@
-# neorag — eval & observability CLI
+# redhop — eval & observability CLI
 
-A thin, Unix-like shell over the NeoRAG context API (`build_context`,
+A thin, Unix-like shell over the RedHop context API (`build_context`,
 `analyze_context`, `context_economics`). It exists for **evaluation,
 observability, benchmarking, reproducibility, and context inspection** — not
-as a serving runtime, workflow engine, or orchestration layer. NeoRAG remains
+as a serving runtime, workflow engine, or orchestration layer. RedHop remains
 a reasoning-preserving context optimization library; this just exposes it.
 
 ```bash
-cargo build -p neorag-cli --release      # produces target/release/neorag
+cargo build -p redhop-cli --release      # produces target/release/redhop
 ```
 
 Input is the JSON your retriever already produces:
@@ -18,7 +18,7 @@ Input is the JSON your retriever already produces:
 
 ### `compare` — strategies side-by-side (the strongest demo surface)
 ```bash
-neorag compare --query "Who was the British PM during WWII?" \
+redhop compare --query "Who was the British PM during WWII?" \
   --input retrieval.json \
   --strategies raw_topk,distractor_filtered,reasoning_preserving \
   --gold-ids c3,c7 --second-hop-id c7        # optional → retention columns
@@ -29,14 +29,14 @@ writes a structured artifact.
 
 ### `analyze-context` — non-destructive observability
 ```bash
-neorag analyze-context context.json --query "..."
+redhop analyze-context context.json --query "..."
 ```
 Renders the `Context Optimization Report` (density, distractors, rescues,
 estimated waste, warnings). `--json` for the raw report.
 
 ### `benchmark` — reproducible strategy sweep
 ```bash
-neorag benchmark --input labeled.json \
+redhop benchmark --input labeled.json \
   --strategies raw_topk,distractor_filtered,reasoning_preserving \
   --budgets 250,800,12000 --out-dir out/
 ```
@@ -47,7 +47,7 @@ HotpotQA run lives in [`benchmarks/context/`](../../benchmarks/context/).)
 
 ### `report` — render an artifact to markdown / HTML
 ```bash
-neorag report results.json --markdown report.md --html report.html
+redhop report results.json --markdown report.md --html report.html
 ```
 Works on `compare --json` output and on `benchmarks/context/results.json`.
 

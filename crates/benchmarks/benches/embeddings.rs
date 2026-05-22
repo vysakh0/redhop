@@ -10,8 +10,8 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use neorag_core::EmbeddingProvider;
-use neorag_embeddings::{CachedEmbedder, HashingProvider};
+use redhop_core::EmbeddingProvider;
+use redhop_embeddings::{CachedEmbedder, HashingProvider};
 
 fn corpus(n: usize) -> Vec<String> {
     let templates = [

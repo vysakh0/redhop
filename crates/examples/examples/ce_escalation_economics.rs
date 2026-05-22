@@ -26,27 +26,27 @@
 //! Requires `--features onnx` + BGE-small + ms-marco cross-encoder.
 //!
 //! Run:
-//!   cargo run -p neorag-examples --example ce_escalation_economics \
+//!   cargo run -p redhop-examples --example ce_escalation_economics \
 //!       --features onnx --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunker, ChunkId, DiagnosticsEngine, Embedding, EmbeddingProvider, Query, RegimeClassifier,
     Reranker, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend, VectorIndex,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_embeddings::{EmbedderConfig, OnnxEmbedder};
-use neorag_orchestration::{compute_confidence, RuleBasedClassifier};
-use neorag_reranking::OnnxCrossEncoder;
-use neorag_retrieval::DenseRetriever;
-use neorag_storage::{ChunkStore, FlatVectorIndex};
+use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop_orchestration::{compute_confidence, RuleBasedClassifier};
+use redhop_reranking::OnnxCrossEncoder;
+use redhop_retrieval::DenseRetriever;
+use redhop_storage::{ChunkStore, FlatVectorIndex};
 use parking_lot::RwLock;
 
 const HOTPOTQA_PATH: &str =

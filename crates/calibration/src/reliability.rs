@@ -30,7 +30,7 @@
 //! (Platt scaling, isotonic regression) is a future possibility that
 //! consumes the reliability data this module produces.
 
-use neorag_core::RetrievalRegime;
+use redhop_core::RetrievalRegime;
 use serde::{Deserialize, Serialize};
 
 use crate::runner::QueryOutcome;
@@ -242,7 +242,7 @@ mod tests {
             retrieval_calls_adaptive: 1,
             rerank_calls_adaptive: 0,
             sum_actual_gain: 0.0,
-            final_reranker_level: neorag_core::RerankerLevel::None,
+            final_reranker_level: redhop_core::RerankerLevel::None,
             action_trace: vec![],
         }
     }

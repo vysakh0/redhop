@@ -1,8 +1,8 @@
-//! # neorag-chunking
+//! # redhop-chunking
 //!
-//! Chunking strategies built on top of [`neorag_core::Chunker`].
+//! Chunking strategies built on top of [`redhop_core::Chunker`].
 //!
-//! NeoRAG ships three chunkers covering the practical quality/cost spectrum:
+//! RedHop ships three chunkers covering the practical quality/cost spectrum:
 //!
 //! - [`FixedChunker`] — deterministic token-window chunking. Cheapest and
 //!   reproducible, used as a baseline.
@@ -19,7 +19,7 @@
 //! default; integrations with HuggingFace `tokenizers` or `tiktoken-rs` can be
 //! added behind feature flags without changing the chunker API.
 //!
-//! [`TokenizerBackend`]: neorag_core::TokenizerBackend
+//! [`TokenizerBackend`]: redhop_core::TokenizerBackend
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

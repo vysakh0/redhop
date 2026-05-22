@@ -1,4 +1,4 @@
-//! # neorag-storage
+//! # redhop-storage
 //!
 //! Storage backends used by retrievers.
 //!
@@ -14,8 +14,8 @@
 //!   while higher-performance ANN backends (HNSW via `usearch`, IVF, …) are
 //!   plugged in behind feature flags.
 //!
-//! [`ChunkId`]: neorag_core::ChunkId
-//! [`VectorIndex`]: neorag_core::VectorIndex
+//! [`ChunkId`]: redhop_core::ChunkId
+//! [`VectorIndex`]: redhop_core::VectorIndex
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

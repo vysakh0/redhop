@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use neorag_core::{Chunk, ChunkId};
+use redhop_core::{Chunk, ChunkId};
 use parking_lot::RwLock;
 
 /// A thread-safe in-memory store of chunks.
@@ -59,7 +59,7 @@ impl ChunkStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::TokenCount;
+    use redhop_core::TokenCount;
 
     #[test]
     fn store_round_trip() {

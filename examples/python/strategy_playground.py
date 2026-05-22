@@ -3,7 +3,7 @@
 
 Runs the same retrieved set through every strategy and prints a side-by-side
 table plus the actual assembled context for each — the clearest single view
-of what NeoRAG does and why `reasoning_preserving` is the safe default.
+of what RedHop does and why `reasoning_preserving` is the safe default.
 
     python examples/python/strategy_playground.py
 """
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import neorag  # noqa: E402
+import redhop  # noqa: E402
 from sample_corpus import (  # noqa: E402
     QUERY,
     RETRIEVED,
@@ -31,7 +31,7 @@ def main() -> None:
     rows = []
     contexts = {}
     for strat in STRATEGIES:
-        ctx = neorag.build_context(
+        ctx = redhop.build_context(
             query=QUERY,
             retrieved_chunks=RETRIEVED,
             token_budget=12000,
@@ -80,7 +80,7 @@ def main() -> None:
 
     print("\nTakeaway: relevance-only strategies can drop the low-relevance")
     print("second hop the answer depends on; reasoning_preserving keeps it while")
-    print("still pruning distractors. NeoRAG is a reasoning-preserving context")
+    print("still pruning distractors. RedHop is a reasoning-preserving context")
     print("optimization layer — not a retriever, vector DB, or agent framework.")
 
 

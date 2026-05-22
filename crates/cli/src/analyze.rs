@@ -1,10 +1,10 @@
-//! `neorag analyze-context` — non-destructive observability for one context.
+//! `redhop analyze-context` — non-destructive observability for one context.
 //! Reuses `ContextReport::render()`. For retrieval inspection / ops visibility.
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use neorag_context::{analyze_context, ContextConfig};
-use neorag_core::Query;
+use redhop_context::{analyze_context, ContextConfig};
+use redhop_core::Query;
 
 use crate::io::RetrievalInput;
 

@@ -7,14 +7,14 @@
 //! co-occur.
 //!
 //! These corpora are synthetic and hermetic on purpose. Real PDF text
-//! comes from the Python ingestion layer (NeoRAG does not parse PDFs);
+//! comes from the Python ingestion layer (RedHop does not parse PDFs);
 //! whatever chunker produced the text, these diagnostics work on it.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example ingestion_diagnostics
+//!     cargo run -p redhop-examples --example ingestion_diagnostics
 
-use neorag_core::{Chunk, TokenCount};
-use neorag_diagnostics::{diagnose_ingestion, IngestionReport, IngestionThresholds};
+use redhop_core::{Chunk, TokenCount};
+use redhop_diagnostics::{diagnose_ingestion, IngestionReport, IngestionThresholds};
 
 fn chunk(id: &str, text: &str) -> Chunk {
     Chunk::new(id, text, "doc", TokenCount(text.split_whitespace().count()))
@@ -46,7 +46,7 @@ fn print_report(label: &str, r: &IngestionReport) {
 
 fn main() {
     let cfg = IngestionThresholds::default();
-    println!("NeoRAG ingestion diagnostics — detecting retrieval-corrupting corpora\n");
+    println!("RedHop ingestion diagnostics — detecting retrieval-corrupting corpora\n");
 
     // 1. Clean prose.
     let clean = vec![
@@ -117,6 +117,6 @@ fn main() {
     println!("Interpretation: these are DIAGNOSTICS, not a controller. They surface");
     println!("corruption so a deployment can react (re-OCR, dedup, table-aware");
     println!("extraction, sentence-aware chunking) BEFORE retrieval serves the noise.");
-    println!("Real PDF text arrives via the Python ingestion layer; NeoRAG analyzes");
+    println!("Real PDF text arrives via the Python ingestion layer; RedHop analyzes");
     println!("whatever text the chunker produced, regardless of source.");
 }

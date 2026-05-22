@@ -1,7 +1,7 @@
 //! Score- and rank-level fusion of retrieval result lists.
 //!
 //! Fusion is the cheapest and most reliable way to combine signals from
-//! heterogenous retrievers (e.g. BM25 + dense). NeoRAG provides two
+//! heterogenous retrievers (e.g. BM25 + dense). RedHop provides two
 //! strategies:
 //!
 //! - **Reciprocal Rank Fusion (RRF)** — rank-based, scale-free, robust to
@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use neorag_core::{Chunk, ChunkId, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown};
+use redhop_core::{Chunk, ChunkId, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown};
 
 /// Which fusion strategy to apply.
 #[derive(Debug, Clone, Copy)]
@@ -164,7 +164,7 @@ fn merge_breakdown(dst: &mut ScoreBreakdown, src: &ScoreBreakdown, src_score: Sc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, TokenCount};
+    use redhop_core::{Chunk, TokenCount};
 
     fn r(id: &str, method: RetrievalMethod, score: f32) -> RetrievalResult {
         RetrievalResult::new(

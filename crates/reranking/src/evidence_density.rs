@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use neorag_core::{Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score};
+use redhop_core::{Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Reranker that rewards per-token evidence density.
@@ -95,7 +95,7 @@ impl Reranker for EvidenceDensityReranker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, ScoreBreakdown, TokenCount};
+    use redhop_core::{Chunk, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {

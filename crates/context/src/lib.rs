@@ -1,11 +1,11 @@
-//! # neorag-context
+//! # redhop-context
 //!
 //! Finite-attention-aware context construction. Given a query and the
 //! chunks a retriever returned, build the *prompt context* a downstream
 //! LLM actually sees — under a token budget, optimizing for
 //! answer-bearing evidence density rather than raw top-k stuffing.
 //!
-//! The empirical motivation, from NeoRAG's own experiments:
+//! The empirical motivation, from RedHop's own experiments:
 //!
 //! - Answer-bearing density matters strongly; distractors hurt strongly.
 //! - More retrieval is often redundant.
@@ -22,8 +22,8 @@
 //! primitives the diagnostics tier uses.
 //!
 //! ```no_run
-//! use neorag_context::{build_context, ContextConfig};
-//! # use neorag_core::{Query, RetrievalResult};
+//! use redhop_context::{build_context, ContextConfig};
+//! # use redhop_core::{Query, RetrievalResult};
 //! # fn demo(query: &Query, chunks: &[RetrievalResult]) {
 //! // Default strategy is reasoning-preserving and safe.
 //! let ctx = build_context(
@@ -64,7 +64,7 @@
 
 use std::collections::HashSet;
 
-use neorag_core::{Chunk, Embedding, Query, RetrievalResult};
+use redhop_core::{Chunk, Embedding, Query, RetrievalResult};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -320,7 +320,7 @@ pub struct BuiltContext {
 
 impl BuiltContext {
     /// True iff the assembled context contains a chunk with the given id.
-    pub fn contains(&self, id: &neorag_core::ChunkId) -> bool {
+    pub fn contains(&self, id: &redhop_core::ChunkId) -> bool {
         self.chunks.iter().any(|c| &c.id == id)
     }
 
@@ -722,7 +722,7 @@ fn cosine(a: &Embedding, b: &Embedding) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{ChunkId, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop_core::{ChunkId, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn rr(id: &str, text: &str, emb: Option<Vec<f32>>) -> RetrievalResult {
         let mut c = Chunk::new(

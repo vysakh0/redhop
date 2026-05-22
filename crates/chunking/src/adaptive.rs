@@ -20,12 +20,12 @@
 //! - Fake "AI magic" boundary detection.
 //! - Hard-coded model-specific assumptions.
 //!
-//! [`EmbeddingProvider`]: neorag_core::EmbeddingProvider
+//! [`EmbeddingProvider`]: redhop_core::EmbeddingProvider
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use neorag_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenizerBackend};
+use redhop_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenizerBackend};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Adaptive sentence chunker with lexical-cohesion gating.
@@ -222,8 +222,8 @@ impl Chunker for AdaptiveChunker {
 
 fn flush_chunk(
     source: &str,
-    metadata: &neorag_core::ChunkMetadata,
-    sentences: &[neorag_core::Sentence],
+    metadata: &redhop_core::ChunkMetadata,
+    sentences: &[redhop_core::Sentence],
     buf_idx: &[usize],
     buf_tokens: usize,
     idx: &mut usize,
@@ -237,7 +237,7 @@ fn flush_chunk(
         .collect::<Vec<_>>()
         .join(" ");
     let id = ChunkId::new(format!("{}::adapt::{}", source, idx));
-    let mut chunk = Chunk::new(id, text, source, neorag_core::TokenCount(buf_tokens))
+    let mut chunk = Chunk::new(id, text, source, redhop_core::TokenCount(buf_tokens))
         .with_metadata(metadata.clone());
     chunk.metadata.insert(
         "sentence_range".to_string(),

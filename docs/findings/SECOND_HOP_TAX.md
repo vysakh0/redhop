@@ -4,7 +4,7 @@
 > **Status:** Confirmed — n=1327, bootstrap 95% CIs.
 > **Setup:** HotpotQA multi-hop with a query-relevance gap; hermetic (no LLM, no embeddings); lexical grounding label.
 > **Headline:** a relevance filter keeps 96.8% of second hops at threshold 0.05 but only 43.9% at 0.30; `ReasoningPreserving` recovers up to +23 pts.
-> **Reproduce:** `cargo run -p neorag-examples --example second_hop_retention --release`
+> **Reproduce:** `cargo run -p redhop-examples --example second_hop_retention --release`
 > **Justifies API:** `build_context(strategy = ReasoningPreserving)`.
 > **Caveats:** lexical grounding/linkage; retention is reachability, not answer quality. See §Honest limits.
 
@@ -22,7 +22,7 @@ This experiment measures the tax head-on, with no LLM and no embeddings,
 so it runs deterministically at large n.
 
 ```bash
-cargo run -p neorag-examples --example second_hop_retention --release
+cargo run -p redhop-examples --example second_hop_retention --release
 ```
 
 ## Method (hermetic, n = 1327)
@@ -140,7 +140,7 @@ optimization.*
   proof of one. The end-to-end answer-quality question still needs the
   Python lab's LLM (see [DISTRACTOR_ROBUSTNESS.md](DISTRACTOR_ROBUSTNESS.md)),
   and that experiment's sign-flip caution still stands — this result
-  tells us *what reaches the model*, which is the lever NeoRAG controls.
+  tells us *what reaches the model*, which is the lever RedHop controls.
 - **Controlled off-document junk.** The injected distractors are clearly
   off-topic (near-zero overlap); natural same-topic distractors are
   harder and would lower junk_suppression for all strategies alike.

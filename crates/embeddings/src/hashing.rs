@@ -13,7 +13,7 @@
 //! it exists to be beaten, measurably.
 
 use async_trait::async_trait;
-use neorag_core::{Embedding, EmbeddingProvider, Result};
+use redhop_core::{Embedding, EmbeddingProvider, Result};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pooling::l2_normalize;

@@ -1,6 +1,6 @@
-//! `neorag` — a thin evaluation & observability CLI for NeoRAG.
+//! `redhop` — a thin evaluation & observability CLI for RedHop.
 //!
-//! NeoRAG is a reasoning-preserving context optimization library; this CLI is
+//! RedHop is a reasoning-preserving context optimization library; this CLI is
 //! a thin, Unix-like shell over its public API (`build_context`,
 //! `analyze_context`, `context_economics`). It exists for evaluation,
 //! observability, benchmarking, reproducibility, and context inspection — not
@@ -16,9 +16,9 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "neorag",
+    name = "redhop",
     about = "Reasoning-preserving context optimization — eval & observability CLI",
-    long_about = "Thin CLI over the NeoRAG context API. Compare strategies, inspect \
+    long_about = "Thin CLI over the RedHop context API. Compare strategies, inspect \
                   context economics, run reproducible benchmarks, and render reports."
 )]
 struct Cli {
@@ -39,11 +39,25 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
+    deprecation_notice();
     match Cli::parse().command {
         Command::Compare(a) => compare::run(a),
         Command::AnalyzeContext(a) => analyze::run(a),
         Command::Benchmark(a) => benchmark::run(a),
         Command::Report(a) => report::run(a),
+    }
+}
+
+/// If invoked via the legacy `neorag` name (e.g. a symlink), warn on stderr.
+fn deprecation_notice() {
+    if let Some(arg0) = std::env::args().next() {
+        let bin = std::path::Path::new(&arg0)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if bin.contains("neorag") {
+            eprintln!("warning: `neorag` is deprecated; the binary is now `redhop`.");
+        }
     }
 }
 

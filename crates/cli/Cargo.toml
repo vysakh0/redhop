@@ -1,18 +1,21 @@
 [package]
-name = "neorag-cli"
+name = "redhop-cli"
 version = { workspace = true }
 edition = { workspace = true }
 rust-version = { workspace = true }
 license = { workspace = true }
-description = "Thin evaluation/observability CLI for NeoRAG context optimization"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Thin evaluation/observability CLI for RedHop context optimization"
 
 [[bin]]
-name = "neorag"
+name = "redhop"
 path = "src/main.rs"
 
 [dependencies]
-neorag-core    = { workspace = true }
-neorag-context = { workspace = true }
+redhop-core    = { workspace = true }
+redhop-context = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 anyhow         = { workspace = true }

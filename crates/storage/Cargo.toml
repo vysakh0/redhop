@@ -1,16 +1,16 @@
 [package]
-name = "neorag-storage"
+name = "redhop-storage"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Storage backends and ANN abstractions for NeoRAG"
+description = "Storage backends and ANN abstractions for RedHop"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core = { workspace = true }
+redhop-core = { workspace = true }
 parking_lot = "0.12"
 tracing     = { workspace = true }

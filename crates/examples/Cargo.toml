@@ -1,11 +1,11 @@
 [package]
-name = "neorag-examples"
+name = "redhop-examples"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "End-to-end examples for NeoRAG"
+description = "End-to-end examples for RedHop"
 publish = false
 
 [lib]
@@ -14,22 +14,22 @@ path = "src/lib.rs"
 [features]
 default = []
 # Enables ONNX-backed examples (real embedding bakeoff + cross-encoder).
-# Pulls the onnx feature through neorag-embeddings + neorag-reranking.
-onnx = ["neorag-embeddings/onnx", "neorag-reranking/onnx"]
+# Pulls the onnx feature through redhop-embeddings + redhop-reranking.
+onnx = ["redhop-embeddings/onnx", "redhop-reranking/onnx"]
 
 [dependencies]
-neorag-core        = { workspace = true }
-neorag-chunking    = { workspace = true }
-neorag-retrieval   = { workspace = true }
-neorag-reranking   = { workspace = true }
-neorag-diagnostics = { workspace = true }
-neorag-storage     = { workspace = true }
-neorag-embeddings    = { workspace = true }
-neorag-pipeline      = { workspace = true }
-neorag-orchestration = { workspace = true }
-neorag-calibration   = { workspace = true }
-neorag-observability = { workspace = true }
-neorag-context       = { workspace = true }
+redhop-core        = { workspace = true }
+redhop-chunking    = { workspace = true }
+redhop-retrieval   = { workspace = true }
+redhop-reranking   = { workspace = true }
+redhop-diagnostics = { workspace = true }
+redhop-storage     = { workspace = true }
+redhop-embeddings    = { workspace = true }
+redhop-pipeline      = { workspace = true }
+redhop-orchestration = { workspace = true }
+redhop-calibration   = { workspace = true }
+redhop-observability = { workspace = true }
+redhop-context       = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }

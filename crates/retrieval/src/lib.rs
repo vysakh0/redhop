@@ -1,6 +1,6 @@
-//! # neorag-retrieval
+//! # redhop-retrieval
 //!
-//! Retrieval engines built on top of [`neorag_core::Retriever`].
+//! Retrieval engines built on top of [`redhop_core::Retriever`].
 //!
 //! Three concrete retrievers are provided:
 //!
@@ -12,7 +12,7 @@
 //!
 //! Score-level fusion utilities are in [`fusion`].
 //!
-//! [`VectorIndex`]: neorag_core::VectorIndex
+//! [`VectorIndex`]: redhop_core::VectorIndex
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

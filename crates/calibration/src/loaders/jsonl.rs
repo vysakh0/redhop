@@ -25,7 +25,7 @@
 
 use std::collections::BTreeMap;
 
-use neorag_core::{ChunkId, Document, Error, Result, RetrievalRegime};
+use redhop_core::{ChunkId, Document, Error, Result, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};

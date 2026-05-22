@@ -1,6 +1,6 @@
-//! # neorag-core
+//! # redhop-core
 //!
-//! Foundational types, traits, and error definitions for the NeoRAG retrieval
+//! Foundational types, traits, and error definitions for the RedHop retrieval
 //! infrastructure.
 //!
 //! This crate intentionally contains **no implementation logic** beyond what
@@ -11,7 +11,7 @@
 //! Architectural intent:
 //!
 //! - The library is *retrieval infrastructure*, not an LLM framework.
-//! - Embeddings are pluggable; NeoRAG ships abstractions, not models.
+//! - Embeddings are pluggable; RedHop ships abstractions, not models.
 //! - Diagnostics are first-class, not an afterthought.
 //! - Everything is composed through `trait` boundaries so callers can swap any
 //!   subsystem without touching the rest of the stack.

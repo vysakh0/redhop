@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use neorag_core::RetrievalState;
+use redhop_core::RetrievalState;
 use serde::{Deserialize, Serialize};
 
 /// A complete trace of one query's path through the adaptive controller.
@@ -158,7 +158,7 @@ impl RetrievalTrace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{
+    use redhop_core::{
         Budget, Chunk, ConfidenceProfile, DiagnosticsReport, Query, RegimeDistribution,
         RerankerLevel, RetrievalAction, RetrievalRegime, Score, StopReason,
         TakenAction, TokenCount,
@@ -179,11 +179,11 @@ mod tests {
         let chunk = Chunk::new("c0", "evidence text", "doc", TokenCount(2));
         let mut state = RetrievalState::new(
             Query::new("what is the answer?"),
-            vec![neorag_core::RetrievalResult::new(
+            vec![redhop_core::RetrievalResult::new(
                 chunk,
                 Score {
                     value: 9.0,
-                    method: neorag_core::RetrievalMethod::Lexical,
+                    method: redhop_core::RetrievalMethod::Lexical,
                 },
             )],
             DiagnosticsReport {

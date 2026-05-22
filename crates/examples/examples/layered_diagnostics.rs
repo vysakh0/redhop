@@ -14,16 +14,16 @@
 //!   correctly mark it as sparse.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example layered_diagnostics
+//!     cargo run -p redhop-examples --example layered_diagnostics
 
 use std::sync::Arc;
 
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, Retriever, TokenizerBackend,
 };
-use neorag_diagnostics::{DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine};
-use neorag_retrieval::Bm25Retriever;
+use redhop_diagnostics::{DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine};
+use redhop_retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 
@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
     ];
 
     let chunks = embed_chunks(
-        neorag_core::Chunker::chunk_batch(&chunker, &docs)?,
+        redhop_core::Chunker::chunk_batch(&chunker, &docs)?,
     );
 
     let mut bm25 = Bm25Retriever::new()?;
@@ -170,9 +170,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn attach_embeddings(
-    mut results: Vec<neorag_core::RetrievalResult>,
+    mut results: Vec<redhop_core::RetrievalResult>,
     indexed: &[Chunk],
-) -> Vec<neorag_core::RetrievalResult> {
+) -> Vec<redhop_core::RetrievalResult> {
     for r in &mut results {
         if let Some(c) = indexed.iter().find(|c| c.id == r.chunk.id) {
             r.chunk.embedding = c.embedding.clone();

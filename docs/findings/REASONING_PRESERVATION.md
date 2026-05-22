@@ -4,7 +4,7 @@
 > **Status:** Confirmed — n=300, paired bootstrap 95% CIs; effect causally localized to gold reachability.
 > **Setup:** 300 gap-qualified multi-hop HotpotQA queries; `claude haiku` generator; gold-keyword recall.
 > **Headline:** reasoning − filtered = +0.035 (CI [+0.003, +0.067]); +0.173 on the rescued subset, ~0 (CI spans 0) on the identical-gold control. Surprise: the aggressive *filter* hurt (0.829→0.705), the distractors didn't.
-> **Reproduce:** `cargo run -p neorag-examples --example emit_reasoning_qa --release` then `python ../neorag/scripts/score_reasoning_qa.py --n 300` (output in [reports/reasoning_preserving_n300/](../../reports/reasoning_preserving_n300/)).
+> **Reproduce:** `cargo run -p redhop-examples --example emit_reasoning_qa --release` then `python ../neorag/scripts/score_reasoning_qa.py --n 300` (output in [reports/reasoning_preserving_n300/](../../reports/reasoning_preserving_n300/)).
 > **Justifies API:** `build_context(strategy = ReasoningPreserving)`.
 > **Caveats:** one generator (haiku), lexical kw-recall proxy, rescued subset small (n=25). See §caveats.
 
@@ -19,7 +19,7 @@ mechanism, causal motivation, and measured reachability mitigation that
 earns a downstream-QA evaluation.
 
 ```bash
-cargo run -p neorag-examples --example emit_reasoning_qa --release   # Rust: build contexts
+cargo run -p redhop-examples --example emit_reasoning_qa --release   # Rust: build contexts
 python ../neorag/scripts/score_reasoning_qa.py --n 300 --model haiku # lab: LLM + score + CIs
 ```
 
@@ -145,7 +145,7 @@ predicted.
   genuinely harmful distractors): use **`ReasoningPreserving`**, not plain
   `DistractorFiltered` — it recovers a CI-significant slice of the
   filter's self-inflicted damage, most where it rescues a taxed hop.
-- This reframes the product claim honestly: NeoRAG's value here is not
+- This reframes the product claim honestly: RedHop's value here is not
   "filter to boost quality" but **"make the filtering you do
   reasoning-safe"** — and, more broadly, *measure when filtering helps at
   all* rather than assuming it does.

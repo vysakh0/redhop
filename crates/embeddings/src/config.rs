@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// - **`max_seq_len`** — inputs longer than the model context must be
 ///   truncated or the session errors.
 ///
-/// [ep]: neorag_core::EmbeddingProvider
+/// [ep]: redhop_core::EmbeddingProvider
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedderConfig {
     /// Output embedding dimensionality (384 for *-small, 768 for *-base,

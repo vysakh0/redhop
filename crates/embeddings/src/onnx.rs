@@ -12,7 +12,7 @@
 //! ```no_run
 //! # #[cfg(feature = "onnx")]
 //! # {
-//! use neorag_embeddings::{OnnxEmbedder, EmbedderConfig};
+//! use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
 //! // BGE-small: CLS pooling, normalize, 384-dim.
 //! let embedder = OnnxEmbedder::load(
 //!     "bge-small-en-v1.5/model.onnx",
@@ -37,7 +37,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use neorag_core::{Embedding, EmbeddingProvider, Error, Result};
+use redhop_core::{Embedding, EmbeddingProvider, Error, Result};
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use tokenizers::Tokenizer;

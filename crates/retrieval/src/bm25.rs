@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_core::{
+use redhop_core::{
     Chunk, ChunkId, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown, TokenCount,
 };
@@ -59,7 +59,7 @@ struct Inner {
 
 impl Bm25Retriever {
     /// Construct a new in-memory BM25 retriever.
-    pub fn new() -> neorag_core::Result<Self> {
+    pub fn new() -> redhop_core::Result<Self> {
         let schema = Schema_::build();
         let index = Index::create_in_ram(schema.schema.clone());
         let writer: IndexWriter = index
@@ -81,11 +81,11 @@ impl Bm25Retriever {
 
 #[async_trait]
 impl Retriever for Bm25Retriever {
-    async fn index(&mut self, chunks: &[Chunk]) -> neorag_core::Result<()> {
+    async fn index(&mut self, chunks: &[Chunk]) -> redhop_core::Result<()> {
         let inner = self.inner.clone();
         let chunks = chunks.to_vec();
         // Tantivy's indexing is CPU-bound; do it on a blocking worker.
-        tokio::task::spawn_blocking(move || -> neorag_core::Result<()> {
+        tokio::task::spawn_blocking(move || -> redhop_core::Result<()> {
             let mut g = inner.write();
             let s = &g.schema;
             for c in &chunks {
@@ -116,12 +116,12 @@ impl Retriever for Bm25Retriever {
         &self,
         query: &Query,
         top_k: usize,
-    ) -> neorag_core::Result<Vec<RetrievalResult>> {
+    ) -> redhop_core::Result<Vec<RetrievalResult>> {
         let inner = self.inner.clone();
         let text = query.text.clone();
         let top_k = top_k.max(1);
         let results: Vec<RetrievalResult> =
-            tokio::task::spawn_blocking(move || -> neorag_core::Result<Vec<RetrievalResult>> {
+            tokio::task::spawn_blocking(move || -> redhop_core::Result<Vec<RetrievalResult>> {
                 let g = inner.read();
                 let searcher = g.reader.searcher();
                 let qp = QueryParser::for_index(&g.index, vec![g.schema.text_field]);
@@ -200,7 +200,7 @@ fn field_u64(d: &TantivyDocument, f: Field) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::Document;
+    use redhop_core::Document;
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()

@@ -6,7 +6,7 @@ reduced escalation a *genuine* substrate effect, or did *threshold drift*
 merely suppress it? Recalibrate for BGE and find out.
 
 ```bash
-cargo run -p neorag-examples --example bge_recalibration --features onnx --release
+cargo run -p redhop-examples --example bge_recalibration --features onnx --release
 ```
 
 ## Result — a precise structural finding, not a clean win/loss

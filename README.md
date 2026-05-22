@@ -1,15 +1,18 @@
-# NeoRAG
+# RedHop
 
-**Adaptive evidence retrieval infrastructure for LLM applications.**
+**Reasoning-preserving context optimization and retrieval observability for RAG systems.**
 
-NeoRAG is *not* an LLM framework, agent framework, vector database, or
-graph-retrieval engine. It is a Rust library that chunks, retrieves, reranks,
-and **diagnoses** retrieval — leaving the choice of LLM, embedding model, and
-vector store entirely to the caller.
+RedHop is *not* an agent framework, a workflow engine, a vector database, a
+graph runtime, or a universal retrieval orchestrator. It is a Rust library that
+sits **between retrieval and generation**: you hand it the chunks your retriever
+returned and a token budget, and it assembles the prompt context — pruning
+distractors, **preserving reasoning-critical bridge evidence**, and reporting
+exactly what it did. The choice of LLM, embedding model, and vector store stays
+entirely with the caller.
 
 ## Philosophy
 
-NeoRAG does not optimize generic retrieval scores. It optimizes
+RedHop does not optimize generic retrieval scores. It optimizes
 **reasoning-preserving context allocation under finite context budgets.**
 
 Many conventional relevance optimizations — aggressive distractor
@@ -22,7 +25,7 @@ relevant to the bridge entity, not the query). The recurring measurement:
 > missing reasoning links. Premature removal of low-relevance reasoning
 > evidence hurts more than the distractors do.
 
-So NeoRAG's APIs and defaults are grounded in **measured reasoning-failure
+So RedHop's APIs and defaults are grounded in **measured reasoning-failure
 geometry**, not generic retrieval assumptions. It still optimizes
 answer-bearing evidence density, lexical grounding, and distractor
 suppression — but never at the cost of dropping reasoning-critical bridge
@@ -34,7 +37,7 @@ output.
 Every default and API exists because a specific failure was measured. That
 record is permanent and reproducible in the **[evidence layer](docs/findings/README.md)**:
 
-- **[docs/findings/](docs/findings/README.md)** — hypothesis → result → mechanism for each finding, with a falsified-hypotheses registry (we *keep* the priors that failed; several of NeoRAG's strongest defaults came from one).
+- **[docs/findings/](docs/findings/README.md)** — hypothesis → result → mechanism for each finding, with a falsified-hypotheses registry (we *keep* the priors that failed; several of RedHop's strongest defaults came from one).
 - **[benchmarks/](benchmarks/README.md)** — the reproducible harnesses that regenerate every claim.
 - **[reports/](reports/README.md)** — captured raw outputs (e.g. the n=300 causal reasoning-preservation run).
 
@@ -45,26 +48,26 @@ real mechanism — is itself part of the design.
 
 | Crate                | Purpose                                                                 |
 | -------------------- | ----------------------------------------------------------------------- |
-| `neorag-core`        | Traits and data types (`Chunker`, `Retriever`, `Reranker`, …) and error types. |
-| `neorag-chunking`    | `FixedChunker`, `SentenceChunker`, `AdaptiveChunker` + a default tokenizer. |
-| `neorag-retrieval`   | `Bm25Retriever` (Tantivy), `DenseRetriever`, `HybridRetriever` + RRF / weighted-sum fusion. |
-| `neorag-reranking`   | `ScoreFusionReranker`, `LexicalGroundingReranker`, `EvidenceDensityReranker`. |
-| `neorag-diagnostics` | Six retrieval-quality metrics + `DefaultDiagnosticsEngine` with configurable warnings. |
-| `neorag-storage`     | `ChunkStore` and `FlatVectorIndex` (exact-cosine baseline; ANN is pluggable via `VectorIndex`). |
-| `neorag-context`     | Finite-attention context assembly: `build_context` + strategies (incl. `ReasoningPreserving`, which resists the [second-hop tax](docs/findings/SECOND_HOP_TAX.md) and beats aggressive filtering [end-to-end](docs/findings/REASONING_PRESERVATION.md)) + economics readout. |
-| `neorag-cli`         | Thin eval/observability CLI (`neorag compare` / `analyze-context` / `benchmark` / `report`). See [crates/cli](crates/cli/README.md). |
-| `neorag-pipeline`    | `NeoRAG` facade + builder composing the above.                          |
-| `neorag-benchmarks`  | Criterion benchmarks.                                                   |
-| `neorag-examples`    | Runnable examples.                                                      |
+| `redhop-core`        | Traits and data types (`Chunker`, `Retriever`, `Reranker`, …) and error types. |
+| `redhop-chunking`    | `FixedChunker`, `SentenceChunker`, `AdaptiveChunker` + a default tokenizer. |
+| `redhop-retrieval`   | `Bm25Retriever` (Tantivy), `DenseRetriever`, `HybridRetriever` + RRF / weighted-sum fusion. |
+| `redhop-reranking`   | `ScoreFusionReranker`, `LexicalGroundingReranker`, `EvidenceDensityReranker`. |
+| `redhop-diagnostics` | Six retrieval-quality metrics + `DefaultDiagnosticsEngine` with configurable warnings. |
+| `redhop-storage`     | `ChunkStore` and `FlatVectorIndex` (exact-cosine baseline; ANN is pluggable via `VectorIndex`). |
+| `redhop-context`     | Finite-attention context assembly: `build_context` + strategies (incl. `ReasoningPreserving`, which resists the [second-hop tax](docs/findings/SECOND_HOP_TAX.md) and beats aggressive filtering [end-to-end](docs/findings/REASONING_PRESERVATION.md)) + economics readout. |
+| `redhop-cli`         | Thin eval/observability CLI (`redhop compare` / `analyze-context` / `benchmark` / `report`). See [crates/cli](crates/cli/README.md). |
+| `redhop-pipeline`    | `RedHop` facade + builder composing the above.                          |
+| `redhop-benchmarks`  | Criterion benchmarks.                                                   |
+| `redhop-examples`    | Runnable examples.                                                      |
 
 ## Quick start
 
 ```rust
 use std::sync::Arc;
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{Document, TokenizerBackend};
-use neorag_pipeline::NeoRAG;
-use neorag_retrieval::Bm25Retriever;
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{Document, TokenizerBackend};
+use redhop_pipeline::RedHop;
+use redhop_retrieval::Bm25Retriever;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -72,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     let chunker = Arc::new(SentenceChunker::new(tok, 80, 120, 0)?);
     let retriever = Arc::new(Bm25Retriever::new()?);
 
-    let mut rag = NeoRAG::builder()
+    let mut rag = RedHop::builder()
         .with_chunker(chunker)
         .with_retriever(retriever)
         .build()?;
@@ -89,13 +92,13 @@ async fn main() -> anyhow::Result<()> {
 Two runnable examples ship with the repo:
 
 ```
-cargo run -p neorag-examples --example quickstart
-cargo run -p neorag-examples --example diagnostics
+cargo run -p redhop-examples --example quickstart
+cargo run -p redhop-examples --example diagnostics
 ```
 
 ## Diagnostics
 
-NeoRAG ships six metrics, each in `[0, 1]`:
+RedHop ships six metrics, each in `[0, 1]`:
 
 - **`lexical_grounding`** — average query/chunk term overlap. Predicts reader hallucination.
 - **`chunk_purity`** — intra-chunk sentence cohesion. Diagnoses bad chunker boundaries.
@@ -112,13 +115,13 @@ configurable thresholds (`low_lexical_grounding`, `high_distractor_ratio`,
 ## Extensibility
 
 Every subsystem is a trait. To plug in a custom embedding model, ANN index,
-or remote retriever, implement the relevant trait from `neorag-core` and pass
+or remote retriever, implement the relevant trait from `redhop-core` and pass
 your type to the builder. Nothing in the library is closed.
 
 ## Roadmap
 
 - **Phase 6 — language bindings.** `pyo3 + maturin` and `napi-rs` wrappers
-  over the same trait surface. The data types in `neorag-core` are all
+  over the same trait surface. The data types in `redhop-core` are all
   `Serialize + Deserialize` precisely to keep the FFI boundary cheap.
 - **Phase 7 — adaptive chunking enrichment.** Topic-purity scoring,
   embedding-based cohesion gating, entropy/surprisal boundary detection.

@@ -1,7 +1,7 @@
-# NeoRAG Python ↔ Rust Interoperability
+# RedHop Python ↔ Rust Interoperability
 
 **Audience:** anyone touching the Python research repo at
-`../neorag` or the Rust calibration engine at this repository.
+`../redhop` or the Rust calibration engine at this repository.
 
 ## TL;DR
 
@@ -59,14 +59,14 @@ A complete inventory lives in this commit's discussion. The headline:
 
 Code we may want to consult but not run directly:
 
-- `neorag/analysis/answerability.py` — the learned scorer. Its
+- `redhop/analysis/answerability.py` — the learned scorer. Its
   coefficients are already serialised into every Class-A trace as
   `scorer_info.coefs`; Rust can either consume them as-is for offline
   reproduction or use them as a regression target.
-- `neorag/analysis/evidence.py` — defines the evidence-quality column
+- `redhop/analysis/evidence.py` — defines the evidence-quality column
   set (`answer_span_density`, `distractor_ratio`, `purity`, …) that
   the canonical schema standardises.
-- `neorag/metrics.py` — answer-similarity / keyword-recall reference
+- `redhop/metrics.py` — answer-similarity / keyword-recall reference
   implementations. Useful as ground truth for future Rust
   reimplementations.
 
@@ -127,7 +127,7 @@ escape:      extra (arbitrary JSON, never consumed by core calibration)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Python research lab  (../neorag)                                   │
+│  Python research lab  (../redhop)                                   │
 │                                                                     │
 │   experiments/results/*.json                                        │
 │         │                                                           │
@@ -143,7 +143,7 @@ escape:      extra (arbitrary JSON, never consumed by core calibration)
 ┌───────────────────────────────────────┼─────────────────────────────┐
 │  Rust calibration engine  (.)         │                             │
 │                                       │                             │
-│   neorag-calibration::loaders::neotrace                             │
+│   redhop-calibration::loaders::neotrace                             │
 │         │                                                           │
 │         ├──► load_corpus  → LabeledCorpus                           │
 │         │                  │                                        │
@@ -187,7 +187,7 @@ Python does evaluation and judgment.
 ### Python side
 
 ```bash
-cd ../neorag
+cd ../redhop
 python scripts/export_to_neotrace.py
 # → ../neorag/exports/neotrace/*.neotrace.jsonl
 ```
@@ -198,13 +198,13 @@ re-run after every new experiment.
 ### Rust side
 
 ```rust
-use neorag_calibration::loaders::neotrace::{parse_path, load_corpus, load_outcomes};
+use redhop_calibration::loaders::neotrace::{parse_path, load_corpus, load_outcomes};
 
 let records = parse_path("../neorag/exports/neotrace/hotpot_full.neotrace.jsonl")?;
 
 // Option 1: re-run retrieval through the adaptive controller.
 let corpus = load_corpus::<fn(_) -> _>(&records, None)?;
-// → feed into ThresholdSweep::run, NeoRAG::adaptive_run, etc.
+// → feed into ThresholdSweep::run, RedHop::adaptive_run, etc.
 
 // Option 2: consume Python's measurements directly.
 let outcomes = load_outcomes(&records, "cosine", Some("cross_encoder"))?;
@@ -252,7 +252,7 @@ this commit ships:
    our smoke test today, the answer on HotpotQA full is ≈37%
    improved, ≈63% no change.
 
-These are all `cargo run -p neorag-examples --example
+These are all `cargo run -p redhop-examples --example
 neotrace_import` variations away from being concrete numbers.
 
 ## Boundaries we hold

@@ -27,15 +27,15 @@
 //!   B. budget scarcity (tight budget, threshold fixed) — isolates the
 //!      RANKING/BUDGET tax across all four strategies.
 //!
-//! Run:  cargo run -p neorag-examples --example second_hop_retention --release
+//! Run:  cargo run -p redhop-examples --example second_hop_retention --release
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_context::{build_context, ContextConfig, ContextStrategy};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
@@ -48,7 +48,7 @@ const N_DISTRACTORS: usize = 8;
 const GENEROUS_BUDGET: usize = 100_000;
 const TIGHT_BUDGET: usize = 220; // ~half of (2 gold + 8 distractors) @ ~45 tok
 
-// Same term/grounding primitive neorag-context uses internally, so our
+// Same term/grounding primitive redhop-context uses internally, so our
 // second-hop labels match the strategies' notion of query relevance.
 fn terms(text: &str) -> HashSet<String> {
     text.unicode_words()

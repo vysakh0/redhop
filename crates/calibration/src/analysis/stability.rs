@@ -170,7 +170,7 @@ mod tests {
     use super::*;
     use crate::runner::ActionTraceEntry;
     use crate::sweep::SweepRow;
-    use neorag_core::{RerankerLevel, RetrievalRegime};
+    use redhop_core::{RerankerLevel, RetrievalRegime};
 
     fn mk_row(min_p: f32) -> SweepRow {
         SweepRow {

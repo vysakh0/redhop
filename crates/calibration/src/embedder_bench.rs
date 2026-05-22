@@ -16,8 +16,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use neorag_core::{ChunkId, Embedding, EmbeddingProvider, Query, Result, VectorIndex};
-use neorag_storage::FlatVectorIndex;
+use redhop_core::{ChunkId, Embedding, EmbeddingProvider, Query, Result, VectorIndex};
+use redhop_storage::FlatVectorIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::LabeledCorpus;
@@ -188,7 +188,7 @@ mod tests {
     use super::*;
     use crate::dataset::LabeledQuery;
     use crate::embedder::HashingEmbedder;
-    use neorag_core::{Document, RetrievalRegime};
+    use redhop_core::{Document, RetrievalRegime};
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_current_thread().build().unwrap()

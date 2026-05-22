@@ -7,7 +7,7 @@ Full interpretation: [docs/findings/REASONING_PRESERVATION.md](../../docs/findin
 - **n:** 300 gap-qualified multi-hop HotpotQA queries × 4 conditions = 1200 `claude haiku` calls
 - **Generator:** `claude haiku` (via the `claude` CLI)
 - **Filter threshold:** 0.20 (aggressive — where the second-hop tax bites)
-- **Contexts built by:** `cargo run -p neorag-examples --example emit_reasoning_qa --release`
+- **Contexts built by:** `cargo run -p redhop-examples --example emit_reasoning_qa --release`
 - **Scored by:** `python ../neorag/scripts/score_reasoning_qa.py --n 300 --model haiku`
 
 ## Files

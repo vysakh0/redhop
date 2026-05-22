@@ -1,7 +1,7 @@
 //! Phase 7 end-to-end falsification.
 //!
 //! Constructs four queries that exercise four regimes, runs the full
-//! `NeoRAG::retrieve_with_state` path (chunker → BM25 → layered
+//! `RedHop::retrieve_with_state` path (chunker → BM25 → layered
 //! diagnostics → confidence profile → rule-based classifier) and asserts:
 //!
 //! 1. Each regime's argmax matches expectations.
@@ -16,17 +16,17 @@
 
 use std::sync::Arc;
 
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, DiagnosticsEngine, Document, Embedding, Query, RegimeClassifier,
     RetrievalMethod, RetrievalRegime, RetrievalResult, Score, ScoreBreakdown, TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_pipeline::NeoRAG;
-use neorag_retrieval::Bm25Retriever;
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_pipeline::RedHop;
+use redhop_retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 
@@ -96,9 +96,9 @@ fn embed_chunks(chunks: Vec<Chunk>) -> Vec<Chunk> {
 /// BM25 strips chunk embeddings on retrieval. Reattach them from the
 /// indexed-side cache so the semantic tier has something to work with.
 fn attach_embeddings(
-    state: neorag_core::RetrievalState,
+    state: redhop_core::RetrievalState,
     indexed: &[Chunk],
-) -> neorag_core::RetrievalState {
+) -> redhop_core::RetrievalState {
     let mut s = state;
     for r in &mut s.candidates {
         if let Some(c) = indexed.iter().find(|c| c.id == r.chunk.id) {
@@ -110,20 +110,20 @@ fn attach_embeddings(
 
 async fn build_rag(
     docs: Vec<Document>,
-) -> (NeoRAG, Vec<Chunk>) {
+) -> (RedHop, Vec<Chunk>) {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok.clone(), 40, 60, 0).unwrap();
-    let chunks = embed_chunks(neorag_core::Chunker::chunk_batch(&chunker, &docs).unwrap());
+    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs).unwrap());
 
     let mut bm25 = Bm25Retriever::new().unwrap();
-    neorag_core::Retriever::index(&mut bm25, &chunks).await.unwrap();
+    redhop_core::Retriever::index(&mut bm25, &chunks).await.unwrap();
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
     let diagnostics = Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic));
     let classifier: Arc<dyn RegimeClassifier> = Arc::new(RuleBasedClassifier::new());
 
-    let rag = NeoRAG::builder()
+    let rag = RedHop::builder()
         .with_chunker(Arc::new(chunker))
         .with_retriever(Arc::new(bm25))
         .with_diagnostics(diagnostics)
@@ -153,7 +153,7 @@ async fn retrieve_with_state_returns_full_state() {
         Arc::new(SemanticDiagnosticsEngine::new()),
     );
     let diag = dx.diagnose(&state.query, &state.candidates).unwrap();
-    let conf = neorag_orchestration::compute_confidence(&state.candidates);
+    let conf = redhop_orchestration::compute_confidence(&state.candidates);
     let cls = RuleBasedClassifier::new();
     let dist = cls.classify(&diag, &conf);
 
@@ -165,9 +165,9 @@ async fn retrieve_with_state_returns_full_state() {
 
 async fn classify_query(
     query_text: &str,
-    rag: &NeoRAG,
+    rag: &RedHop,
     indexed: &[Chunk],
-) -> neorag_core::RegimeDistribution {
+) -> redhop_core::RegimeDistribution {
     let query = Query::new(query_text).with_embedding(embed(query_text));
     let state = rag.retrieve_with_state(query, 4).await.unwrap();
     let state = attach_embeddings(state, indexed);
@@ -178,7 +178,7 @@ async fn classify_query(
         Arc::new(SemanticDiagnosticsEngine::new()),
     );
     let diag = dx.diagnose(&state.query, &state.candidates).unwrap();
-    let conf = neorag_orchestration::compute_confidence(&state.candidates);
+    let conf = redhop_orchestration::compute_confidence(&state.candidates);
     RuleBasedClassifier::new().classify(&diag, &conf)
 }
 
@@ -282,7 +282,7 @@ fn _unused() -> (Score, ScoreBreakdown, ChunkId, RetrievalResult, RetrievalMetho
         ScoreBreakdown::default(),
         ChunkId::new("x"),
         RetrievalResult::new(
-            Chunk::new("a", "a", "doc", neorag_core::TokenCount(1)),
+            Chunk::new("a", "a", "doc", redhop_core::TokenCount(1)),
             Score {
                 value: 0.0,
                 method: RetrievalMethod::Lexical,

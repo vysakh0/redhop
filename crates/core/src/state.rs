@@ -1,10 +1,10 @@
 //! Retrieval state and regime classification types.
 //!
-//! These types are the **read-only backbone** of NeoRAG's adaptive layer.
+//! These types are the **read-only backbone** of RedHop's adaptive layer.
 //! They appear in core because every later subsystem — the policy engine,
 //! the orchestrator, future learned policies — works against them as a
 //! pluggable surface. By keeping the types here we ensure that
-//! `neorag-orchestration`, `neorag-diagnostics`, and any user-built
+//! `redhop-orchestration`, `redhop-diagnostics`, and any user-built
 //! classifier all agree on shape.
 //!
 //! ## Design constraints
@@ -124,7 +124,7 @@ pub struct ConfidenceProfile {
 
 /// A record of which rule contributed how much to a regime classification.
 ///
-/// Every classifier-driven regime decision in NeoRAG accumulates one
+/// Every classifier-driven regime decision in RedHop accumulates one
 /// `RuleFire` per rule that contributed. Together with
 /// [`ClassificationTrace::features`] and
 /// [`ClassificationTrace::thresholds`] they fully reconstruct *why* the
@@ -212,7 +212,7 @@ impl RegimeDistribution {
 /// ladder, never down, and the [`RuleBasedClassifier`][rbc] uses the
 /// current level to decide whether escalation is still possible.
 ///
-/// [rbc]: ../../neorag_orchestration/struct.RuleBasedClassifier.html
+/// [rbc]: ../../redhop_orchestration/struct.RuleBasedClassifier.html
 #[derive(
     Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
 )]

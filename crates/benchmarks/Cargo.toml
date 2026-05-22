@@ -1,23 +1,23 @@
 [package]
-name = "neorag-benchmarks"
+name = "redhop-benchmarks"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Criterion benchmarks for NeoRAG"
+description = "Criterion benchmarks for RedHop"
 publish = false
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core        = { workspace = true }
-neorag-chunking    = { workspace = true }
-neorag-retrieval   = { workspace = true }
-neorag-pipeline    = { workspace = true }
-neorag-diagnostics = { workspace = true }
-neorag-embeddings  = { workspace = true }
+redhop-core        = { workspace = true }
+redhop-chunking    = { workspace = true }
+redhop-retrieval   = { workspace = true }
+redhop-pipeline    = { workspace = true }
+redhop-diagnostics = { workspace = true }
+redhop-embeddings  = { workspace = true }
 tokio              = { workspace = true }
 
 [dev-dependencies]

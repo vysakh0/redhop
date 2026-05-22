@@ -1,17 +1,17 @@
 [package]
-name = "neorag-chunking"
+name = "redhop-chunking"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Chunking strategies for NeoRAG"
+description = "Chunking strategies for RedHop"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core          = { workspace = true }
+redhop-core          = { workspace = true }
 unicode-segmentation = { workspace = true }
 regex                = { workspace = true }
 serde                = { workspace = true }

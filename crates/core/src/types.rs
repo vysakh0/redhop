@@ -1,4 +1,4 @@
-//! Core data types shared across NeoRAG crates.
+//! Core data types shared across RedHop crates.
 //!
 //! These types are deliberately small, owned, and `Serialize` / `Deserialize`
 //! so they can cross language boundaries (Python / Node) without surprises.
@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Stable identifier for a chunk within a NeoRAG corpus.
+/// Stable identifier for a chunk within a RedHop corpus.
 ///
 /// Chunks are identified by an opaque string rather than an integer so that
 /// hashes, UUIDs, or source-derived keys can all be used. Identifiers are
@@ -61,7 +61,7 @@ impl TokenCount {
 
 /// A single dense vector embedding.
 ///
-/// NeoRAG is not an embedding library; callers supply vectors produced by
+/// RedHop is not an embedding library; callers supply vectors produced by
 /// whatever model they prefer. The dimensionality is checked at retrieval
 /// time by the dense index (see [`Error::DimensionMismatch`]).
 ///
@@ -96,7 +96,7 @@ impl From<Vec<f32>> for Embedding {
 ///
 /// Kept as JSON values (rather than a typed bag) so that downstream
 /// applications can store anything from page numbers to author IDs without
-/// requiring NeoRAG to know about it.
+/// requiring RedHop to know about it.
 pub type ChunkMetadata = HashMap<String, serde_json::Value>;
 
 /// A piece of indexable evidence.
@@ -349,9 +349,9 @@ pub struct DiagnosticsWarning {
 /// [`LayeredDiagnosticsEngine`][lay] that composes both.
 ///
 /// [`DiagnosticsEngine`]: crate::traits::DiagnosticsEngine
-/// [def]: ../../neorag_diagnostics/struct.DefaultDiagnosticsEngine.html
-/// [sem]: ../../neorag_diagnostics/struct.SemanticDiagnosticsEngine.html
-/// [lay]: ../../neorag_diagnostics/struct.LayeredDiagnosticsEngine.html
+/// [def]: ../../redhop_diagnostics/struct.DefaultDiagnosticsEngine.html
+/// [sem]: ../../redhop_diagnostics/struct.SemanticDiagnosticsEngine.html
+/// [lay]: ../../redhop_diagnostics/struct.LayeredDiagnosticsEngine.html
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiagnosticsReport {
     /// Fraction of retrieved tokens that are query-relevant (proxy for
@@ -422,7 +422,7 @@ impl DiagnosticsReport {
     /// semantic tiers into a single report without one engine overwriting
     /// fields populated by the other.
     ///
-    /// [lay]: ../../neorag_diagnostics/struct.LayeredDiagnosticsEngine.html
+    /// [lay]: ../../redhop_diagnostics/struct.LayeredDiagnosticsEngine.html
     pub fn merge(mut self, other: DiagnosticsReport) -> Self {
         macro_rules! prefer_existing {
             ($field:ident) => {

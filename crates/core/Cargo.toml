@@ -1,11 +1,14 @@
 [package]
-name = "neorag-core"
+name = "redhop-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "NeoRAG core: traits, types, and error definitions"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "RedHop core: traits, types, and error definitions"
 
 [lib]
 path = "src/lib.rs"

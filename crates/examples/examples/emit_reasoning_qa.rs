@@ -24,17 +24,17 @@
 //! second hop, so the lab can correlate retention with answer correctness
 //! directly — separating reachability from reasoning success.
 //!
-//! NeoRAG (Rust) builds contexts; the Python lab calls the LLM and scores.
+//! RedHop (Rust) builds contexts; the Python lab calls the LLM and scores.
 //!
-//! Run:  cargo run -p neorag-examples --example emit_reasoning_qa --release
+//! Run:  cargo run -p redhop-examples --example emit_reasoning_qa --release
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use neorag_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_context::{build_context, ContextConfig, ContextStrategy};
-use neorag_core::{
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
@@ -234,6 +234,6 @@ fn main() -> anyhow::Result<()> {
         sh_kept_filtered, n, sh_kept_filtered as f32 / n.max(1) as f32 * 100.0,
         sh_kept_reasoning, n, sh_kept_reasoning as f32 / n.max(1) as f32 * 100.0,
     );
-    println!("next: python ../neorag/scripts/score_reasoning_qa.py --n 300");
+    println!("next: python ../redhop/scripts/score_reasoning_qa.py --n 300");
     Ok(())
 }

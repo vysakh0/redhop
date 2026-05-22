@@ -1,7 +1,7 @@
 # Benchmark: context strategies
 
 Hermetic (no LLM/embeddings), HotpotQA dev. Generated from
-`cargo run -p neorag-examples --example bench_context_strategies --release`.
+`cargo run -p redhop-examples --example bench_context_strategies --release`.
 
 - multihop_gap: n=1327  ·  shallow_nogap: n=173
 - distractors/query=8, distractor_min_grounding=0.2, link_min_jaccard=0.12

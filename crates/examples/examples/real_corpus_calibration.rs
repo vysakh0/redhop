@@ -15,13 +15,13 @@
 //! analysis is identical; only the numbers change.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example real_corpus_calibration
+//!     cargo run -p redhop-examples --example real_corpus_calibration
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_calibration::{
+use redhop_calibration::{
     analysis::{
         confusion_matrix, regret_summary, bootstrap_stability,
     },
@@ -31,18 +31,18 @@ use neorag_calibration::{
     reliability::reliability_diagram,
     ThresholdSweep,
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query,
     RerankerLevel, Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever,
     TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 /// Mini HotpotQA-shaped fixture. Real users replace this with a path to
 /// the actual HotpotQA dev set. The shape matches the canonical

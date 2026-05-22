@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use neorag_core::{Query, RetrievalResult};
+use redhop_core::{Query, RetrievalResult};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Lowercased Unicode-word terms of a string, with single-character noise
@@ -217,7 +217,7 @@ pub fn retrieval_confidence(grounding: Option<f32>, concentration: Option<f32>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neorag_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {

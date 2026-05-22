@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use neorag_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenCount, TokenizerBackend};
+use redhop_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenCount, TokenizerBackend};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Splits documents into fixed token-windowed chunks.

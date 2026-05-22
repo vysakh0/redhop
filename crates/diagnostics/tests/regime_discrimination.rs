@@ -24,11 +24,11 @@
 //! test is hermetic. The same embedder is used for both the query and the
 //! chunks, so the cosines are computed against a consistent vector space.
 
-use neorag_core::{
+use redhop_core::{
     Chunk, ChunkId, DiagnosticsEngine, Embedding, Query, RetrievalMethod, RetrievalResult, Score,
     ScoreBreakdown, TokenCount,
 };
-use neorag_diagnostics::{DefaultDiagnosticsEngine, SemanticDiagnosticsEngine};
+use redhop_diagnostics::{DefaultDiagnosticsEngine, SemanticDiagnosticsEngine};
 
 const DIM: usize = 128;
 

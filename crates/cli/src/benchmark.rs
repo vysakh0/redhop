@@ -1,4 +1,4 @@
-//! `neorag benchmark` — reproducible strategy sweep over a labeled dataset.
+//! `redhop benchmark` — reproducible strategy sweep over a labeled dataset.
 //!
 //! Input (`--input labeled.json`):
 //! ```json
@@ -20,8 +20,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use neorag_context::{build_context, ContextConfig};
-use neorag_core::Query;
+use redhop_context::{build_context, ContextConfig};
+use redhop_core::Query;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -43,7 +43,7 @@ pub struct Args {
     #[arg(long, default_value_t = 0.12)]
     link_min_jaccard: f32,
     /// Directory for results.json + SUMMARY.md.
-    #[arg(long, default_value = "neorag_bench_out")]
+    #[arg(long, default_value = "redhop_bench_out")]
     out_dir: String,
 }
 

@@ -14,7 +14,7 @@ for f in ['onnx/model.onnx','tokenizer.json']:
     hf_hub_download('BAAI/bge-small-en-v1.5', f,
         local_dir='/Users/vysakh/projects/neorag/models/bge-small-en-v1.5')"
 
-cargo run -p neorag-examples --example real_embedding_bakeoff \
+cargo run -p redhop-examples --example real_embedding_bakeoff \
     --features onnx --release
 ```
 
@@ -37,7 +37,7 @@ cargo run -p neorag-examples --example real_embedding_bakeoff \
   bytes/vector). Embedder choice doesn't change the index footprint at
   the same dimensionality.
 
-## Why this matters for NeoRAG's thesis
+## Why this matters for RedHop's thesis
 
 The bakeoff sharpens the economics, it doesn't undermine them:
 

@@ -2,8 +2,8 @@
 
 **Status:** stable for v1. Field additions are non-breaking; field removals require a version bump.
 
-NeoTrace is the canonical interchange format between the Python NeoRAG
-experimentation lab and the Rust NeoRAG calibration engine. One file
+NeoTrace is the canonical interchange format between the Python RedHop
+experimentation lab and the Rust RedHop calibration engine. One file
 holds many records; one record describes the outcome of a single
 *(query, retrieval method, generator model)* tuple. The schema is
 designed to be a *superset* of what every existing Python experiment
@@ -145,8 +145,8 @@ set so Rust enums stay stable.
 
 ## Regime semantics
 
-Regime is canonical to NeoRAG; the loader maps it to
-[`neorag_core::RetrievalRegime`]. Codes:
+Regime is canonical to RedHop; the loader maps it to
+[`redhop_core::RetrievalRegime`]. Codes:
 
 | code               | meaning                                                  |
 | ------------------ | -------------------------------------------------------- |

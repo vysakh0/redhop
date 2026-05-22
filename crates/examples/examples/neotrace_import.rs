@@ -1,14 +1,14 @@
 // Quick end-to-end check: load hotpot_full.neotrace.jsonl and run the
 // existing analysis utilities against it.
-use neorag_calibration::analysis::{confusion_matrix, regret_summary};
-use neorag_calibration::loaders::neotrace::{load_corpus, load_outcomes, parse_path, NeoTraceRecord};
+use redhop_calibration::analysis::{confusion_matrix, regret_summary};
+use redhop_calibration::loaders::neotrace::{load_corpus, load_outcomes, parse_path, NeoTraceRecord};
 
 fn main() {
     let path = "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";
     let records = parse_path(path).expect("parse");
     println!("loaded {} records", records.len());
 
-    let corpus = load_corpus::<fn(&NeoTraceRecord) -> Option<neorag_core::RetrievalRegime>>(&records, None).unwrap();
+    let corpus = load_corpus::<fn(&NeoTraceRecord) -> Option<redhop_core::RetrievalRegime>>(&records, None).unwrap();
     println!("corpus: {} unique queries, {} docs", corpus.queries.len(), corpus.docs.len());
 
     // Pair cosine (static) vs cross_encoder (adaptive).

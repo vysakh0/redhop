@@ -14,7 +14,7 @@ conservative policy — only the retriever changes.
 60 HotpotQA items, top-k=4, lexical escalation reranker.
 
 ```bash
-cargo run -p neorag-examples --example bge_dense_retrieval --features onnx --release
+cargo run -p redhop-examples --example bge_dense_retrieval --features onnx --release
 ```
 
 ## Result — the opposite of the convenient hypothesis

@@ -16,7 +16,7 @@ Reproduce:
 /Users/vysakh/projects/neorag/.venv/bin/python \
     /Users/vysakh/projects/neorag/scripts/extract_pdf_text.py
 # Rust runs the correlation study
-cargo run -p neorag-examples --example real_pdf_validation --release
+cargo run -p redhop-examples --example real_pdf_validation --release
 ```
 
 ## Finding 1 — clean academic PDFs are *fragmented*, and we catch it
@@ -36,7 +36,7 @@ extraction (`pdftotext` / PyMuPDF) breaks prose at column boundaries,
 page boundaries, and hard line wraps, so a large fraction of chunks
 genuinely start or end mid-sentence. The diagnostic's advice —
 "consider sentence-aware chunking with overlap" — is exactly right for
-real PDF pipelines. **NeoRAG flags a real, pervasive ingestion problem
+real PDF pipelines. **RedHop flags a real, pervasive ingestion problem
 that most RAG stacks ship with silently.**
 
 ## Finding 2 — OCR and duplication diagnostics strongly predict recall loss
@@ -65,7 +65,7 @@ gold-chunk retrieval recall at each level:
 As the corpus degrades, the diagnostic rises monotonically and recall
 collapses monotonically. The diagnostics **predict** degradation — they
 are an early-warning signal, not just a description of text. For OCR
-and duplication, NeoRAG's ingestion tier earns its place.
+and duplication, RedHop's ingestion tier earns its place.
 
 ## Finding 3 — boilerplate is detected but harms differently (the honest nuance)
 
@@ -115,7 +115,7 @@ The study earns its keep by separating the failure modes empirically.
 - PDF parsing stayed in Python (`extract_pdf_text.py`); Rust consumed
   extracted text. The `INTEROPERABILITY.md` boundary is intact.
 - No new architecture: the corruption injector + study harness are
-  *evaluation tooling* in `neorag-calibration`, not new runtime
+  *evaluation tooling* in `redhop-calibration`, not new runtime
   abstractions. The controller, policy, and diagnostics are unchanged.
 - Hermetic: hashing embedder + flat index, no model files needed. The
   correlation result is reproducible from the committed code + the
@@ -146,5 +146,5 @@ The study earns its keep by separating the failure modes empirically.
   diagnostic distribution on genuinely corrupted inputs.
 - Wire ingestion warnings into a pre-index gate: high ocr_noise →
   re-OCR; high fragmentation → switch chunker; high duplicate_ratio →
-  dedup pass. (Gate logic is a deployment policy, not a NeoRAG
+  dedup pass. (Gate logic is a deployment policy, not a RedHop
   abstraction.)

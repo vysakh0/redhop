@@ -2,13 +2,13 @@
 //! a relevant passage above an irrelevant one. Run-path verification
 //! for OnnxCrossEncoder (analogous to the BGE bakeoff for the embedder).
 //!
-//! Run: cargo run -p neorag-examples --example ce_smoke --features onnx --release
+//! Run: cargo run -p redhop-examples --example ce_smoke --features onnx --release
 
-use neorag_core::{
+use redhop_core::{
     Chunk, ChunkId, Query, RetrievalMethod, RetrievalResult, Reranker, Score, ScoreBreakdown,
     TokenCount,
 };
-use neorag_reranking::OnnxCrossEncoder;
+use redhop_reranking::OnnxCrossEncoder;
 
 const CE_MODEL: &str =
     "/Users/vysakh/projects/neorag/models/ms-marco-MiniLM-L-6-v2/onnx/model.onnx";

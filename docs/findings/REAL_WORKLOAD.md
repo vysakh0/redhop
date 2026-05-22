@@ -8,9 +8,9 @@ All numbers below are **measured**, not predicted. The harness that
 produced them ships in this commit; rerun with:
 
 ```bash
-cargo run -p neorag-examples --example method_pair_regret       --release
-cargo run -p neorag-examples --example adaptive_eval_hotpotqa   --release
-cargo run -p neorag-examples --example adaptive_eval_musique    --release
+cargo run -p redhop-examples --example method_pair_regret       --release
+cargo run -p redhop-examples --example adaptive_eval_hotpotqa   --release
+cargo run -p redhop-examples --example adaptive_eval_musique    --release
 ```
 
 ## Headline

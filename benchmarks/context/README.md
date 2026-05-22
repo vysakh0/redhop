@@ -4,7 +4,7 @@ Head-to-head benchmark of the four context strategies, driven through the
 public `build_context` API + `ContextReport` telemetry.
 
 ```bash
-cargo run -p neorag-examples --example bench_context_strategies --release
+cargo run -p redhop-examples --example bench_context_strategies --release
 ```
 
 Hermetic — no LLM, no embeddings — so it is deterministic and CI-friendly.

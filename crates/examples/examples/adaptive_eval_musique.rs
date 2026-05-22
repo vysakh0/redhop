@@ -9,14 +9,14 @@
 //! the methodological caveats.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example adaptive_eval_musique --release
+//!     cargo run -p redhop-examples --example adaptive_eval_musique --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use neorag_calibration::{
+use redhop_calibration::{
     analysis::{bootstrap_stability, confusion_matrix, regret_summary},
     embedder::HashingEmbedder,
     loaders::musique::{default_regime, MuSiQueDataset},
@@ -24,17 +24,17 @@ use neorag_calibration::{
     report::{render_pareto, render_reliability, render_sweep_table},
     ThresholdSweep,
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
     Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 const MUSIQUE_PATH: &str = "/Users/vysakh/projects/neorag/data/musique/dev.jsonl";
 const SAMPLE_SIZE: usize = 200;

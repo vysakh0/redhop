@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use neorag_core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
+use redhop_core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
 
 /// A diagnostics engine that runs a list of underlying engines and merges
 /// their reports.
@@ -62,7 +62,7 @@ impl DiagnosticsEngine for LayeredDiagnosticsEngine {
 mod tests {
     use super::*;
     use crate::{DefaultDiagnosticsEngine, SemanticDiagnosticsEngine};
-    use neorag_core::{
+    use redhop_core::{
         Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
     };
 

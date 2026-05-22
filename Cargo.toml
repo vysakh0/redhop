@@ -23,24 +23,27 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 license = "Apache-2.0"
-authors = ["NeoRAG Contributors"]
-repository = "https://github.com/neorag/neorag"
-description = "Adaptive evidence retrieval infrastructure"
+authors = ["RedHop Contributors"]
+repository = "https://github.com/redhop/redhop"
+homepage = "https://github.com/redhop/redhop"
+description = "Reasoning-preserving context optimization and retrieval observability for RAG systems"
+keywords = ["rag", "retrieval", "llm", "context", "nlp"]
+categories = ["text-processing", "science"]
 
 [workspace.dependencies]
 # Workspace-internal crates
-neorag-core        = { path = "crates/core" }
-neorag-chunking    = { path = "crates/chunking" }
-neorag-retrieval   = { path = "crates/retrieval" }
-neorag-reranking   = { path = "crates/reranking" }
-neorag-calibration    = { path = "crates/calibration" }
-neorag-context        = { path = "crates/context" }
-neorag-diagnostics    = { path = "crates/diagnostics" }
-neorag-embeddings     = { path = "crates/embeddings" }
-neorag-observability  = { path = "crates/observability" }
-neorag-orchestration  = { path = "crates/orchestration" }
-neorag-storage        = { path = "crates/storage" }
-neorag-pipeline       = { path = "crates/pipeline" }
+redhop-core        = { path = "crates/core" }
+redhop-chunking    = { path = "crates/chunking" }
+redhop-retrieval   = { path = "crates/retrieval" }
+redhop-reranking   = { path = "crates/reranking" }
+redhop-calibration    = { path = "crates/calibration" }
+redhop-context        = { path = "crates/context" }
+redhop-diagnostics    = { path = "crates/diagnostics" }
+redhop-embeddings     = { path = "crates/embeddings" }
+redhop-observability  = { path = "crates/observability" }
+redhop-orchestration  = { path = "crates/orchestration" }
+redhop-storage        = { path = "crates/storage" }
+redhop-pipeline       = { path = "crates/pipeline" }
 
 # Core runtime / concurrency
 tokio    = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }

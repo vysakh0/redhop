@@ -1,6 +1,6 @@
 # Context Economics — Evidence Allocation Under Finite Attention
 
-NeoRAG's center of gravity shifting from "retrieve better" to "allocate
+RedHop's center of gravity shifting from "retrieve better" to "allocate
 the finite attention budget to the densest evidence." Two experiments:
 (B) does the premise hold on real LLM outputs, and (A) what do the
 pruning strategies actually buy.
@@ -12,7 +12,7 @@ real LLM answers via NeoTrace (each row carries retrieval
 `distractor_ratio` + `answer_span_density` AND measured answer quality).
 
 ```bash
-cargo run -p neorag-examples --example distractor_answer_correlation --release
+cargo run -p redhop-examples --example distractor_answer_correlation --release
 ```
 
 Pearson correlations with `ans_kw_recall` (gold-keyword recall in the
@@ -43,7 +43,7 @@ the token budget across four strategies. Gold retention = fraction of
 gold chunks present in the assembled context.
 
 ```bash
-cargo run -p neorag-examples --example context_economics --features onnx --release
+cargo run -p redhop-examples --example context_economics --features onnx --release
 ```
 
 At budget = 250 tokens (where pruning bites):
@@ -130,7 +130,7 @@ discarding the orthogonal-but-needed evidence.
 
 ## What this means for the product
 
-NeoRAG's defensible context-economics offering, grounded in these
+RedHop's defensible context-economics offering, grounded in these
 measurements:
 
 - **Distractor filtering**: a safe, free quality win (distractors → 0,
@@ -163,6 +163,6 @@ measurements:
   pruned vs raw context to an LLM and measure answer kw-recall. Experiment
   B says distractors hurt; this would confirm that *filtering* them
   helps the generated answer, closing the loop. (Needs an LLM — the
-  Python lab's job; NeoRAG produces the contexts.)
+  Python lab's job; RedHop produces the contexts.)
 - **Budget-vs-quality frontier per workload**: the budget where pruning
   starts to bite is workload-specific; the harness can map it.

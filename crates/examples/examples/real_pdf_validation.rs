@@ -4,7 +4,7 @@
 //! Transformer paper, word2vec, an LLM survey — 219 pages) and answers
 //! the question Phase C was built for:
 //!
-//!   Do NeoRAG's ingestion diagnostics actually CORRELATE with real
+//!   Do RedHop's ingestion diagnostics actually CORRELATE with real
 //!   retrieval degradation?
 //!
 //! Method:
@@ -19,22 +19,22 @@
 //!   5. Report the Pearson correlation between the diagnostic and
 //!      (1 − recall).
 //!
-//! PDF *parsing* stayed in Python (../neorag/scripts/extract_pdf_text.py);
+//! PDF *parsing* stayed in Python (../redhop/scripts/extract_pdf_text.py);
 //! this binary consumes the extracted text. The boundary holds.
 //!
 //! Run with (after running the Python extractor):
-//!     cargo run -p neorag-examples --example real_pdf_validation --release
+//!     cargo run -p redhop-examples --example real_pdf_validation --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use neorag_calibration::{
+use redhop_calibration::{
     corruption::{run_degradation_study, CorruptionKind, DegradationStudy},
     embedder::HashingEmbedder,
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{Chunk, ChunkId, Chunker, Document, TokenizerBackend};
-use neorag_diagnostics::{diagnose_ingestion, IngestionThresholds};
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{Chunk, ChunkId, Chunker, Document, TokenizerBackend};
+use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
 
 const PDF_TEXT_JSONL: &str = "/Users/vysakh/projects/neorag/exports/real_pdf_text.jsonl";
 const MAX_PAGES: usize = 120;
@@ -42,7 +42,7 @@ const TOP_K: usize = 3;
 
 fn load_pages() -> Vec<(String, usize, String)> {
     let text = std::fs::read_to_string(PDF_TEXT_JSONL)
-        .expect("run ../neorag/scripts/extract_pdf_text.py first");
+        .expect("run ../redhop/scripts/extract_pdf_text.py first");
     let mut out = Vec::new();
     for line in text.lines() {
         let v: serde_json::Value = serde_json::from_str(line).unwrap();

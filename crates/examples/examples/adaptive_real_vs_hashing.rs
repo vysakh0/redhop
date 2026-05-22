@@ -22,33 +22,33 @@
 //! docs/findings/EMBEDDING_BAKEOFF.md for the one-time download).
 //!
 //! Run:
-//!   cargo run -p neorag-examples --example adaptive_real_vs_hashing \
+//!   cargo run -p redhop-examples --example adaptive_real_vs_hashing \
 //!       --features onnx --release
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_calibration::{
+use redhop_calibration::{
     analysis::{confusion_matrix, regret_summary},
     economics::{economics, CostModel},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
     reliability::reliability_diagram,
     sweep::{SweepReport, ThresholdSweep},
 };
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, EmbeddingProvider, Query,
     RegimeClassifier, Reranker, RerankerLevel, Result as CoreResult, RetrievalResult, Retriever,
     TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_embeddings::{EmbedderConfig, HashingProvider, OnnxEmbedder};
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_embeddings::{EmbedderConfig, HashingProvider, OnnxEmbedder};
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

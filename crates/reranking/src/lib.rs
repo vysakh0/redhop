@@ -1,4 +1,4 @@
-//! # neorag-reranking
+//! # redhop-reranking
 //!
 //! Rerankers that take a candidate list and reorder it using a secondary
 //! signal. Rerankers compose: a `HybridRetriever` can be followed by a

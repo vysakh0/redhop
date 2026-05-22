@@ -13,9 +13,9 @@
 //!   answer_span_density   vs answer quality   (expect POSITIVE)
 //!
 //! Run:
-//!   cargo run -p neorag-examples --example distractor_answer_correlation --release
+//!   cargo run -p redhop-examples --example distractor_answer_correlation --release
 
-use neorag_calibration::{corruption::pearson, loaders::neotrace::parse_path};
+use redhop_calibration::{corruption::pearson, loaders::neotrace::parse_path};
 
 const FILES: &[(&str, &str)] = &[
     ("HotpotQA (haiku)", "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl"),

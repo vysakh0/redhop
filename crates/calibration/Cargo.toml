@@ -1,23 +1,23 @@
 [package]
-name = "neorag-calibration"
+name = "redhop-calibration"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Calibration and evaluation harness for NeoRAG adaptive retrieval"
+description = "Calibration and evaluation harness for RedHop adaptive retrieval"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core          = { workspace = true }
-neorag-chunking      = { workspace = true }
-neorag-retrieval     = { workspace = true }
-neorag-reranking     = { workspace = true }
-neorag-diagnostics   = { workspace = true }
-neorag-orchestration = { workspace = true }
-neorag-storage       = { workspace = true }
+redhop-core          = { workspace = true }
+redhop-chunking      = { workspace = true }
+redhop-retrieval     = { workspace = true }
+redhop-reranking     = { workspace = true }
+redhop-diagnostics   = { workspace = true }
+redhop-orchestration = { workspace = true }
+redhop-storage       = { workspace = true }
 unicode-segmentation = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }

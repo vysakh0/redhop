@@ -1,12 +1,12 @@
-//! `neorag compare` — side-by-side strategy comparison + context economics.
+//! `redhop compare` — side-by-side strategy comparison + context economics.
 //! The strongest demo surface: shows reasoning-preserving optimization live.
 
 use std::collections::HashSet;
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use neorag_context::{build_context, ContextConfig};
-use neorag_core::Query;
+use redhop_context::{build_context, ContextConfig};
+use redhop_core::Query;
 use serde_json::json;
 
 use crate::io::{parse_strategy, RetrievalInput};

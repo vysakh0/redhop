@@ -1,18 +1,18 @@
 [package]
-name = "neorag-retrieval"
+name = "redhop-retrieval"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Retrieval engines for NeoRAG"
+description = "Retrieval engines for RedHop"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-neorag-core    = { workspace = true }
-neorag-storage = { workspace = true }
+redhop-core    = { workspace = true }
+redhop-storage = { workspace = true }
 tantivy        = { workspace = true }
 tokio          = { workspace = true }
 async-trait    = "0.1"

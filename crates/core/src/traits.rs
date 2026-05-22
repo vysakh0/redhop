@@ -1,10 +1,10 @@
 //! Core traits.
 //!
-//! Every pluggable subsystem in NeoRAG is defined here as a trait. Concrete
-//! implementations (in `neorag-chunking`, `neorag-retrieval`, …) implement
+//! Every pluggable subsystem in RedHop is defined here as a trait. Concrete
+//! implementations (in `redhop-chunking`, `redhop-retrieval`, …) implement
 //! these and the [`pipeline`] crate composes them.
 //!
-//! [`pipeline`]: ../../neorag_pipeline/index.html
+//! [`pipeline`]: ../../redhop_pipeline/index.html
 
 use crate::types::{
     Chunk, DiagnosticsReport, Document, Embedding, Query, RetrievalResult, Sentence, TokenCount,
@@ -56,7 +56,7 @@ pub trait TokenizerBackend: Send + Sync {
 /// Splits documents into retrievable chunks.
 ///
 /// Chunkers are the most consequential component for retrieval quality:
-/// chunk boundaries determine evidence density and topical purity. NeoRAG
+/// chunk boundaries determine evidence density and topical purity. RedHop
 /// expects multiple implementations (fixed, sentence, adaptive) and treats
 /// the choice as a first-class configuration knob.
 pub trait Chunker: Send + Sync {
@@ -81,7 +81,7 @@ pub trait Chunker: Send + Sync {
 
 /// Produces embeddings for chunks and queries.
 ///
-/// NeoRAG ships no model itself; this trait exists so callers can plug in
+/// RedHop ships no model itself; this trait exists so callers can plug in
 /// `fastembed-rs`, an ONNX model, a remote API, or anything else.
 ///
 /// Asynchronous because most realistic providers do network I/O.
@@ -125,7 +125,7 @@ pub trait VectorIndex: Send + Sync {
 
 /// Retrieves chunks for a query.
 ///
-/// Retrievers are the workhorse of the system. NeoRAG provides BM25,
+/// Retrievers are the workhorse of the system. RedHop provides BM25,
 /// dense-vector, hybrid, and adapter implementations; users can also attach
 /// their own.
 ///

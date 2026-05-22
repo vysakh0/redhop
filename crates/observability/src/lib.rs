@@ -1,4 +1,4 @@
-//! # neorag-observability
+//! # redhop-observability
 //!
 //! Per-query retrieval traces. This crate answers the operator's
 //! question: *"why did retrieval behave this way on this query?"*
@@ -11,10 +11,10 @@
 //!
 //! Aggregate evaluation reports (regime distributions across thousands
 //! of queries, useful-vs-wasted rerank economics, the HTML "moat"
-//! report) live in `neorag-calibration`, where the gold-labeled
+//! report) live in `redhop-calibration`, where the gold-labeled
 //! `QueryOutcome` data is. This crate is the *live, per-query* half;
 //! that crate is the *offline, aggregate* half. The split keeps this
-//! crate's dependency surface to `neorag-core` alone, so a production
+//! crate's dependency surface to `redhop-core` alone, so a production
 //! deployment can emit traces without pulling in the calibration
 //! tooling.
 //!

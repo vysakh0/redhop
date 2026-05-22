@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use neorag_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenizerBackend};
+use redhop_core::{Chunk, ChunkId, Chunker, Document, Error, Result, TokenizerBackend};
 
 /// Sentence-budgeted chunker.
 pub struct SentenceChunker {
@@ -95,7 +95,7 @@ impl Chunker for SentenceChunker {
                 id,
                 text,
                 &doc.source,
-                neorag_core::TokenCount(*buf_tokens),
+                redhop_core::TokenCount(*buf_tokens),
             )
             .with_metadata(doc.metadata.clone());
             chunk.metadata.insert(

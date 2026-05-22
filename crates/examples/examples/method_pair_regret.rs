@@ -15,16 +15,16 @@
 //! `bootstrap_stability`.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example method_pair_regret
+//!     cargo run -p redhop-examples --example method_pair_regret
 
 use std::collections::BTreeMap;
 
-use neorag_calibration::{
+use redhop_calibration::{
     analysis::regret_summary,
     loaders::neotrace::{parse_path, NeoTraceRecord},
     runner::{ActionTraceEntry, QueryOutcome},
 };
-use neorag_core::{RerankerLevel, RetrievalRegime};
+use redhop_core::{RerankerLevel, RetrievalRegime};
 
 const NEOTRACE_PATH: &str =
     "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";

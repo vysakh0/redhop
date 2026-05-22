@@ -12,24 +12,24 @@
 //!      "evidence insufficient" rather than fed hallucination fuel.
 //!
 //! Run with:
-//!     cargo run -p neorag-examples --example adaptive_loop
+//!     cargo run -p redhop-examples --example adaptive_loop
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use neorag_chunking::{SentenceChunker, WhitespaceTokenizer};
-use neorag_core::{
+use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop_core::{
     Chunk, ChunkId, DiagnosticsEngine, Document, Embedding, Query, RerankerLevel,
     Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
 };
-use neorag_diagnostics::{
+use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use neorag_orchestration::RuleBasedClassifier;
-use neorag_pipeline::NeoRAG;
-use neorag_reranking::LexicalGroundingReranker;
-use neorag_retrieval::Bm25Retriever;
+use redhop_orchestration::RuleBasedClassifier;
+use redhop_pipeline::RedHop;
+use redhop_reranking::LexicalGroundingReranker;
+use redhop_retrieval::Bm25Retriever;
 
 /// A retriever wrapper that re-attaches embeddings after the base
 /// retriever's call. BM25 indexes do not persist arbitrary binary blobs,
@@ -159,10 +159,10 @@ async fn main() -> anyhow::Result<()> {
             "PostgreSQL provides ACID transactions. Postgres supports SQL and stores rows on disk.",
         ),
     ];
-    let chunks = embed_chunks(neorag_core::Chunker::chunk_batch(&chunker, &docs)?);
+    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs)?);
 
     let mut bm25 = Bm25Retriever::new()?;
-    neorag_core::Retriever::index(&mut bm25, &chunks).await?;
+    redhop_core::Retriever::index(&mut bm25, &chunks).await?;
     let retriever: Arc<dyn Retriever> =
         Arc::new(EmbedAttachingRetriever::new(Arc::new(bm25), &chunks));
 
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
         lexical, semantic,
     ));
 
-    let rag = NeoRAG::builder()
+    let rag = RedHop::builder()
         .with_chunker(Arc::new(chunker))
         .with_retriever(retriever)
         .with_diagnostics(diagnostics)

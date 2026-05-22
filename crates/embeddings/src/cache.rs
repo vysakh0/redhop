@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use lru::LruCache;
-use neorag_core::{Embedding, EmbeddingProvider, Result};
+use redhop_core::{Embedding, EmbeddingProvider, Result};
 
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;

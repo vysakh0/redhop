@@ -24,12 +24,12 @@
 //!   processes; bootstrap stability analyses stay reproducible.
 //!
 //! The next step (real embedding model) plugs into the same
-//! [`neorag_core::EmbeddingProvider`] trait this embedder fulfills
+//! [`redhop_core::EmbeddingProvider`] trait this embedder fulfills
 //! morally if not literally — it's a function `&str → Embedding`, not
 //! a trait impl, because async overhead is wasted for a pure-CPU
 //! hashing operation.
 
-use neorag_core::Embedding;
+use redhop_core::Embedding;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// English stopwords that pollute lexical-overlap signal. Kept short
