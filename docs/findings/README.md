@@ -1,0 +1,77 @@
+# NeoRAG Evidence Layer
+
+This directory is NeoRAG's permanent record of *why the library behaves
+the way it does*. Every default, every strategy, and every API exists
+because a specific retrieval/reasoning failure was **measured** — not
+because of a generic retrieval assumption.
+
+The discipline that produced these findings is itself part of the design:
+measure aggressively, let hypotheses fail, and extract the real mechanism
+afterward. **Falsified hypotheses are preserved here, not deleted** — they
+are some of the most valuable knowledge in the repo, and several of
+NeoRAG's strongest defaults come directly from a hypothesis that failed.
+
+## How the evidence is organized
+
+```
+docs/findings/   the findings docs (this directory) — hypothesis → result → mechanism
+benchmarks/      reproducible measurement harnesses (the `cargo run` examples)
+reports/         captured raw outputs of specific runs (e.g. reasoning_preserving_n300/)
+```
+
+Each findings doc follows the same shape:
+
+- **Hypothesis** — what we believed going in
+- **Status** — Confirmed / Falsified / Partially falsified / Open
+- **Setup** — workload, models, sample size, reproduce command
+- **Metrics** — exact tables, CIs where we have them
+- **Failure cases** — where it breaks / what it cannot do
+- **Interpretation** — the mechanism, stated as such
+- **Caveats** — honest limits
+- **What changed afterward** — the API/default/next-experiment it drove
+
+`SECOND_HOP_TAX.md` and `REASONING_PRESERVATION.md` carry the header block
+in full as the template model.
+
+## Master table
+
+| Finding | Status | Headline | Reproduce |
+| ------- | ------ | -------- | --------- |
+| [SECOND_HOP_TAX](SECOND_HOP_TAX.md) | **Confirmed** (n=1327, CIs) | Every relevance-based selection taxes the multi-hop second hop; a 0.30 filter keeps only 44% of second hops | `cargo run -p neorag-examples --example second_hop_retention --release` |
+| [REASONING_PRESERVATION](REASONING_PRESERVATION.md) | **Confirmed** (n=300, CIs) | ReasoningPreserving beats aggressive filtering end-to-end (+0.035, CI excl. 0); gain causally localized to gold reachability (+0.173 rescued / ~0 control) | `python ../neorag/scripts/score_reasoning_qa.py --n 300` |
+| [RERANKING_LIMITS](RERANKING_LIMITS.md) | **Falsified hypothesis** | "A stronger reranker recovers dense's missed recall" — uniform cross-encoder made recall *worse* (−0.029); helps 12% / hurts 17% | `cargo run -p neorag-examples --example ce_escalation_economics --features onnx --release` |
+| [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md) | **Partially falsified** | "Distractor filtering is a free win" — distractors hurt (causal, +0.033), but filtering's net benefit is sign-unstable on multi-hop (the n=20→30 flip) | `cargo run -p neorag-examples --example emit_qa_contexts --release` |
+| [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md) | **Confirmed** | Distractors hurt & density helps on real LLM outputs (pooled −0.375 / +0.539); max-density pruning drops the second hop | `cargo run -p neorag-examples --example context_economics --features onnx --release` |
+| [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md) | **Falsified hypothesis** | "Stronger first-stage retrieval → fewer interventions" — dense BGE *increased* intervention rate (28%→38%) and halved usefulness; controller actions are retriever-coupled | `cargo run -p neorag-examples --example bge_dense_retrieval --features onnx --release` |
+| [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md) | **Confirmed** | A better embedder in the *sensing* path alone doesn't move economics; it must be in the *action* path. Calibration is substrate-specific | `cargo run -p neorag-examples --example bge_recalibration --features onnx --release` |
+
+Supporting evidence: [ADAPTIVE_REAL_SUBSTRATE](ADAPTIVE_REAL_SUBSTRATE.md),
+[EMBEDDING_BAKEOFF](EMBEDDING_BAKEOFF.md) (BGE +99% recall vs hashing),
+[REAL_WORKLOAD](REAL_WORKLOAD.md), [INGESTION_PDF](INGESTION_PDF.md).
+
+## Falsified-hypotheses registry
+
+Preserved deliberately. Each was a reasonable prior; the measurement
+overturned it, and the overturning is what produced the real design.
+
+| Hypothesis (what we believed) | Verdict | What the data showed | What it produced |
+| ----------------------------- | ------- | -------------------- | ---------------- |
+| A stronger reranker (cross-encoder) recovers multi-hop recall a bi-encoder missed | **Falsified** | Uniform CE made recall *worse* (−0.029); it *demotes* the low-query-relevance second hop most confidently | The reranking-limits law; selective (not uniform) escalation; reinforced the second-hop tax |
+| Aggressive distractor filtering is a free quality win | **Falsified (multi-hop)** | Net effect sign-flipped n=20→30; end-to-end the aggressive *filter* hurt more than the distractors (0.829→0.705) | `ReasoningPreserving`; "don't over-filter" default; the n=300 causal experiment |
+| Distractors strongly degrade strong-generator answers | **Falsified (this regime)** | On gap-qualified multi-hop, haiku was distractor-robust (polluted 0.829 ≈ gold 0.830) | Reframed the threat from "distractors" to "premature removal of reasoning evidence" |
+| Stronger first-stage retrieval reduces the controller's need to intervene | **Falsified** | Dense BGE *increased* intervention rate and *halved* usefulness — actions matched BM25's failure modes, not dense's | The retriever↔action coupling law; conservative controller's zero-harm guarantee held throughout |
+| A better embedder improves retrieval economics by sharpening diagnostics | **Partially falsified** | As a *sensing*-only upgrade it was a near-no-op; recall lift identical (0.062). It must drive the *action* path | The sensing-vs-action-path distinction; substrate-specific calibration |
+| ExpandTopK (more similar neighbors) can reach the missing evidence | **Falsified** | The missing chunk is *dissimilar* to the query (bridge-linked); more neighbors never reach it | Convergent first sighting of the second-hop tax |
+
+The convergence is the point: reranking failures, aggressive-filtering
+failures, max-density failures, ExpandTopK failures, and distractor
+robustness **all reduce to one geometry** — transformers tolerate
+irrelevant context, but are fragile to missing reasoning links. NeoRAG is
+built around that measured geometry.
+
+## APIs grounded in this evidence
+
+- `build_context(strategy = ReasoningPreserving)` → [SECOND_HOP_TAX](SECOND_HOP_TAX.md), [REASONING_PRESERVATION](REASONING_PRESERVATION.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
+- `build_context(strategy = DistractorFiltered)` (low threshold only) → [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
+- selective reranker escalation (not uniform) → [RERANKING_LIMITS](RERANKING_LIMITS.md)
+- conservative adaptive controller (zero-harm, retriever-coupled actions) → [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md), [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md)

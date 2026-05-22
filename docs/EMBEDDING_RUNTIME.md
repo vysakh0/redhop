@@ -150,7 +150,7 @@ Add the ONNX arm on a real box by extending the bench behind
    cache-probe cost, not the model-inference cost.
 4. **Selective escalation makes the cross-encoder affordable.** With the
    controller firing the ONNX cross-encoder on only ~44% of queries
-   (per `REAL_WORKLOAD_FINDINGS.md`), the cross-encoder's high per-call
+   (per `docs/findings/REAL_WORKLOAD.md`), the cross-encoder's high per-call
    latency is paid only where it earns recall — the economics in
    `docs/PRODUCTION_ROADMAP.md §10` become real latency numbers.
 

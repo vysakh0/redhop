@@ -37,6 +37,7 @@ tracing-subscriber = { workspace = true }
 async-trait        = "0.1"
 serde_json         = { workspace = true }
 parking_lot        = "0.12"
+unicode-segmentation = "1.11"
 
 [[example]]
 name = "quickstart"

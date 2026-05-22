@@ -133,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
                         token_budget: budget,
                         strategy: strat,
                         distractor_min_grounding: 0.10,
+                        link_min_jaccard: 0.12,
                         redundancy_max_cosine: 0.92,
                     },
                 );

@@ -1,0 +1,45 @@
+  ...625 new calls
+  ...650 new calls
+  ...675 new calls
+  ...700 new calls
+  ...725 new calls
+  ...750 new calls
+  ...775 new calls
+  ...800 new calls
+  ...825 new calls
+  ...850 new calls
+  ...875 new calls
+  ...900 new calls
+  ...925 new calls
+  ...950 new calls
+  ...975 new calls
+  ...1000 new calls
+  ...1025 new calls
+  ...1050 new calls
+  ...1075 new calls
+  ...1100 new calls
+  ...1125 new calls
+  ...1150 new calls
+  ...1175 new calls
+
+──── downstream QA by condition (n=300, haiku) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.830        16%
+  ctx_polluted          0.829        21%
+  ctx_filtered          0.705        29%
+  ctx_reasoning         0.740        25%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  distractors hurt   (gold_only − polluted):  +0.001  [-0.038, +0.039]
+  REASONING vs FILTER (reasoning − filtered):  +0.035  [+0.003, +0.067]
+      → ✓ ReasoningPreserving SIGNIFICANTLY beats aggressive filtering (CI excludes 0)
+
+──── mechanism: reachability → reasoning success ────
+  RESCUED subset (reasoning kept 2nd hop, filter dropped it): n=23
+     reasoning − filtered on rescued:  +0.145  [+0.014, +0.290]
+  CONTROL subset (both kept the 2nd hop):                     n=222
+     reasoning − filtered on control:  +0.037  [+0.005, +0.071]
+  (theory predicts the gain concentrates in the RESCUED subset and
+   the control subset is ~0 — that is what links the second hop causally
+   to the answer, separating reachability from reasoning success.)

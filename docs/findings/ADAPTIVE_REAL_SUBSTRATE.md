@@ -67,7 +67,7 @@ measurement of that drift.
 > Each substrate needs its own threshold calibration.
 
 This is exactly consistent with the calibration-discipline thesis from
-`REAL_WORKLOAD_FINDINGS.md` (thresholds are workload-specific) — now
+`REAL_WORKLOAD.md` (thresholds are workload-specific) — now
 extended: they are *substrate*-specific too.
 
 ## What survived, what's confirmed, what's actionable

@@ -155,6 +155,7 @@ fn main() -> anyhow::Result<()> {
                 token_budget: 100_000,
                 strategy: ContextStrategy::DistractorFiltered,
                 distractor_min_grounding: DISTRACTOR_GROUNDING,
+                link_min_jaccard: 0.12,
                 redundancy_max_cosine: 1.0,
             },
         );

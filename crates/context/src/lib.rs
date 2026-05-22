@@ -41,16 +41,26 @@
 //! # }
 //! ```
 //!
-//! ## A known limitation, by construction
+//! ## The second-hop tax (and its mitigation)
 //!
 //! Strategies that prune by *query relevance* (distractor filtering,
-//! max-density) will drop chunks with low query relevance. On multi-hop
+//! max-density) drop chunks with low query relevance. On multi-hop
 //! questions the second-hop evidence is *relevant to the bridge entity,
 //! not the query* — exactly the chunk these strategies discard. This is
-//! the same failure geometry that limits query-passage reranking (see
-//! the project's cross-encoder findings). Context pruning is an
-//! evidence-*concentration* tool, not a multi-hop-recovery tool, and the
-//! economics readout is honest about what was dropped.
+//! the **second-hop tax**: the same failure geometry that limits
+//! ExpandTopK, query-passage reranking, and max-density pruning. It is
+//! measured directly (n=1327, CI-backed) in the project's second-hop-tax
+//! findings: a relevance filter at threshold 0.30 keeps only 44% of
+//! second hops.
+//!
+//! [`ContextStrategy::ReasoningPreserving`] is the mitigation: keep
+//! query-relevant seeds, *rescue* low-relevance chunks lexically linked
+//! to a seed (the bridge entity), drop only unlinked junk. Measured to
+//! recover much of the tax (+23 pts of second-hop retention at threshold
+//! 0.30) at a modest junk-suppression cost. This is the project's
+//! frontier in one function: *reasoning-aware evidence allocation, not
+//! relevance optimization.* The economics readout stays honest about
+//! what was dropped regardless of strategy.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -77,6 +87,31 @@ pub enum ContextStrategy {
     /// (most query-relevant tokens per chunk token), maximizing
     /// evidence-per-token within the budget.
     MaxDensity,
+    /// Reasoning-aware selection that resists the **second-hop tax**.
+    ///
+    /// The other strategies prune by *query relevance*, which discards
+    /// the multi-hop second hop (low-relevance-to-query but
+    /// reasoning-critical). This strategy keeps two classes of chunk:
+    ///
+    /// 1. **seeds** — chunks above the query-grounding bar
+    ///    (`distractor_min_grounding`), the clearly-relevant evidence;
+    /// 2. **rescued second hops** — chunks *below* the bar that are
+    ///    lexically *linked* to a seed (term-set Jaccard ≥
+    ///    `link_min_jaccard`), i.e. they share the bridge entity with
+    ///    relevant evidence.
+    ///
+    /// Only **true junk** — low query relevance *and* unlinked to any
+    /// seed — is dropped. This is a single linkage step at assembly
+    /// time, not graph traversal: no graph is built, no iteration, no
+    /// topology. It is the minimal operation that distinguishes a
+    /// distractor from a reasoning-critical second hop.
+    ///
+    /// Evidence (this strategy exists because the failure was measured):
+    /// `docs/findings/SECOND_HOP_TAX.md` (n=1327, the tax + this
+    /// mitigation's retention gain) and `docs/findings/REASONING_PRESERVATION.md`
+    /// (n=300 end-to-end QA, +0.035 CI-significant, gain causally
+    /// localized to gold reachability).
+    ReasoningPreserving,
 }
 
 /// Configuration for [`build_context`].
@@ -92,6 +127,10 @@ pub struct ContextConfig {
     /// Cosine above which a chunk is "redundant" with an already-selected
     /// chunk (used by `RedundancyPruned`). In `[0, 1]`.
     pub redundancy_max_cosine: f32,
+    /// Term-set Jaccard at/above which a low-relevance chunk is treated
+    /// as *linked* to a seed (and therefore rescued as a possible second
+    /// hop) rather than dropped as junk. Used by `ReasoningPreserving`.
+    pub link_min_jaccard: f32,
 }
 
 impl Default for ContextConfig {
@@ -101,6 +140,7 @@ impl Default for ContextConfig {
             strategy: ContextStrategy::MaxDensity,
             distractor_min_grounding: 0.10,
             redundancy_max_cosine: 0.92,
+            link_min_jaccard: 0.12,
         }
     }
 }
@@ -180,6 +220,7 @@ pub fn build_context(
                 grounding,
                 density: relevant as f32 / tok as f32,
                 is_distractor: grounding < cfg.distractor_min_grounding,
+                c_terms,
             }
         })
         .collect();
@@ -204,6 +245,35 @@ pub fn build_context(
             });
         }
         ContextStrategy::RedundancyPruned => { /* handled in the fill loop */ }
+        ContextStrategy::ReasoningPreserving => {
+            // Seeds = clearly query-relevant chunks. Rescued = below-bar
+            // chunks lexically linked to a seed (shared bridge entity).
+            // True junk (below bar, unlinked) is dropped.
+            let before = items.len();
+            let seed_terms: Vec<HashSet<String>> = items
+                .iter()
+                .filter(|i| !i.is_distractor)
+                .map(|i| i.c_terms.clone())
+                .collect();
+            items.retain(|i| {
+                if !i.is_distractor {
+                    return true; // seed
+                }
+                // Rescue if linked to any seed.
+                seed_terms
+                    .iter()
+                    .any(|s| jaccard(&i.c_terms, s) >= cfg.link_min_jaccard)
+            });
+            // Order: seeds (by grounding desc) first, then rescued.
+            items.sort_by(|a, b| {
+                let a_seed = !a.is_distractor;
+                let b_seed = !b.is_distractor;
+                b_seed
+                    .cmp(&a_seed)
+                    .then(b.grounding.partial_cmp(&a.grounding).unwrap_or(std::cmp::Ordering::Equal))
+            });
+            n_dropped_distractor = before - items.len(); // true junk dropped
+        }
     }
 
     // Fill under the token budget.
@@ -251,6 +321,24 @@ struct Item {
     grounding: f32,
     density: f32,
     is_distractor: bool,
+    c_terms: HashSet<String>,
+}
+
+/// Term-set Jaccard. The chunk↔chunk linkage signal: a multi-hop second
+/// hop shares the bridge entity (often a multi-word proper noun) with a
+/// relevant chunk, producing meaningful Jaccard even when its
+/// query overlap is near zero.
+fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let inter = a.intersection(b).count() as f32;
+    let union = (a.len() + b.len()) as f32 - inter;
+    if union <= 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
 }
 
 fn economics(
@@ -457,6 +545,54 @@ mod tests {
         assert!(ctx.chunks.iter().any(|c| c.id.as_str() == "c"));
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "b"));
         assert_eq!(ctx.n_dropped_redundant, 1);
+    }
+
+    // Bridge question: hop1 names the inventor (query-relevant); hop2 is
+    // ABOUT the inventor (low query relevance, but shares the bridge
+    // entity "humphry davy"); junk is unrelated to both.
+    fn bridge_chunks() -> Vec<RetrievalResult> {
+        vec![
+            // seed: shares {safety, lamp, was, the} with the query
+            rr("hop1", "the safety lamp was invented by humphry davy", None),
+            // second hop: shares almost nothing with the query, but shares
+            // the bridge entity "humphry davy" with hop1
+            rr("hop2", "humphry davy born penzance cornwall england chemist", None),
+            // true junk: unrelated to query AND to hop1
+            rr("junk", "photosynthesis converts sunlight chemical energy green plants", None),
+        ]
+    }
+
+    fn bridge_cfg(s: ContextStrategy) -> ContextConfig {
+        ContextConfig {
+            token_budget: 1000,
+            strategy: s,
+            distractor_min_grounding: 0.25,
+            link_min_jaccard: 0.05,
+            redundancy_max_cosine: 1.0,
+        }
+    }
+
+    #[test]
+    fn reasoning_preserving_rescues_linked_second_hop_drops_true_junk() {
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let ctx = build_context(&q, &bridge_chunks(), &bridge_cfg(ContextStrategy::ReasoningPreserving));
+        let ids: Vec<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
+        assert!(ids.contains(&"hop1"), "seed hop1 should be kept");
+        assert!(ids.contains(&"hop2"), "linked second hop should be rescued");
+        assert!(!ids.contains(&"junk"), "true junk should be dropped");
+    }
+
+    #[test]
+    fn distractor_filter_drops_the_second_hop_that_reasoning_preserving_keeps() {
+        // The two strategies differ exactly on the reasoning-critical chunk.
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let chunks = bridge_chunks();
+        let filtered = build_context(&q, &chunks, &bridge_cfg(ContextStrategy::DistractorFiltered));
+        let preserving = build_context(&q, &chunks, &bridge_cfg(ContextStrategy::ReasoningPreserving));
+        assert!(!filtered.chunks.iter().any(|c| c.id.as_str() == "hop2"),
+            "distractor filter should drop the low-relevance second hop");
+        assert!(preserving.chunks.iter().any(|c| c.id.as_str() == "hop2"),
+            "reasoning-preserving should rescue it");
     }
 
     #[test]

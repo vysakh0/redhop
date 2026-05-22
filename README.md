@@ -9,16 +9,37 @@ vector store entirely to the caller.
 
 ## Philosophy
 
-Transformer QA quality primarily depends on:
+NeoRAG does not optimize generic retrieval scores. It optimizes
+**reasoning-preserving context allocation under finite context budgets.**
 
-- answer-bearing **evidence density**,
-- **lexical grounding** between query and evidence,
-- **distractor suppression** in the retrieved set,
+Many conventional relevance optimizations — aggressive distractor
+filtering, cross-encoder reranking, max-density pruning, "more neighbors"
+expansion — were *empirically found to damage multi-hop reasoning* by
+removing low-relevance **bridge evidence** (the second hop, which is
+relevant to the bridge entity, not the query). The recurring measurement:
 
-and *not* on retrieval topology, semantic continuity, or graph trajectories.
-NeoRAG is designed around that observation. It optimizes evidence quality,
-makes retrieval failure modes observable, and treats diagnostics as
-first-class output rather than an afterthought.
+> Transformers tolerate irrelevant context far better than they tolerate
+> missing reasoning links. Premature removal of low-relevance reasoning
+> evidence hurts more than the distractors do.
+
+So NeoRAG's APIs and defaults are grounded in **measured reasoning-failure
+geometry**, not generic retrieval assumptions. It still optimizes
+answer-bearing evidence density, lexical grounding, and distractor
+suppression — but never at the cost of dropping reasoning-critical bridge
+evidence, and it makes retrieval failure modes observable as first-class
+output.
+
+## Benchmark philosophy & the evidence layer
+
+Every default and API exists because a specific failure was measured. That
+record is permanent and reproducible in the **[evidence layer](docs/findings/README.md)**:
+
+- **[docs/findings/](docs/findings/README.md)** — hypothesis → result → mechanism for each finding, with a falsified-hypotheses registry (we *keep* the priors that failed; several of NeoRAG's strongest defaults came from one).
+- **[benchmarks/](benchmarks/README.md)** — the reproducible harnesses that regenerate every claim.
+- **[reports/](reports/README.md)** — captured raw outputs (e.g. the n=300 causal reasoning-preservation run).
+
+The discipline — measure aggressively, let hypotheses fail, extract the
+real mechanism — is itself part of the design.
 
 ## What's in the box
 
@@ -30,6 +51,7 @@ first-class output rather than an afterthought.
 | `neorag-reranking`   | `ScoreFusionReranker`, `LexicalGroundingReranker`, `EvidenceDensityReranker`. |
 | `neorag-diagnostics` | Six retrieval-quality metrics + `DefaultDiagnosticsEngine` with configurable warnings. |
 | `neorag-storage`     | `ChunkStore` and `FlatVectorIndex` (exact-cosine baseline; ANN is pluggable via `VectorIndex`). |
+| `neorag-context`     | Finite-attention context assembly: `build_context` + strategies (incl. `ReasoningPreserving`, which resists the [second-hop tax](docs/findings/SECOND_HOP_TAX.md) and beats aggressive filtering [end-to-end](docs/findings/REASONING_PRESERVATION.md)) + economics readout. |
 | `neorag-pipeline`    | `NeoRAG` facade + builder composing the above.                          |
 | `neorag-benchmarks`  | Criterion benchmarks.                                                   |
 | `neorag-examples`    | Runnable examples.                                                      |

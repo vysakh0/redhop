@@ -1,0 +1,21 @@
+──── downstream QA by condition (n=300, haiku) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.830        16%
+  ctx_polluted          0.829        21%
+  ctx_filtered          0.705        29%
+  ctx_reasoning         0.740        25%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  distractors hurt   (gold_only − polluted):  +0.001  [-0.038, +0.039]
+  REASONING vs FILTER (reasoning − filtered):  +0.035  [+0.003, +0.067]
+      → ✓ ReasoningPreserving SIGNIFICANTLY beats aggressive filtering (CI excludes 0)
+
+──── mechanism: reachability → reasoning success (full-gold split) ────
+  RESCUED subset (reasoning kept MORE gold than filtered):  n=25
+     reasoning − filtered on rescued:  +0.173  [+0.040, +0.320]
+  CONTROL subset (IDENTICAL gold retention):                n=275
+     reasoning − filtered on control:  +0.022  [-0.007, +0.054]
+  Theory: the gain should concentrate in RESCUED (gold reachability
+  differs) and CONTROL should be ~0 (same gold). A non-zero CONTROL now
+  means the residual is NOT gold loss but junk readmission / reordering.

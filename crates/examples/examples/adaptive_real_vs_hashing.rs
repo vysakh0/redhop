@@ -19,7 +19,7 @@
 //!   precisely — i.e. reduce the need for expensive reranking?
 //!
 //! Requires `--features onnx` and the BGE-small model (see
-//! docs/REAL_EMBEDDING_BAKEOFF.md for the one-time download).
+//! docs/findings/EMBEDDING_BAKEOFF.md for the one-time download).
 //!
 //! Run:
 //!   cargo run -p neorag-examples --example adaptive_real_vs_hashing \
