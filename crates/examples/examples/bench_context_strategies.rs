@@ -34,9 +34,6 @@ use redhop_core::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const OUT_DIR: &str = "/Users/vysakh/projects/neorag1/benchmarks/context";
 const SAMPLE_SIZE: usize = 1500;
 const N_DISTRACTORS: usize = 8;
 const DISTRACTOR_MIN_GROUNDING: f32 = 0.20;
@@ -112,7 +109,7 @@ struct Cell {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -244,10 +241,11 @@ fn main() -> anyhow::Result<()> {
     }
     json.push_str("\n  ]\n}\n");
 
-    std::fs::create_dir_all(OUT_DIR)?;
-    std::fs::write(format!("{OUT_DIR}/results.json"), &json)?;
-    std::fs::write(format!("{OUT_DIR}/SUMMARY.md"), &md)?;
-    println!("wrote {OUT_DIR}/results.json and SUMMARY.md");
+    let out_dir = format!("{}/../../benchmarks/context", env!("CARGO_MANIFEST_DIR"));
+    std::fs::create_dir_all(&out_dir)?;
+    std::fs::write(format!("{out_dir}/results.json"), &json)?;
+    std::fs::write(format!("{out_dir}/SUMMARY.md"), &md)?;
+    println!("wrote {out_dir}/results.json and SUMMARY.md");
     println!("  multihop_gap n={n_gap}, shallow_nogap n={n_nogap}");
     Ok(())
 }

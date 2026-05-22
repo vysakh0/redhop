@@ -28,9 +28,6 @@ use redhop_core::{Chunk, ChunkId, Chunker, TokenizerBackend};
 use rust_stemmers::{Algorithm, Stemmer};
 use unicode_segmentation::UnicodeSegmentation;
 
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const MUSIQUE_PATH: &str = "/Users/vysakh/projects/neorag/data/musique/dev.jsonl";
 const SAMPLE_SIZE: usize = 1500;
 const N_DISTRACTORS: usize = 8;
 
@@ -405,14 +402,14 @@ fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
-    let mut hp = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut hp = HotpotQADataset::from_path(redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"))?;
     hp.examples.truncate(SAMPLE_SIZE);
     let hp_corpus = hp.to_labeled_corpus(&chunker, |_| None, hp_regime)?;
     let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;
     run("HotpotQA", &hp_corpus, &hp_chunks);
     run_linkage("HotpotQA", &hp_corpus, &hp_chunks);
 
-    if let Ok(mut mq) = MuSiQueDataset::from_path(MUSIQUE_PATH) {
+    if let Ok(mut mq) = MuSiQueDataset::from_path(redhop_examples::data_path("musique/dev.jsonl")) {
         mq.examples.truncate(SAMPLE_SIZE);
         let mq_corpus = mq.to_labeled_corpus(&chunker, |_| None, mq_regime)?;
         let mq_chunks = chunker.chunk_batch(&mq_corpus.docs)?;

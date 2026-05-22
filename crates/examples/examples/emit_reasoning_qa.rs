@@ -39,9 +39,6 @@ use redhop_core::{
     TokenizerBackend,
 };
 
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const OUT: &str = "/Users/vysakh/projects/neorag/exports/reasoning_qa_contexts.jsonl";
 const SAMPLE_SIZE: usize = 600; // yields ~500 gap-qualified multi-hop cases
 const MAX_CASES: usize = 400; // cap emitted cases (lab runs >=300)
 const N_DISTRACTORS: usize = 8;
@@ -97,7 +94,9 @@ fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy) -> Vec<Chunk> 
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(
+        redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"),
+    )?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -213,14 +212,18 @@ fn main() -> anyhow::Result<()> {
         n += 1;
     }
 
-    std::fs::write(OUT, out)?;
-    println!("wrote {n} gap-qualified multi-hop cases → {OUT}");
+    let out_path = redhop_examples::exports_path("reasoning_qa_contexts.jsonl");
+    if let Some(dir) = out_path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&out_path, out)?;
+    println!("wrote {n} gap-qualified multi-hop cases → {}", out_path.display());
     println!("  filter threshold (aggressive): {AGGRESSIVE_THRESHOLD}");
     println!(
         "  second-hop retention (reachability): filtered {}/{} ({:.0}%), reasoning {}/{} ({:.0}%)",
         sh_kept_filtered, n, sh_kept_filtered as f32 / n.max(1) as f32 * 100.0,
         sh_kept_reasoning, n, sh_kept_reasoning as f32 / n.max(1) as f32 * 100.0,
     );
-    println!("next: python ../redhop/scripts/score_reasoning_qa.py --n 300");
+    println!("next: python python/eval/score_reasoning_qa.py --n 300");
     Ok(())
 }

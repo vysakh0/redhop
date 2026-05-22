@@ -43,9 +43,6 @@ use redhop_core::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const MUSIQUE_PATH: &str = "/Users/vysakh/projects/neorag/data/musique/dev.jsonl";
 const SAMPLE_SIZE: usize = 1500;
 const N_DISTRACTORS: usize = 8;
 const GENEROUS_BUDGET: usize = 100_000;
@@ -308,7 +305,7 @@ fn main() -> anyhow::Result<()> {
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
     // HotpotQA
-    let mut hotpot = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut hotpot = HotpotQADataset::from_path(redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"))?;
     hotpot.examples.truncate(SAMPLE_SIZE);
     let hp_corpus = hotpot.to_labeled_corpus(&chunker, |_| None, hotpot_regime)?;
     let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;
@@ -316,7 +313,7 @@ fn main() -> anyhow::Result<()> {
     report("HotpotQA", &hp_cases, hp_gap);
 
     // MuSiQue (a second multi-hop dataset, for cross-dataset replication)
-    match MuSiQueDataset::from_path(MUSIQUE_PATH) {
+    match MuSiQueDataset::from_path(redhop_examples::data_path("musique/dev.jsonl")) {
         Ok(mut musique) => {
             musique.examples.truncate(SAMPLE_SIZE);
             let mq_corpus = musique.to_labeled_corpus(&chunker, |_| None, musique_regime)?;

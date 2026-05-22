@@ -5,3 +5,6 @@ Cargo.lock
 
 # mdBook generated output
 docs/book/book/
+
+# Experiment outputs (regenerable); curated results live in reports/
+/exports/
