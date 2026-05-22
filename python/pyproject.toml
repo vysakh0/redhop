@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "redhop"
+version = "0.1.0a0"
+description = "Reasoning-preserving context optimization and retrieval observability for RAG systems"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+keywords = ["rag", "retrieval", "llm", "context", "nlp"]
+authors = [{ name = "RedHop Contributors" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+[project.urls]
+Homepage = "https://github.com/redhop/redhop"
+Repository = "https://github.com/redhop/redhop"
+
+[tool.maturin]
+module-name = "redhop._redhop"
+python-source = "."
+features = ["pyo3/extension-module"]

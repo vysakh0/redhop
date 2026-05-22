@@ -1,0 +1,22 @@
+# Standalone workspace: keeps the pyo3 cdylib out of the pure-Rust workspace
+# build (so `cargo build --workspace` at the repo root never needs Python).
+[workspace]
+
+[package]
+name = "redhop-py"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+description = "Python bindings for RedHop context optimization"
+
+[lib]
+name = "_redhop"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+redhop-core    = { path = "../crates/core" }
+redhop-context = { path = "../crates/context" }
+serde_json     = "1"
+pyo3           = { version = "0.23", features = ["extension-module", "abi3-py39"] }

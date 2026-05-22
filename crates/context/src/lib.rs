@@ -70,6 +70,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// How to allocate the token budget across retrieved chunks.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ContextStrategy {
     /// Baseline: take chunks in retrieval order until the budget is hit.
     /// This is what most RAG stacks do ("stuff the top-k").
