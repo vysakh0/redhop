@@ -139,9 +139,9 @@ async fn main() -> anyhow::Result<()> {
                 );
                 let found = gold.iter().filter(|g| ctx.contains(g)).count();
                 agg.gold_retained += found as f32 / gold.len() as f32;
-                agg.tokens += ctx.total_tokens as f32;
-                agg.distractor += ctx.economics.distractor_ratio;
-                agg.density += ctx.economics.evidence_density;
+                agg.tokens += ctx.total_tokens() as f32;
+                agg.distractor += ctx.report.economics.distractor_ratio;
+                agg.density += ctx.report.economics.evidence_density;
                 n += 1.0;
             }
             let nf = n.max(1.0);

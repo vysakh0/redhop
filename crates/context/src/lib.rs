@@ -22,22 +22,19 @@
 //! primitives the diagnostics tier uses.
 //!
 //! ```no_run
-//! use neorag_context::{build_context, ContextConfig, ContextStrategy};
+//! use neorag_context::{build_context, ContextConfig};
 //! # use neorag_core::{Query, RetrievalResult};
 //! # fn demo(query: &Query, chunks: &[RetrievalResult]) {
+//! // Default strategy is reasoning-preserving and safe.
 //! let ctx = build_context(
 //!     query,
 //!     chunks,
-//!     &ContextConfig {
-//!         token_budget: 1200,
-//!         strategy: ContextStrategy::MaxDensity,
-//!         ..Default::default()
-//!     },
+//!     &ContextConfig { token_budget: 1200, ..Default::default() },
 //! );
-//! // ctx.chunks is the ordered, pruned context; ctx.economics reports
-//! // evidence density, distractor ratio, redundancy, evidence-per-token,
-//! // and estimated wasted tokens.
-//! # let _ = ctx;
+//! let prompt = ctx.text();        // drop-in for llm.generate(prompt)
+//! let report = &ctx.report;       // evidence density, distractor ratio,
+//!                                 // second-hop rescues, removed chunks, …
+//! # let _ = (prompt, report);
 //! # }
 //! ```
 //!
@@ -137,7 +134,12 @@ impl Default for ContextConfig {
     fn default() -> Self {
         Self {
             token_budget: 2048,
-            strategy: ContextStrategy::MaxDensity,
+            // Safe-by-default: ReasoningPreserving keeps relevant evidence,
+            // removes only unlinked junk, and never aggressively prunes by
+            // relevance (which the second-hop-tax findings show is harmful
+            // on multi-hop). See docs/findings/REASONING_PRESERVATION.md.
+            strategy: ContextStrategy::ReasoningPreserving,
+            // A low absolute bar: only near-zero-overlap junk is below it.
             distractor_min_grounding: 0.10,
             redundancy_max_cosine: 0.92,
             link_min_jaccard: 0.12,
@@ -167,27 +169,87 @@ pub struct ContextEconomics {
     pub estimated_waste_tokens: usize,
 }
 
-/// The result of context construction.
+/// Per-reason breakdown of chunks removed during assembly. `total` is the
+/// sum of all removal reasons and always equals `n_input - n_selected`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct RemovedBreakdown {
+    /// Removed because below the query-grounding bar (and, for
+    /// `ReasoningPreserving`, unlinked to any seed).
+    pub distractor: usize,
+    /// Removed because too similar to an already-selected chunk.
+    pub redundant: usize,
+    /// Removed because the token budget was exhausted.
+    pub budget: usize,
+    /// Total removed (`distractor + redundant + budget`).
+    pub total: usize,
+}
+
+/// Full observability trace for one context assembly — the telemetry every
+/// strategy emits. Superset of [`ContextEconomics`]; serializable for
+/// benchmark/JSON output and deployment dashboards.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextReport {
+    /// Strategy that produced this context.
+    pub strategy: ContextStrategy,
+    /// Configured token budget.
+    pub token_budget: usize,
+    /// Tokens actually used.
+    pub total_tokens: usize,
+    /// `total_tokens / token_budget`. Always `<= 1.0` (the budget is a hard cap).
+    pub token_utilization: f32,
+    /// Chunks supplied to the assembler.
+    pub n_input_chunks: usize,
+    /// Chunks present in the assembled context.
+    pub n_selected: usize,
+    /// Fraction of *input* chunks below the grounding bar — an estimate of
+    /// how distractor-heavy the retrieval was before assembly.
+    pub input_distractor_ratio: f32,
+    /// Seeds (query-relevant chunks) kept / seeds in the input. A
+    /// label-free proxy for gold retention: the fraction of clearly-relevant
+    /// evidence that survived assembly. `1.0` when nothing relevant was dropped.
+    pub retained_evidence_ratio: f32,
+    /// Low-relevance chunks deliberately *rescued* because they were linked
+    /// to a seed (the second hop). Non-zero only for `ReasoningPreserving`.
+    pub second_hop_rescue_count: usize,
+    /// Reasoning-preserved chunks a plain distractor filter would have
+    /// dropped (== `second_hop_rescue_count` for `ReasoningPreserving`, `0`
+    /// otherwise). The measurable "what reasoning-preservation bought".
+    pub reasoning_preservation_delta: usize,
+    /// Per-reason removal breakdown.
+    pub removed: RemovedBreakdown,
+    /// Token/evidence economics of the assembled context.
+    pub economics: ContextEconomics,
+}
+
+/// The result of context construction: the selected chunks plus the
+/// [`ContextReport`] telemetry.
 #[derive(Debug, Clone)]
 pub struct BuiltContext {
     /// Selected chunks, in presentation order.
     pub chunks: Vec<Chunk>,
-    /// Total tokens across the selected chunks.
-    pub total_tokens: usize,
-    /// Chunks dropped because they were distractors.
-    pub n_dropped_distractor: usize,
-    /// Chunks dropped because they were redundant.
-    pub n_dropped_redundant: usize,
-    /// Chunks dropped because the budget was exhausted.
-    pub n_dropped_budget: usize,
-    /// Economics readout.
-    pub economics: ContextEconomics,
+    /// Observability trace for this assembly.
+    pub report: ContextReport,
 }
 
 impl BuiltContext {
     /// True iff the assembled context contains a chunk with the given id.
     pub fn contains(&self, id: &neorag_core::ChunkId) -> bool {
         self.chunks.iter().any(|c| &c.id == id)
+    }
+
+    /// Total tokens across the selected chunks.
+    pub fn total_tokens(&self) -> usize {
+        self.report.total_tokens
+    }
+
+    /// The assembled context as a single prompt string: each chunk on its
+    /// own block, in presentation order. The drop-in for `llm.generate(...)`.
+    pub fn text(&self) -> String {
+        self.chunks
+            .iter()
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n")
     }
 }
 
@@ -200,30 +262,7 @@ pub fn build_context(
     let q_terms = terms(&query.text);
 
     // Per-chunk grounding + density, computed once.
-    let mut items: Vec<Item> = retrieved
-        .iter()
-        .map(|r| {
-            let c_terms = terms(&r.chunk.text);
-            let grounding = grounding(&q_terms, &c_terms);
-            let tok = r.chunk.token_count.value().max(1);
-            // Density = query-relevant tokens / chunk tokens.
-            let relevant = r
-                .chunk
-                .text
-                .unicode_words()
-                .filter(|w| q_terms.contains(&w.to_lowercase()))
-                .count();
-            Item {
-                chunk: r.chunk.clone(),
-                embedding: r.chunk.embedding.clone(),
-                tokens: tok,
-                grounding,
-                density: relevant as f32 / tok as f32,
-                is_distractor: grounding < cfg.distractor_min_grounding,
-                c_terms,
-            }
-        })
-        .collect();
+    let mut items = characterize(&q_terms, retrieved, cfg);
 
     let n_distractor_total = items.iter().filter(|i| i.is_distractor).count();
     let mut n_dropped_distractor = 0;
@@ -304,14 +343,143 @@ pub fn build_context(
     }
 
     let economics = economics(&q_terms, &selected, n_distractor_total, cfg);
+    let report = make_report(
+        cfg,
+        retrieved.len(),
+        n_distractor_total,
+        &selected,
+        total,
+        RemovedBreakdown {
+            distractor: n_dropped_distractor,
+            redundant: n_dropped_redundant,
+            budget: n_dropped_budget,
+            total: n_dropped_distractor + n_dropped_redundant + n_dropped_budget,
+        },
+        economics,
+    );
     BuiltContext {
         chunks: selected.iter().map(|i| i.chunk.clone()).collect(),
-        total_tokens: total,
-        n_dropped_distractor,
-        n_dropped_redundant,
-        n_dropped_budget,
+        report,
+    }
+}
+
+/// Assemble the [`ContextReport`] from the selection result.
+fn make_report(
+    cfg: &ContextConfig,
+    n_input: usize,
+    n_input_distractor: usize,
+    selected: &[Item],
+    total_tokens: usize,
+    removed: RemovedBreakdown,
+    economics: ContextEconomics,
+) -> ContextReport {
+    let n_input_seed = n_input - n_input_distractor;
+    let seeds_kept = selected.iter().filter(|i| !i.is_distractor).count();
+    let retained_evidence_ratio = if n_input_seed == 0 {
+        1.0
+    } else {
+        seeds_kept as f32 / n_input_seed as f32
+    };
+    // Rescued = low-relevance chunks kept *on purpose* (only ReasoningPreserving
+    // deliberately keeps below-bar chunks; for other strategies a kept
+    // below-bar chunk is unfiltered junk, not a rescue).
+    let rescued = if cfg.strategy == ContextStrategy::ReasoningPreserving {
+        selected.iter().filter(|i| i.is_distractor).count()
+    } else {
+        0
+    };
+    ContextReport {
+        strategy: cfg.strategy,
+        token_budget: cfg.token_budget,
+        total_tokens,
+        token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
+        n_input_chunks: n_input,
+        n_selected: selected.len(),
+        input_distractor_ratio: if n_input == 0 {
+            0.0
+        } else {
+            n_input_distractor as f32 / n_input as f32
+        },
+        retained_evidence_ratio,
+        second_hop_rescue_count: rescued,
+        reasoning_preservation_delta: rescued,
+        removed,
         economics,
     }
+}
+
+/// Reasoning-preserving filtering **without** budget truncation: remove
+/// junk under the configured strategy but keep everything that survives the
+/// filter, regardless of token count. The convenience entry point for
+/// "clean up this retrieval, I'll manage the budget myself". Equivalent to
+/// [`build_context`] with an unbounded token budget.
+pub fn filter_context(
+    query: &Query,
+    retrieved: &[RetrievalResult],
+    cfg: &ContextConfig,
+) -> BuiltContext {
+    let mut unbounded = cfg.clone();
+    unbounded.token_budget = usize::MAX;
+    build_context(query, retrieved, &unbounded)
+}
+
+/// Characterize a retrieved set **without** modifying it: report distractor
+/// load, evidence density, redundancy, and how many low-relevance chunks
+/// are rescuable second-hop *candidates* (linked to a seed). Pure
+/// observability — nothing is dropped or reordered. Use it to decide
+/// whether (and how aggressively) to filter.
+pub fn analyze_context(
+    query: &Query,
+    retrieved: &[RetrievalResult],
+    cfg: &ContextConfig,
+) -> ContextReport {
+    let q_terms = terms(&query.text);
+    let items = characterize(&q_terms, retrieved, cfg);
+    let n_input = items.len();
+    let n_input_distractor = items.iter().filter(|i| i.is_distractor).count();
+    let total_tokens: usize = items.iter().map(|i| i.tokens).sum();
+    // Second-hop candidates: below-bar chunks linked to a seed (what
+    // ReasoningPreserving *would* rescue).
+    let seed_terms: Vec<&HashSet<String>> =
+        items.iter().filter(|i| !i.is_distractor).map(|i| &i.c_terms).collect();
+    let candidates = items
+        .iter()
+        .filter(|i| i.is_distractor)
+        .filter(|i| seed_terms.iter().any(|s| jaccard(&i.c_terms, s) >= cfg.link_min_jaccard))
+        .count();
+    let economics = economics(&q_terms, &items, n_input_distractor, cfg);
+    ContextReport {
+        strategy: cfg.strategy,
+        token_budget: cfg.token_budget,
+        total_tokens,
+        token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
+        n_input_chunks: n_input,
+        n_selected: n_input,
+        input_distractor_ratio: if n_input == 0 {
+            0.0
+        } else {
+            n_input_distractor as f32 / n_input as f32
+        },
+        retained_evidence_ratio: 1.0,
+        second_hop_rescue_count: candidates,
+        reasoning_preservation_delta: candidates,
+        removed: RemovedBreakdown::default(),
+        economics,
+    }
+}
+
+/// Economics of a chunk set as-is, without assembling (no filtering, no
+/// budget). Reports evidence density, distractor ratio, redundancy, and
+/// estimated wasted tokens over exactly the chunks given.
+pub fn context_economics(
+    query: &Query,
+    chunks: &[RetrievalResult],
+    cfg: &ContextConfig,
+) -> ContextEconomics {
+    let q_terms = terms(&query.text);
+    let items = characterize(&q_terms, chunks, cfg);
+    let n_distractor = items.iter().filter(|i| i.is_distractor).count();
+    economics(&q_terms, &items, n_distractor, cfg)
 }
 
 struct Item {
@@ -322,6 +490,39 @@ struct Item {
     density: f32,
     is_distractor: bool,
     c_terms: HashSet<String>,
+}
+
+/// Compute per-chunk grounding, density, and the distractor flag once.
+/// Shared by `build_context`, `filter_context`, `analyze_context`, and
+/// `context_economics` so they all agree on what counts as a distractor.
+fn characterize(
+    q_terms: &HashSet<String>,
+    retrieved: &[RetrievalResult],
+    cfg: &ContextConfig,
+) -> Vec<Item> {
+    retrieved
+        .iter()
+        .map(|r| {
+            let c_terms = terms(&r.chunk.text);
+            let grounding = grounding(q_terms, &c_terms);
+            let tok = r.chunk.token_count.value().max(1);
+            let relevant = r
+                .chunk
+                .text
+                .unicode_words()
+                .filter(|w| q_terms.contains(&w.to_lowercase()))
+                .count();
+            Item {
+                chunk: r.chunk.clone(),
+                embedding: r.chunk.embedding.clone(),
+                tokens: tok,
+                grounding,
+                density: relevant as f32 / tok as f32,
+                is_distractor: grounding < cfg.distractor_min_grounding,
+                c_terms,
+            }
+        })
+        .collect()
 }
 
 /// Term-set Jaccard. The chunk↔chunk linkage signal: a multi-hop second
@@ -473,7 +674,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert!(ctx.total_tokens <= 6);
+        assert!(ctx.total_tokens() <= 6);
         assert_eq!(ctx.chunks[0].id.as_str(), "a"); // retrieval order preserved
     }
 
@@ -496,7 +697,7 @@ mod tests {
         );
         // The cooking chunk shares 0 query terms → dropped.
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"));
-        assert_eq!(ctx.n_dropped_distractor, 1);
+        assert_eq!(ctx.report.removed.distractor, 1);
     }
 
     #[test]
@@ -544,7 +745,7 @@ mod tests {
         assert!(ctx.chunks.iter().any(|c| c.id.as_str() == "a"));
         assert!(ctx.chunks.iter().any(|c| c.id.as_str() == "c"));
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "b"));
-        assert_eq!(ctx.n_dropped_redundant, 1);
+        assert_eq!(ctx.report.removed.redundant, 1);
     }
 
     // Bridge question: hop1 names the inventor (query-relevant); hop2 is
@@ -613,8 +814,164 @@ mod tests {
             },
         );
         // Both kept (raw). One is a distractor → waste tokens > 0.
-        assert!(ctx.economics.estimated_waste_tokens > 0);
-        assert!(ctx.economics.distractor_ratio > 0.0);
-        assert!(ctx.economics.evidence_density > 0.0);
+        assert!(ctx.report.economics.estimated_waste_tokens > 0);
+        assert!(ctx.report.economics.distractor_ratio > 0.0);
+        assert!(ctx.report.economics.evidence_density > 0.0);
+    }
+
+    // ───────────────────────── invariant / regression contracts ─────────────
+    // These turn the findings into enforced guarantees (Phase goal 5).
+
+    fn all_strategies() -> [ContextStrategy; 5] {
+        [
+            ContextStrategy::RawTopK,
+            ContextStrategy::DistractorFiltered,
+            ContextStrategy::RedundancyPruned,
+            ContextStrategy::MaxDensity,
+            ContextStrategy::ReasoningPreserving,
+        ]
+    }
+
+    #[test]
+    fn invariant_default_strategy_is_not_aggressive_relevance_filtering() {
+        // The default must never be a relevance-only pruner — the findings
+        // show those tax the second hop on multi-hop QA.
+        let s = ContextConfig::default().strategy;
+        assert_ne!(s, ContextStrategy::DistractorFiltered);
+        assert_ne!(s, ContextStrategy::MaxDensity);
+        assert_eq!(s, ContextStrategy::ReasoningPreserving);
+    }
+
+    #[test]
+    fn invariant_no_strategy_exceeds_token_budget() {
+        let q = Query::new("rust memory safety guarantees");
+        let chunks = vec![
+            rr("a", "rust memory safety guarantees ownership borrow checker", None),
+            rr("b", "rust prevents data races at compile time safety", None),
+            rr("c", "cooking bread recipe flour yeast water salt oven", None),
+            rr("d", "memory safety without garbage collection in rust", None),
+        ];
+        for s in all_strategies() {
+            for budget in [1usize, 3, 5, 8, 50] {
+                let ctx = build_context(
+                    &q,
+                    &chunks,
+                    &ContextConfig { token_budget: budget, strategy: s, ..Default::default() },
+                );
+                assert!(
+                    ctx.total_tokens() <= budget,
+                    "{s:?} exceeded budget {budget}: used {}",
+                    ctx.total_tokens()
+                );
+                assert!(ctx.report.token_utilization <= 1.0 + 1e-6, "{s:?} util > 1");
+            }
+        }
+    }
+
+    #[test]
+    fn invariant_removed_breakdown_accounts_for_every_chunk() {
+        // Observability contract: removed.total == input - selected, always.
+        let q = Query::new("rust memory safety");
+        let chunks = vec![
+            rr("a", "rust memory safety", Some(vec![1.0, 0.0])),
+            rr("b", "rust memory safety again", Some(vec![0.99, 0.01])),
+            rr("c", "cooking bread recipe flour", Some(vec![0.0, 1.0])),
+        ];
+        for s in all_strategies() {
+            let ctx = build_context(
+                &q,
+                &chunks,
+                &ContextConfig {
+                    token_budget: 6,
+                    strategy: s,
+                    distractor_min_grounding: 0.3,
+                    redundancy_max_cosine: 0.9,
+                    ..Default::default()
+                },
+            );
+            let r = &ctx.report;
+            assert_eq!(r.n_input_chunks, chunks.len());
+            assert_eq!(r.n_selected, ctx.chunks.len());
+            assert_eq!(
+                r.removed.total,
+                r.removed.distractor + r.removed.redundant + r.removed.budget,
+                "{s:?} removal subtotals don't sum"
+            );
+            assert_eq!(
+                r.n_input_chunks,
+                r.n_selected + r.removed.total,
+                "{s:?} chunks unaccounted for"
+            );
+        }
+    }
+
+    #[test]
+    fn invariant_reasoning_preserving_keeps_linked_second_hop_aggressive_filter_drops() {
+        // The core guarantee: at a threshold where DistractorFiltered drops
+        // the linked second hop, ReasoningPreserving must keep it.
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let chunks = bridge_chunks();
+        let aggressive = ContextConfig {
+            token_budget: 1000,
+            distractor_min_grounding: 0.25,
+            link_min_jaccard: 0.05,
+            redundancy_max_cosine: 1.0,
+            strategy: ContextStrategy::DistractorFiltered,
+        };
+        let filtered = build_context(&q, &chunks, &aggressive);
+        let preserving = build_context(
+            &q,
+            &chunks,
+            &ContextConfig { strategy: ContextStrategy::ReasoningPreserving, ..aggressive },
+        );
+        assert!(!filtered.chunks.iter().any(|c| c.id.as_str() == "hop2"));
+        assert!(preserving.chunks.iter().any(|c| c.id.as_str() == "hop2"));
+        // …and the rescue is recorded in telemetry.
+        assert!(preserving.report.second_hop_rescue_count >= 1);
+        assert_eq!(filtered.report.second_hop_rescue_count, 0);
+    }
+
+    #[test]
+    fn filter_context_does_not_truncate_to_budget() {
+        // filter_context removes junk but never drops for budget.
+        let q = Query::new("rust safety");
+        let chunks = vec![
+            rr("a", "rust safety ownership", None),
+            rr("b", "rust safety borrow checker", None),
+            rr("c", "cooking bread recipe flour", None), // junk
+        ];
+        let ctx = filter_context(
+            &q,
+            &chunks,
+            &ContextConfig {
+                token_budget: 1, // would truncate under build_context
+                strategy: ContextStrategy::DistractorFiltered,
+                distractor_min_grounding: 0.3,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ctx.report.removed.budget, 0, "filter_context must not drop for budget");
+        assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"), "junk still filtered");
+        assert_eq!(ctx.chunks.len(), 2);
+    }
+
+    #[test]
+    fn analyze_context_is_non_destructive_and_flags_candidates() {
+        let q = Query::new("what nationality was the safety lamp inventor");
+        let report = analyze_context(
+            &q,
+            &bridge_chunks(),
+            &ContextConfig {
+                distractor_min_grounding: 0.25,
+                link_min_jaccard: 0.05,
+                ..Default::default()
+            },
+        );
+        // Nothing removed; all input present.
+        assert_eq!(report.removed.total, 0);
+        assert_eq!(report.n_selected, report.n_input_chunks);
+        // hop2 is a rescuable second-hop candidate.
+        assert!(report.second_hop_rescue_count >= 1);
+        assert!(report.input_distractor_ratio > 0.0);
     }
 }
