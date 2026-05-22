@@ -39,25 +39,11 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    deprecation_notice();
     match Cli::parse().command {
         Command::Compare(a) => compare::run(a),
         Command::AnalyzeContext(a) => analyze::run(a),
         Command::Benchmark(a) => benchmark::run(a),
         Command::Report(a) => report::run(a),
-    }
-}
-
-/// If invoked via the legacy `neorag` name (e.g. a symlink), warn on stderr.
-fn deprecation_notice() {
-    if let Some(arg0) = std::env::args().next() {
-        let bin = std::path::Path::new(&arg0)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        if bin.contains("neorag") {
-            eprintln!("warning: `neorag` is deprecated; the binary is now `redhop`.");
-        }
     }
 }
 

@@ -184,14 +184,6 @@ impl RedHopBuilder {
     }
 }
 
-/// Deprecated alias for [`RedHop`] (project renamed NeoRAG → RedHop).
-#[deprecated(since = "0.1.0", note = "NeoRAG was renamed to RedHop; use `RedHop`")]
-pub type NeoRAG = RedHop;
-
-/// Deprecated alias for [`RedHopBuilder`] (project renamed NeoRAG → RedHop).
-#[deprecated(since = "0.1.0", note = "NeoRAGBuilder was renamed to RedHopBuilder; use `RedHopBuilder`")]
-pub type NeoRAGBuilder = RedHopBuilder;
-
 /// The top-level RedHop facade.
 ///
 /// Holds a chunker, a retriever, optionally a reranker, and a diagnostics

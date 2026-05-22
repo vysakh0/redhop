@@ -30,11 +30,15 @@ Rust module paths follow: `use neorag_core::…` → `use redhop_core::…`
 
 ## API renames
 
-| Old | New | Compatibility |
-| --- | --- | --- |
-| `RedHop` facade (was `NeoRAG`) | `RedHop` | `pub type NeoRAG = RedHop` kept, `#[deprecated]` |
-| `NeoRAGBuilder` | `RedHopBuilder` | `pub type NeoRAGBuilder = RedHopBuilder` kept, `#[deprecated]` |
-| `NeoRAG::builder()` | `RedHop::builder()` | works via the alias (deprecated) |
+| Old | New |
+| --- | --- |
+| `NeoRAG` (facade) | `RedHop` |
+| `NeoRAGBuilder` | `RedHopBuilder` |
+| `NeoRAG::builder()` | `RedHop::builder()` |
+
+This is a **clean rename** — pre-release, no external users, no semver
+obligations. No deprecated aliases, compatibility shims, forwarding
+binaries, or legacy crate re-exports are kept. Update call sites directly.
 
 All other public types (`ContextConfig`, `ContextStrategy`, `BuiltContext`,
 `ContextReport`, `build_context`, `analyze_context`, `context_economics`,
@@ -44,10 +48,8 @@ moved from `neorag-*` to `redhop-*`.
 ## CLI changes
 
 - Binary `neorag` → **`redhop`**. Same subcommands: `compare`,
-  `analyze-context`, `benchmark`, `report`.
-- If the binary is invoked under a legacy `neorag` name (e.g. a symlink), it
-  prints `warning: \`neorag\` is deprecated; the binary is now \`redhop\`` to
-  stderr and proceeds normally.
+  `analyze-context`, `benchmark`, `report`. No legacy `neorag` binary or
+  forwarding is provided.
 
 ## Python
 
@@ -68,12 +70,14 @@ moved from `neorag-*` to `redhop-*`.
 - **This workspace directory** (`…/neorag1`) is unchanged; hardcoded absolute
   paths to it are preserved.
 
-## Compatibility guarantees & deprecation policy
+## Compatibility policy
 
-- Nothing was published to crates.io/PyPI/npm under the `neorag` names, so
-  there are **no external consumers to break**; the rename is clean.
-- In-source deprecated aliases (`NeoRAG`, `NeoRAGBuilder`) are provided as a
-  courtesy and will be **removed in the next minor release**. New code should
-  use `RedHop` / `RedHopBuilder`.
-- No shim crates (`neorag-*` re-exporting `redhop-*`) are published — there is
-  no consumer that needs them.
+Pre-release: nothing was published to crates.io/PyPI/npm under the `neorag`
+names, so there are **no external consumers and no semver obligations**. The
+rename is therefore clean and complete:
+
+- **No** deprecated type aliases.
+- **No** compatibility shims or legacy crate re-exports.
+- **No** forwarding `neorag` binary.
+
+Update any external references to the new names directly.

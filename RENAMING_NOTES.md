@@ -32,7 +32,7 @@ Crate **directories** were already un-prefixed (`crates/core`, not
 ## Verification performed
 
 - `cargo build --workspace` + `cargo test --workspace` — all green.
-- CLI smoke (`redhop compare`), legacy-name deprecation notice fires.
+- CLI smoke (`redhop compare`).
 - Python `basic_rag.py` (rebuilds `redhop_bridge`), dashboard regen, hermetic
   `bench_context_strategies` regen — **0** `neorag` strings in generated
   artifacts (dashboard.html, results.json, SUMMARY.md).
@@ -46,8 +46,8 @@ Crate **directories** were already un-prefixed (`crates/core`, not
 - **Publish metadata** (`keywords`/`categories`/`repository`) was added to the
   workspace and inherited by the flagship crates (`core`, `context`, `cli`,
   `pipeline`). The remaining crates can inherit it at publish time.
-- **Deprecated aliases** (`NeoRAG`, `NeoRAGBuilder`) should be removed in the
-  next minor release.
+- **Clean rename, no shims.** Pre-release with no external users, so no
+  deprecated aliases, compatibility shims, or forwarding binary are kept.
 - The `redhop1` directory name is cosmetic only; rename the working directory
   separately if desired (not required for build/publish).
 - Bindings (`pyo3`/`napi`) and a published `redhop` PyPI/npm package remain
