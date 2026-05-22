@@ -33,12 +33,11 @@ use std::sync::Arc;
 
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_context::{build_context, ContextConfig, ContextStrategy};
+use redhop_context::{build_context, grounding_score, ContextConfig, ContextStrategy};
 use redhop_core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
-use unicode_segmentation::UnicodeSegmentation;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
@@ -50,19 +49,6 @@ const N_DISTRACTORS: usize = 8;
 // while the filter still removes most junk.
 const AGGRESSIVE_THRESHOLD: f32 = 0.20;
 const LINK_MIN_JACCARD: f32 = 0.12;
-
-fn terms(text: &str) -> HashSet<String> {
-    text.unicode_words()
-        .map(|w| w.to_lowercase())
-        .filter(|w| w.chars().count() > 1)
-        .collect()
-}
-fn grounding(q: &HashSet<String>, c: &HashSet<String>) -> f32 {
-    if q.is_empty() {
-        return 0.0;
-    }
-    q.intersection(c).count() as f32 / q.len() as f32
-}
 
 struct Lcg(u64);
 impl Lcg {
@@ -142,13 +128,14 @@ fn main() -> anyhow::Result<()> {
         if lq.gold_chunk_ids.len() < 2 {
             continue;
         }
-        let q_terms = terms(&lq.text);
         let mut gold: Vec<(ChunkId, Chunk, f32)> = lq
             .gold_chunk_ids
             .iter()
             .filter_map(|id| by_id.get(id).map(|c| (id.clone(), c.clone())))
             .map(|(id, c)| {
-                let g = grounding(&q_terms, &terms(&c.text));
+                // Use the library's own grounding signal (stopword+stemming),
+                // so labeling matches the contexts core build_context produces.
+                let g = grounding_score(&lq.text, &c.text);
                 (id, c, g)
             })
             .collect();
