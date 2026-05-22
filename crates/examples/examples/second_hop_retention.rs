@@ -32,7 +32,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_calibration::dataset::LabeledCorpus;
+use redhop_calibration::loaders::hotpotqa::{default_regime as hotpot_regime, HotpotQADataset};
+use redhop_calibration::loaders::musique::{default_regime as musique_regime, MuSiQueDataset};
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_context::{build_context, ContextConfig, ContextStrategy};
 use redhop_core::{
@@ -43,6 +45,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
+const MUSIQUE_PATH: &str = "/Users/vysakh/projects/neorag/data/musique/dev.jsonl";
 const SAMPLE_SIZE: usize = 1500;
 const N_DISTRACTORS: usize = 8;
 const GENEROUS_BUDGET: usize = 100_000;
@@ -171,18 +174,11 @@ fn run_panel(cases: &[Case], strategy: ContextStrategy, tau: f32, budget: usize,
     );
 }
 
-fn main() -> anyhow::Result<()> {
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
-    dataset.examples.truncate(SAMPLE_SIZE);
-    let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
-    let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
-
-    let corpus = dataset.to_labeled_corpus(&chunker, |_| None, default_regime)?;
-    let chunks = chunker.chunk_batch(&corpus.docs)?;
+/// Build labeled cases (one per gap-qualified multi-hop query) from a corpus.
+/// Returns the cases and the mean first−second grounding gap.
+fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk]) -> (Vec<Case>, f32) {
     let by_id: HashMap<ChunkId, Chunk> =
         chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
-
-    // Build labeled cases.
     let mut rng = Lcg::new(0xC0FFEE);
     let mut cases: Vec<Case> = Vec::new();
     let mut grounding_gap_sum = 0.0f32;
@@ -247,16 +243,18 @@ fn main() -> anyhow::Result<()> {
             retrieved: as_results(&all),
         });
     }
-
     let n = cases.len();
-    println!("╔══════════════════════════════════════════════════════════════════╗");
-    println!("║  The second-hop tax, measured directly (HotpotQA, hermetic)       ║");
+    (cases, grounding_gap_sum / n.max(1) as f32)
+}
+
+/// Print the two panels for one dataset.
+fn report(label: &str, cases: &[Case], mean_gap: f32) {
+    let n = cases.len();
+    println!("\n╔══════════════════════════════════════════════════════════════════╗");
+    println!("║  The second-hop tax, measured directly — {label:<25}║");
     println!("╚══════════════════════════════════════════════════════════════════╝");
     println!("\n  multi-hop queries with a query-relevance gap: n = {n}");
-    println!(
-        "  mean grounding gap (first hop − second hop): {:.3}",
-        grounding_gap_sum / n.max(1) as f32
-    );
+    println!("  mean grounding gap (first hop − second hop): {mean_gap:.3}");
     println!("  injected off-document distractors per query: {N_DISTRACTORS}");
 
     println!("\n──── Panel A: the FILTER tax (generous budget, nothing dropped for space) ────");
@@ -268,9 +266,9 @@ fn main() -> anyhow::Result<()> {
     );
     println!("  {}", "─".repeat(70));
     for tau in [0.05f32, 0.10, 0.20, 0.30] {
-        run_panel(&cases, ContextStrategy::DistractorFiltered, tau,
+        run_panel(cases, ContextStrategy::DistractorFiltered, tau,
             GENEROUS_BUDGET, &format!("distractor_filt @{tau:.2}"));
-        run_panel(&cases, ContextStrategy::ReasoningPreserving, tau,
+        run_panel(cases, ContextStrategy::ReasoningPreserving, tau,
             GENEROUS_BUDGET, &format!("reasoning_pres @{tau:.2}"));
         println!();
     }
@@ -283,12 +281,37 @@ fn main() -> anyhow::Result<()> {
         "strategy", "second_hop_ret [95% CI]", "junk_supp", "first_ret"
     );
     println!("  {}", "─".repeat(70));
-    run_panel(&cases, ContextStrategy::RawTopK, 0.10, TIGHT_BUDGET, "raw_topk");
-    run_panel(&cases, ContextStrategy::DistractorFiltered, 0.10, TIGHT_BUDGET, "distractor_filt");
-    run_panel(&cases, ContextStrategy::MaxDensity, 0.10, TIGHT_BUDGET, "max_density");
-    run_panel(&cases, ContextStrategy::ReasoningPreserving, 0.10, TIGHT_BUDGET, "reasoning_pres");
+    run_panel(cases, ContextStrategy::RawTopK, 0.10, TIGHT_BUDGET, "raw_topk");
+    run_panel(cases, ContextStrategy::DistractorFiltered, 0.10, TIGHT_BUDGET, "distractor_filt");
+    run_panel(cases, ContextStrategy::MaxDensity, 0.10, TIGHT_BUDGET, "max_density");
+    run_panel(cases, ContextStrategy::ReasoningPreserving, 0.10, TIGHT_BUDGET, "reasoning_pres");
 
     println!("\n  (second_hop_ret = P(reasoning-critical hop survives); junk_supp =");
     println!("   fraction of injected distractors removed; both want HIGH.)");
+}
+
+fn main() -> anyhow::Result<()> {
+    let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
+    let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
+
+    // HotpotQA
+    let mut hotpot = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    hotpot.examples.truncate(SAMPLE_SIZE);
+    let hp_corpus = hotpot.to_labeled_corpus(&chunker, |_| None, hotpot_regime)?;
+    let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;
+    let (hp_cases, hp_gap) = build_cases(&hp_corpus, &hp_chunks);
+    report("HotpotQA", &hp_cases, hp_gap);
+
+    // MuSiQue (a second multi-hop dataset, for cross-dataset replication)
+    match MuSiQueDataset::from_path(MUSIQUE_PATH) {
+        Ok(mut musique) => {
+            musique.examples.truncate(SAMPLE_SIZE);
+            let mq_corpus = musique.to_labeled_corpus(&chunker, |_| None, musique_regime)?;
+            let mq_chunks = chunker.chunk_batch(&mq_corpus.docs)?;
+            let (mq_cases, mq_gap) = build_cases(&mq_corpus, &mq_chunks);
+            report("MuSiQue", &mq_cases, mq_gap);
+        }
+        Err(e) => eprintln!("\n[MuSiQue skipped: {e}]"),
+    }
     Ok(())
 }

@@ -1,9 +1,9 @@
 # The Second-Hop Tax — Measured Directly, at Large n
 
 > **Hypothesis:** every operation that selects by query relevance drops the multi-hop second hop (low-relevance-to-query by construction).
-> **Status:** Confirmed — n=1327, bootstrap 95% CIs.
-> **Setup:** HotpotQA multi-hop with a query-relevance gap; hermetic (no LLM, no embeddings); lexical grounding label.
-> **Headline:** a relevance filter keeps 96.8% of second hops at threshold 0.05 but only 43.9% at 0.30; `ReasoningPreserving` recovers up to +23 pts.
+> **Status:** Confirmed — two datasets (HotpotQA n=1327, MuSiQue n=1484), bootstrap 95% CIs.
+> **Setup:** multi-hop questions with a query-relevance gap; hermetic (no LLM, no embeddings); lexical grounding label.
+> **Headline:** a relevance filter keeps 96.8% of second hops at threshold 0.05 but only 43.9% at 0.30 on HotpotQA — and 75.1%→4.3% on the harder MuSiQue; `ReasoningPreserving` recovers up to +23 pts (HotpotQA) / +29 pts (MuSiQue).
 > **Reproduce:** `cargo run -p redhop-examples --example second_hop_retention --release`
 > **Justifies API:** `build_context(strategy = ReasoningPreserving)`.
 > **Caveats:** lexical grounding/linkage; retention is reachability, not answer quality. See §Honest limits.
@@ -84,6 +84,25 @@ The cost is honest and visible: reasoning-preserving suppresses slightly
 that happens to be lexically linked to a kept seed. The trade is "keep a
 little more junk to save a lot more second hops" — and it is a good
 trade precisely in the aggressive regime where the tax is expensive.
+
+### Cross-dataset replication — MuSiQue (n=1484, mean gap 0.293)
+
+The same experiment on MuSiQue (more hops, a wider relevance gap)
+replicates the filter tax and makes it **more severe** — second-hop
+retention [95% CI]:
+
+| τ | distractor_filtered | reasoning_preserving |
+| - | ------------------- | -------------------- |
+| 0.05 | 0.751 [0.729, 0.774] | 0.821 [0.802, 0.841] |
+| 0.10 | 0.452 [0.425, 0.478] | 0.639 [0.613, 0.662] |
+| 0.20 | 0.154 [0.137, 0.173] | 0.442 [0.417, 0.467] |
+| 0.30 | 0.043 [0.034, 0.053] | 0.255 [0.232, 0.276] |
+
+On MuSiQue an aggressive (τ=0.30) filter retains only **4.3%** of second
+hops (vs 43.9% on HotpotQA); reasoning-preserving rescues a larger margin
+throughout (e.g. +28.8 pts at τ=0.20), CIs non-overlapping. The harder
+the multi-hop structure, the steeper the tax — the filtering result is
+the robust, two-dataset core.
 
 ## Panel B — the RANKING/BUDGET tax (tight budget, τ=0.10)
 
