@@ -53,11 +53,13 @@ moved from `neorag-*` to `redhop-*`.
 
 ## Python
 
-- `import neorag` → **`import redhop`**. The shim package moved
-  `examples/python/neorag/` → `examples/python/redhop/`.
-- The JSON bridge binary `context_bridge` → **`redhop_bridge`**
-  (`cargo build -p redhop-examples --example redhop_bridge`).
-- Env override `NEORAG_BRIDGE` → **`REDHOP_BRIDGE`**.
+- `import neorag` → **`import redhop`**.
+- The Python package is now a real **pyo3 + maturin** native extension under
+  `python/` (`pip install redhop`). The earlier stop-gap — a subprocess shim
+  (`examples/python/`) that shelled out to a `context_bridge`/`redhop_bridge`
+  example binary — has been **removed**; it was only needed before native
+  bindings existed. The Python API (`build_context`, `analyze_context`, …) is
+  unchanged.
 
 ## Intentionally preserved (NOT renamed)
 

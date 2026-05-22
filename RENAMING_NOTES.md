@@ -33,7 +33,7 @@ Crate **directories** were already un-prefixed (`crates/core`, not
 
 - `cargo build --workspace` + `cargo test --workspace` — all green.
 - CLI smoke (`redhop compare`).
-- Python `basic_rag.py` (rebuilds `redhop_bridge`), dashboard regen, hermetic
+- Python examples + dashboard regen, hermetic
   `bench_context_strategies` regen — **0** `neorag` strings in generated
   artifacts (dashboard.html, results.json, SUMMARY.md).
 - Residual `neorag` in the tree is **only** the preserved lab-repo / `neorag1`
@@ -50,6 +50,5 @@ Crate **directories** were already un-prefixed (`crates/core`, not
   deprecated aliases, compatibility shims, or forwarding binary are kept.
 - The `redhop1` directory name is cosmetic only; rename the working directory
   separately if desired (not required for build/publish).
-- Bindings (`pyo3`/`napi`) and a published `redhop` PyPI/npm package remain
-  future work; the Python API in `examples/python/redhop/` is the intended
-  surface for them.
+- Python `pyo3` bindings now live in `python/` (maturin); a published PyPI
+  `redhop` package and `napi` (npm) bindings remain future work.
