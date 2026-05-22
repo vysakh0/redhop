@@ -2,3 +2,6 @@
 Cargo.lock
 *.swp
 .DS_Store
+
+# mdBook generated output
+docs/book/book/

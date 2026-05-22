@@ -1,0 +1,17 @@
+[book]
+title = "RedHop"
+description = "Reasoning-preserving context optimization and retrieval observability for RAG systems."
+authors = ["RedHop Contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/redhop/redhop"
+edit-url-template = "https://github.com/redhop/redhop/edit/main/docs/book/{path}"
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
