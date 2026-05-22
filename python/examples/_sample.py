@@ -21,7 +21,9 @@ RETRIEVED = [
 
 GOLD_ANSWER = "British"
 
-# Demo-tuned thresholds: the lexical proxy is stopword-sensitive on a *tiny*
-# corpus. At dataset scale the defaults (0.10 / 0.12) are what the findings use.
+# Demo-tuned thresholds for this *tiny* corpus. The core now normalizes terms
+# (stopword removal + stemming), which lowers incidental overlap, so the bridge
+# link (hop1↔hop2 ≈ 0.11 here) needs a lower link threshold than the
+# dataset-scale default (0.12). At scale the defaults (0.10 / 0.12) are used.
 DISTRACTOR_MIN_GROUNDING = 0.30
-LINK_MIN_JACCARD = 0.15
+LINK_MIN_JACCARD = 0.10

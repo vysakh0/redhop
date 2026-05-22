@@ -33,6 +33,8 @@ from ._redhop import (
     build_context as _build_context,
     context_economics as _context_economics,
     filter_context as _filter_context,
+    grounding_score,
+    link_strength,
     __version__,
 )
 
@@ -114,6 +116,8 @@ __all__ = [
     "filter_context",
     "analyze_context",
     "context_economics",
+    "grounding_score",
+    "link_strength",
     "report_to_dict",
     "BuiltContext",
     "ContextReport",

@@ -11,7 +11,8 @@ use pyo3::types::PyDict;
 
 use redhop_context::{
     analyze_context as rh_analyze, build_context as rh_build, filter_context as rh_filter,
-    context_economics as rh_economics, ContextConfig, ContextReport as RhReport, ContextStrategy,
+    context_economics as rh_economics, grounding_score as rh_grounding, link_strength as rh_link,
+    ContextConfig, ContextReport as RhReport, ContextStrategy,
 };
 use redhop_core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
@@ -330,6 +331,20 @@ fn context_economics(
     serde_json::to_string(&econ).map_err(|e| PyValueError::new_err(format!("serialize: {e}")))
 }
 
+/// Query grounding of a chunk's text in [0,1] — the relevance signal the
+/// strategies use (stopword-removed, stemmed query-term overlap). Observability.
+#[pyfunction]
+fn grounding_score(query: &str, text: &str) -> f32 {
+    rh_grounding(query, text)
+}
+
+/// Linkage strength between two chunks' text in [0,1] — the bridge signal
+/// ReasoningPreserving uses to rescue a second hop.
+#[pyfunction]
+fn link_strength(a: &str, b: &str) -> f32 {
+    rh_link(a, b)
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -339,5 +354,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(filter_context, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_context, m)?)?;
     m.add_function(wrap_pyfunction!(context_economics, m)?)?;
+    m.add_function(wrap_pyfunction!(grounding_score, m)?)?;
+    m.add_function(wrap_pyfunction!(link_strength, m)?)?;
     Ok(())
 }

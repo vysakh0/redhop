@@ -572,6 +572,22 @@ pub fn context_economics(
     economics(&q_terms, &items, n_distractor, cfg)
 }
 
+/// Query grounding of a chunk's text: the relevance signal the strategies use —
+/// stopword-removed, Snowball-stemmed query-term overlap, in `[0, 1]`. Exposed
+/// for observability ("how relevant is this chunk to the query?") and so
+/// external/eval code can reuse the library's exact notion of relevance instead
+/// of reimplementing (and drifting from) it.
+pub fn grounding_score(query: &str, text: &str) -> f32 {
+    grounding(&terms(query), &terms(text))
+}
+
+/// Linkage strength between two chunks' text: term-set Jaccard over the same
+/// normalized terms — the chunk↔chunk bridge signal `ReasoningPreserving` uses
+/// to decide whether a low-relevance chunk is a rescuable second hop. In `[0, 1]`.
+pub fn link_strength(a: &str, b: &str) -> f32 {
+    jaccard(&terms(a), &terms(b))
+}
+
 struct Item {
     chunk: Chunk,
     embedding: Option<Embedding>,
@@ -1082,6 +1098,21 @@ mod tests {
         assert_eq!(ctx.report.removed.budget, 0, "filter_context must not drop for budget");
         assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"), "junk still filtered");
         assert_eq!(ctx.chunks.len(), 2);
+    }
+
+    #[test]
+    fn public_grounding_and_link_primitives() {
+        // Query-relevant chunk grounds high; off-topic grounds ~0.
+        let q = "what nationality was the safety lamp inventor";
+        assert!(grounding_score(q, "the safety lamp inventor was famous") > 0.3);
+        assert_eq!(grounding_score(q, "photosynthesis converts sunlight"), 0.0);
+        // Stemming makes morphological variants match (invented↔inventor↔invent).
+        assert!(grounding_score("who invented it", "the invention of the lamp") > 0.0);
+        // Linkage: chunks sharing the bridge entity link; unrelated ones don't.
+        let hop1 = "the safety lamp was invented by Humphry Davy";
+        let hop2 = "Humphry Davy was a British chemist";
+        let junk = "photosynthesis in green plants";
+        assert!(link_strength(hop1, hop2) > link_strength(hop1, junk));
     }
 
     #[test]
