@@ -1,12 +1,21 @@
 # The Second-Hop Tax — Measured Directly, at Large n
 
 > **Hypothesis:** every operation that selects by query relevance drops the multi-hop second hop (low-relevance-to-query by construction).
-> **Status:** Confirmed — two datasets (HotpotQA n=1327, MuSiQue n=1484), bootstrap 95% CIs.
-> **Setup:** multi-hop questions with a query-relevance gap; hermetic (no LLM, no embeddings); lexical grounding label.
-> **Headline:** a relevance filter keeps 96.8% of second hops at threshold 0.05 but only 43.9% at 0.30 on HotpotQA — and 75.1%→4.3% on the harder MuSiQue; `ReasoningPreserving` recovers up to +23 pts (HotpotQA) / +29 pts (MuSiQue).
-> **Reproduce:** `cargo run -p redhop-examples --example second_hop_retention --release`
+> **Status:** Confirmed (filtering tax, HotpotQA n=1275), bootstrap 95% CIs. Robust to a sharper grounding signal.
+> **Setup:** multi-hop HotpotQA with a query-relevance gap; hermetic (no LLM, no embeddings); grounding = stopword-removed + Snowball-stemmed query-term overlap (validated, see note below).
+> **Headline:** a relevance filter keeps 91.5% of second hops at threshold 0.05 but only 41.6% at 0.30, while *first* hops stay ≥0.92; `ReasoningPreserving` recovers up to +13 pts. Not a lexical artifact — the tax persists (and junk-suppression rises) under a validated sharper signal.
+> **Reproduce:** `cargo run -p redhop-examples --example second_hop_retention --release` (signal ablation: `--example signal_ablation`).
 > **Justifies API:** `build_context(strategy = ReasoningPreserving)`.
-> **Caveats:** lexical grounding/linkage; retention is reachability, not answer quality. See §Honest limits.
+> **Caveats:** lexical grounding/linkage; retention is reachability, not answer quality. Density-pruning tax is signal-dependent (does not survive the sharp signal); MuSiQue lexical grounding too weak to isolate the tax (motivates embeddings). See §Honest limits.
+
+> **⚠ Numbers updated (improved signal).** Earlier versions of this doc reported
+> a crude raw-overlap signal (HotpotQA 0.968→0.439; MuSiQue 0.751→0.043). The
+> grounding signal was since validated and sharpened (stopword removal + Snowball
+> stemming; gold-vs-distractor AUC 0.94→0.98, `signal_ablation`). Re-measured
+> numbers below. The filtering tax on HotpotQA is the robust core; the
+> density-pruning and MuSiQue sub-results did **not** survive the sharper signal
+> and are reported as honest negatives. The companion paper (`paper2`) carries
+> the authoritative scoping.
 
 ---
 
