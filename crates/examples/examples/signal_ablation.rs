@@ -262,6 +262,133 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
     cases
 }
 
+// ───────────────────────── linkage ablation (#2 entity-aware) ─────────────
+//
+// The rescue mechanism asks: is a low-relevance second hop *linked* to a
+// relevant first hop (sharing the bridge entity)? We measure whether a
+// linkage signal connects the true second hop to its first hop better than it
+// connects an injected distractor to that first hop:
+//
+//   link AUC = P( link(second_hop, first_hop) > link(distractor, first_hop) )
+//
+// Baseline = term-set Jaccard (all content terms). Entity = Jaccard over only
+// proper-noun-like (capitalized, non-sentence-initial) terms — the bridge.
+
+fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let inter = a.intersection(b).count() as f32;
+    let union = (a.len() + b.len()) as f32 - inter;
+    if union <= 0.0 { 0.0 } else { inter / union }
+}
+
+/// Proper-noun-like terms: capitalized, not sentence-initial, content words,
+/// normalized to match the term pipeline. A deterministic entity stand-in.
+fn entity_terms(text: &str, stop: &HashSet<&str>, stemmer: &Stemmer) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let mut sentence_start = true;
+    for raw in text.split_whitespace() {
+        let trimmed = raw.trim_matches(|c: char| !c.is_alphanumeric());
+        let is_cap = trimmed.chars().next().map_or(false, |c| c.is_uppercase());
+        let lower = trimmed.to_lowercase();
+        let content = lower.chars().count() > 1 && !stop.contains(lower.as_str());
+        if is_cap && !sentence_start && content {
+            out.insert(stemmer.stem(&lower).into_owned());
+        }
+        sentence_start = raw.ends_with('.') || raw.ends_with('!') || raw.ends_with('?');
+    }
+    out
+}
+
+#[derive(Clone, Copy)]
+enum LinkVariant {
+    TermJaccard,
+    EntityJaccard,
+    EntityBoosted, // weighted Jaccard: entity terms weight 3x, others 1x
+}
+
+/// Weighted Jaccard: shared-term weight / union-term weight, where terms in
+/// the entity set (of either chunk) weigh `boost`, others weigh 1.
+fn weighted_jaccard(a: &HashSet<String>, b: &HashSet<String>, ents: &HashSet<String>, boost: f32) -> f32 {
+    let w = |t: &String| if ents.contains(t) { boost } else { 1.0 };
+    let inter: f32 = a.intersection(b).map(w).sum();
+    let union: f32 = a.union(b).map(w).sum();
+    if union <= 0.0 { 0.0 } else { inter / union }
+}
+
+fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
+    let stop: HashSet<&str> = STOPWORDS.iter().copied().collect();
+    let stemmer = Stemmer::create(Algorithm::English);
+    let by_id: HashMap<&ChunkId, &Chunk> = chunks.iter().map(|c| (&c.id, c)).collect();
+    // Content terms via the now-default pipeline (stopwords + Snowball).
+    let cterms = |t: &str| term_set(t, true, StemMode::Snowball, &stop, &stemmer);
+    let dummy_idf = HashMap::new();
+
+    println!("\n=== {label} (linkage AUC: 2nd-hop↔1st-hop vs distractor↔1st-hop) ===");
+    println!("  {:<24} {:>22}", "linkage variant", "AUC [95% CI]");
+    println!("  {}", "─".repeat(50));
+
+    for variant in [LinkVariant::TermJaccard, LinkVariant::EntityJaccard, LinkVariant::EntityBoosted] {
+        let mut rng = Lcg(0xC0FFEE);
+        let mut cases: Vec<QCase> = Vec::new();
+        for lq in &corpus.queries {
+            if lq.gold_chunk_ids.len() < 2 {
+                continue;
+            }
+            let q = cterms(&lq.text);
+            let mut gold: Vec<&Chunk> =
+                lq.gold_chunk_ids.iter().filter_map(|id| by_id.get(id).copied()).collect();
+            if gold.len() < 2 {
+                continue;
+            }
+            // first hop = highest grounding, second hop = lowest.
+            gold.sort_by(|a, b| {
+                let ga = grounding(&q, &cterms(&a.text), false, &dummy_idf);
+                let gb = grounding(&q, &cterms(&b.text), false, &dummy_idf);
+                ga.partial_cmp(&gb).unwrap()
+            });
+            let second = gold[0];
+            let first = *gold.last().unwrap();
+            let gold_docs: HashSet<&str> = gold.iter().map(|c| c.source.as_str()).collect();
+
+            let link = |a: &Chunk, b: &Chunk| match variant {
+                LinkVariant::TermJaccard => jaccard(&cterms(&a.text), &cterms(&b.text)),
+                LinkVariant::EntityJaccard => {
+                    jaccard(&entity_terms(&a.text, &stop, &stemmer), &entity_terms(&b.text, &stop, &stemmer))
+                }
+                LinkVariant::EntityBoosted => {
+                    let mut ents = entity_terms(&a.text, &stop, &stemmer);
+                    ents.extend(entity_terms(&b.text, &stop, &stemmer));
+                    weighted_jaccard(&cterms(&a.text), &cterms(&b.text), &ents, 3.0)
+                }
+            };
+            let second_link = link(second, first);
+
+            let mut pool: Vec<&Chunk> =
+                chunks.iter().filter(|c| !gold_docs.contains(c.source.as_str())).collect();
+            for i in (1..pool.len()).rev() {
+                let j = (rng.next() as usize) % (i + 1);
+                pool.swap(i, j);
+            }
+            let distractor: Vec<f32> =
+                pool.iter().take(N_DISTRACTORS).map(|d| link(d, first)).collect();
+            if distractor.is_empty() {
+                continue;
+            }
+            cases.push(QCase { gold: vec![second_link], distractor });
+        }
+        let mut rng2 = Lcg(0x5EED);
+        let label_v = match variant {
+            LinkVariant::TermJaccard => "term jaccard (baseline)",
+            LinkVariant::EntityJaccard => "entity jaccard (#2)",
+            LinkVariant::EntityBoosted => "entity-boosted (#2)",
+        };
+        let (m, lo, hi) = auc_ci(&cases, &mut rng2);
+        println!("  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})", label_v, m, lo, hi, cases.len());
+    }
+}
+
 fn run(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
     println!("\n=== {label} (gold-vs-distractor AUC; higher = sharper signal) ===");
     println!("  {:<24} {:>22}", "variant", "AUC [95% CI]");
@@ -283,12 +410,14 @@ fn main() -> anyhow::Result<()> {
     let hp_corpus = hp.to_labeled_corpus(&chunker, |_| None, hp_regime)?;
     let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;
     run("HotpotQA", &hp_corpus, &hp_chunks);
+    run_linkage("HotpotQA", &hp_corpus, &hp_chunks);
 
     if let Ok(mut mq) = MuSiQueDataset::from_path(MUSIQUE_PATH) {
         mq.examples.truncate(SAMPLE_SIZE);
         let mq_corpus = mq.to_labeled_corpus(&chunker, |_| None, mq_regime)?;
         let mq_chunks = chunker.chunk_batch(&mq_corpus.docs)?;
         run("MuSiQue", &mq_corpus, &mq_chunks);
+        run_linkage("MuSiQue", &mq_corpus, &mq_chunks);
     }
 
     println!("\n  A variant is promoted to the core only if its AUC CI clears baseline.");
