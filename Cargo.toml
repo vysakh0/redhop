@@ -15,6 +15,7 @@ members = [
     "crates/pipeline",
     "crates/benchmarks",
     "crates/examples",
+    "crates/cli",
 ]
 
 [workspace.package]

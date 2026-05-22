@@ -52,6 +52,7 @@ real mechanism — is itself part of the design.
 | `neorag-diagnostics` | Six retrieval-quality metrics + `DefaultDiagnosticsEngine` with configurable warnings. |
 | `neorag-storage`     | `ChunkStore` and `FlatVectorIndex` (exact-cosine baseline; ANN is pluggable via `VectorIndex`). |
 | `neorag-context`     | Finite-attention context assembly: `build_context` + strategies (incl. `ReasoningPreserving`, which resists the [second-hop tax](docs/findings/SECOND_HOP_TAX.md) and beats aggressive filtering [end-to-end](docs/findings/REASONING_PRESERVATION.md)) + economics readout. |
+| `neorag-cli`         | Thin eval/observability CLI (`neorag compare` / `analyze-context` / `benchmark` / `report`). See [crates/cli](crates/cli/README.md). |
 | `neorag-pipeline`    | `NeoRAG` facade + builder composing the above.                          |
 | `neorag-benchmarks`  | Criterion benchmarks.                                                   |
 | `neorag-examples`    | Runnable examples.                                                      |

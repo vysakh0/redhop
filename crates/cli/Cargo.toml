@@ -1,0 +1,19 @@
+[package]
+name = "neorag-cli"
+version = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = { workspace = true }
+description = "Thin evaluation/observability CLI for NeoRAG context optimization"
+
+[[bin]]
+name = "neorag"
+path = "src/main.rs"
+
+[dependencies]
+neorag-core    = { workspace = true }
+neorag-context = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+anyhow         = { workspace = true }
+clap           = { version = "4.5", features = ["derive"] }
