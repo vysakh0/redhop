@@ -223,9 +223,7 @@ fn elapsed_ms(start: Instant) -> u64 {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use redhop_core::{
-        Chunk, ChunkId, Query, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
-    };
+    use redhop_core::{Chunk, ChunkId, Query, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
     use std::sync::Mutex;
 
     struct MockRetriever {
@@ -235,7 +233,7 @@ mod tests {
     }
     impl MockRetriever {
         fn new(n: usize) -> Self {
-            let results = (0..n).map(|i| mk_result(i)).collect();
+            let results = (0..n).map(mk_result).collect();
             Self {
                 results_to_return: Mutex::new(results),
                 calls: Mutex::new(0),
@@ -335,10 +333,7 @@ mod tests {
             );
             state.current_top_k = 1;
             let outcome = act
-                .apply(
-                    &RetrievalAction::ExpandTopK { from: 1, to: 5 },
-                    &state,
-                )
+                .apply(&RetrievalAction::ExpandTopK { from: 1, to: 5 }, &state)
                 .await
                 .unwrap();
             assert!(!outcome.terminal);

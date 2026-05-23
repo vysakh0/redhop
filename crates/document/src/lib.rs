@@ -75,7 +75,10 @@ impl Default for DocumentConfig {
             overlap_sentences: 1,
             candidate_k: 20,
             // The runtime's philosophy: size-gated, conservative, observable.
-            context: ContextConfig { strategy: ContextStrategy::Auto, ..Default::default() },
+            context: ContextConfig {
+                strategy: ContextStrategy::Auto,
+                ..Default::default()
+            },
         }
     }
 }
@@ -106,8 +109,12 @@ impl Document {
         cfg: DocumentConfig,
     ) -> Result<Self> {
         let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
-        let chunker =
-            SentenceChunker::new(tok, cfg.target_tokens, cfg.max_tokens, cfg.overlap_sentences)?;
+        let chunker = SentenceChunker::new(
+            tok,
+            cfg.target_tokens,
+            cfg.max_tokens,
+            cfg.overlap_sentences,
+        )?;
         let chunks = chunker.chunk(&SourceDoc::new(source, text))?;
         Self::from_chunks_with(chunks, cfg)
     }
@@ -129,7 +136,12 @@ impl Document {
         // A current-thread runtime is enough: the internal retriever's work is
         // CPU-bound (Tantivy on a blocking worker); we only block_on it.
         let rt = Builder::new_current_thread().build()?;
-        Ok(Self { chunks, cfg, rt, retriever: None })
+        Ok(Self {
+            chunks,
+            cfg,
+            rt,
+            retriever: None,
+        })
     }
 
     /// Number of chunks the document holds.
@@ -153,14 +165,22 @@ impl Document {
     /// Returns the prompt context plus a [`ContextReport`] of what it did.
     pub fn context(&mut self, query: &str) -> Result<BuiltContext> {
         let results = self.retrieve(query, self.cfg.candidate_k)?;
-        Ok(build_context(&Query::new(query), &results, &self.cfg.context))
+        Ok(build_context(
+            &Query::new(query),
+            &results,
+            &self.cfg.context,
+        ))
     }
 
     /// Like [`Document::context`] but overriding how many candidates to
     /// retrieve before assembly.
     pub fn context_with_k(&mut self, query: &str, candidate_k: usize) -> Result<BuiltContext> {
         let results = self.retrieve(query, candidate_k)?;
-        Ok(build_context(&Query::new(query), &results, &self.cfg.context))
+        Ok(build_context(
+            &Query::new(query),
+            &results,
+            &self.cfg.context,
+        ))
     }
 
     /// Diagnose the retrieval for a query **without** modifying anything:
@@ -168,7 +188,11 @@ impl Document {
     /// Auto policy) whether it would prune. Pure observability.
     pub fn analyze(&mut self, query: &str) -> Result<ContextReport> {
         let results = self.retrieve(query, self.cfg.candidate_k)?;
-        Ok(analyze_context(&Query::new(query), &results, &self.cfg.context))
+        Ok(analyze_context(
+            &Query::new(query),
+            &results,
+            &self.cfg.context,
+        ))
     }
 
     fn ensure_indexed(&mut self) -> Result<()> {
@@ -203,11 +227,17 @@ mod tests {
         let mut doc = Document::from_text_with(
             "doc",
             TEXT,
-            DocumentConfig { target_tokens: 8, max_tokens: 16, ..Default::default() },
+            DocumentConfig {
+                target_tokens: 8,
+                max_tokens: 16,
+                ..Default::default()
+            },
         )
         .unwrap();
         assert!(doc.len() >= 2, "text should produce multiple chunks");
-        let ctx = doc.context("Where was the safety lamp inventor born?").unwrap();
+        let ctx = doc
+            .context("Where was the safety lamp inventor born?")
+            .unwrap();
         assert!(!ctx.text().is_empty());
         // The retrieved+assembled context should reach the answer evidence.
         assert!(ctx.text().to_lowercase().contains("penzance"));
@@ -218,7 +248,11 @@ mod tests {
         let mut doc = Document::from_text_with(
             "doc",
             TEXT,
-            DocumentConfig { target_tokens: 8, max_tokens: 16, ..Default::default() },
+            DocumentConfig {
+                target_tokens: 8,
+                max_tokens: 16,
+                ..Default::default()
+            },
         )
         .unwrap();
         let report = doc.analyze("safety lamp inventor nationality").unwrap();
@@ -229,7 +263,10 @@ mod tests {
 
     #[test]
     fn empty_document_errors_clearly() {
-        let err = Document::from_chunks(vec![]).map(|_| ()).unwrap_err().to_string();
+        let err = Document::from_chunks(vec![])
+            .map(|_| ())
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("no chunks"), "unhelpful error: {err}");
         // Whitespace-only text produces no chunks → same clear error.
         assert!(Document::from_text("doc", "   \n  ").is_err());

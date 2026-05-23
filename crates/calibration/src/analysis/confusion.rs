@@ -112,7 +112,11 @@ pub fn confusion_matrix(outcomes: &[QueryOutcome]) -> RegimeConfusionMatrix {
         } else {
             0.0
         };
-        let recall = if support > 0 { tp as f32 / support as f32 } else { 0.0 };
+        let recall = if support > 0 {
+            tp as f32 / support as f32
+        } else {
+            0.0
+        };
         let f1 = if precision + recall > 0.0 {
             2.0 * precision * recall / (precision + recall)
         } else {
@@ -178,7 +182,10 @@ mod tests {
         let outs = vec![
             outcome(RetrievalRegime::Easy, Some(RetrievalRegime::Easy)),
             outcome(RetrievalRegime::Sparse, Some(RetrievalRegime::Sparse)),
-            outcome(RetrievalRegime::DistractorHeavy, Some(RetrievalRegime::DistractorHeavy)),
+            outcome(
+                RetrievalRegime::DistractorHeavy,
+                Some(RetrievalRegime::DistractorHeavy),
+            ),
         ];
         let m = confusion_matrix(&outs);
         assert_eq!(m.accuracy, 1.0);
@@ -192,10 +199,22 @@ mod tests {
         // Truth: 4 DistractorHeavy. Classifier: predicts Easy on 3 of
         // them, DistractorHeavy on 1.
         let outs = vec![
-            outcome(RetrievalRegime::DistractorHeavy, Some(RetrievalRegime::Easy)),
-            outcome(RetrievalRegime::DistractorHeavy, Some(RetrievalRegime::Easy)),
-            outcome(RetrievalRegime::DistractorHeavy, Some(RetrievalRegime::Easy)),
-            outcome(RetrievalRegime::DistractorHeavy, Some(RetrievalRegime::DistractorHeavy)),
+            outcome(
+                RetrievalRegime::DistractorHeavy,
+                Some(RetrievalRegime::Easy),
+            ),
+            outcome(
+                RetrievalRegime::DistractorHeavy,
+                Some(RetrievalRegime::Easy),
+            ),
+            outcome(
+                RetrievalRegime::DistractorHeavy,
+                Some(RetrievalRegime::Easy),
+            ),
+            outcome(
+                RetrievalRegime::DistractorHeavy,
+                Some(RetrievalRegime::DistractorHeavy),
+            ),
         ];
         let m = confusion_matrix(&outs);
         // Recall on DistractorHeavy = 1/4 = 0.25.

@@ -156,11 +156,7 @@ impl RuleBasedClassifier {
 }
 
 impl RegimeClassifier for RuleBasedClassifier {
-    fn classify(
-        &self,
-        d: &DiagnosticsReport,
-        c: &ConfidenceProfile,
-    ) -> RegimeDistribution {
+    fn classify(&self, d: &DiagnosticsReport, c: &ConfidenceProfile) -> RegimeDistribution {
         let t = &self.thresholds;
         let mut trace = ClassificationTrace::default();
 
@@ -203,8 +199,14 @@ impl RegimeClassifier for RuleBasedClassifier {
         thr!("ambiguous_min_entropy", t.ambiguous_min_entropy);
         thr!("ambiguous_min_dispersion", t.ambiguous_min_dispersion);
         thr!("ambiguous_max_margin", t.ambiguous_max_margin);
-        thr!("sparse_max_lexical_grounding", t.sparse_max_lexical_grounding);
-        thr!("sparse_max_semantic_grounding", t.sparse_max_semantic_grounding);
+        thr!(
+            "sparse_max_lexical_grounding",
+            t.sparse_max_lexical_grounding
+        );
+        thr!(
+            "sparse_max_semantic_grounding",
+            t.sparse_max_semantic_grounding
+        );
         thr!("softmax_temperature", t.softmax_temperature);
 
         // ---- Evaluate rules ----
@@ -268,16 +270,36 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
-    Rule { eval: rule_easy_lexically_grounded },
-    Rule { eval: rule_easy_semantically_grounded },
-    Rule { eval: rule_saturated_lexical },
-    Rule { eval: rule_saturated_semantic },
-    Rule { eval: rule_distractor_lexical },
-    Rule { eval: rule_distractor_semantic },
-    Rule { eval: rule_ambiguous_high_entropy },
-    Rule { eval: rule_ambiguous_high_dispersion },
-    Rule { eval: rule_ambiguous_low_margin },
-    Rule { eval: rule_sparse_low_grounding },
+    Rule {
+        eval: rule_easy_lexically_grounded,
+    },
+    Rule {
+        eval: rule_easy_semantically_grounded,
+    },
+    Rule {
+        eval: rule_saturated_lexical,
+    },
+    Rule {
+        eval: rule_saturated_semantic,
+    },
+    Rule {
+        eval: rule_distractor_lexical,
+    },
+    Rule {
+        eval: rule_distractor_semantic,
+    },
+    Rule {
+        eval: rule_ambiguous_high_entropy,
+    },
+    Rule {
+        eval: rule_ambiguous_high_dispersion,
+    },
+    Rule {
+        eval: rule_ambiguous_low_margin,
+    },
+    Rule {
+        eval: rule_sparse_low_grounding,
+    },
 ];
 
 fn fire(rule: &'static str, regime: RetrievalRegime, weight: f32, msg: String) -> Option<RuleFire> {
@@ -304,10 +326,7 @@ fn rule_easy_lexically_grounded(
         Some(m) => (m >= t.easy_min_decision_margin, m),
         None => (true, f32::NAN),
     };
-    if g >= t.easy_min_lexical_grounding
-        && margin_ok
-        && dr <= t.easy_max_distractor_ratio
-    {
+    if g >= t.easy_min_lexical_grounding && margin_ok && dr <= t.easy_max_distractor_ratio {
         // Weight grows with the *evidence* of easiness; a clean retrieval
         // gets a larger vote than a borderline one.
         let base = (g - t.easy_min_lexical_grounding).max(0.0);
@@ -353,10 +372,7 @@ fn rule_easy_semantically_grounded(
         Some(m) => (m >= t.easy_min_decision_margin, m),
         None => (true, f32::NAN),
     };
-    if g >= t.easy_min_semantic_grounding
-        && margin_ok
-        && dr <= t.easy_max_distractor_ratio
-    {
+    if g >= t.easy_min_semantic_grounding && margin_ok && dr <= t.easy_max_distractor_ratio {
         let base = (g - t.easy_min_semantic_grounding).max(0.0);
         let margin_bonus = c
             .decision_margin
@@ -543,7 +559,9 @@ fn rule_sparse_low_grounding(
     // grounding alone could just be the paraphrase regime.
     let l = d.lexical_grounding;
     let s = d.semantic_grounding;
-    let lex_low = l.map(|x| x <= t.sparse_max_lexical_grounding).unwrap_or(false);
+    let lex_low = l
+        .map(|x| x <= t.sparse_max_lexical_grounding)
+        .unwrap_or(false);
     let sem_low = s
         .map(|x| x <= t.sparse_max_semantic_grounding)
         .unwrap_or(false);
@@ -556,8 +574,7 @@ fn rule_sparse_low_grounding(
             1.0,
             format!(
                 "lexical_grounding={:.2}≤{:.2} ∧ semantic_grounding={:.2}≤{:.2}",
-                l, t.sparse_max_lexical_grounding,
-                s, t.sparse_max_semantic_grounding
+                l, t.sparse_max_lexical_grounding, s, t.sparse_max_semantic_grounding
             ),
         ),
         (Some(l), None) if lex_low => fire(
@@ -671,7 +688,11 @@ mod tests {
         let r = cls().classify(&d, &c);
         assert_eq!(r.argmax, RetrievalRegime::Easy);
         assert!(r.p(RetrievalRegime::Easy) > 0.4);
-        assert!(r.trace.rules_fired.iter().any(|f| f.rule == "easy_lexically_grounded"));
+        assert!(r
+            .trace
+            .rules_fired
+            .iter()
+            .any(|f| f.rule == "easy_lexically_grounded"));
     }
 
     #[test]
@@ -767,7 +788,10 @@ mod tests {
         };
         let r = cls().classify(&d, &conf());
         assert!(r.trace.features.contains_key("lexical_grounding"));
-        assert!(r.trace.thresholds.contains_key("easy_min_lexical_grounding"));
+        assert!(r
+            .trace
+            .thresholds
+            .contains_key("easy_min_lexical_grounding"));
     }
 
     #[test]

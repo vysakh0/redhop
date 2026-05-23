@@ -90,7 +90,12 @@ mod tests {
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {
-            chunk: Chunk::new(text, text, "doc", TokenCount(text.split_whitespace().count())),
+            chunk: Chunk::new(
+                text,
+                text,
+                "doc",
+                TokenCount(text.split_whitespace().count()),
+            ),
             score: Score {
                 value: score,
                 method: RetrievalMethod::Dense,

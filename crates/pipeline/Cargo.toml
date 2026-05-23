@@ -34,3 +34,6 @@ redhop-retrieval     = { workspace = true }
 redhop-storage       = { workspace = true }
 redhop-diagnostics   = { workspace = true }
 redhop-reranking     = { workspace = true }
+
+[lints]
+workspace = true

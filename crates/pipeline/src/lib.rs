@@ -161,12 +161,8 @@ impl RedHopBuilder {
 
     /// Finalize the configuration and build the facade.
     pub fn build(self) -> Result<RedHop> {
-        let chunker = self
-            .chunker
-            .ok_or(Error::MissingComponent("chunker"))?;
-        let retriever = self
-            .retriever
-            .ok_or(Error::MissingComponent("retriever"))?;
+        let chunker = self.chunker.ok_or(Error::MissingComponent("chunker"))?;
+        let retriever = self.retriever.ok_or(Error::MissingComponent("retriever"))?;
         let diagnostics = self
             .diagnostics
             .unwrap_or_else(|| Arc::new(DefaultDiagnosticsEngine::new()));
@@ -313,13 +309,9 @@ impl RedHop {
             self.retriever.clone(),
             self.rerankers_cascade.clone(),
         ));
-        let mut orchestrator = AdaptiveOrchestrator::new(
-            self.diagnostics.clone(),
-            classifier,
-            policy,
-            actuator,
-        )
-        .with_initial_top_k(self.candidate_k);
+        let mut orchestrator =
+            AdaptiveOrchestrator::new(self.diagnostics.clone(), classifier, policy, actuator)
+                .with_initial_top_k(self.candidate_k);
         if let Some(budget) = &self.adaptive_budget {
             orchestrator = orchestrator.with_budget(budget.clone());
         }
@@ -345,9 +337,7 @@ impl RedHop {
     /// for callers that want the canonical adaptive configuration without
     /// wiring every component by hand.
     pub fn defaults_for_adaptive() -> RedHopBuilder {
-        use redhop_diagnostics::{
-            LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
-        };
+        use redhop_diagnostics::{LayeredDiagnosticsEngine, SemanticDiagnosticsEngine};
         let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
         let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
         let layered = LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic);

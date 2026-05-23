@@ -24,7 +24,9 @@
 
 use std::sync::Arc;
 
-use redhop_core::{DiagnosticsEngine, RegimeClassifier, Reranker, RerankerLevel, Result, Retriever};
+use redhop_core::{
+    DiagnosticsEngine, RegimeClassifier, Reranker, RerankerLevel, Result, Retriever,
+};
 use redhop_orchestration::{ConservativeRulePolicy, Policy, PolicyThresholds};
 use serde::{Deserialize, Serialize};
 
@@ -159,8 +161,7 @@ impl ThresholdSweep {
                 let mut t = self.static_thresholds.clone();
                 t.min_p_distractor = p_d;
                 t.min_p_ambiguous = p_a;
-                let policy: Arc<dyn Policy> =
-                    Arc::new(ConservativeRulePolicy::with_thresholds(t));
+                let policy: Arc<dyn Policy> = Arc::new(ConservativeRulePolicy::with_thresholds(t));
                 let cfg = RunnerConfig {
                     retriever: retriever.clone(),
                     diagnostics: diagnostics.clone(),
@@ -227,11 +228,21 @@ fn aggregate(outcomes: &[QueryOutcome], min_p_distractor: f32, min_p_ambiguous: 
     } else {
         0.0
     };
-    let mean_latency_ms = outcomes.iter().map(|o| o.latency_ms_adaptive as f32).sum::<f32>() / nf;
-    let mean_rerank_calls =
-        outcomes.iter().map(|o| o.rerank_calls_adaptive as f32).sum::<f32>() / nf;
-    let mean_retrieval_calls =
-        outcomes.iter().map(|o| o.retrieval_calls_adaptive as f32).sum::<f32>() / nf;
+    let mean_latency_ms = outcomes
+        .iter()
+        .map(|o| o.latency_ms_adaptive as f32)
+        .sum::<f32>()
+        / nf;
+    let mean_rerank_calls = outcomes
+        .iter()
+        .map(|o| o.rerank_calls_adaptive as f32)
+        .sum::<f32>()
+        / nf;
+    let mean_retrieval_calls = outcomes
+        .iter()
+        .map(|o| o.retrieval_calls_adaptive as f32)
+        .sum::<f32>()
+        / nf;
     let mean_internal_actual_gain = outcomes.iter().map(|o| o.sum_actual_gain).sum::<f32>() / nf;
     let argmax_correct = outcomes
         .iter()

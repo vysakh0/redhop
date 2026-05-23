@@ -76,9 +76,9 @@ impl Chunker for SentenceChunker {
         let mut idx = 0usize;
 
         let flush = |chunks: &mut Vec<Chunk>,
-                         buf_idx: &mut Vec<usize>,
-                         buf_tokens: &mut usize,
-                         idx: &mut usize|
+                     buf_idx: &mut Vec<usize>,
+                     buf_tokens: &mut usize,
+                     idx: &mut usize|
          -> Result<()> {
             if buf_idx.is_empty() {
                 return Ok(());
@@ -91,13 +91,8 @@ impl Chunker for SentenceChunker {
                 .collect::<Vec<_>>()
                 .join(" ");
             let id = ChunkId::new(format!("{}::sent::{}", doc.source, idx));
-            let mut chunk = Chunk::new(
-                id,
-                text,
-                &doc.source,
-                redhop_core::TokenCount(*buf_tokens),
-            )
-            .with_metadata(doc.metadata.clone());
+            let mut chunk = Chunk::new(id, text, &doc.source, redhop_core::TokenCount(*buf_tokens))
+                .with_metadata(doc.metadata.clone());
             chunk.metadata.insert(
                 "sentence_range".to_string(),
                 serde_json::json!({ "start": first, "end": last + 1 }),
@@ -197,10 +192,7 @@ mod tests {
     #[test]
     fn overlap_retains_tail_sentences() {
         let chunker = SentenceChunker::new(tok(), 4, 6, 1).unwrap();
-        let doc = Document::new(
-            "doc1",
-            "Aa bb. Cc dd. Ee ff. Gg hh. Ii jj.",
-        );
+        let doc = Document::new("doc1", "Aa bb. Cc dd. Ee ff. Gg hh. Ii jj.");
         let chunks = chunker.chunk(&doc).unwrap();
         // With overlap=1, adjacent chunks should share at least one sentence
         // worth of bytes.

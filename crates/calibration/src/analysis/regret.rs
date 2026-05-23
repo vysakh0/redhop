@@ -179,11 +179,11 @@ mod tests {
     #[test]
     fn captures_useful_and_harmful_lifts_separately() {
         let outs = vec![
-            outcome(true, 0.5, 0.10, Some(0.30)),  // useful, underestimated
-            outcome(true, 0.3, 0.10, Some(0.20)),  // useful, underestimated
+            outcome(true, 0.5, 0.10, Some(0.30)),   // useful, underestimated
+            outcome(true, 0.3, 0.10, Some(0.20)),   // useful, underestimated
             outcome(true, -0.2, 0.10, Some(-0.10)), // harmful
-            outcome(true, 0.0, 0.05, Some(0.0)),   // wasted
-            outcome(false, 0.0, 0.0, None),        // no intervention, no lift
+            outcome(true, 0.0, 0.05, Some(0.0)),    // wasted
+            outcome(false, 0.0, 0.0, None),         // no intervention, no lift
         ];
         let r = regret_summary(&outs);
         assert_eq!(r.n_interventions, 4);

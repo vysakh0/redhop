@@ -27,24 +27,21 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_context::{build_context, ContextConfig, ContextStrategy};
 use redhop_core::{
-    Chunker, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenizerBackend,
-    VectorIndex,
+    ChunkId, Chunker, Embedding, EmbeddingProvider, Query, Retriever, TokenizerBackend, VectorIndex,
 };
 use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop_retrieval::DenseRetriever;
 use redhop_storage::{ChunkStore, FlatVectorIndex};
-use parking_lot::RwLock;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
+const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
+const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 60;
 const WIDE_N: usize = 20;
 const DIM: usize = 384;
@@ -68,10 +65,17 @@ async fn main() -> anyhow::Result<()> {
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
     println!("loading BGE-small...");
-    let bge: Arc<dyn EmbeddingProvider> =
-        Arc::new(OnnxEmbedder::load(BGE_MODEL, BGE_TOKENIZER, EmbedderConfig::bge(DIM))?);
+    let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
+        BGE_MODEL,
+        BGE_TOKENIZER,
+        EmbedderConfig::bge(DIM),
+    )?);
 
-    let q_texts: Vec<String> = dataset.examples.iter().map(|e| e.question.clone()).collect();
+    let q_texts: Vec<String> = dataset
+        .examples
+        .iter()
+        .map(|e| e.question.clone())
+        .collect();
     let q_vecs = bge.embed(&q_texts).await?;
     let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs).collect();
     let corpus = dataset.to_labeled_corpus(&chunker, |q| q_map.get(q).cloned(), default_regime)?;
@@ -116,7 +120,12 @@ async fn main() -> anyhow::Result<()> {
             "budget", "gold_retained", "tokens", "distractor", "density"
         );
         for &budget in &budgets {
-            let mut agg = Row { gold_retained: 0.0, tokens: 0.0, distractor: 0.0, density: 0.0 };
+            let mut agg = Row {
+                gold_retained: 0.0,
+                tokens: 0.0,
+                distractor: 0.0,
+                density: 0.0,
+            };
             let mut n: f32 = 0.0;
             for (lq, (gold, wide)) in corpus
                 .queries

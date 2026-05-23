@@ -91,9 +91,7 @@ impl Retriever for HybridRetriever {
 
         let fused = match self.strategy {
             FusionStrategy::ReciprocalRank => reciprocal_rank_fusion(&lists, 60.0, top_k),
-            FusionStrategy::WeightedSum => {
-                weighted_sum_fusion(&lists, &self.weights, top_k)
-            }
+            FusionStrategy::WeightedSum => weighted_sum_fusion(&lists, &self.weights, top_k),
         };
         Ok(fused)
     }
@@ -106,9 +104,7 @@ impl Retriever for HybridRetriever {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{
-        ChunkId, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
-    };
+    use redhop_core::{ChunkId, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     struct MockRetriever {
         name: &'static str,
@@ -170,7 +166,10 @@ mod tests {
             let h = HybridRetriever::rrf(vec![lex, dense], 5);
             let fused = h.retrieve(&Query::new("q"), 3).await.unwrap();
             // `b` appears in both lists; it must rank ahead of `c` (one list).
-            let ids: Vec<_> = fused.iter().map(|r| r.chunk.id.as_str().to_string()).collect();
+            let ids: Vec<_> = fused
+                .iter()
+                .map(|r| r.chunk.id.as_str().to_string())
+                .collect();
             let bi = ids.iter().position(|x| x == "b").unwrap();
             let ci = ids.iter().position(|x| x == "c").unwrap();
             assert!(bi < ci);

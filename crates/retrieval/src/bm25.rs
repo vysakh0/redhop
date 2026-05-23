@@ -8,11 +8,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use parking_lot::RwLock;
 use redhop_core::{
     Chunk, ChunkId, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown, TokenCount,
 };
-use parking_lot::RwLock;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
@@ -166,9 +166,6 @@ impl Retriever for Bm25Retriever {
     }
 }
 
-/// Strip Tantivy query-parser metacharacters so user input is treated as a
-/// plain bag-of-words. Lexical operators are useful but should be opt-in via
-/// a future structured-query API rather than implicit in free-text queries.
 /// Reduce arbitrary natural-language text to a clean bag of word tokens, so
 /// Tantivy's `QueryParser` never sees its query meta-syntax. We keep only
 /// alphanumerics (Unicode) and collapse everything else to whitespace; the

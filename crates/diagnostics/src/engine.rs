@@ -4,9 +4,7 @@
 //! single [`DiagnosticsReport`]. Configurable thresholds drive warning
 //! emission; the actual numeric values are always reported.
 
-use redhop_core::{
-    DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult,
-};
+use redhop_core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
 
 use crate::metrics;
 
@@ -58,11 +56,8 @@ impl DiagnosticsEngine for DefaultDiagnosticsEngine {
         let grounding = metrics::lexical_grounding(query, results);
         let purity = metrics::chunk_purity(results);
         let density = metrics::answer_density(query, results);
-        let distractor = metrics::distractor_ratio(
-            query,
-            results,
-            self.thresholds.distractor_min_grounding,
-        );
+        let distractor =
+            metrics::distractor_ratio(query, results, self.thresholds.distractor_min_grounding);
         let saturation = metrics::retrieval_saturation(results);
         let concentration = metrics::evidence_concentration(results);
         let confidence = metrics::retrieval_confidence(grounding, concentration);
@@ -129,7 +124,12 @@ mod tests {
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {
-            chunk: Chunk::new(text, text, "doc", TokenCount(text.split_whitespace().count())),
+            chunk: Chunk::new(
+                text,
+                text,
+                "doc",
+                TokenCount(text.split_whitespace().count()),
+            ),
             score: Score {
                 value: score,
                 method: RetrievalMethod::Lexical,

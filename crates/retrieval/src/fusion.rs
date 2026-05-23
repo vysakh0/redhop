@@ -45,9 +45,9 @@ pub fn reciprocal_rank_fusion(
     for list in lists {
         for (rank, result) in list.iter().enumerate() {
             let contribution = 1.0 / (k + (rank as f32) + 1.0);
-            let entry = by_id.entry(result.chunk.id.clone()).or_insert_with(|| {
-                (result.chunk.clone(), 0.0, result.breakdown.clone())
-            });
+            let entry = by_id
+                .entry(result.chunk.id.clone())
+                .or_insert_with(|| (result.chunk.clone(), 0.0, result.breakdown.clone()));
             entry.1 += contribution;
             merge_breakdown(&mut entry.2, &result.breakdown, result.score);
         }
@@ -111,9 +111,9 @@ pub fn weighted_sum_fusion(
             } else {
                 (result.score.value - min) / range
             };
-            let entry = by_id.entry(result.chunk.id.clone()).or_insert_with(|| {
-                (result.chunk.clone(), 0.0, result.breakdown.clone())
-            });
+            let entry = by_id
+                .entry(result.chunk.id.clone())
+                .or_insert_with(|| (result.chunk.clone(), 0.0, result.breakdown.clone()));
             entry.1 += w * normalized;
             merge_breakdown(&mut entry.2, &result.breakdown, result.score);
         }

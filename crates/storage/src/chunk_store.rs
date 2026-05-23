@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use redhop_core::{Chunk, ChunkId};
 use parking_lot::RwLock;
+use redhop_core::{Chunk, ChunkId};
 
 /// A thread-safe in-memory store of chunks.
 ///

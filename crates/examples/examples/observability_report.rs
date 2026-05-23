@@ -34,10 +34,10 @@ use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_observability::{render::cli, render::json, RetrievalTrace};
+use redhop_orchestration::RuleBasedClassifier;
 use redhop_orchestration::{
     AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy, PolicyThresholds,
 };
-use redhop_orchestration::RuleBasedClassifier;
 use redhop_reranking::LexicalGroundingReranker;
 use redhop_retrieval::Bm25Retriever;
 
@@ -92,7 +92,8 @@ async fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 60, 90, 0)?;
     let embedder = HashingEmbedder::with_dim(256);
-    let corpus = dataset.to_labeled_corpus(&chunker, |q| Some(embedder.embed(q)), default_regime)?;
+    let corpus =
+        dataset.to_labeled_corpus(&chunker, |q| Some(embedder.embed(q)), default_regime)?;
 
     let mut chunks = chunker.chunk_batch(&corpus.docs)?;
     for c in &mut chunks {
@@ -105,21 +106,24 @@ async fn main() -> anyhow::Result<()> {
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
-    let diagnostics: Arc<dyn DiagnosticsEngine> =
-        Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic));
+    let diagnostics: Arc<dyn DiagnosticsEngine> = Arc::new(
+        LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic),
+    );
     let classifier: Arc<dyn RegimeClassifier> = Arc::new(RuleBasedClassifier::new());
     let lex_reranker: Arc<dyn Reranker> = Arc::new(LexicalGroundingReranker::default());
     let rerankers = vec![(RerankerLevel::Lexical, lex_reranker.clone())];
 
     // Best policy setting from the real-workload findings: ambiguous=0.30.
-    let policy: Arc<dyn Policy> = Arc::new(ConservativeRulePolicy::with_thresholds(
-        PolicyThresholds {
+    let policy: Arc<dyn Policy> =
+        Arc::new(ConservativeRulePolicy::with_thresholds(PolicyThresholds {
             min_p_ambiguous: 0.30,
             ..Default::default()
-        },
-    ));
+        }));
 
-    println!("running adaptive controller over {} HotpotQA queries...", corpus.queries.len());
+    println!(
+        "running adaptive controller over {} HotpotQA queries...",
+        corpus.queries.len()
+    );
 
     // ── 1+2. Per-query traces via the orchestrator ────────────────
     let actuator = Arc::new(DefaultActuator::new(retriever.clone(), rerankers.clone()));
@@ -145,7 +149,10 @@ async fn main() -> anyhow::Result<()> {
         println!("AN INTERVENED QUERY:\n{}", cli::render(t));
     }
     if let Some(t) = traces.iter().find(|t| !t.intervened) {
-        println!("A NO-OP QUERY (controller chose to do nothing):\n{}", cli::render(t));
+        println!(
+            "A NO-OP QUERY (controller chose to do nothing):\n{}",
+            cli::render(t)
+        );
     }
 
     // Write all traces as JSONL.
@@ -198,7 +205,10 @@ async fn main() -> anyhow::Result<()> {
     // ── HTML report ───────────────────────────────────────────────
     let opts = ReportOptions {
         title: "RedHop — HotpotQA Adaptive Retrieval Report".into(),
-        workload: format!("HotpotQA dev (distractor), first {} items", corpus.queries.len()),
+        workload: format!(
+            "HotpotQA dev (distractor), first {} items",
+            corpus.queries.len()
+        ),
         cost,
         uniform_rerank_lift: Some(UNIFORM_RERANK_LIFT),
     };

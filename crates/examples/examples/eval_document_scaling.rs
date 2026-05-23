@@ -52,24 +52,41 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| redhop_examples::data_path("cuad/cuad_sample.json"));
     let cuad: Cuad = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
 
-    let contexts: Vec<&String> = cuad.data.iter().flat_map(|c| c.paragraphs.iter().map(|p| &p.context)).collect();
+    let contexts: Vec<&String> = cuad
+        .data
+        .iter()
+        .flat_map(|c| c.paragraphs.iter().map(|p| &p.context))
+        .collect();
     let queries: Vec<String> = cuad
         .data
         .iter()
-        .flat_map(|c| c.paragraphs.iter().flat_map(|p| p.qas.iter().map(|q| q.question.clone())))
+        .flat_map(|c| {
+            c.paragraphs
+                .iter()
+                .flat_map(|p| p.qas.iter().map(|q| q.question.clone()))
+        })
         .take(25)
         .collect();
 
     let sizes = [1usize, 5, 15, 30, contexts.len().min(50)];
     println!("Document scaling (local, no LLM) — {}", path.display());
-    println!("  pooled contracts available: {}   queries/size: {}\n", contexts.len(), queries.len());
+    println!(
+        "  pooled contracts available: {}   queries/size: {}\n",
+        contexts.len(),
+        queries.len()
+    );
     println!(
         "  {:>9}  {:>8}  {:>7}  {:>9}  {:>9}  {:>9}  {:>9}",
         "contracts", "tokens", "chunks", "chunk_ms", "index_ms", "q_p50_ms", "q_p95_ms"
     );
 
     for &n in &sizes {
-        let text = contexts.iter().take(n).map(|s| s.as_str()).collect::<Vec<_>>().join("\n\n");
+        let text = contexts
+            .iter()
+            .take(n)
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
         let t0 = Instant::now();
         let mut doc = Document::from_text("scale", &text)?;

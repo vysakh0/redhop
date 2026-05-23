@@ -67,8 +67,8 @@ pub fn chunk_purity(results: &[RetrievalResult]) -> Option<f32> {
 
 fn single_chunk_purity(text: &str) -> Option<f32> {
     let sentences: Vec<HashSet<String>> = text
-        .split(|c: char| matches!(c, '.' | '!' | '?'))
-        .map(|s| terms(s))
+        .split(['.', '!', '?'])
+        .map(terms)
         .filter(|s| !s.is_empty())
         .collect();
     if sentences.len() < 2 {
@@ -221,7 +221,12 @@ mod tests {
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {
-            chunk: Chunk::new(text, text, "doc", TokenCount(text.split_whitespace().count())),
+            chunk: Chunk::new(
+                text,
+                text,
+                "doc",
+                TokenCount(text.split_whitespace().count()),
+            ),
             score: Score {
                 value: score,
                 method: RetrievalMethod::Lexical,
@@ -267,12 +272,7 @@ mod tests {
 
     #[test]
     fn concentration_high_for_single_peak() {
-        let results = vec![
-            r("a", 100.0),
-            r("b", 1.0),
-            r("c", 1.0),
-            r("d", 1.0),
-        ];
+        let results = vec![r("a", 100.0), r("b", 1.0), r("c", 1.0), r("d", 1.0)];
         let c = evidence_concentration(&results).unwrap();
         assert!(c > 0.9, "expected near-1, got {c}");
     }

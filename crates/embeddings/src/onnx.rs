@@ -37,9 +37,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use redhop_core::{Embedding, EmbeddingProvider, Error, Result};
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
+use redhop_core::{Embedding, EmbeddingProvider, Error, Result};
 use tokenizers::Tokenizer;
 
 use crate::config::EmbedderConfig;

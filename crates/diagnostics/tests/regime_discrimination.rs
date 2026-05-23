@@ -56,20 +56,36 @@ fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-        "this", "that", "with", "as", "be", "by", "on", "at", "it",
+        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "this", "that",
+        "with", "as", "be", "by", "on", "at", "it",
     ];
     const TOPIC_FELINE: &[&str] = &[
-        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs",
-        "mews", "tabby",
+        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs", "mews", "tabby",
     ];
     const TOPIC_RUNTIME: &[&str] = &[
-        "tokio", "executor", "executors", "scheduler", "schedulers", "future",
-        "futures", "async", "runtime", "runtimes", "await",
+        "tokio",
+        "executor",
+        "executors",
+        "scheduler",
+        "schedulers",
+        "future",
+        "futures",
+        "async",
+        "runtime",
+        "runtimes",
+        "await",
     ];
     const TOPIC_DATABASE: &[&str] = &[
-        "postgres", "postgresql", "database", "databases", "sql", "transaction",
-        "transactions", "acid", "row", "rows",
+        "postgres",
+        "postgresql",
+        "database",
+        "databases",
+        "sql",
+        "transaction",
+        "transactions",
+        "acid",
+        "row",
+        "rows",
     ];
 
     fn hash_word(w: &str) -> u64 {
@@ -107,8 +123,8 @@ fn embed(text: &str) -> Embedding {
 }
 
 fn mk(id: &str, text: &str) -> RetrievalResult {
-    let chunk = Chunk::new(ChunkId::new(id), text, "doc", TokenCount(1))
-        .with_embedding(embed(text));
+    let chunk =
+        Chunk::new(ChunkId::new(id), text, "doc", TokenCount(1)).with_embedding(embed(text));
     RetrievalResult {
         chunk,
         score: Score {
@@ -231,10 +247,7 @@ fn regime_discrimination_summary() {
         q("tokio async runtime"),
         vec![mk("a", "tokio runtime async executor")],
     );
-    let paraphrase = (
-        q("feline kitten"),
-        vec![mk("a", "the tabby cat purrs")],
-    );
+    let paraphrase = (q("feline kitten"), vec![mk("a", "the tabby cat purrs")]);
     let wrong_overlap = (
         q("cat purrs frequently"),
         vec![mk("a", "postgres commits frequently")],
@@ -248,8 +261,16 @@ fn regime_discrimination_summary() {
     let sem = SemanticDiagnosticsEngine::new();
 
     let combined = |query: &Query, results: &[RetrievalResult]| -> f32 {
-        let l = lex.diagnose(query, results).unwrap().lexical_grounding.unwrap_or(0.0);
-        let s = sem.diagnose(query, results).unwrap().semantic_grounding.unwrap_or(0.0);
+        let l = lex
+            .diagnose(query, results)
+            .unwrap()
+            .lexical_grounding
+            .unwrap_or(0.0);
+        let s = sem
+            .diagnose(query, results)
+            .unwrap()
+            .semantic_grounding
+            .unwrap_or(0.0);
         l.max(s)
     };
 

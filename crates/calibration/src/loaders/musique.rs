@@ -110,9 +110,8 @@ impl MuSiQueDataset {
             if line.is_empty() {
                 continue;
             }
-            let ex: MuSiQueExample = serde_json::from_str(line).map_err(|e| {
-                Error::msg(format!("musique jsonl parse at line {}: {e}", i + 1))
-            })?;
+            let ex: MuSiQueExample = serde_json::from_str(line)
+                .map_err(|e| Error::msg(format!("musique jsonl parse at line {}: {e}", i + 1)))?;
             examples.push(ex);
         }
         Ok(Self { examples })
@@ -166,10 +165,7 @@ impl MuSiQueDataset {
         for (title, body) in &docs_by_title {
             let doc = Document::new(title.as_str(), body.as_str());
             let chunks = chunker.chunk(&doc)?;
-            title_to_chunks.insert(
-                title.clone(),
-                chunks.iter().map(|c| c.id.clone()).collect(),
-            );
+            title_to_chunks.insert(title.clone(), chunks.iter().map(|c| c.id.clone()).collect());
             docs.push(doc);
         }
 
@@ -255,7 +251,7 @@ mod tests {
     fn parses_canonical_json() {
         let d = MuSiQueDataset::from_json(MINI_MUSIQUE).unwrap();
         assert_eq!(d.len(), 2);
-        assert!(d.examples[1].answerable == false);
+        assert!(!d.examples[1].answerable);
     }
 
     #[test]

@@ -55,7 +55,10 @@ impl Lcg {
         Self(s.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1))
     }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
@@ -65,7 +68,10 @@ fn as_results(chunks: &[Chunk]) -> Vec<RetrievalResult> {
         .iter()
         .map(|c| RetrievalResult {
             chunk: c.clone(),
-            score: Score { value: 1.0, method: RetrievalMethod::Lexical },
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Lexical,
+            },
             breakdown: ScoreBreakdown::default(),
         })
         .collect()
@@ -101,7 +107,10 @@ fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy, budget: usize)
 }
 
 fn env_usize(key: &str, default: usize) -> usize {
-    std::env::var(key).ok().and_then(|s| s.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -109,9 +118,9 @@ fn main() -> anyhow::Result<()> {
     let prune_budget = env_usize("REDHOP_PRUNE_BUDGET", 2000);
     let max_cases = env_usize("REDHOP_MAX_CASES", 200);
 
-    let mut dataset = HotpotQADataset::from_path(
-        redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"),
-    )?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -124,8 +133,7 @@ fn main() -> anyhow::Result<()> {
 
     let corpus = dataset.to_labeled_corpus(&chunker, |_| None, default_regime)?;
     let chunks = chunker.chunk_batch(&corpus.docs)?;
-    let by_id: HashMap<ChunkId, Chunk> =
-        chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
+    let by_id: HashMap<ChunkId, Chunk> = chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
 
     let mut rng = Lcg::new(0xD1107E0F);
     let mut out = String::new();
@@ -141,7 +149,9 @@ fn main() -> anyhow::Result<()> {
         if n >= max_cases {
             break;
         }
-        let Some(answer) = gold_answer.get(&lq.text) else { continue };
+        let Some(answer) = gold_answer.get(&lq.text) else {
+            continue;
+        };
         if lq.gold_chunk_ids.len() < 2 {
             continue;
         }
@@ -167,12 +177,13 @@ fn main() -> anyhow::Result<()> {
         }
 
         let gold_chunks: Vec<Chunk> = gold.iter().map(|(_, c, _)| c.clone()).collect();
-        let gold_docs: HashSet<String> =
-            gold_chunks.iter().map(|c| c.source.clone()).collect();
+        let gold_docs: HashSet<String> = gold_chunks.iter().map(|c| c.source.clone()).collect();
 
         // Large off-document distractor pool, shuffled deterministically.
-        let mut pool: Vec<&Chunk> =
-            chunks.iter().filter(|c| !gold_docs.contains(&c.source)).collect();
+        let mut pool: Vec<&Chunk> = chunks
+            .iter()
+            .filter(|c| !gold_docs.contains(&c.source))
+            .collect();
         for i in (1..pool.len()).rev() {
             let j = (rng.next() as usize) % (i + 1);
             pool.swap(i, j);
@@ -189,7 +200,12 @@ fn main() -> anyhow::Result<()> {
         }
 
         let query = Query::new(&lq.text);
-        let pruned = build(&query, &polluted, ContextStrategy::ReasoningPreserving, prune_budget);
+        let pruned = build(
+            &query,
+            &polluted,
+            ContextStrategy::ReasoningPreserving,
+            prune_budget,
+        );
         let topk = build(&query, &polluted, ContextStrategy::MaxDensity, prune_budget);
 
         let gold_ids: HashSet<ChunkId> = gold.iter().map(|(id, _, _)| id.clone()).collect();
@@ -237,16 +253,25 @@ fn main() -> anyhow::Result<()> {
     }
     std::fs::write(&out_path, out)?;
     let avg = |s: usize| s as f32 / n.max(1) as f32;
-    println!("wrote {n} gap-qualified multi-hop cases → {}", out_path.display());
+    println!(
+        "wrote {n} gap-qualified multi-hop cases → {}",
+        out_path.display()
+    );
     println!("  config: n_distractors={n_distractors}, prune_budget={prune_budget} tok");
     println!(
         "  avg tokens/ctx:  polluted {:.0}  →  pruned {:.0}  /  topk {:.0}",
-        avg(sum_polluted_tok), avg(sum_pruned_tok), avg(sum_topk_tok)
+        avg(sum_polluted_tok),
+        avg(sum_pruned_tok),
+        avg(sum_topk_tok)
     );
     println!(
         "  gold retention:  pruned {}/{} ({:.0}%)  vs  topk {}/{} ({:.0}%)",
-        gold_kept_pruned_tot, gold_tot, gold_kept_pruned_tot as f32 / gold_tot.max(1) as f32 * 100.0,
-        gold_kept_topk_tot, gold_tot, gold_kept_topk_tot as f32 / gold_tot.max(1) as f32 * 100.0,
+        gold_kept_pruned_tot,
+        gold_tot,
+        gold_kept_pruned_tot as f32 / gold_tot.max(1) as f32 * 100.0,
+        gold_kept_topk_tot,
+        gold_tot,
+        gold_kept_topk_tot as f32 / gold_tot.max(1) as f32 * 100.0,
     );
     println!("next: python python/eval/score_dilution.py --n {n} --model <id>");
     Ok(())

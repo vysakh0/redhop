@@ -27,15 +27,13 @@ use redhop_calibration::{
     loaders::hotpotqa::{default_regime, HotpotQADataset},
 };
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Chunker, ChunkId, EmbeddingProvider, TokenizerBackend};
+use redhop_core::{ChunkId, Chunker, EmbeddingProvider, TokenizerBackend};
 use redhop_embeddings::{EmbedderConfig, HashingProvider, OnnxEmbedder};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
+const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
+const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 50;
 const TOP_K: usize = 4;
 

@@ -191,7 +191,9 @@ mod tests {
     use redhop_core::{Document, RetrievalRegime};
 
     fn rt() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread().build().unwrap()
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
     }
 
     /// Adapter making the sync calibration HashingEmbedder satisfy the
@@ -215,8 +217,14 @@ mod tests {
         rt().block_on(async {
             // Two docs; query gold-matches doc-a.
             let chunk_texts = vec![
-                (ChunkId::new("a"), "rust memory safety ownership borrow checker".to_string()),
-                (ChunkId::new("b"), "baking sourdough bread flour yeast water".to_string()),
+                (
+                    ChunkId::new("a"),
+                    "rust memory safety ownership borrow checker".to_string(),
+                ),
+                (
+                    ChunkId::new("b"),
+                    "baking sourdough bread flour yeast water".to_string(),
+                ),
             ];
             let mut q = LabeledQuery::new("q1", "rust ownership borrow", RetrievalRegime::Easy);
             q.gold_chunk_ids = vec![ChunkId::new("a")];
@@ -227,7 +235,9 @@ mod tests {
             let dim = 128;
             let provider: Arc<dyn EmbeddingProvider> =
                 Arc::new(HashAsync(HashingEmbedder::with_dim(dim), dim));
-            let r = bench_embedder(provider, &corpus, &chunk_texts, 1).await.unwrap();
+            let r = bench_embedder(provider, &corpus, &chunk_texts, 1)
+                .await
+                .unwrap();
             // The rust query should retrieve the rust chunk at top-1.
             assert_eq!(r.mean_recall, 1.0);
             assert_eq!(r.bytes_per_vector, dim * 4);
@@ -252,7 +262,9 @@ mod tests {
                 Arc::new(HashAsync(HashingEmbedder::with_dim(64), 64));
             let p2: Arc<dyn EmbeddingProvider> =
                 Arc::new(HashAsync(HashingEmbedder::with_dim(64), 64));
-            let cmp = compare_embedders(p1, p2, &corpus, &chunk_texts, 1).await.unwrap();
+            let cmp = compare_embedders(p1, p2, &corpus, &chunk_texts, 1)
+                .await
+                .unwrap();
             // Identical providers → zero delta.
             assert_eq!(cmp.recall_delta, 0.0);
         });

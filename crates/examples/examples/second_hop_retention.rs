@@ -83,7 +83,10 @@ impl Lcg {
         Self(s.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1))
     }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
@@ -93,7 +96,10 @@ fn as_results(chunks: &[Chunk]) -> Vec<RetrievalResult> {
         .iter()
         .map(|c| RetrievalResult {
             chunk: c.clone(),
-            score: Score { value: 1.0, method: RetrievalMethod::Lexical },
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Lexical,
+            },
             breakdown: ScoreBreakdown::default(),
         })
         .collect()
@@ -120,11 +126,18 @@ fn score(case: &Case, cfg: &ContextConfig) -> Outcome {
     let ctx = build_context(&case.query, &case.retrieved, cfg);
     let kept: HashSet<&ChunkId> = ctx.chunks.iter().map(|c| &c.id).collect();
 
-    let second = if kept.contains(&&case.second_hop_id) { 1.0 } else { 0.0 };
+    let second = if kept.contains(&&case.second_hop_id) {
+        1.0
+    } else {
+        0.0
+    };
     let first = if case.first_hop_ids.is_empty() {
         1.0
     } else {
-        case.first_hop_ids.iter().filter(|id| kept.contains(id)).count() as f32
+        case.first_hop_ids
+            .iter()
+            .filter(|id| kept.contains(id))
+            .count() as f32
             / case.first_hop_ids.len() as f32
     };
     let junk_kept = case.junk_ids.iter().filter(|id| kept.contains(id)).count();
@@ -188,8 +201,7 @@ fn run_panel(cases: &[Case], strategy: ContextStrategy, tau: f32, budget: usize,
 /// Build labeled cases (one per gap-qualified multi-hop query) from a corpus.
 /// Returns the cases and the mean first−second grounding gap.
 fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk]) -> (Vec<Case>, f32) {
-    let by_id: HashMap<ChunkId, Chunk> =
-        chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
+    let by_id: HashMap<ChunkId, Chunk> = chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
     let mut rng = Lcg::new(0xC0FFEE);
     let mut cases: Vec<Case> = Vec::new();
     let mut grounding_gap_sum = 0.0f32;
@@ -226,8 +238,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk]) -> (Vec<Case>, f32) {
         grounding_gap_sum += max_first_g - second.2;
 
         // Off-document distractor pool.
-        let gold_docs: HashSet<String> =
-            gold.iter().map(|(_, c, _)| c.source.clone()).collect();
+        let gold_docs: HashSet<String> = gold.iter().map(|(_, c, _)| c.source.clone()).collect();
         let mut pool: Vec<&Chunk> = chunks
             .iter()
             .filter(|c| !gold_docs.contains(&c.source))
@@ -236,13 +247,20 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk]) -> (Vec<Case>, f32) {
             let j = (rng.next() as usize) % (i + 1);
             pool.swap(i, j);
         }
-        let junk: Vec<Chunk> = pool.iter().take(N_DISTRACTORS).map(|c| (*c).clone()).collect();
+        let junk: Vec<Chunk> = pool
+            .iter()
+            .take(N_DISTRACTORS)
+            .map(|c| (*c).clone())
+            .collect();
         let junk_ids: HashSet<ChunkId> = junk.iter().map(|c| c.id.clone()).collect();
 
         // Retrieved set, presented relevance-ranked (descending grounding),
         // as a real retriever would return it — the second hop sits low.
-        let mut all: Vec<Chunk> =
-            gold.iter().map(|(_, c, _)| c.clone()).chain(junk.into_iter()).collect();
+        let mut all: Vec<Chunk> = gold
+            .iter()
+            .map(|(_, c, _)| c.clone())
+            .chain(junk.into_iter())
+            .collect();
         let g_of = |c: &Chunk| grounding(&q_terms, &terms(&c.text));
         all.sort_by(|a, b| g_of(b).partial_cmp(&g_of(a)).unwrap());
 
@@ -277,10 +295,20 @@ fn report(label: &str, cases: &[Case], mean_gap: f32) {
     );
     println!("  {}", "─".repeat(70));
     for tau in [0.05f32, 0.10, 0.20, 0.30] {
-        run_panel(cases, ContextStrategy::DistractorFiltered, tau,
-            GENEROUS_BUDGET, &format!("distractor_filt @{tau:.2}"));
-        run_panel(cases, ContextStrategy::ReasoningPreserving, tau,
-            GENEROUS_BUDGET, &format!("reasoning_pres @{tau:.2}"));
+        run_panel(
+            cases,
+            ContextStrategy::DistractorFiltered,
+            tau,
+            GENEROUS_BUDGET,
+            &format!("distractor_filt @{tau:.2}"),
+        );
+        run_panel(
+            cases,
+            ContextStrategy::ReasoningPreserving,
+            tau,
+            GENEROUS_BUDGET,
+            &format!("reasoning_pres @{tau:.2}"),
+        );
         println!();
     }
 
@@ -292,10 +320,34 @@ fn report(label: &str, cases: &[Case], mean_gap: f32) {
         "strategy", "second_hop_ret [95% CI]", "junk_supp", "first_ret"
     );
     println!("  {}", "─".repeat(70));
-    run_panel(cases, ContextStrategy::RawTopK, 0.10, TIGHT_BUDGET, "raw_topk");
-    run_panel(cases, ContextStrategy::DistractorFiltered, 0.10, TIGHT_BUDGET, "distractor_filt");
-    run_panel(cases, ContextStrategy::MaxDensity, 0.10, TIGHT_BUDGET, "max_density");
-    run_panel(cases, ContextStrategy::ReasoningPreserving, 0.10, TIGHT_BUDGET, "reasoning_pres");
+    run_panel(
+        cases,
+        ContextStrategy::RawTopK,
+        0.10,
+        TIGHT_BUDGET,
+        "raw_topk",
+    );
+    run_panel(
+        cases,
+        ContextStrategy::DistractorFiltered,
+        0.10,
+        TIGHT_BUDGET,
+        "distractor_filt",
+    );
+    run_panel(
+        cases,
+        ContextStrategy::MaxDensity,
+        0.10,
+        TIGHT_BUDGET,
+        "max_density",
+    );
+    run_panel(
+        cases,
+        ContextStrategy::ReasoningPreserving,
+        0.10,
+        TIGHT_BUDGET,
+        "reasoning_pres",
+    );
 
     println!("\n  (second_hop_ret = P(reasoning-critical hop survives); junk_supp =");
     println!("   fraction of injected distractors removed; both want HIGH.)");
@@ -306,7 +358,9 @@ fn main() -> anyhow::Result<()> {
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
     // HotpotQA
-    let mut hotpot = HotpotQADataset::from_path(redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"))?;
+    let mut hotpot = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     hotpot.examples.truncate(SAMPLE_SIZE);
     let hp_corpus = hotpot.to_labeled_corpus(&chunker, |_| None, hotpot_regime)?;
     let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;

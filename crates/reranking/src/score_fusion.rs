@@ -7,9 +7,7 @@
 //! have produced, without re-running the candidate retrieval.
 
 use async_trait::async_trait;
-use redhop_core::{
-    Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score,
-};
+use redhop_core::{Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score};
 
 /// Weighted recombination of per-stage scores.
 #[derive(Debug, Clone)]

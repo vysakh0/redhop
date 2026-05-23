@@ -224,7 +224,11 @@ fn bucket(p: f32, n_bins: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn outcome(predicted: RetrievalRegime, predicted_p: f32, true_r: RetrievalRegime) -> QueryOutcome {
+    fn outcome(
+        predicted: RetrievalRegime,
+        predicted_p: f32,
+        true_r: RetrievalRegime,
+    ) -> QueryOutcome {
         QueryOutcome {
             query_id: "q".into(),
             true_regime: true_r,
@@ -255,12 +259,20 @@ mod tests {
         for _ in 0..9 {
             outs.push(outcome(RetrievalRegime::Easy, 0.95, RetrievalRegime::Easy));
         }
-        outs.push(outcome(RetrievalRegime::Easy, 0.95, RetrievalRegime::Sparse));
+        outs.push(outcome(
+            RetrievalRegime::Easy,
+            0.95,
+            RetrievalRegime::Sparse,
+        ));
         for _ in 0..1 {
             outs.push(outcome(RetrievalRegime::Easy, 0.05, RetrievalRegime::Easy));
         }
         for _ in 0..9 {
-            outs.push(outcome(RetrievalRegime::Easy, 0.05, RetrievalRegime::Sparse));
+            outs.push(outcome(
+                RetrievalRegime::Easy,
+                0.05,
+                RetrievalRegime::Sparse,
+            ));
         }
         let d = reliability_diagram(&outs, 10);
         // ECE should be very small for this scenario.

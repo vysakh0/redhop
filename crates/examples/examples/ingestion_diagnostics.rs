@@ -58,9 +58,18 @@ fn main() {
 
     // 2. OCR garbage (vowelless tokens + spaced-out letters).
     let ocr = vec![
-        chunk("ocr-1", "rn th wrd xj qz mn bk th rn nw wht hppnd hr nd thr cn b sn"),
-        chunk("ocr-2", "T h e q u i c k b r o w n f o x j u m p s o v e r t h e"),
-        chunk("ocr-3", "scnned dcmnt wth brkn chrs nd mssng vwls thrght th pg"),
+        chunk(
+            "ocr-1",
+            "rn th wrd xj qz mn bk th rn nw wht hppnd hr nd thr cn b sn",
+        ),
+        chunk(
+            "ocr-2",
+            "T h e q u i c k b r o w n f o x j u m p s o v e r t h e",
+        ),
+        chunk(
+            "ocr-3",
+            "scnned dcmnt wth brkn chrs nd mssng vwls thrght th pg",
+        ),
     ];
     print_report("OCR-GARBLED SCAN", &diagnose_ingestion(&ocr, &cfg));
 
@@ -79,24 +88,53 @@ fn main() {
     let mk_bp = |n: usize, body: &str| {
         chunk(
             &format!("bp-{n}"),
-            &format!("ACME CORPORATION — INTERNAL USE ONLY\nQuarterly Report\nPage {n} of 12\n{body}"),
+            &format!(
+                "ACME CORPORATION — INTERNAL USE ONLY\nQuarterly Report\nPage {n} of 12\n{body}"
+            ),
         )
     };
     let boiler = vec![
-        mk_bp(1, "Revenue grew twelve percent year over year driven by enterprise subscriptions."),
-        mk_bp(2, "Operating margin expanded as cloud infrastructure costs declined per unit."),
-        mk_bp(3, "Headcount increased modestly with most hiring in engineering and support."),
-        mk_bp(4, "The board approved a share repurchase program of up to two hundred million."),
+        mk_bp(
+            1,
+            "Revenue grew twelve percent year over year driven by enterprise subscriptions.",
+        ),
+        mk_bp(
+            2,
+            "Operating margin expanded as cloud infrastructure costs declined per unit.",
+        ),
+        mk_bp(
+            3,
+            "Headcount increased modestly with most hiring in engineering and support.",
+        ),
+        mk_bp(
+            4,
+            "The board approved a share repurchase program of up to two hundred million.",
+        ),
     ];
-    print_report("HEADER/FOOTER BOILERPLATE", &diagnose_ingestion(&boiler, &cfg));
+    print_report(
+        "HEADER/FOOTER BOILERPLATE",
+        &diagnose_ingestion(&boiler, &cfg),
+    );
 
     // 5. Mid-sentence fragmentation.
     let frag = vec![
-        chunk("frag-1", "and the committee therefore concluded that the proposed amendment would require"),
-        chunk("frag-2", "additional review by the legal department before it could be submitted for a vote"),
-        chunk("frag-3", "which the chair agreed to schedule for the following quarter pending budget"),
+        chunk(
+            "frag-1",
+            "and the committee therefore concluded that the proposed amendment would require",
+        ),
+        chunk(
+            "frag-2",
+            "additional review by the legal department before it could be submitted for a vote",
+        ),
+        chunk(
+            "frag-3",
+            "which the chair agreed to schedule for the following quarter pending budget",
+        ),
     ];
-    print_report("MID-SENTENCE FRAGMENTATION", &diagnose_ingestion(&frag, &cfg));
+    print_report(
+        "MID-SENTENCE FRAGMENTATION",
+        &diagnose_ingestion(&frag, &cfg),
+    );
 
     // 6. Flattened tables.
     let tables = vec![
@@ -112,7 +150,10 @@ fn main() {
         chunk("mix-3", "ACME CORP CONFIDENTIAL\nPage 3\n2019 | 1,240 | 2020 | 1,560 | 2021 | 1,890 | 2022 | 2,210 | 2023 | 2,540"),
         chunk("mix-4", "ACME CORP CONFIDENTIAL\nPage 4\nThe annual report summarizes financial performance for the fiscal year."),
     ];
-    print_report("MIXED ENTERPRISE PDF (multiple problems)", &diagnose_ingestion(&mixed, &cfg));
+    print_report(
+        "MIXED ENTERPRISE PDF (multiple problems)",
+        &diagnose_ingestion(&mixed, &cfg),
+    );
 
     println!("Interpretation: these are DIAGNOSTICS, not a controller. They surface");
     println!("corruption so a deployment can react (re-OCR, dedup, table-aware");

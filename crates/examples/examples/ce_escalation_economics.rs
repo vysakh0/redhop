@@ -33,10 +33,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use parking_lot::RwLock;
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_core::{
-    Chunker, ChunkId, DiagnosticsEngine, Embedding, EmbeddingProvider, Query, RegimeClassifier,
+    ChunkId, Chunker, DiagnosticsEngine, Embedding, EmbeddingProvider, Query, RegimeClassifier,
     Reranker, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend, VectorIndex,
 };
 use redhop_diagnostics::{
@@ -47,14 +48,11 @@ use redhop_orchestration::{compute_confidence, RuleBasedClassifier};
 use redhop_reranking::OnnxCrossEncoder;
 use redhop_retrieval::DenseRetriever;
 use redhop_storage::{ChunkStore, FlatVectorIndex};
-use parking_lot::RwLock;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
+const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
+const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const CE_MODEL: &str =
     "/Users/vysakh/projects/neorag/models/ms-marco-MiniLM-L-6-v2/onnx/model.onnx";
 const CE_TOKENIZER: &str =
@@ -87,12 +85,19 @@ async fn main() -> anyhow::Result<()> {
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
     println!("loading BGE-small + ms-marco cross-encoder...");
-    let bge: Arc<dyn EmbeddingProvider> =
-        Arc::new(OnnxEmbedder::load(BGE_MODEL, BGE_TOKENIZER, EmbedderConfig::bge(DIM))?);
+    let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
+        BGE_MODEL,
+        BGE_TOKENIZER,
+        EmbedderConfig::bge(DIM),
+    )?);
     let ce = OnnxCrossEncoder::load(CE_MODEL, CE_TOKENIZER, 256)?;
 
     // Build corpus with BGE query embeddings.
-    let q_texts: Vec<String> = dataset.examples.iter().map(|e| e.question.clone()).collect();
+    let q_texts: Vec<String> = dataset
+        .examples
+        .iter()
+        .map(|e| e.question.clone())
+        .collect();
     let q_vecs = bge.embed(&q_texts).await?;
     let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs).collect();
     let corpus = dataset.to_labeled_corpus(&chunker, |q| q_map.get(q).cloned(), default_regime)?;
@@ -198,10 +203,30 @@ async fn main() -> anyhow::Result<()> {
     println!("\n──── recall@{K_FINAL} by strategy (dense BGE, wide net = {WIDE_N}) ────");
     println!("  {:<26} {:>10} {:>14}", "strategy", "recall", "CE calls");
     println!("  {}", "─".repeat(52));
-    println!("  {:<26} {:>10.3} {:>14}", "static (no CE)", mean(r_static), 0);
-    println!("  {:<26} {:>10.3} {:>14}", "uniform CE (every query)", mean(r_uniform), ce_calls_uniform);
-    println!("  {:<26} {:>10.3} {:>14}", "selective CE (controller)", mean(r_selective), ce_calls_selective);
-    println!("  {:<26} {:>10.3} {:>14}", "oracle (CE iff it helps)", mean(r_oracle), ce_calls_oracle);
+    println!(
+        "  {:<26} {:>10.3} {:>14}",
+        "static (no CE)",
+        mean(r_static),
+        0
+    );
+    println!(
+        "  {:<26} {:>10.3} {:>14}",
+        "uniform CE (every query)",
+        mean(r_uniform),
+        ce_calls_uniform
+    );
+    println!(
+        "  {:<26} {:>10.3} {:>14}",
+        "selective CE (controller)",
+        mean(r_selective),
+        ce_calls_selective
+    );
+    println!(
+        "  {:<26} {:>10.3} {:>14}",
+        "oracle (CE iff it helps)",
+        mean(r_oracle),
+        ce_calls_oracle
+    );
 
     // Economics.
     let gain_uniform = mean(r_uniform) - mean(r_static);
@@ -218,56 +243,99 @@ async fn main() -> anyhow::Result<()> {
     };
 
     println!("\n──── escalation economics ────");
-    println!("  uniform CE:   +{:.3} recall for {} calls   (recall/call = {:.5})",
-        gain_uniform, ce_calls_uniform, rpr_uniform);
-    println!("  selective CE: +{:.3} recall for {} calls   (recall/call = {:.5})",
-        gain_selective, ce_calls_selective, rpr_selective);
+    println!(
+        "  uniform CE:   +{:.3} recall for {} calls   (recall/call = {:.5})",
+        gain_uniform, ce_calls_uniform, rpr_uniform
+    );
+    println!(
+        "  selective CE: +{:.3} recall for {} calls   (recall/call = {:.5})",
+        gain_selective, ce_calls_selective, rpr_selective
+    );
     if gain_uniform > 0.0 {
-        println!("  selective captured {:.0}% of uniform's recall gain with {:.0}% of the CE calls",
+        println!(
+            "  selective captured {:.0}% of uniform's recall gain with {:.0}% of the CE calls",
             gain_selective / gain_uniform * 100.0,
-            ce_calls_selective as f32 / ce_calls_uniform as f32 * 100.0);
+            ce_calls_selective as f32 / ce_calls_uniform as f32 * 100.0
+        );
     }
-    println!("  recall-per-rerank efficiency multiple (selective / uniform): {:.2}x",
-        if rpr_uniform > 0.0 { rpr_selective / rpr_uniform } else { 0.0 });
+    println!(
+        "  recall-per-rerank efficiency multiple (selective / uniform): {:.2}x",
+        if rpr_uniform > 0.0 {
+            rpr_selective / rpr_uniform
+        } else {
+            0.0
+        }
+    );
 
     println!("\n──── intervention precision under dense retrieval ────");
-    println!("  uniform CE useful on:    {}/{} queries ({:.0}%)",
-        uniform_useful, ce_calls_uniform, uniform_useful as f32 / nq * 100.0);
-    println!("  CE harmful on:           {}/{} queries ({:.0}%)  (CE hurt recall vs static)",
-        harmful, ce_calls_uniform, harmful as f32 / nq * 100.0);
+    println!(
+        "  uniform CE useful on:    {}/{} queries ({:.0}%)",
+        uniform_useful,
+        ce_calls_uniform,
+        uniform_useful as f32 / nq * 100.0
+    );
+    println!(
+        "  CE harmful on:           {}/{} queries ({:.0}%)  (CE hurt recall vs static)",
+        harmful,
+        ce_calls_uniform,
+        harmful as f32 / nq * 100.0
+    );
     if sel_fired > 0 {
         println!("  selective fired:         {} queries", sel_fired);
-        println!("  selective useful%:       {:.0}%  (fired AND helped)",
-            sel_useful as f32 / sel_fired as f32 * 100.0);
-        println!("  selective wasted:        {}  (fired, no recall change)", sel_wasted);
+        println!(
+            "  selective useful%:       {:.0}%  (fired AND helped)",
+            sel_useful as f32 / sel_fired as f32 * 100.0
+        );
+        println!(
+            "  selective wasted:        {}  (fired, no recall change)",
+            sel_wasted
+        );
     }
-    println!("  mean CE latency:         {:.1} ms/query (over {} candidates)",
-        ce_latency_ms / nq as f64, WIDE_N);
+    println!(
+        "  mean CE latency:         {:.1} ms/query (over {} candidates)",
+        ce_latency_ms / nq as f64,
+        WIDE_N
+    );
 
     println!("\n════════════════════════════════════════════════════════════════════════");
     println!("VERDICT — aligned geometry: CE re-scores a wide net");
     if gain_uniform > 0.01 {
         println!("  ✓ Cross-encoder RECOVERS dense retrieval's missed recall:");
-        println!("    +{:.3} recall@{} over static dense top-{} — the action geometry",
-            gain_uniform, K_FINAL, K_FINAL);
+        println!(
+            "    +{:.3} recall@{} over static dense top-{} — the action geometry",
+            gain_uniform, K_FINAL, K_FINAL
+        );
         println!("    (re-score a wide net) finally matches dense's failure geometry.");
-        let eff = if rpr_uniform > 0.0 { rpr_selective / rpr_uniform } else { 0.0 };
+        let eff = if rpr_uniform > 0.0 {
+            rpr_selective / rpr_uniform
+        } else {
+            0.0
+        };
         if eff > 1.2 && gain_selective > 0.01 {
-            println!("  ✓ Selective escalation is MORE ECONOMICAL: {:.1}x recall-per-rerank,",
-                eff);
+            println!(
+                "  ✓ Selective escalation is MORE ECONOMICAL: {:.1}x recall-per-rerank,",
+                eff
+            );
             println!("    capturing meaningful recall at a fraction of the CE compute.");
         } else if gain_selective > 0.01 {
             println!("  ~ Selective captures recall but the controller's gate needs tuning");
             println!("    to beat uniform on recall-per-rerank (see selective useful%).");
         } else {
-            println!("  ✗ The controller's gate (p_easy<{:.2}) mis-selects on dense — it",
-                EASY_GATE);
+            println!(
+                "  ✗ The controller's gate (p_easy<{:.2}) mis-selects on dense — it",
+                EASY_GATE
+            );
             println!("    doesn't fire CE on the queries that need it. Gate needs recalibration.");
         }
     } else {
-        println!("  ✗ Cross-encoder did NOT recover recall on this sample (+{:.3}).", gain_uniform);
-        println!("    Either gold is outside the top-{} net, or dense top-{} already had it.",
-            WIDE_N, K_FINAL);
+        println!(
+            "  ✗ Cross-encoder did NOT recover recall on this sample (+{:.3}).",
+            gain_uniform
+        );
+        println!(
+            "    Either gold is outside the top-{} net, or dense top-{} already had it.",
+            WIDE_N, K_FINAL
+        );
     }
     println!("════════════════════════════════════════════════════════════════════════");
     Ok(())

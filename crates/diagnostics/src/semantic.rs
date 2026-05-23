@@ -95,11 +95,7 @@ impl SemanticDiagnosticsEngine {
 }
 
 impl DiagnosticsEngine for SemanticDiagnosticsEngine {
-    fn diagnose(
-        &self,
-        query: &Query,
-        results: &[RetrievalResult],
-    ) -> Result<DiagnosticsReport> {
+    fn diagnose(&self, query: &Query, results: &[RetrievalResult]) -> Result<DiagnosticsReport> {
         let mut report = DiagnosticsReport::default();
         if results.is_empty() {
             return Ok(report);
@@ -135,10 +131,8 @@ impl DiagnosticsEngine for SemanticDiagnosticsEngine {
         let qn = normalize(q_emb);
 
         // semantic_grounding: mean cosine(query, chunk_i)
-        let grounding_cosines: Vec<f32> =
-            chunk_vecs.iter().map(|c| dot(&qn, c)).collect();
-        let mean_grounding =
-            grounding_cosines.iter().sum::<f32>() / grounding_cosines.len() as f32;
+        let grounding_cosines: Vec<f32> = chunk_vecs.iter().map(|c| dot(&qn, c)).collect();
+        let mean_grounding = grounding_cosines.iter().sum::<f32>() / grounding_cosines.len() as f32;
         let semantic_grounding = unit_clamp((mean_grounding + 1.0) * 0.5);
         report.semantic_grounding = Some(semantic_grounding);
 
@@ -185,8 +179,7 @@ impl DiagnosticsEngine for SemanticDiagnosticsEngine {
                 centroid[k] /= n;
             }
             let centroid = normalize(&Embedding(centroid));
-            let mean_to_centroid =
-                chunk_vecs.iter().map(|v| dot(v, &centroid)).sum::<f32>() / n;
+            let mean_to_centroid = chunk_vecs.iter().map(|v| dot(v, &centroid)).sum::<f32>() / n;
             // Dispersion goes up as cosine to centroid goes down.
             let dispersion = unit_clamp(1.0 - (mean_to_centroid + 1.0) * 0.5);
             report.centroid_dispersion = Some(dispersion);
@@ -263,9 +256,7 @@ fn unit_clamp(x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{
-        Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
-    };
+    use redhop_core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, emb: Vec<f32>) -> RetrievalResult {
         RetrievalResult {
@@ -287,10 +278,7 @@ mod tests {
     fn grounding_is_high_when_query_and_chunks_align() {
         let engine = SemanticDiagnosticsEngine::new();
         let query = q(vec![1.0, 0.0, 0.0]);
-        let results = vec![
-            r("a", vec![0.95, 0.05, 0.0]),
-            r("b", vec![0.90, 0.10, 0.0]),
-        ];
+        let results = vec![r("a", vec![0.95, 0.05, 0.0]), r("b", vec![0.90, 0.10, 0.0])];
         let report = engine.diagnose(&query, &results).unwrap();
         let g = report.semantic_grounding.unwrap();
         assert!(g > 0.95, "expected near-1, got {g}");
@@ -335,10 +323,7 @@ mod tests {
         let query = q(vec![1.0, 0.0, 0.0]);
 
         // Clustered.
-        let r_clustered = vec![
-            r("a", vec![1.0, 0.0, 0.0]),
-            r("b", vec![0.99, 0.01, 0.0]),
-        ];
+        let r_clustered = vec![r("a", vec![1.0, 0.0, 0.0]), r("b", vec![0.99, 0.01, 0.0])];
         let d_cluster = engine
             .diagnose(&query, &r_clustered)
             .unwrap()

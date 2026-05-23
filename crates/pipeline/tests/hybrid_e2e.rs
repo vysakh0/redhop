@@ -5,12 +5,14 @@
 
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Chunk, Chunker, Document, Embedding, Query, Retriever, TokenizerBackend, VectorIndex};
+use redhop_core::{
+    Chunk, Chunker, Document, Embedding, Query, Retriever, TokenizerBackend, VectorIndex,
+};
 use redhop_reranking::LexicalGroundingReranker;
 use redhop_retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
 use redhop_storage::{ChunkStore, FlatVectorIndex};
-use parking_lot::RwLock;
 use unicode_segmentation::UnicodeSegmentation;
 
 const DIM: usize = 64;
@@ -80,10 +82,7 @@ async fn hybrid_pipeline_end_to_end() {
     dense.index(&chunks).await.unwrap();
 
     // Hybrid
-    let hybrid = HybridRetriever::rrf(
-        vec![Arc::new(bm25), Arc::new(dense)],
-        16,
-    );
+    let hybrid = HybridRetriever::rrf(vec![Arc::new(bm25), Arc::new(dense)], 16);
 
     let q = Query::new("rust async runtime").with_embedding(fake_embed("rust async runtime"));
     let cand = hybrid.retrieve(&q, 4).await.unwrap();

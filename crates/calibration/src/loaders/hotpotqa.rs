@@ -89,8 +89,8 @@ pub struct HotpotQADataset {
 impl HotpotQADataset {
     /// Parse from a JSON string in the canonical HotpotQA shape.
     pub fn from_json(s: &str) -> Result<Self> {
-        let examples: Vec<HotpotQAExample> = serde_json::from_str(s)
-            .map_err(|e| Error::msg(format!("hotpotqa parse: {e}")))?;
+        let examples: Vec<HotpotQAExample> =
+            serde_json::from_str(s).map_err(|e| Error::msg(format!("hotpotqa parse: {e}")))?;
         Ok(Self { examples })
     }
 
@@ -152,8 +152,8 @@ impl HotpotQADataset {
                 if s.is_empty() {
                     continue;
                 }
-                let chunk = find_chunk_containing(&chunks, s)
-                    .or_else(|| best_overlap_chunk(&chunks, s));
+                let chunk =
+                    find_chunk_containing(&chunks, s).or_else(|| best_overlap_chunk(&chunks, s));
                 if let Some(c) = chunk {
                     sentence_to_chunk.insert((title.clone(), s_idx), c.id.clone());
                 }
@@ -327,6 +327,9 @@ mod tests {
             level: "hard".into(),
             ..easy.clone()
         };
-        assert_eq!(default_regime(&hard_bridge), RetrievalRegime::DistractorHeavy);
+        assert_eq!(
+            default_regime(&hard_bridge),
+            RetrievalRegime::DistractorHeavy
+        );
     }
 }

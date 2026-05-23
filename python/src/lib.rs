@@ -10,8 +10,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use redhop_context::{
-    analyze_context as rh_analyze, build_context as rh_build, filter_context as rh_filter,
-    context_economics as rh_economics, grounding_score as rh_grounding, link_strength as rh_link,
+    analyze_context as rh_analyze, build_context as rh_build, context_economics as rh_economics,
+    filter_context as rh_filter, grounding_score as rh_grounding, link_strength as rh_link,
     AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy,
 };
 use redhop_core::{
@@ -51,8 +51,7 @@ fn strategy_to_str(s: ContextStrategy) -> &'static str {
 /// Convert one Python chunk (a str, or a dict with at least `text`) into a
 /// `RetrievalResult`.
 fn chunk_from_py(item: &Bound<'_, PyAny>, idx: usize) -> PyResult<RetrievalResult> {
-    let (id, text, source, token_count, embedding, score) = if let Ok(s) =
-        item.extract::<String>()
+    let (id, text, source, token_count, embedding, score) = if let Ok(s) = item.extract::<String>()
     {
         (format!("c{idx}"), s, None, None, None, None)
     } else if let Ok(d) = item.downcast::<PyDict>() {
@@ -99,7 +98,10 @@ fn chunk_from_py(item: &Bound<'_, PyAny>, idx: usize) -> PyResult<RetrievalResul
     }
     Ok(RetrievalResult {
         chunk,
-        score: Score { value: score.unwrap_or(1.0), method: RetrievalMethod::Dense },
+        score: Score {
+            value: score.unwrap_or(1.0),
+            method: RetrievalMethod::Dense,
+        },
         breakdown: ScoreBreakdown::default(),
     })
 }
@@ -288,7 +290,14 @@ fn build_context(
     auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
 ) -> PyResult<BuiltContext> {
-    let cfg = config(strategy, token_budget, distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens, redundancy_max_cosine)?;
+    let cfg = config(
+        strategy,
+        token_budget,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
+        redundancy_max_cosine,
+    )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let before = rh_analyze(&q, &retrieved, &cfg);
@@ -297,7 +306,10 @@ fn build_context(
     Ok(BuiltContext {
         text: ctx.text(),
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
-        report: ContextReport { inner: ctx.report, rendered },
+        report: ContextReport {
+            inner: ctx.report,
+            rendered,
+        },
     })
 }
 
@@ -315,7 +327,14 @@ fn filter_context(
     redundancy_max_cosine: f32,
 ) -> PyResult<BuiltContext> {
     // filter = build with no budget truncation.
-    let cfg = config(strategy, usize::MAX, distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens, redundancy_max_cosine)?;
+    let cfg = config(
+        strategy,
+        usize::MAX,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
+        redundancy_max_cosine,
+    )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let before = rh_analyze(&q, &retrieved, &cfg);
@@ -324,7 +343,10 @@ fn filter_context(
     Ok(BuiltContext {
         text: ctx.text(),
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
-        report: ContextReport { inner: ctx.report, rendered },
+        report: ContextReport {
+            inner: ctx.report,
+            rendered,
+        },
     })
 }
 
@@ -341,13 +363,22 @@ fn analyze_context(
 ) -> PyResult<ContextReport> {
     // strategy is recorded on the report; with "auto" the reported strategy is
     // the gate's decision for this input (passthrough vs prune) — pure diagnostics.
-    let cfg = config(strategy, usize::MAX, distractor_min_grounding, link_min_jaccard,
-                     auto_passthrough_max_tokens, 0.92)?;
+    let cfg = config(
+        strategy,
+        usize::MAX,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
+        0.92,
+    )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let report = rh_analyze(&q, &retrieved, &cfg);
     let rendered = report.render(None);
-    Ok(ContextReport { inner: report, rendered })
+    Ok(ContextReport {
+        inner: report,
+        rendered,
+    })
 }
 
 #[pyfunction]
@@ -358,7 +389,14 @@ fn context_economics(
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
 ) -> PyResult<String> {
-    let cfg = config(None, usize::MAX, distractor_min_grounding, link_min_jaccard, 8_000, 0.92)?;
+    let cfg = config(
+        None,
+        usize::MAX,
+        distractor_min_grounding,
+        link_min_jaccard,
+        8_000,
+        0.92,
+    )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let econ = rh_economics(&q, &retrieved, &cfg);
@@ -384,7 +422,14 @@ fn py_built(ctx: redhop_context::BuiltContext) -> BuiltContext {
     let text = ctx.text();
     let chunks = ctx.chunks.iter().map(|c| c.text.clone()).collect();
     let rendered = ctx.report.render(None);
-    BuiltContext { text, chunks, report: ContextReport { inner: ctx.report, rendered } }
+    BuiltContext {
+        text,
+        chunks,
+        report: ContextReport {
+            inner: ctx.report,
+            rendered,
+        },
+    }
 }
 
 fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
@@ -396,13 +441,21 @@ fn doc_config(
     token_budget: usize,
     candidate_k: usize,
 ) -> PyResult<DocumentConfig> {
-    let mut cfg = DocumentConfig::default();
-    cfg.candidate_k = candidate_k;
-    cfg.context.token_budget = token_budget;
-    if let Some(s) = strategy {
-        cfg.context.strategy = strategy_from_str(&s)?;
-    }
-    Ok(cfg)
+    let base = DocumentConfig::default();
+    let strategy = match strategy {
+        Some(s) => strategy_from_str(&s)?,
+        None => base.context.strategy,
+    };
+    let context = ContextConfig {
+        token_budget,
+        strategy,
+        ..base.context
+    };
+    Ok(DocumentConfig {
+        candidate_k,
+        context,
+        ..base
+    })
 }
 
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
@@ -427,7 +480,9 @@ impl Document {
         candidate_k: usize,
     ) -> PyResult<Self> {
         let cfg = doc_config(strategy, token_budget, candidate_k)?;
-        Ok(Self { inner: to_py(RhDocument::from_text_with(source, text, cfg))? })
+        Ok(Self {
+            inner: to_py(RhDocument::from_text_with(source, text, cfg))?,
+        })
     }
 
     /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
@@ -439,9 +494,14 @@ impl Document {
         token_budget: usize,
         candidate_k: usize,
     ) -> PyResult<Self> {
-        let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?.into_iter().map(|r| r.chunk).collect();
+        let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
+            .into_iter()
+            .map(|r| r.chunk)
+            .collect();
         let cfg = doc_config(strategy, token_budget, candidate_k)?;
-        Ok(Self { inner: to_py(RhDocument::from_chunks_with(chunk_vec, cfg))? })
+        Ok(Self {
+            inner: to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?,
+        })
     }
 
     /// Assemble the reasoning context for a query (retrieve → allocate).
@@ -455,7 +515,10 @@ impl Document {
     fn analyze(&mut self, query: &str) -> PyResult<ContextReport> {
         let report = to_py(self.inner.analyze(query))?;
         let rendered = report.render(None);
-        Ok(ContextReport { inner: report, rendered })
+        Ok(ContextReport {
+            inner: report,
+            rendered,
+        })
     }
 
     #[getter]

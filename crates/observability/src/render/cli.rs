@@ -17,7 +17,13 @@ pub fn render(trace: &RetrievalTrace) -> String {
     if !trace.regime_probabilities.is_empty() {
         s.push_str("regime distribution:\n");
         // Stable display order.
-        let order = ["easy", "saturated", "distractor_heavy", "ambiguous", "sparse"];
+        let order = [
+            "easy",
+            "saturated",
+            "distractor_heavy",
+            "ambiguous",
+            "sparse",
+        ];
         for code in order {
             if let Some(&p) = trace.regime_probabilities.get(code) {
                 s.push_str(&format!("  {:<18} {:.3}  {}\n", code, p, bar(p, 20)));

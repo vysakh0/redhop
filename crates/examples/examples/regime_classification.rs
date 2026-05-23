@@ -29,20 +29,36 @@ fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-        "this", "that", "with", "as", "be", "by", "on", "at", "it",
+        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "this", "that",
+        "with", "as", "be", "by", "on", "at", "it",
     ];
     const TOPIC_FELINE: &[&str] = &[
-        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs",
-        "mews", "tabby",
+        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs", "mews", "tabby",
     ];
     const TOPIC_RUNTIME: &[&str] = &[
-        "tokio", "executor", "executors", "scheduler", "schedulers", "future",
-        "futures", "async", "runtime", "runtimes", "await",
+        "tokio",
+        "executor",
+        "executors",
+        "scheduler",
+        "schedulers",
+        "future",
+        "futures",
+        "async",
+        "runtime",
+        "runtimes",
+        "await",
     ];
     const TOPIC_DATABASE: &[&str] = &[
-        "postgres", "postgresql", "database", "databases", "sql", "transaction",
-        "transactions", "acid", "row", "rows",
+        "postgres",
+        "postgresql",
+        "database",
+        "databases",
+        "sql",
+        "transaction",
+        "transactions",
+        "acid",
+        "row",
+        "rows",
     ];
 
     fn hash_word(w: &str) -> u64 {

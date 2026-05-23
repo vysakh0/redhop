@@ -18,12 +18,30 @@
 use redhop_calibration::{corruption::pearson, loaders::neotrace::parse_path};
 
 const FILES: &[(&str, &str)] = &[
-    ("HotpotQA (haiku)", "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl"),
-    ("HotpotQA (llama8b)", "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_llama8b.neotrace.jsonl"),
-    ("MuSiQue (haiku)", "/Users/vysakh/projects/neorag/exports/neotrace/musique_full.neotrace.jsonl"),
-    ("MuSiQue (qwen7b)", "/Users/vysakh/projects/neorag/exports/neotrace/musique_qwen7b.neotrace.jsonl"),
-    ("MuSiQue (mistralnemo)", "/Users/vysakh/projects/neorag/exports/neotrace/musique_mistralnemo.neotrace.jsonl"),
-    ("evidence study", "/Users/vysakh/projects/neorag/exports/neotrace/evidence_evidence.neotrace.jsonl"),
+    (
+        "HotpotQA (haiku)",
+        "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl",
+    ),
+    (
+        "HotpotQA (llama8b)",
+        "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_llama8b.neotrace.jsonl",
+    ),
+    (
+        "MuSiQue (haiku)",
+        "/Users/vysakh/projects/neorag/exports/neotrace/musique_full.neotrace.jsonl",
+    ),
+    (
+        "MuSiQue (qwen7b)",
+        "/Users/vysakh/projects/neorag/exports/neotrace/musique_qwen7b.neotrace.jsonl",
+    ),
+    (
+        "MuSiQue (mistralnemo)",
+        "/Users/vysakh/projects/neorag/exports/neotrace/musique_mistralnemo.neotrace.jsonl",
+    ),
+    (
+        "evidence study",
+        "/Users/vysakh/projects/neorag/exports/neotrace/evidence_evidence.neotrace.jsonl",
+    ),
 ];
 
 fn main() -> anyhow::Result<()> {
@@ -118,26 +136,40 @@ fn main() -> anyhow::Result<()> {
     let pooled_den_kw = pearson(&den_x, &den_y);
 
     println!("\n──── pooled across all real LLM runs ────");
-    println!("  distractor_ratio    → ans_kw_recall:  {:+.3}", pooled_distr_kw);
-    println!("  answer_span_density → ans_kw_recall:  {:+.3}", pooled_den_kw);
+    println!(
+        "  distractor_ratio    → ans_kw_recall:  {:+.3}",
+        pooled_distr_kw
+    );
+    println!(
+        "  answer_span_density → ans_kw_recall:  {:+.3}",
+        pooled_den_kw
+    );
 
     println!("\n════════════════════════════════════════════════════════════════════════");
     println!("VERDICT (real LLM outputs, not synthetic):");
     if pooled_distr_kw < -0.05 {
         println!("  ✓ distractors HURT answer quality: distractor_ratio negatively");
-        println!("    correlates with gold-keyword recall in the LLM's answer ({:+.3}).",
-            pooled_distr_kw);
+        println!(
+            "    correlates with gold-keyword recall in the LLM's answer ({:+.3}).",
+            pooled_distr_kw
+        );
     } else if pooled_distr_kw.abs() <= 0.05 {
-        println!("  ~ distractor_ratio is weakly correlated with answer quality ({:+.3}).",
-            pooled_distr_kw);
+        println!(
+            "  ~ distractor_ratio is weakly correlated with answer quality ({:+.3}).",
+            pooled_distr_kw
+        );
     } else {
-        println!("  ✗ distractor_ratio POSITIVELY correlates ({:+.3}) — unexpected; report honestly.",
-            pooled_distr_kw);
+        println!(
+            "  ✗ distractor_ratio POSITIVELY correlates ({:+.3}) — unexpected; report honestly.",
+            pooled_distr_kw
+        );
     }
     if pooled_den_kw > 0.05 {
         println!("  ✓ evidence density HELPS: answer_span_density positively correlates");
-        println!("    with answer quality ({:+.3}) — confirms the context-economics premise.",
-            pooled_den_kw);
+        println!(
+            "    with answer quality ({:+.3}) — confirms the context-economics premise.",
+            pooled_den_kw
+        );
     }
     println!("════════════════════════════════════════════════════════════════════════");
     Ok(())

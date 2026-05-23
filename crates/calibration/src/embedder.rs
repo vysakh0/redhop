@@ -37,12 +37,11 @@ use unicode_segmentation::UnicodeSegmentation;
 /// workloads. The set here is the intersection of stopwords across
 /// HotpotQA, MuSiQue, and the Python lab's `evidence_evidence` runs.
 const STOPWORDS: &[&str] = &[
-    "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-    "was", "were", "be", "been", "being", "this", "that", "these", "those",
-    "with", "as", "by", "on", "at", "it", "its", "from", "but", "if",
-    "then", "than", "so", "such", "do", "does", "did", "have", "has",
-    "had", "will", "would", "could", "should", "i", "you", "he", "she",
-    "we", "they", "them", "their", "his", "her", "our", "your", "my",
+    "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "was", "were", "be",
+    "been", "being", "this", "that", "these", "those", "with", "as", "by", "on", "at", "it", "its",
+    "from", "but", "if", "then", "than", "so", "such", "do", "does", "did", "have", "has", "had",
+    "will", "would", "could", "should", "i", "you", "he", "she", "we", "they", "them", "their",
+    "his", "her", "our", "your", "my",
 ];
 
 fn is_stopword(s: &str) -> bool {

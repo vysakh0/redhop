@@ -39,9 +39,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::{
-    ChunkId, Document, Embedding, Error, Result, RetrievalRegime,
-};
+use redhop_core::{ChunkId, Document, Error, Result, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};
@@ -53,6 +51,9 @@ const ACCEPTED_SCHEMA_VERSION: &str = "neotrace/1";
 /// tolerates the natural sparsity of the source files (some come from
 /// experiments that don't record `gold_answer`, some don't record
 /// `retrieved`, etc.).
+// Fields mirror the `neotrace/1` wire format column-for-column; the schema is
+// documented in docs/NEOTRACE_SCHEMA.md rather than repeated per field.
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NeoTraceRecord {
     /// Schema version string; must equal `"neotrace/1"`.
@@ -267,8 +268,8 @@ where
         seen_docs.insert(id, ());
     }
     let docs: Vec<Document> = seen_docs
-        .into_iter()
-        .map(|(id, _)| Document::new(id, String::new()))
+        .into_keys()
+        .map(|id| Document::new(id, String::new()))
         .collect();
     Ok(LabeledCorpus {
         docs,
@@ -357,9 +358,7 @@ pub fn load_outcomes(
             .iter()
             .find(|r| r.method.as_deref() == Some(static_method))
             .copied();
-        let recall_static = static_rec
-            .and_then(|r| r.retrieval_recall)
-            .unwrap_or(0.0);
+        let recall_static = static_rec.and_then(|r| r.retrieval_recall).unwrap_or(0.0);
         for r in &items {
             let method_code = r.method.as_deref().unwrap_or("");
             if method_code == static_method {
@@ -502,7 +501,8 @@ mod tests {
     #[test]
     fn load_corpus_creates_one_query_per_unique_item_id() {
         let recs = parse_jsonl(MINI).unwrap();
-        let corpus = load_corpus::<fn(&NeoTraceRecord) -> Option<RetrievalRegime>>(&recs, None).unwrap();
+        let corpus =
+            load_corpus::<fn(&NeoTraceRecord) -> Option<RetrievalRegime>>(&recs, None).unwrap();
         assert_eq!(corpus.queries.len(), 2);
         // q1 is hard+bridge → distractor_heavy
         let q1 = corpus.queries.iter().find(|q| q.id == "q1").unwrap();
@@ -543,7 +543,8 @@ mod tests {
     fn unknown_regime_falls_back_to_easy() {
         let r = r#"{"schema_version":"neotrace/1","item_id":"x","method":"cosine","question":"?","true_regime":"unknown_label"}"#;
         let recs = parse_jsonl(r).unwrap();
-        let corpus = load_corpus::<fn(&NeoTraceRecord) -> Option<RetrievalRegime>>(&recs, None).unwrap();
+        let corpus =
+            load_corpus::<fn(&NeoTraceRecord) -> Option<RetrievalRegime>>(&recs, None).unwrap();
         assert_eq!(corpus.queries[0].true_regime, RetrievalRegime::Easy);
     }
 

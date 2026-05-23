@@ -5,7 +5,7 @@
 //! Run: cargo run -p redhop-examples --example ce_smoke --features onnx --release
 
 use redhop_core::{
-    Chunk, ChunkId, Query, RetrievalMethod, RetrievalResult, Reranker, Score, ScoreBreakdown,
+    Chunk, ChunkId, Query, Reranker, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
 use redhop_reranking::OnnxCrossEncoder;
@@ -17,8 +17,16 @@ const CE_TOKENIZER: &str =
 
 fn cand(id: &str, text: &str) -> RetrievalResult {
     RetrievalResult {
-        chunk: Chunk::new(ChunkId::new(id), text, "doc", TokenCount(text.split_whitespace().count())),
-        score: Score { value: 1.0, method: RetrievalMethod::Dense },
+        chunk: Chunk::new(
+            ChunkId::new(id),
+            text,
+            "doc",
+            TokenCount(text.split_whitespace().count()),
+        ),
+        score: Score {
+            value: 1.0,
+            method: RetrievalMethod::Dense,
+        },
         breakdown: ScoreBreakdown::default(),
     }
 }
@@ -28,9 +36,15 @@ async fn main() -> anyhow::Result<()> {
     let ce = OnnxCrossEncoder::load(CE_MODEL, CE_TOKENIZER, 256)?;
     let query = Query::new("What is the capital of France?");
     let candidates = vec![
-        cand("rel", "Paris is the capital and most populous city of France."),
+        cand(
+            "rel",
+            "Paris is the capital and most populous city of France.",
+        ),
         cand("irrel", "The mitochondrion is the powerhouse of the cell."),
-        cand("partial", "France is a country in Western Europe with many cities."),
+        cand(
+            "partial",
+            "France is a country in Western Europe with many cities.",
+        ),
     ];
     let ranked = ce.rerank(&query, candidates, 3).await?;
     println!("cross-encoder ranking (most relevant first):");
@@ -43,7 +57,11 @@ async fn main() -> anyhow::Result<()> {
             r.chunk.text
         );
     }
-    assert_eq!(ranked[0].chunk.id.as_str(), "rel", "relevant passage should rank first");
+    assert_eq!(
+        ranked[0].chunk.id.as_str(),
+        "rel",
+        "relevant passage should rank first"
+    );
     println!("\nOK: cross-encoder run-path verified (relevant passage ranked #1).");
     Ok(())
 }

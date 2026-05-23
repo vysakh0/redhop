@@ -198,7 +198,10 @@ mod tests {
         // 10 queries, only 4 reranked → 40% rerank rate.
         let mut outs = Vec::new();
         for i in 0..10 {
-            outs.push(outcome(if i < 4 { 1 } else { 0 }, if i < 4 { 0.3 } else { 0.0 }));
+            outs.push(outcome(
+                if i < 4 { 1 } else { 0 },
+                if i < 4 { 0.3 } else { 0.0 },
+            ));
         }
         let cost = CostModel::default();
         let r = economics(&outs, &cost);
@@ -215,7 +218,10 @@ mod tests {
         // Adaptive: 4/10 reranked, mean lift 0.12.
         let mut outs = Vec::new();
         for i in 0..10 {
-            outs.push(outcome(if i < 4 { 1 } else { 0 }, if i < 4 { 0.30 } else { 0.0 }));
+            outs.push(outcome(
+                if i < 4 { 1 } else { 0 },
+                if i < 4 { 0.30 } else { 0.0 },
+            ));
         }
         let cost = CostModel::default();
         let r = economics(&outs, &cost);

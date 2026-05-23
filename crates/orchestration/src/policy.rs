@@ -29,9 +29,7 @@
 //! [act]: crate::actuator::Actuator
 //! [bud]: redhop_core::Budget
 
-use redhop_core::{
-    AbstainReason, RetrievalAction, RetrievalRegime, RetrievalState, StopReason,
-};
+use redhop_core::{AbstainReason, RetrievalAction, RetrievalRegime, RetrievalState, StopReason};
 
 /// Output of a policy decision.
 #[derive(Debug, Clone)]
@@ -247,9 +245,10 @@ impl Policy for ConservativeRulePolicy {
             // One-escalation rule: if we've escalated already in this
             // session, do not do so again. Repeated escalation does not
             // earn its complexity on our traces.
-            let already_escalated = state.history.iter().any(|t| {
-                matches!(t.action, RetrievalAction::EscalateReranker { .. })
-            });
+            let already_escalated = state
+                .history
+                .iter()
+                .any(|t| matches!(t.action, RetrievalAction::EscalateReranker { .. }));
             if already_escalated {
                 return decision(
                     RetrievalAction::Stop {
@@ -285,17 +284,15 @@ impl Policy for ConservativeRulePolicy {
                     0.0,
                     format!(
                         "p(Ambiguous)={:.2}≥{:.2} but top_k {} already at max {}",
-                        p_ambiguous,
-                        t.min_p_ambiguous,
-                        state.current_top_k,
-                        state.budget.max_top_k
+                        p_ambiguous, t.min_p_ambiguous, state.current_top_k, state.budget.max_top_k
                     ),
                 );
             }
             // One-expansion rule (parallel to one-escalation rule).
-            let already_expanded = state.history.iter().any(|t| {
-                matches!(t.action, RetrievalAction::ExpandTopK { .. })
-            });
+            let already_expanded = state
+                .history
+                .iter()
+                .any(|t| matches!(t.action, RetrievalAction::ExpandTopK { .. }));
             if already_expanded {
                 return decision(
                     RetrievalAction::Stop {

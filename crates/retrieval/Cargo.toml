@@ -19,3 +19,6 @@ async-trait    = "0.1"
 futures        = { workspace = true }
 tracing        = { workspace = true }
 parking_lot    = "0.12"
+
+[lints]
+workspace = true

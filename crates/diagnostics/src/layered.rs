@@ -62,12 +62,15 @@ impl DiagnosticsEngine for LayeredDiagnosticsEngine {
 mod tests {
     use super::*;
     use crate::{DefaultDiagnosticsEngine, SemanticDiagnosticsEngine};
-    use redhop_core::{
-        Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
-    };
+    use redhop_core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, emb: Option<Vec<f32>>) -> RetrievalResult {
-        let mut c = Chunk::new(text, text, "doc", TokenCount(text.split_whitespace().count()));
+        let mut c = Chunk::new(
+            text,
+            text,
+            "doc",
+            TokenCount(text.split_whitespace().count()),
+        );
         if let Some(e) = emb {
             c = c.with_embedding(Embedding::from(e));
         }
@@ -87,15 +90,18 @@ mod tests {
         let semantic = Arc::new(SemanticDiagnosticsEngine::new()) as Arc<dyn DiagnosticsEngine>;
         let engine = LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic);
 
-        let query = Query::new("rust async runtime")
-            .with_embedding(Embedding::from(vec![1.0, 0.0, 0.0]));
+        let query =
+            Query::new("rust async runtime").with_embedding(Embedding::from(vec![1.0, 0.0, 0.0]));
         let results = vec![
             r("rust async runtime tokio", Some(vec![0.9, 0.1, 0.0])),
             r("rust futures executor", Some(vec![0.8, 0.2, 0.0])),
         ];
         let report = engine.diagnose(&query, &results).unwrap();
         assert!(report.lexical_grounding.is_some(), "lexical tier populated");
-        assert!(report.semantic_grounding.is_some(), "semantic tier populated");
+        assert!(
+            report.semantic_grounding.is_some(),
+            "semantic tier populated"
+        );
     }
 
     #[test]

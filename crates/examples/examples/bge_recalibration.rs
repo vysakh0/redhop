@@ -52,10 +52,8 @@ use redhop_retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
+const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
+const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 60;
 const TOP_K: usize = 4;
 
@@ -96,7 +94,11 @@ async fn build_substrate(
     dataset: &HotpotQADataset,
     chunker: &SentenceChunker,
 ) -> anyhow::Result<Substrate> {
-    let q_texts: Vec<String> = dataset.examples.iter().map(|e| e.question.clone()).collect();
+    let q_texts: Vec<String> = dataset
+        .examples
+        .iter()
+        .map(|e| e.question.clone())
+        .collect();
     let q_vecs = provider.embed(&q_texts).await?;
     let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs).collect();
     let corpus = dataset.to_labeled_corpus(chunker, |q| q_map.get(q).cloned(), default_regime)?;
@@ -104,8 +106,11 @@ async fn build_substrate(
     let chunks = chunker.chunk_batch(&corpus.docs)?;
     let texts: Vec<String> = chunks.iter().map(|c| c.text.clone()).collect();
     let vecs = provider.embed(&texts).await?;
-    let by_id: HashMap<ChunkId, Embedding> =
-        chunks.iter().zip(vecs).map(|(c, v)| (c.id.clone(), v)).collect();
+    let by_id: HashMap<ChunkId, Embedding> = chunks
+        .iter()
+        .zip(vecs)
+        .map(|(c, v)| (c.id.clone(), v))
+        .collect();
 
     let mut bm25 = Bm25Retriever::new()?;
     Retriever::index(&mut bm25, &chunks).await?;
@@ -116,10 +121,13 @@ async fn build_substrate(
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
-    let diagnostics: Arc<dyn DiagnosticsEngine> =
-        Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic));
-    let rerankers: Vec<(RerankerLevel, Arc<dyn Reranker>)> =
-        vec![(RerankerLevel::Lexical, Arc::new(LexicalGroundingReranker::default()))];
+    let diagnostics: Arc<dyn DiagnosticsEngine> = Arc::new(
+        LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic),
+    );
+    let rerankers: Vec<(RerankerLevel, Arc<dyn Reranker>)> = vec![(
+        RerankerLevel::Lexical,
+        Arc::new(LexicalGroundingReranker::default()),
+    )];
 
     Ok(Substrate {
         retriever,
@@ -223,8 +231,11 @@ async fn main() -> anyhow::Result<()> {
     let hsub = build_substrate(hashing, &dataset, &chunker).await?;
 
     println!("building BGE substrate (real ONNX inference)...");
-    let bge: Arc<dyn EmbeddingProvider> =
-        Arc::new(OnnxEmbedder::load(BGE_MODEL, BGE_TOKENIZER, EmbedderConfig::bge(384))?);
+    let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
+        BGE_MODEL,
+        BGE_TOKENIZER,
+        EmbedderConfig::bge(384),
+    )?);
     let bsub = build_substrate(bge, &dataset, &chunker).await?;
 
     // ── Step 2: measure BGE's semantic_grounding distribution ──
@@ -246,7 +257,11 @@ async fn main() -> anyhow::Result<()> {
     };
     println!(
         "  p10={:.3}  p25={:.3}  p50={:.3}  p75={:.3}  p90={:.3}",
-        pct(0.10), pct(0.25), pct(0.50), pct(0.75), pct(0.90)
+        pct(0.10),
+        pct(0.25),
+        pct(0.50),
+        pct(0.75),
+        pct(0.90)
     );
     let above_default =
         groundings.iter().filter(|&&g| g >= 0.75).count() as f32 / groundings.len().max(1) as f32;
@@ -265,7 +280,8 @@ async fn main() -> anyhow::Result<()> {
     let mut best = (0.75f32, f32::INFINITY); // (threshold, ece) — minimize ECE
     let mut best_recall = (0.75f32, -1.0f32);
     for &es in &grid {
-        let (m, _) = run_with_classifier(&bsub, classifier_with_easy_sem(es), policy.clone()).await?;
+        let (m, _) =
+            run_with_classifier(&bsub, classifier_with_easy_sem(es), policy.clone()).await?;
         println!(
             "  {:<8.2} {:>9.0}% {:>7.0}% {:>10.3} {:>10.3} {:>7.0}% {:>8.3}",
             es,
@@ -298,27 +314,43 @@ async fn main() -> anyhow::Result<()> {
     let (_, out_recal) =
         run_with_classifier(&bsub, classifier_with_easy_sem(bge_easy), policy.clone()).await?;
     print_reliability("BGE @ default 0.75", &reliability_diagram(&out_default, 10));
-    print_reliability(&format!("BGE @ recalibrated {bge_easy:.2}"), &reliability_diagram(&out_recal, 10));
+    print_reliability(
+        &format!("BGE @ recalibrated {bge_easy:.2}"),
+        &reliability_diagram(&out_recal, 10),
+    );
 
     // ── Step 5: final comparison ──
-    let (hm, _) = run_with_classifier(&hsub, classifier_with_easy_sem(0.75), policy.clone()).await?;
-    let (bm, _) = run_with_classifier(&bsub, classifier_with_easy_sem(bge_easy), policy.clone()).await?;
+    let (hm, _) =
+        run_with_classifier(&hsub, classifier_with_easy_sem(0.75), policy.clone()).await?;
+    let (bm, _) =
+        run_with_classifier(&bsub, classifier_with_easy_sem(bge_easy), policy.clone()).await?;
     println!("\n════════════════════════════════════════════════════════════════════════");
     println!("FINAL: hashing@default  vs  BGE@recalibrated (easy_sem={bge_easy:.2})");
-    println!("  {:<22} {:>14} {:>16}", "metric", "hashing@0.75", "BGE@recal");
+    println!(
+        "  {:<22} {:>14} {:>16}",
+        "metric", "hashing@0.75", "BGE@recal"
+    );
     println!("  {}", "─".repeat(54));
     let f3 = |v: f32| format!("{v:.3}");
     let p0 = |v: f32| format!("{:.0}%", v * 100.0);
     let row = |n: &str, a: f32, b: f32, f: &dyn Fn(f32) -> String| {
         println!("  {:<22} {:>14} {:>16}", n, f(a), f(b));
     };
-    row("intervention rate", hm.intervention_rate, bm.intervention_rate, &p0);
+    row(
+        "intervention rate",
+        hm.intervention_rate,
+        bm.intervention_rate,
+        &p0,
+    );
     row("useful %", hm.useful, bm.useful, &p0);
     row("mean recall lift", hm.recall_lift, bm.recall_lift, &f3);
     row("rerank calls/query", hm.rerank_calls, bm.rerank_calls, &f3);
     row("mean useful lift", hm.useful_lift, bm.useful_lift, &f3);
     row("mean harmful lift", hm.harmful_lift, bm.harmful_lift, &f3);
-    println!("  {:<22} {:>14} {:>16}", "wasted interventions", hm.wasted, bm.wasted);
+    println!(
+        "  {:<22} {:>14} {:>16}",
+        "wasted interventions", hm.wasted, bm.wasted
+    );
     row("ECE", hm.ece, bm.ece, &f3);
 
     println!("\n  VERDICT:");

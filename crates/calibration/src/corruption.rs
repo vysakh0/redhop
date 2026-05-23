@@ -302,9 +302,18 @@ mod tests {
 
     fn clean() -> Vec<Chunk> {
         vec![
-            chunk("c1", "The transformer architecture uses self attention over the sequence."),
-            chunk("c2", "Retrieval augmented generation grounds models in external evidence."),
-            chunk("c3", "Dense retrieval encodes text into a shared vector space for ranking."),
+            chunk(
+                "c1",
+                "The transformer architecture uses self attention over the sequence.",
+            ),
+            chunk(
+                "c2",
+                "Retrieval augmented generation grounds models in external evidence.",
+            ),
+            chunk(
+                "c3",
+                "Dense retrieval encodes text into a shared vector space for ranking.",
+            ),
         ]
     }
 

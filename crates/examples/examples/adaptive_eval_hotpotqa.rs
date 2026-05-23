@@ -137,11 +137,8 @@ async fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 60, 90, 0)?;
     let embedder = HashingEmbedder::with_dim(256);
-    let corpus = dataset.to_labeled_corpus(
-        &chunker,
-        |q| Some(embedder.embed(q)),
-        default_regime,
-    )?;
+    let corpus =
+        dataset.to_labeled_corpus(&chunker, |q| Some(embedder.embed(q)), default_regime)?;
     println!(
         "built LabeledCorpus: {} docs, {} queries ({:.1}s)",
         corpus.docs.len(),
@@ -327,7 +324,10 @@ async fn main() -> anyhow::Result<()> {
     // ─── 10. Headline ────────────────────────────────────────────
     println!();
     println!("════════════════════════════════════════════════════════════════════════");
-    println!("HEADLINE — HotpotQA dev, first {} items, hashing-trick TF embedder", corpus.queries.len());
+    println!(
+        "HEADLINE — HotpotQA dev, first {} items, hashing-trick TF embedder",
+        corpus.queries.len()
+    );
     if let Some(best) = report.argmax_lift() {
         println!(
             "  argmax sweep setting:   min_p_distractor={:.2}, min_p_ambiguous={:.2}",
@@ -353,7 +353,10 @@ async fn main() -> anyhow::Result<()> {
     }
     println!("  classifier accuracy:    {:.1}%", cm.accuracy * 100.0);
     println!("  ECE (calibration):      {:.3}", diag.ece);
-    println!("  total runtime:          {:.1}s", t_total.elapsed().as_secs_f32());
+    println!(
+        "  total runtime:          {:.1}s",
+        t_total.elapsed().as_secs_f32()
+    );
     println!("════════════════════════════════════════════════════════════════════════");
 
     Ok(())

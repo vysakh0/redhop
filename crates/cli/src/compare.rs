@@ -20,7 +20,10 @@ pub struct Args {
     #[arg(long, short)]
     input: String,
     /// Comma-separated strategies to compare.
-    #[arg(long, default_value = "raw_topk,distractor_filtered,reasoning_preserving")]
+    #[arg(
+        long,
+        default_value = "raw_topk,distractor_filtered,reasoning_preserving"
+    )]
     strategies: String,
     /// Token budget.
     #[arg(long, default_value_t = 12000)]
@@ -54,21 +57,36 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let retrieved = input.to_results();
 
     let strategies: Vec<&str> = a.strategies.split(',').map(|s| s.trim()).collect();
-    let gold: Option<HashSet<String>> =
-        a.gold_ids.as_ref().map(|g| g.split(',').map(|s| s.trim().to_string()).collect());
+    let gold: Option<HashSet<String>> = a
+        .gold_ids
+        .as_ref()
+        .map(|g| g.split(',').map(|s| s.trim().to_string()).collect());
 
     println!("Query: {query_text}");
-    println!("Retrieved: {} chunks · budget {}\n", retrieved.len(), a.budget);
+    println!(
+        "Retrieved: {} chunks · budget {}\n",
+        retrieved.len(),
+        a.budget
+    );
 
     // Table header (retention columns only when gold is provided).
     let show_gold = gold.is_some();
     let show_hop = a.second_hop_id.is_some();
-    let mut header = vec!["strategy", "chunks", "tokens", "removed", "rescued", "distr", "density"];
-    if show_gold { header.push("gold_ret"); }
-    if show_hop { header.push("2nd_hop"); }
+    let mut header = vec![
+        "strategy", "chunks", "tokens", "removed", "rescued", "distr", "density",
+    ];
+    if show_gold {
+        header.push("gold_ret");
+    }
+    if show_hop {
+        header.push("2nd_hop");
+    }
     let widths = [22usize, 9, 7, 7, 7, 6, 7, 8, 8];
     print_row(&header, &widths);
-    println!("{}", "─".repeat(header.iter().zip(widths).map(|(_, w)| w + 2).sum::<usize>()));
+    println!(
+        "{}",
+        "─".repeat(header.iter().zip(widths).map(|(_, w)| w + 2).sum::<usize>())
+    );
 
     let mut json_rows = Vec::new();
     let mut previews = Vec::new();
@@ -87,7 +105,9 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         let kept: HashSet<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
 
         let gold_ret = gold.as_ref().map(|g| {
-            if g.is_empty() { return 1.0; }
+            if g.is_empty() {
+                return 1.0;
+            }
             g.iter().filter(|id| kept.contains(id.as_str())).count() as f32 / g.len() as f32
         });
         let hop_kept = a.second_hop_id.as_ref().map(|h| kept.contains(h.as_str()));
@@ -101,22 +121,34 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             format!("{:.2}", r.economics.distractor_ratio),
             format!("{:.2}", r.economics.evidence_density),
         ];
-        if let Some(g) = gold_ret { row.push(format!("{g:.2}")); }
-        if let Some(h) = hop_kept { row.push(if h { "✓".into() } else { "✗".into() }); }
+        if let Some(g) = gold_ret {
+            row.push(format!("{g:.2}"));
+        }
+        if let Some(h) = hop_kept {
+            row.push(if h { "✓".into() } else { "✗".into() });
+        }
         print_row(&row.iter().map(|s| s.as_str()).collect::<Vec<_>>(), &widths);
 
         let mut obj = json!({
             "strategy": sname,
             "report": r,
         });
-        if let Some(g) = gold_ret { obj["gold_retention"] = json!(g); }
-        if let Some(h) = hop_kept { obj["second_hop_retained"] = json!(h); }
+        if let Some(g) = gold_ret {
+            obj["gold_retention"] = json!(g);
+        }
+        if let Some(h) = hop_kept {
+            obj["second_hop_retained"] = json!(h);
+        }
         json_rows.push(obj);
 
         if a.preview_chars > 0 {
             let text = ctx.text();
             let prev: String = text.chars().take(a.preview_chars).collect();
-            let ell = if text.chars().count() > a.preview_chars { "…" } else { "" };
+            let ell = if text.chars().count() > a.preview_chars {
+                "…"
+            } else {
+                ""
+            };
             previews.push((sname.to_string(), format!("{prev}{ell}")));
         }
     }
@@ -144,7 +176,10 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 }
 
 fn print_row(cells: &[&str], widths: &[usize]) {
-    let line: Vec<String> =
-        cells.iter().zip(widths).map(|(c, w)| format!("{:<width$}", c, width = w)).collect();
+    let line: Vec<String> = cells
+        .iter()
+        .zip(widths)
+        .map(|(c, w)| format!("{:<width$}", c, width = w))
+        .collect();
     println!("{}", line.join("  "));
 }

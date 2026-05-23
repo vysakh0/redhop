@@ -117,13 +117,7 @@ async fn main() -> anyhow::Result<()> {
     // everything and intervention can't lift recall.
     let sweep = ThresholdSweep::default_grid(3);
     let report = sweep
-        .run(
-            &corpus,
-            retriever,
-            diagnostics,
-            classifier,
-            rerankers,
-        )
+        .run(&corpus, retriever, diagnostics, classifier, rerankers)
         .await?;
 
     // Print the sweep table.
@@ -167,7 +161,10 @@ async fn main() -> anyhow::Result<()> {
     // underconfident?"
     println!();
     println!("──── calibration interpretation ────");
-    println!("ECE = {:.3}  (0 = perfectly calibrated, >0.10 is notable)", diagram.ece);
+    println!(
+        "ECE = {:.3}  (0 = perfectly calibrated, >0.10 is notable)",
+        diagram.ece
+    );
     let mut underconfident_bins = 0;
     let mut overconfident_bins = 0;
     for b in &diagram.bins {
@@ -181,25 +178,13 @@ async fn main() -> anyhow::Result<()> {
             overconfident_bins += 1;
         }
     }
-    println!(
-        "underconfident bins (empirical > predicted + 0.10): {underconfident_bins}"
-    );
-    println!(
-        "overconfident bins  (empirical < predicted - 0.10): {overconfident_bins}"
-    );
+    println!("underconfident bins (empirical > predicted + 0.10): {underconfident_bins}");
+    println!("overconfident bins  (empirical < predicted - 0.10): {overconfident_bins}");
     if underconfident_bins > overconfident_bins {
-        println!(
-            "→ the classifier appears UNDERCONFIDENT on this dataset."
-        );
-        println!(
-            "  Lowering policy thresholds in the underconfident range would convert"
-        );
-        println!(
-            "  conservative no-ops into useful interventions. Cross-check by sweeping"
-        );
-        println!(
-            "  the relevant policy threshold (see the row that maximizes mean_recall_lift)."
-        );
+        println!("→ the classifier appears UNDERCONFIDENT on this dataset.");
+        println!("  Lowering policy thresholds in the underconfident range would convert");
+        println!("  conservative no-ops into useful interventions. Cross-check by sweeping");
+        println!("  the relevant policy threshold (see the row that maximizes mean_recall_lift).");
     } else if overconfident_bins > underconfident_bins {
         println!(
             "→ the classifier appears OVERCONFIDENT on this dataset. Conservatism is justified."
@@ -210,7 +195,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Pareto-optimal (non-dominated) rows, surfaced explicitly.
     println!();
-    println!("──── non-dominated threshold settings (the empirical answer to ‘when to intervene?’) ────");
+    println!(
+        "──── non-dominated threshold settings (the empirical answer to ‘when to intervene?’) ────"
+    );
     let mut shown = 0;
     for (i, r) in report.rows.iter().enumerate() {
         let dominated = report.rows.iter().enumerate().any(|(j, other)| {

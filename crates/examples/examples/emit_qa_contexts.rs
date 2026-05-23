@@ -44,7 +44,10 @@ impl Lcg {
         Self(s.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1))
     }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
@@ -54,7 +57,10 @@ fn as_results(chunks: &[Chunk]) -> Vec<RetrievalResult> {
         .iter()
         .map(|c| RetrievalResult {
             chunk: c.clone(),
-            score: Score { value: 1.0, method: RetrievalMethod::Lexical },
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Lexical,
+            },
             breakdown: ScoreBreakdown::default(),
         })
         .collect()
@@ -83,11 +89,12 @@ fn main() -> anyhow::Result<()> {
 
     let corpus = dataset.to_labeled_corpus(&chunker, |_| None, default_regime)?;
     let chunks = chunker.chunk_batch(&corpus.docs)?;
-    let by_id: HashMap<ChunkId, Chunk> =
-        chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
+    let by_id: HashMap<ChunkId, Chunk> = chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
     // Map chunk id -> source doc, to pick OFF-document distractors.
-    let chunk_source: HashMap<ChunkId, String> =
-        chunks.iter().map(|c| (c.id.clone(), c.source.clone())).collect();
+    let chunk_source: HashMap<ChunkId, String> = chunks
+        .iter()
+        .map(|c| (c.id.clone(), c.source.clone()))
+        .collect();
 
     let mut rng = Lcg::new(0xC0FFEE);
     let mut out = String::new();
@@ -97,7 +104,9 @@ fn main() -> anyhow::Result<()> {
     let mut gold_total = 0usize;
 
     for lq in &corpus.queries {
-        let Some(gold) = gold_answer.get(&lq.text) else { continue };
+        let Some(gold) = gold_answer.get(&lq.text) else {
+            continue;
+        };
         if lq.gold_chunk_ids.is_empty() {
             continue;
         }
@@ -128,9 +137,7 @@ fn main() -> anyhow::Result<()> {
             let j = (rng.next() as usize) % (i + 1);
             pool.swap(i, j);
         }
-        let take = |k: usize| -> Vec<Chunk> {
-            pool.iter().take(k).map(|c| (*c).clone()).collect()
-        };
+        let take = |k: usize| -> Vec<Chunk> { pool.iter().take(k).map(|c| (*c).clone()).collect() };
 
         let mk_polluted = |k: usize, rng: &mut Lcg| -> Vec<Chunk> {
             let mut v = gold_chunks.clone();

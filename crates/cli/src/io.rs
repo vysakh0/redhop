@@ -51,8 +51,7 @@ impl RetrievalInput {
             std::io::stdin().read_to_string(&mut s)?;
             s
         } else {
-            std::fs::read_to_string(Path::new(path))
-                .with_context(|| format!("reading {path}"))?
+            std::fs::read_to_string(Path::new(path)).with_context(|| format!("reading {path}"))?
         };
         serde_json::from_str(&raw).with_context(|| format!("parsing {path} as retrieval JSON"))
     }
@@ -76,7 +75,10 @@ impl RetrievalInput {
                 }
                 RetrievalResult {
                     chunk,
-                    score: Score { value: 1.0, method: RetrievalMethod::Dense },
+                    score: Score {
+                        value: 1.0,
+                        method: RetrievalMethod::Dense,
+                    },
                     breakdown: ScoreBreakdown::default(),
                 }
             })

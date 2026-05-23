@@ -33,7 +33,10 @@ pub struct Args {
     #[arg(long, short)]
     input: String,
     /// Comma-separated strategies.
-    #[arg(long, default_value = "raw_topk,distractor_filtered,max_density,reasoning_preserving")]
+    #[arg(
+        long,
+        default_value = "raw_topk,distractor_filtered,max_density,reasoning_preserving"
+    )]
     strategies: String,
     /// Comma-separated token budgets.
     #[arg(long, default_value = "250,800,12000")]
@@ -63,7 +66,9 @@ struct Dataset {
     dataset: String,
     queries: Vec<LabeledQuery>,
 }
-fn default_name() -> String { "labeled".into() }
+fn default_name() -> String {
+    "labeled".into()
+}
 
 #[derive(Default)]
 struct Cell {
@@ -77,21 +82,32 @@ struct Cell {
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
 
 fn mean(xs: &[f32]) -> f32 {
-    if xs.is_empty() { 0.0 } else { xs.iter().sum::<f32>() / xs.len() as f32 }
+    if xs.is_empty() {
+        0.0
+    } else {
+        xs.iter().sum::<f32>() / xs.len() as f32
+    }
 }
 fn mean_ci(xs: &[f32], rng: &mut Lcg) -> (f32, f32, f32) {
-    if xs.is_empty() { return (0.0, 0.0, 0.0); }
+    if xs.is_empty() {
+        return (0.0, 0.0, 0.0);
+    }
     let m = mean(xs);
     let mut ms = Vec::with_capacity(1000);
     for _ in 0..1000 {
         let mut s = 0.0;
-        for _ in 0..xs.len() { s += xs[(rng.next() as usize) % xs.len()]; }
+        for _ in 0..xs.len() {
+            s += xs[(rng.next() as usize) % xs.len()];
+        }
         ms.push(s / xs.len() as f32);
     }
     ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -105,18 +121,26 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let budgets: Vec<usize> = a
         .budgets
         .split(',')
-        .map(|s| s.trim().parse::<usize>().context("budget must be an integer"))
+        .map(|s| {
+            s.trim()
+                .parse::<usize>()
+                .context("budget must be an integer")
+        })
         .collect::<anyhow::Result<_>>()?;
 
     let n = ds.queries.len();
     let n_labeled = ds.queries.iter().filter(|q| !q.gold_ids.is_empty()).count();
 
     // (strategy, budget) -> Cell
-    let mut cells: std::collections::HashMap<(&str, usize), Cell> = std::collections::HashMap::new();
+    let mut cells: std::collections::HashMap<(&str, usize), Cell> =
+        std::collections::HashMap::new();
     for q in &ds.queries {
         let query = Query::new(&q.query);
-        let results: Vec<_> = crate::io::RetrievalInput { query: None, chunks: q.chunks.clone() }
-            .to_results();
+        let results: Vec<_> = crate::io::RetrievalInput {
+            query: None,
+            chunks: q.chunks.clone(),
+        }
+        .to_results();
         let gold: HashSet<&str> = q.gold_ids.iter().map(String::as_str).collect();
         for sname in &strategies {
             let strat = parse_strategy(sname)?;
@@ -133,11 +157,13 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                 let kept: HashSet<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
                 let cell = cells.entry((sname, budget)).or_default();
                 if !gold.is_empty() {
-                    let g = gold.iter().filter(|id| kept.contains(*id)).count() as f32 / gold.len() as f32;
+                    let g = gold.iter().filter(|id| kept.contains(*id)).count() as f32
+                        / gold.len() as f32;
                     cell.gold.push(g);
                 }
                 if let Some(h) = &q.second_hop_id {
-                    cell.second.push(if kept.contains(h.as_str()) { 1.0 } else { 0.0 });
+                    cell.second
+                        .push(if kept.contains(h.as_str()) { 1.0 } else { 0.0 });
                 }
                 cell.density.push(ctx.report.economics.evidence_density);
                 cell.tokens.push(ctx.report.total_tokens as f32);
@@ -146,25 +172,43 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         }
     }
 
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let mut rng = Lcg(0x5EED);
     let mut json_rows = Vec::new();
     let mut md = format!("# Benchmark: {}\n\n", ds.dataset);
-    md.push_str(&format!("- queries: {n} (labeled with gold: {n_labeled})\n"));
-    md.push_str(&format!("- distractor_min_grounding: {}, link_min_jaccard: {}\n\n", a.distractor_min_grounding, a.link_min_jaccard));
+    md.push_str(&format!(
+        "- queries: {n} (labeled with gold: {n_labeled})\n"
+    ));
+    md.push_str(&format!(
+        "- distractor_min_grounding: {}, link_min_jaccard: {}\n\n",
+        a.distractor_min_grounding, a.link_min_jaccard
+    ));
     md.push_str("| strategy | budget | gold_ret [95% CI] | second_hop_ret [95% CI] | density | tokens | rescue |\n");
     md.push_str("| -------- | ------ | ----------------- | ----------------------- | ------- | ------ | ------ |\n");
 
     for sname in &strategies {
         for &budget in &budgets {
-            let Some(c) = cells.get(&(sname, budget)) else { continue };
+            let Some(c) = cells.get(&(sname, budget)) else {
+                continue;
+            };
             let (g, glo, ghi) = mean_ci(&c.gold, &mut rng);
             let (s, slo, shi) = mean_ci(&c.second, &mut rng);
             let dens = mean(&c.density);
             let toks = mean(&c.tokens);
             let resc = mean(&c.rescue);
-            let gold_cell = if c.gold.is_empty() { "-".to_string() } else { format!("{g:.3} [{glo:.3},{ghi:.3}]") };
-            let sec_cell = if c.second.is_empty() { "-".to_string() } else { format!("{s:.3} [{slo:.3},{shi:.3}]") };
+            let gold_cell = if c.gold.is_empty() {
+                "-".to_string()
+            } else {
+                format!("{g:.3} [{glo:.3},{ghi:.3}]")
+            };
+            let sec_cell = if c.second.is_empty() {
+                "-".to_string()
+            } else {
+                format!("{s:.3} [{slo:.3},{shi:.3}]")
+            };
             md.push_str(&format!("| {sname} | {budget} | {gold_cell} | {sec_cell} | {dens:.3} | {toks:.0} | {resc:.2} |\n"));
             json_rows.push(json!({
                 "strategy": sname, "budget": budget, "n": c.density.len(),
@@ -188,10 +232,17 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     });
 
     std::fs::create_dir_all(&a.out_dir).with_context(|| format!("creating {}", a.out_dir))?;
-    std::fs::write(format!("{}/results.json", a.out_dir), serde_json::to_string_pretty(&out)?)?;
+    std::fs::write(
+        format!("{}/results.json", a.out_dir),
+        serde_json::to_string_pretty(&out)?,
+    )?;
     std::fs::write(format!("{}/SUMMARY.md", a.out_dir), &md)?;
     println!("wrote {}/results.json and SUMMARY.md", a.out_dir);
-    println!("  {n} queries ({n_labeled} gold-labeled), {} strategies × {} budgets", strategies.len(), budgets.len());
+    println!(
+        "  {n} queries ({n_labeled} gold-labeled), {} strategies × {} budgets",
+        strategies.len(),
+        budgets.len()
+    );
     Ok(())
 }
 

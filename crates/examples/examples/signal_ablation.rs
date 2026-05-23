@@ -44,11 +44,11 @@ const STOPWORDS: &[&str] = &[
 
 #[derive(Clone, Copy, PartialEq)]
 enum Variant {
-    Baseline,        // raw lexical overlap
-    Stopwords,       // drop stopwords
-    Idf,             // IDF-weighted overlap (keeps stopwords; lets IDF down-weight them)
-    StopwordsIdf,    // both
-    StopwordsStem,   // stopwords + crude stemming
+    Baseline,          // raw lexical overlap
+    Stopwords,         // drop stopwords
+    Idf,               // IDF-weighted overlap (keeps stopwords; lets IDF down-weight them)
+    StopwordsIdf,      // both
+    StopwordsStem,     // stopwords + crude stemming
     StopwordsSnowball, // stopwords + Snowball (Porter2) stemming
 }
 
@@ -66,7 +66,10 @@ impl Variant {
     fn drop_stop(self) -> bool {
         matches!(
             self,
-            Variant::Stopwords | Variant::StopwordsIdf | Variant::StopwordsStem | Variant::StopwordsSnowball
+            Variant::Stopwords
+                | Variant::StopwordsIdf
+                | Variant::StopwordsStem
+                | Variant::StopwordsSnowball
         )
     }
     fn use_idf(self) -> bool {
@@ -145,14 +148,20 @@ fn grounding(
     if denom <= 0.0 {
         return 0.0;
     }
-    let num: f32 = q.intersection(c).map(|t| idf.get(t).copied().unwrap_or(0.0)).sum();
+    let num: f32 = q
+        .intersection(c)
+        .map(|t| idf.get(t).copied().unwrap_or(0.0))
+        .sum();
     num / denom
 }
 
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
@@ -211,7 +220,13 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
     let mut df: HashMap<String, u32> = HashMap::new();
     if variant.use_idf() {
         for c in chunks {
-            for t in term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer) {
+            for t in term_set(
+                &c.text,
+                variant.drop_stop(),
+                variant.stem_mode(),
+                &stop,
+                &stemmer,
+            ) {
                 *df.entry(t).or_insert(0) += 1;
             }
         }
@@ -227,21 +242,45 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
         if lq.gold_chunk_ids.len() < 2 {
             continue;
         }
-        let q = term_set(&lq.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer);
-        let gold_chunks: Vec<&Chunk> =
-            lq.gold_chunk_ids.iter().filter_map(|id| by_id.get(id).copied()).collect();
+        let q = term_set(
+            &lq.text,
+            variant.drop_stop(),
+            variant.stem_mode(),
+            &stop,
+            &stemmer,
+        );
+        let gold_chunks: Vec<&Chunk> = lq
+            .gold_chunk_ids
+            .iter()
+            .filter_map(|id| by_id.get(id).copied())
+            .collect();
         if gold_chunks.len() < 2 {
             continue;
         }
         let gold_docs: HashSet<&str> = gold_chunks.iter().map(|c| c.source.as_str()).collect();
         let gold: Vec<f32> = gold_chunks
             .iter()
-            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer), variant.use_idf(), &idf))
+            .map(|c| {
+                grounding(
+                    &q,
+                    &term_set(
+                        &c.text,
+                        variant.drop_stop(),
+                        variant.stem_mode(),
+                        &stop,
+                        &stemmer,
+                    ),
+                    variant.use_idf(),
+                    &idf,
+                )
+            })
             .collect();
 
         // Inject off-document distractors.
-        let mut pool: Vec<&Chunk> =
-            chunks.iter().filter(|c| !gold_docs.contains(c.source.as_str())).collect();
+        let mut pool: Vec<&Chunk> = chunks
+            .iter()
+            .filter(|c| !gold_docs.contains(c.source.as_str()))
+            .collect();
         for i in (1..pool.len()).rev() {
             let j = (rng.next() as usize) % (i + 1);
             pool.swap(i, j);
@@ -249,7 +288,20 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk], variant: Variant) -> Ve
         let distractor: Vec<f32> = pool
             .iter()
             .take(N_DISTRACTORS)
-            .map(|c| grounding(&q, &term_set(&c.text, variant.drop_stop(), variant.stem_mode(), &stop, &stemmer), variant.use_idf(), &idf))
+            .map(|c| {
+                grounding(
+                    &q,
+                    &term_set(
+                        &c.text,
+                        variant.drop_stop(),
+                        variant.stem_mode(),
+                        &stop,
+                        &stemmer,
+                    ),
+                    variant.use_idf(),
+                    &idf,
+                )
+            })
             .collect();
         if gold.is_empty() || distractor.is_empty() {
             continue;
@@ -277,7 +329,11 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
     }
     let inter = a.intersection(b).count() as f32;
     let union = (a.len() + b.len()) as f32 - inter;
-    if union <= 0.0 { 0.0 } else { inter / union }
+    if union <= 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
 }
 
 /// Proper-noun-like terms: capitalized, not sentence-initial, content words,
@@ -287,7 +343,7 @@ fn entity_terms(text: &str, stop: &HashSet<&str>, stemmer: &Stemmer) -> HashSet<
     let mut sentence_start = true;
     for raw in text.split_whitespace() {
         let trimmed = raw.trim_matches(|c: char| !c.is_alphanumeric());
-        let is_cap = trimmed.chars().next().map_or(false, |c| c.is_uppercase());
+        let is_cap = trimmed.chars().next().is_some_and(|c| c.is_uppercase());
         let lower = trimmed.to_lowercase();
         let content = lower.chars().count() > 1 && !stop.contains(lower.as_str());
         if is_cap && !sentence_start && content {
@@ -307,11 +363,20 @@ enum LinkVariant {
 
 /// Weighted Jaccard: shared-term weight / union-term weight, where terms in
 /// the entity set (of either chunk) weigh `boost`, others weigh 1.
-fn weighted_jaccard(a: &HashSet<String>, b: &HashSet<String>, ents: &HashSet<String>, boost: f32) -> f32 {
+fn weighted_jaccard(
+    a: &HashSet<String>,
+    b: &HashSet<String>,
+    ents: &HashSet<String>,
+    boost: f32,
+) -> f32 {
     let w = |t: &String| if ents.contains(t) { boost } else { 1.0 };
     let inter: f32 = a.intersection(b).map(w).sum();
     let union: f32 = a.union(b).map(w).sum();
-    if union <= 0.0 { 0.0 } else { inter / union }
+    if union <= 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
 }
 
 fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
@@ -326,7 +391,11 @@ fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
     println!("  {:<24} {:>22}", "linkage variant", "AUC [95% CI]");
     println!("  {}", "─".repeat(50));
 
-    for variant in [LinkVariant::TermJaccard, LinkVariant::EntityJaccard, LinkVariant::EntityBoosted] {
+    for variant in [
+        LinkVariant::TermJaccard,
+        LinkVariant::EntityJaccard,
+        LinkVariant::EntityBoosted,
+    ] {
         let mut rng = Lcg(0xC0FFEE);
         let mut cases: Vec<QCase> = Vec::new();
         for lq in &corpus.queries {
@@ -334,8 +403,11 @@ fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
                 continue;
             }
             let q = cterms(&lq.text);
-            let mut gold: Vec<&Chunk> =
-                lq.gold_chunk_ids.iter().filter_map(|id| by_id.get(id).copied()).collect();
+            let mut gold: Vec<&Chunk> = lq
+                .gold_chunk_ids
+                .iter()
+                .filter_map(|id| by_id.get(id).copied())
+                .collect();
             if gold.len() < 2 {
                 continue;
             }
@@ -351,9 +423,10 @@ fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
 
             let link = |a: &Chunk, b: &Chunk| match variant {
                 LinkVariant::TermJaccard => jaccard(&cterms(&a.text), &cterms(&b.text)),
-                LinkVariant::EntityJaccard => {
-                    jaccard(&entity_terms(&a.text, &stop, &stemmer), &entity_terms(&b.text, &stop, &stemmer))
-                }
+                LinkVariant::EntityJaccard => jaccard(
+                    &entity_terms(&a.text, &stop, &stemmer),
+                    &entity_terms(&b.text, &stop, &stemmer),
+                ),
                 LinkVariant::EntityBoosted => {
                     let mut ents = entity_terms(&a.text, &stop, &stemmer);
                     ents.extend(entity_terms(&b.text, &stop, &stemmer));
@@ -362,18 +435,26 @@ fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
             };
             let second_link = link(second, first);
 
-            let mut pool: Vec<&Chunk> =
-                chunks.iter().filter(|c| !gold_docs.contains(c.source.as_str())).collect();
+            let mut pool: Vec<&Chunk> = chunks
+                .iter()
+                .filter(|c| !gold_docs.contains(c.source.as_str()))
+                .collect();
             for i in (1..pool.len()).rev() {
                 let j = (rng.next() as usize) % (i + 1);
                 pool.swap(i, j);
             }
-            let distractor: Vec<f32> =
-                pool.iter().take(N_DISTRACTORS).map(|d| link(d, first)).collect();
+            let distractor: Vec<f32> = pool
+                .iter()
+                .take(N_DISTRACTORS)
+                .map(|d| link(d, first))
+                .collect();
             if distractor.is_empty() {
                 continue;
             }
-            cases.push(QCase { gold: vec![second_link], distractor });
+            cases.push(QCase {
+                gold: vec![second_link],
+                distractor,
+            });
         }
         let mut rng2 = Lcg(0x5EED);
         let label_v = match variant {
@@ -382,7 +463,14 @@ fn run_linkage(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
             LinkVariant::EntityBoosted => "entity-boosted (#2)",
         };
         let (m, lo, hi) = auc_ci(&cases, &mut rng2);
-        println!("  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})", label_v, m, lo, hi, cases.len());
+        println!(
+            "  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})",
+            label_v,
+            m,
+            lo,
+            hi,
+            cases.len()
+        );
     }
 }
 
@@ -391,10 +479,24 @@ fn run(label: &str, corpus: &LabeledCorpus, chunks: &[Chunk]) {
     println!("  {:<24} {:>22}", "variant", "AUC [95% CI]");
     println!("  {}", "─".repeat(50));
     let mut rng = Lcg(0x5EED);
-    for v in [Variant::Baseline, Variant::Stopwords, Variant::Idf, Variant::StopwordsIdf, Variant::StopwordsStem, Variant::StopwordsSnowball] {
+    for v in [
+        Variant::Baseline,
+        Variant::Stopwords,
+        Variant::Idf,
+        Variant::StopwordsIdf,
+        Variant::StopwordsStem,
+        Variant::StopwordsSnowball,
+    ] {
         let cases = build_cases(corpus, chunks, v);
         let (m, lo, hi) = auc_ci(&cases, &mut rng);
-        println!("  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})", v.label(), m, lo, hi, cases.len());
+        println!(
+            "  {:<24} {:>8.3} [{:.3}, {:.3}]  (n={})",
+            v.label(),
+            m,
+            lo,
+            hi,
+            cases.len()
+        );
     }
 }
 
@@ -402,7 +504,9 @@ fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
-    let mut hp = HotpotQADataset::from_path(redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"))?;
+    let mut hp = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     hp.examples.truncate(SAMPLE_SIZE);
     let hp_corpus = hp.to_labeled_corpus(&chunker, |_| None, hp_regime)?;
     let hp_chunks = chunker.chunk_batch(&hp_corpus.docs)?;

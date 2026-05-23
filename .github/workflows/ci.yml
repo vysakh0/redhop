@@ -12,12 +12,18 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust build + test
+    name: Rust fmt + clippy + test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy (warnings = errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build (all targets)
         run: cargo build --workspace --all-targets
       - name: Test
@@ -32,7 +38,15 @@ jobs:
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Format check (bindings)
+        working-directory: python
+        run: cargo fmt -- --check
+      - name: Clippy (bindings, warnings = errors)
+        working-directory: python
+        run: cargo clippy --all-targets -- -D warnings
       - name: Install build tooling
         run: pip install maturin pytest
       - name: Build + install the extension

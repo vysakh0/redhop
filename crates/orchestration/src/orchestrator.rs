@@ -160,8 +160,7 @@ impl AdaptiveOrchestrator {
 
             // Update iteration + budget.
             state.iteration += 1;
-            state.budget.remaining_iterations =
-                state.budget.remaining_iterations.saturating_sub(1);
+            state.budget.remaining_iterations = state.budget.remaining_iterations.saturating_sub(1);
         }
     }
 
@@ -235,8 +234,7 @@ mod tests {
     use async_trait::async_trait;
     use redhop_core::{
         Chunk, ChunkId, DiagnosticsEngine, Query, Reranker, RerankerLevel, RetrievalAction,
-        RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown, StopReason,
-        TokenCount,
+        RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown, StopReason, TokenCount,
     };
     use std::sync::Mutex;
 
@@ -276,11 +274,7 @@ mod tests {
         report: Mutex<DiagnosticsReport>,
     }
     impl DiagnosticsEngine for StubDiagnostics {
-        fn diagnose(
-            &self,
-            _q: &Query,
-            _r: &[RetrievalResult],
-        ) -> Result<DiagnosticsReport> {
+        fn diagnose(&self, _q: &Query, _r: &[RetrievalResult]) -> Result<DiagnosticsReport> {
             Ok(self.report.lock().unwrap().clone())
         }
         fn name(&self) -> &'static str {
@@ -338,10 +332,7 @@ mod tests {
                 Arc::new(RuleBasedClassifier::new()),
                 Arc::new(ConservativeRulePolicy::new()),
                 Arc::new(DefaultActuator::retrieve_only(Arc::new(FixedRetriever {
-                    payload: vec![
-                        mk("a", "answer text", 10.0),
-                        mk("b", "filler", 1.0),
-                    ],
+                    payload: vec![mk("a", "answer text", 10.0), mk("b", "filler", 1.0)],
                 }))),
             );
             let state = orchestrator.run(Query::new("q")).await.unwrap();
@@ -413,7 +404,11 @@ mod tests {
                 .iter()
                 .filter(|t| matches!(t.action, RetrievalAction::EscalateReranker { .. }))
                 .count();
-            assert_eq!(escalations, 1, "expected exactly one escalation, history: {:?}", state.history);
+            assert_eq!(
+                escalations, 1,
+                "expected exactly one escalation, history: {:?}",
+                state.history
+            );
             assert!(matches!(
                 state.history.last().unwrap().action,
                 RetrievalAction::Stop { .. }

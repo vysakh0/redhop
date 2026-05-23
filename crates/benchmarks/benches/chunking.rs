@@ -8,7 +8,7 @@ use redhop_core::{Chunker, Document, TokenizerBackend};
 
 fn doc(n_sentences: usize) -> Document {
     let one = "The quick brown fox jumps over the lazy dog and other animals nearby. ";
-    let text: String = std::iter::repeat(one).take(n_sentences).collect();
+    let text: String = one.repeat(n_sentences);
     Document::new("bench", text)
 }
 

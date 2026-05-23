@@ -99,7 +99,12 @@ mod tests {
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {
-            chunk: Chunk::new(text, text, "doc", TokenCount(text.split_whitespace().count())),
+            chunk: Chunk::new(
+                text,
+                text,
+                "doc",
+                TokenCount(text.split_whitespace().count()),
+            ),
             score: Score {
                 value: score,
                 method: RetrievalMethod::Dense,
@@ -123,7 +128,10 @@ mod tests {
             // longer with low per-token density.
             let cand = vec![
                 r("rust async", 0.8),
-                r("rust async ... lots and lots and lots and lots of filler text here", 0.8),
+                r(
+                    "rust async ... lots and lots and lots and lots of filler text here",
+                    0.8,
+                ),
             ];
             let rr = EvidenceDensityReranker::default();
             let out = rr.rerank(&q, cand, 2).await.unwrap();

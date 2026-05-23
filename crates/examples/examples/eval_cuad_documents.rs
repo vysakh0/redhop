@@ -64,7 +64,9 @@ fn perturb(text: &str, mode: &str) -> String {
         "ocr" => {
             let mut rng = 0x9E3779B97F4A7C15u64;
             let mut next = || {
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 rng >> 33
             };
             text.split(' ')
@@ -172,7 +174,10 @@ fn main() -> anyhow::Result<()> {
         _ => ContextStrategy::Auto,
     };
     let e2e_cfg = || DocumentConfig {
-        context: ContextConfig { strategy, ..DocumentConfig::default().context },
+        context: ContextConfig {
+            strategy,
+            ..DocumentConfig::default().context
+        },
         ..DocumentConfig::default()
     };
 
@@ -204,7 +209,9 @@ fn main() -> anyhow::Result<()> {
                 // End-to-end (default Auto).
                 let t = Instant::now();
                 let ctx = doc.context(&qa.question)?;
-                end_to_end.latencies_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                end_to_end
+                    .latencies_ms
+                    .push(t.elapsed().as_secs_f64() * 1000.0);
                 let ctx_words: std::collections::HashSet<String> =
                     words(&ctx.text()).into_iter().collect();
                 let r = qa
@@ -234,24 +241,38 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    end_to_end.latencies_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    end_to_end
+        .latencies_ms
+        .sort_by(|a, b| a.partial_cmp(b).unwrap());
     build_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let q = end_to_end.n.max(1) as f64;
 
     println!("CUAD Document eval (no LLM) — {}", path.display());
     println!("  perturbation: {mode}   strategy: {strategy:?}");
-    println!("  contracts: {n_contracts}   answerable queries: {}", end_to_end.n);
-    println!("  candidate_k: {candidate_k}   budget: {} tok\n", DocumentConfig::default().context.token_budget);
+    println!(
+        "  contracts: {n_contracts}   answerable queries: {}",
+        end_to_end.n
+    );
+    println!(
+        "  candidate_k: {candidate_k}   budget: {} tok\n",
+        DocumentConfig::default().context.token_budget
+    );
 
     println!("Token economics (end-to-end, the product path)");
     let avg_contract = sum_contract_tokens / n_contracts.max(1) as f64;
     let avg_final = end_to_end.sum_final_tokens / q;
     println!("  avg full-contract tokens:  {avg_contract:.0}");
     println!("  avg assembled tokens:      {avg_final:.0}");
-    println!("  end-to-end reduction:      {:+.0}%\n", 100.0 * (avg_final - avg_contract) / avg_contract);
+    println!(
+        "  end-to-end reduction:      {:+.0}%\n",
+        100.0 * (avg_final - avg_contract) / avg_contract
+    );
 
     println!("Auto decisions");
-    println!("  passthrough: {}   prune: {}\n", end_to_end.passthrough, end_to_end.prune);
+    println!(
+        "  passthrough: {}   prune: {}\n",
+        end_to_end.passthrough, end_to_end.prune
+    );
 
     println!("Evidence retention (gold-span word-recall in the assembled context)");
     println!(
@@ -269,7 +290,11 @@ fn main() -> anyhow::Result<()> {
     println!("  → the gap is what pruning costs in evidence retention\n");
 
     println!("Latency");
-    println!("  doc build (chunk+index):   p50 {:.1}ms   p95 {:.1}ms", p(&build_ms, 0.5), p(&build_ms, 0.95));
+    println!(
+        "  doc build (chunk+index):   p50 {:.1}ms   p95 {:.1}ms",
+        p(&build_ms, 0.5),
+        p(&build_ms, 0.95)
+    );
     println!(
         "  per-query context():       p50 {:.1}ms   p95 {:.1}ms",
         p(&end_to_end.latencies_ms, 0.5),

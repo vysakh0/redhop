@@ -15,3 +15,6 @@ redhop-core          = { workspace = true }
 unicode-segmentation = { workspace = true }
 tracing              = { workspace = true }
 serde                = { workspace = true }
+
+[lints]
+workspace = true

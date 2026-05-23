@@ -1,0 +1,9 @@
+# Opinionated, stable rustfmt config — one consistent shape for the whole repo.
+edition = "2021"
+max_width = 100
+use_small_heuristics = "Default"
+newline_style = "Unix"
+reorder_imports = true
+reorder_modules = true
+use_field_init_shorthand = true
+use_try_shorthand = true

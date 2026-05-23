@@ -23,7 +23,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::runner::QueryOutcome;
 use crate::sweep::SweepReport;
 
 /// Result of a bootstrap stability analysis.
@@ -67,7 +66,7 @@ pub fn bootstrap_stability(report: &SweepReport, b: usize, seed: u64) -> Bootstr
     // Float-valued counts to accept fractional credit on ties.
     let mut argmax_counts_f: Vec<f32> = vec![0.0; n_settings];
 
-    let mut rng = LCG::new(seed);
+    let mut rng = Lcg::new(seed);
     for _ in 0..b {
         // One resample = same indices into every setting's outcomes.
         // This preserves the within-query coupling: setting A and
@@ -110,11 +109,11 @@ pub fn bootstrap_stability(report: &SweepReport, b: usize, seed: u64) -> Bootstr
     }
 
     let lift_stddev: Vec<f32> = lifts.iter().map(|v| stddev(v)).collect();
-    let argmax_frequency: Vec<f32> = argmax_counts_f
+    let argmax_frequency: Vec<f32> = argmax_counts_f.iter().map(|&c| c / b as f32).collect();
+    let ci90: Vec<(f32, f32)> = lifts
         .iter()
-        .map(|&c| c / b as f32)
+        .map(|v| percentile_band(v, 0.05, 0.95))
         .collect();
-    let ci90: Vec<(f32, f32)> = lifts.iter().map(|v| percentile_band(v, 0.05, 0.95)).collect();
 
     BootstrapStability {
         n_bootstrap: b,
@@ -148,11 +147,11 @@ fn percentile_band(values: &[f32], lo_q: f32, hi_q: f32) -> (f32, f32) {
 
 /// Tiny linear-congruential RNG. Bootstrap doesn't need cryptographic
 /// quality and we want zero-dependency determinism.
-struct LCG {
+struct Lcg {
     state: u64,
 }
 
-impl LCG {
+impl Lcg {
     fn new(seed: u64) -> Self {
         Self {
             state: seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1),
@@ -160,7 +159,10 @@ impl LCG {
     }
 
     fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.state
     }
 }
@@ -168,7 +170,7 @@ impl LCG {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runner::ActionTraceEntry;
+    use crate::runner::{ActionTraceEntry, QueryOutcome};
     use crate::sweep::SweepRow;
     use redhop_core::{RerankerLevel, RetrievalRegime};
 

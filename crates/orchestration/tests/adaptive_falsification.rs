@@ -101,7 +101,7 @@ impl Reranker for CleanupReranker {
         mut candidates: Vec<RetrievalResult>,
         _top_k: usize,
     ) -> CoreResult<Vec<RetrievalResult>> {
-        let half = (candidates.len() + 1) / 2;
+        let half = candidates.len().div_ceil(2);
         candidates.truncate(half);
         for r in &mut candidates {
             r.breakdown.rerank = Some(0.99);
@@ -251,10 +251,7 @@ fn distractor_heavy_escalates_and_records_measurable_actual_gain() {
         let gain = state.history[0]
             .actual_gain
             .expect("non-terminal action must have actual_gain");
-        assert!(
-            gain > 0.05,
-            "expected meaningful positive gain, got {gain}"
-        );
+        assert!(gain > 0.05, "expected meaningful positive gain, got {gain}");
         // And expected_gain must be positive too — the policy predicted
         // some improvement.
         assert!(state.history[0].expected_gain > 0.0);
@@ -334,12 +331,8 @@ fn no_more_than_one_escalation_in_any_session() {
             semantic_distractor_ratio: Some(0.6),
             ..Default::default()
         };
-        let scripted = ScriptedDiagnostics::new(vec![
-            dh.clone(),
-            dh.clone(),
-            dh.clone(),
-            dh.clone(),
-        ]);
+        let scripted =
+            ScriptedDiagnostics::new(vec![dh.clone(), dh.clone(), dh.clone(), dh.clone()]);
         let retriever = Arc::new(FixedRetriever {
             payload: vec![mk("a", 5.0), mk("b", 4.0), mk("c", 3.0), mk("d", 2.0)],
             calls: Mutex::new(0),

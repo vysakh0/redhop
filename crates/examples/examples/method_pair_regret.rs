@@ -50,7 +50,11 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     let records = parse_path(NEOTRACE_PATH)?;
-    println!("loaded {} NeoTrace records from {}", records.len(), NEOTRACE_PATH);
+    println!(
+        "loaded {} NeoTrace records from {}",
+        records.len(),
+        NEOTRACE_PATH
+    );
 
     // Group records by item_id.
     let mut by_item: BTreeMap<String, Vec<&NeoTraceRecord>> = BTreeMap::new();
@@ -64,7 +68,7 @@ fn main() -> anyhow::Result<()> {
 
     // For each adaptive method, pair against cosine on identical
     // item_ids and emit a QueryOutcome.
-    let mut table_rows: Vec<(&'static str, regret_summary_t, usize, usize, usize)> = Vec::new();
+    let mut table_rows: Vec<(&'static str, RegretSummary, usize, usize, usize)> = Vec::new();
     for adaptive_method in METHODS {
         if *adaptive_method == STATIC_METHOD {
             continue;
@@ -123,12 +127,11 @@ fn main() -> anyhow::Result<()> {
         };
         table_rows.push((
             *adaptive_method,
-            regret_summary_t {
+            RegretSummary {
                 n: outcomes.len(),
                 mean_lift,
                 mean_useful_lift: r.mean_useful_lift,
                 mean_harmful_lift: r.mean_harmful_lift,
-                wasted: r.n_wasted_interventions,
                 useful_count: n_better,
                 harmful_count: n_worse,
                 neutral_count: n_same,
@@ -149,14 +152,7 @@ fn main() -> anyhow::Result<()> {
     for (m, r, b, w, s) in &table_rows {
         println!(
             "{:<16} {:>5} {:>+10.3} {:>+10.3} {:>+10.3} {:>8} {:>8} {:>8}",
-            m,
-            r.n,
-            r.mean_lift,
-            r.mean_useful_lift,
-            r.mean_harmful_lift,
-            b,
-            w,
-            s
+            m, r.n, r.mean_lift, r.mean_useful_lift, r.mean_harmful_lift, b, w, s
         );
     }
 
@@ -175,14 +171,18 @@ fn main() -> anyhow::Result<()> {
         }
         // accumulate per-regime totals
         let mut totals: BTreeMap<RetrievalRegime, (f32, usize)> = BTreeMap::new();
-        for (_, items) in &by_item {
-            let static_r = items.iter().find(|r| r.method.as_deref() == Some(STATIC_METHOD));
-            let adapt_r = items.iter().find(|r| r.method.as_deref() == Some(adaptive_method));
+        for items in by_item.values() {
+            let static_r = items
+                .iter()
+                .find(|r| r.method.as_deref() == Some(STATIC_METHOD));
+            let adapt_r = items
+                .iter()
+                .find(|r| r.method.as_deref() == Some(adaptive_method));
             let (Some(s), Some(a)) = (static_r, adapt_r) else {
                 continue;
             };
-            let regime = parse_regime_from_str(a.true_regime.as_deref())
-                .unwrap_or(RetrievalRegime::Easy);
+            let regime =
+                parse_regime_from_str(a.true_regime.as_deref()).unwrap_or(RetrievalRegime::Easy);
             let lift = a.retrieval_recall.unwrap_or(0.0) - s.retrieval_recall.unwrap_or(0.0);
             let e = totals.entry(regime).or_insert((0.0, 0));
             e.0 += lift;
@@ -204,9 +204,11 @@ fn main() -> anyhow::Result<()> {
     println!();
     println!("════════════════════════════════════════════════════════════════════════");
     println!("HEADLINE — HotpotQA, haiku run, vs cosine baseline");
-    let best = table_rows
-        .iter()
-        .max_by(|a, b| a.1.mean_lift.partial_cmp(&b.1.mean_lift).unwrap_or(std::cmp::Ordering::Equal));
+    let best = table_rows.iter().max_by(|a, b| {
+        a.1.mean_lift
+            .partial_cmp(&b.1.mean_lift)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     if let Some((m, r, _, _, _)) = best {
         println!(
             "  best mean-lift method:  {} → {:+.3} on {} items",
@@ -249,12 +251,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[derive(Debug, Clone)]
-struct regret_summary_t {
+struct RegretSummary {
     n: usize,
     mean_lift: f32,
     mean_useful_lift: f32,
     mean_harmful_lift: f32,
-    wasted: usize,
     useful_count: usize,
     harmful_count: usize,
     neutral_count: usize,

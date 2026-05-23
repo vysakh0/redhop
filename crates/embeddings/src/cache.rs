@@ -95,7 +95,10 @@ impl<E: EmbeddingProvider> EmbeddingProvider for CachedEmbedder<E> {
             }
         }
 
-        Ok(results.into_iter().map(|o| o.expect("all slots filled")).collect())
+        Ok(results
+            .into_iter()
+            .map(|o| o.expect("all slots filled"))
+            .collect())
     }
 
     fn dim(&self) -> usize {
@@ -142,7 +145,9 @@ mod tests {
     }
 
     fn rt() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread().build().unwrap()
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
     }
 
     #[test]
@@ -179,10 +184,7 @@ mod tests {
     fn cached_results_match_uncached() {
         rt().block_on(async {
             let calls = Arc::new(AtomicU64::new(0));
-            let inner = CountingProvider {
-                calls,
-                dim: 16,
-            };
+            let inner = CountingProvider { calls, dim: 16 };
             let direct = CountingProvider {
                 calls: Arc::new(AtomicU64::new(0)),
                 dim: 16,

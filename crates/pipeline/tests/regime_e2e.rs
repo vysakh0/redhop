@@ -34,20 +34,36 @@ fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-        "this", "that", "with", "as", "be", "by", "on", "at", "it",
+        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "this", "that",
+        "with", "as", "be", "by", "on", "at", "it",
     ];
     const TOPIC_FELINE: &[&str] = &[
-        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs",
-        "mews", "tabby",
+        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs", "mews", "tabby",
     ];
     const TOPIC_RUNTIME: &[&str] = &[
-        "tokio", "executor", "executors", "scheduler", "schedulers", "future",
-        "futures", "async", "runtime", "runtimes", "await",
+        "tokio",
+        "executor",
+        "executors",
+        "scheduler",
+        "schedulers",
+        "future",
+        "futures",
+        "async",
+        "runtime",
+        "runtimes",
+        "await",
     ];
     const TOPIC_DATABASE: &[&str] = &[
-        "postgres", "postgresql", "database", "databases", "sql", "transaction",
-        "transactions", "acid", "row", "rows",
+        "postgres",
+        "postgresql",
+        "database",
+        "databases",
+        "sql",
+        "transaction",
+        "transactions",
+        "acid",
+        "row",
+        "rows",
     ];
 
     fn hash_word(w: &str) -> u64 {
@@ -108,19 +124,21 @@ fn attach_embeddings(
     s
 }
 
-async fn build_rag(
-    docs: Vec<Document>,
-) -> (RedHop, Vec<Chunk>) {
+async fn build_rag(docs: Vec<Document>) -> (RedHop, Vec<Chunk>) {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok.clone(), 40, 60, 0).unwrap();
     let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs).unwrap());
 
     let mut bm25 = Bm25Retriever::new().unwrap();
-    redhop_core::Retriever::index(&mut bm25, &chunks).await.unwrap();
+    redhop_core::Retriever::index(&mut bm25, &chunks)
+        .await
+        .unwrap();
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
-    let diagnostics = Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic));
+    let diagnostics = Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(
+        lexical, semantic,
+    ));
     let classifier: Arc<dyn RegimeClassifier> = Arc::new(RuleBasedClassifier::new());
 
     let rag = RedHop::builder()
@@ -221,7 +239,11 @@ async fn paraphrase_regime_classifies_as_easy_through_semantic_rule() {
             .iter()
             .any(|f| f.rule == "easy_semantically_grounded"),
         "expected easy_semantically_grounded to fire; got {:?}",
-        dist.trace.rules_fired.iter().map(|f| &f.rule).collect::<Vec<_>>()
+        dist.trace
+            .rules_fired
+            .iter()
+            .map(|f| &f.rule)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -265,15 +287,27 @@ async fn trace_always_records_features_and_thresholds() {
     let (rag, indexed) = build_rag(docs).await;
     let dist = classify_query("tokio async runtime", &rag, &indexed).await;
     // The classifier is contractually required to populate the trace.
-    assert!(!dist.trace.thresholds.is_empty(), "thresholds must be recorded");
+    assert!(
+        !dist.trace.thresholds.is_empty(),
+        "thresholds must be recorded"
+    );
     assert!(!dist.trace.features.is_empty(), "features must be recorded");
-    assert!(!dist.trace.raw_scores.is_empty(), "raw scores must be recorded");
+    assert!(
+        !dist.trace.raw_scores.is_empty(),
+        "raw scores must be recorded"
+    );
 }
 
 // Suppress unused-import warnings if any of the testing-only items aren't
 // pulled in by every path.
 #[allow(dead_code)]
-fn _unused() -> (Score, ScoreBreakdown, ChunkId, RetrievalResult, RetrievalMethod) {
+fn _unused() -> (
+    Score,
+    ScoreBreakdown,
+    ChunkId,
+    RetrievalResult,
+    RetrievalMethod,
+) {
     (
         Score {
             value: 0.0,

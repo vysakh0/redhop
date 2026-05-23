@@ -22,7 +22,9 @@ use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, Retriever, TokenizerBackend,
 };
-use redhop_diagnostics::{DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine};
+use redhop_diagnostics::{
+    DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
+};
 use redhop_retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
@@ -32,20 +34,36 @@ fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-        "this", "that", "with", "as", "be", "by", "on", "at", "it",
+        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "this", "that",
+        "with", "as", "be", "by", "on", "at", "it",
     ];
     const TOPIC_FELINE: &[&str] = &[
-        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs",
-        "mews", "tabby",
+        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs", "mews", "tabby",
     ];
     const TOPIC_RUNTIME: &[&str] = &[
-        "tokio", "executor", "executors", "scheduler", "schedulers", "future",
-        "futures", "async", "runtime", "runtimes", "await",
+        "tokio",
+        "executor",
+        "executors",
+        "scheduler",
+        "schedulers",
+        "future",
+        "futures",
+        "async",
+        "runtime",
+        "runtimes",
+        "await",
     ];
     const TOPIC_DATABASE: &[&str] = &[
-        "postgres", "postgresql", "database", "databases", "sql", "transaction",
-        "transactions", "acid", "row", "rows",
+        "postgres",
+        "postgresql",
+        "database",
+        "databases",
+        "sql",
+        "transaction",
+        "transactions",
+        "acid",
+        "row",
+        "rows",
     ];
 
     fn hash_word(w: &str) -> u64 {
@@ -108,9 +126,7 @@ async fn main() -> anyhow::Result<()> {
         ),
     ];
 
-    let chunks = embed_chunks(
-        redhop_core::Chunker::chunk_batch(&chunker, &docs)?,
-    );
+    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs)?);
 
     let mut bm25 = Bm25Retriever::new()?;
     bm25.index(&chunks).await?;
@@ -121,10 +137,10 @@ async fn main() -> anyhow::Result<()> {
     let diagnostics = LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic);
 
     for (label, text) in &[
-        ("aligned",        "tabby cat purrs"),
-        ("paraphrase",     "feline kitten purrs"),
+        ("aligned", "tabby cat purrs"),
+        ("paraphrase", "feline kitten purrs"),
         ("wrong_overlap", "cat purrs frequently and softly"),
-        ("sparse",         "ancient roman aqueducts"),
+        ("sparse", "ancient roman aqueducts"),
     ] {
         let mut query = Query::new(*text).with_embedding(embed(text));
         query.top_k = Some(3);
@@ -147,16 +163,37 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         println!("  -- lexical tier --");
-        println!("    lexical_grounding:        {:?}", report.lexical_grounding);
+        println!(
+            "    lexical_grounding:        {:?}",
+            report.lexical_grounding
+        );
         println!("    chunk_purity:             {:?}", report.chunk_purity);
         println!("    answer_density:           {:?}", report.answer_density);
-        println!("    distractor_ratio:         {:?}", report.distractor_ratio);
-        println!("    retrieval_confidence:     {:?}", report.retrieval_confidence);
+        println!(
+            "    distractor_ratio:         {:?}",
+            report.distractor_ratio
+        );
+        println!(
+            "    retrieval_confidence:     {:?}",
+            report.retrieval_confidence
+        );
         println!("  -- semantic tier --");
-        println!("    semantic_grounding:       {:?}", report.semantic_grounding);
-        println!("    semantic_redundancy:      {:?}", report.semantic_redundancy);
-        println!("    centroid_dispersion:      {:?}", report.centroid_dispersion);
-        println!("    semantic_distractor_ratio:{:?}", report.semantic_distractor_ratio);
+        println!(
+            "    semantic_grounding:       {:?}",
+            report.semantic_grounding
+        );
+        println!(
+            "    semantic_redundancy:      {:?}",
+            report.semantic_redundancy
+        );
+        println!(
+            "    centroid_dispersion:      {:?}",
+            report.centroid_dispersion
+        );
+        println!(
+            "    semantic_distractor_ratio:{:?}",
+            report.semantic_distractor_ratio
+        );
         if !report.warnings.is_empty() {
             println!("  warnings:");
             for w in &report.warnings {

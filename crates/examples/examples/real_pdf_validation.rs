@@ -112,9 +112,18 @@ fn main() -> anyhow::Result<()> {
     println!("\n──── clean real-PDF corpus: ingestion diagnostics ────");
     println!("  ocr_noise_score      {:.4}", clean_report.ocr_noise_score);
     println!("  duplicate_ratio      {:.4}", clean_report.duplicate_ratio);
-    println!("  boilerplate_ratio    {:.4}", clean_report.boilerplate_ratio);
-    println!("  fragmentation_score  {:.4}", clean_report.fragmentation_score);
-    println!("  table_noise_score    {:.4}", clean_report.table_noise_score);
+    println!(
+        "  boilerplate_ratio    {:.4}",
+        clean_report.boilerplate_ratio
+    );
+    println!(
+        "  fragmentation_score  {:.4}",
+        clean_report.fragmentation_score
+    );
+    println!(
+        "  table_noise_score    {:.4}",
+        clean_report.table_noise_score
+    );
     if clean_report.warnings.is_empty() {
         println!("  → clean academic PDFs trip zero ingestion warnings (expected)");
     } else {
@@ -133,7 +142,13 @@ fn main() -> anyhow::Result<()> {
         CorruptionKind::Boilerplate,
     ] {
         let study = run_degradation_study(
-            &chunks, &queries, kind, &severities, &embedder, TOP_K, 0xC0FFEE,
+            &chunks,
+            &queries,
+            kind,
+            &severities,
+            &embedder,
+            TOP_K,
+            0xC0FFEE,
         );
         print_study(&study);
     }

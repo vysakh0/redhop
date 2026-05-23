@@ -53,7 +53,10 @@ impl Lcg {
         Self(s.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1))
     }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0
     }
 }
@@ -63,7 +66,10 @@ fn as_results(chunks: &[Chunk]) -> Vec<RetrievalResult> {
         .iter()
         .map(|c| RetrievalResult {
             chunk: c.clone(),
-            score: Score { value: 1.0, method: RetrievalMethod::Lexical },
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Lexical,
+            },
             breakdown: ScoreBreakdown::default(),
         })
         .collect()
@@ -101,9 +107,9 @@ fn main() -> anyhow::Result<()> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(AGGRESSIVE_THRESHOLD);
-    let mut dataset = HotpotQADataset::from_path(
-        redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"),
-    )?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -116,8 +122,7 @@ fn main() -> anyhow::Result<()> {
 
     let corpus = dataset.to_labeled_corpus(&chunker, |_| None, default_regime)?;
     let chunks = chunker.chunk_batch(&corpus.docs)?;
-    let by_id: HashMap<ChunkId, Chunk> =
-        chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
+    let by_id: HashMap<ChunkId, Chunk> = chunks.iter().map(|c| (c.id.clone(), c.clone())).collect();
 
     let mut rng = Lcg::new(0xC0FFEE);
     let mut out = String::new();
@@ -130,7 +135,9 @@ fn main() -> anyhow::Result<()> {
         if n >= MAX_CASES {
             break;
         }
-        let Some(answer) = gold_answer.get(&lq.text) else { continue };
+        let Some(answer) = gold_answer.get(&lq.text) else {
+            continue;
+        };
         if lq.gold_chunk_ids.len() < 2 {
             continue;
         }
@@ -157,12 +164,13 @@ fn main() -> anyhow::Result<()> {
         }
 
         let gold_chunks: Vec<Chunk> = gold.iter().map(|(_, c, _)| c.clone()).collect();
-        let gold_docs: HashSet<String> =
-            gold_chunks.iter().map(|c| c.source.clone()).collect();
+        let gold_docs: HashSet<String> = gold_chunks.iter().map(|c| c.source.clone()).collect();
 
         // Off-document distractor pool, shuffled deterministically.
-        let mut pool: Vec<&Chunk> =
-            chunks.iter().filter(|c| !gold_docs.contains(&c.source)).collect();
+        let mut pool: Vec<&Chunk> = chunks
+            .iter()
+            .filter(|c| !gold_docs.contains(&c.source))
+            .collect();
         for i in (1..pool.len()).rev() {
             let j = (rng.next() as usize) % (i + 1);
             pool.swap(i, j);
@@ -219,18 +227,28 @@ fn main() -> anyhow::Result<()> {
         n += 1;
     }
 
-    let out_name = format!("reasoning_qa_contexts_t{:02}.jsonl", (tau * 100.0).round() as i32);
+    let out_name = format!(
+        "reasoning_qa_contexts_t{:02}.jsonl",
+        (tau * 100.0).round() as i32
+    );
     let out_path = redhop_examples::exports_path(&out_name);
     if let Some(dir) = out_path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(&out_path, out)?;
-    println!("wrote {n} gap-qualified multi-hop cases → {}", out_path.display());
+    println!(
+        "wrote {n} gap-qualified multi-hop cases → {}",
+        out_path.display()
+    );
     println!("  filter threshold τ: {tau}");
     println!(
         "  second-hop retention (reachability): filtered {}/{} ({:.0}%), reasoning {}/{} ({:.0}%)",
-        sh_kept_filtered, n, sh_kept_filtered as f32 / n.max(1) as f32 * 100.0,
-        sh_kept_reasoning, n, sh_kept_reasoning as f32 / n.max(1) as f32 * 100.0,
+        sh_kept_filtered,
+        n,
+        sh_kept_filtered as f32 / n.max(1) as f32 * 100.0,
+        sh_kept_reasoning,
+        n,
+        sh_kept_reasoning as f32 / n.max(1) as f32 * 100.0,
     );
     println!("next: python python/eval/score_reasoning_qa.py --n 300");
     Ok(())

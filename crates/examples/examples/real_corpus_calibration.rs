@@ -22,20 +22,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use redhop_calibration::{
-    analysis::{
-        confusion_matrix, regret_summary, bootstrap_stability,
-    },
+    analysis::{bootstrap_stability, confusion_matrix, regret_summary},
     fixtures::embed,
     loaders::hotpotqa::{default_regime, HotpotQADataset},
-    report::{render_pareto, render_reliability, render_sweep_table},
     reliability::reliability_diagram,
+    report::{render_pareto, render_reliability, render_sweep_table},
     ThresholdSweep,
 };
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_core::{
-    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query,
-    RerankerLevel, Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever,
-    TokenizerBackend,
+    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
+    Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend,
 };
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
@@ -133,11 +130,7 @@ async fn main() -> anyhow::Result<()> {
     // ---- 2. Build the chunker and convert to LabeledCorpus ----
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
-    let corpus = dataset.to_labeled_corpus(
-        &chunker,
-        |q| Some(embed(q)),
-        default_regime,
-    )?;
+    let corpus = dataset.to_labeled_corpus(&chunker, |q| Some(embed(q)), default_regime)?;
     println!(
         "→ LabeledCorpus: {} documents, {} queries",
         corpus.docs.len(),
@@ -261,15 +254,13 @@ async fn main() -> anyhow::Result<()> {
     // ---- 9. Bootstrap threshold stability ----
     let stability = bootstrap_stability(&report, 200, 0xC0FFEE);
     println!();
-    println!("─── threshold stability (B = {} bootstrap resamples) ───", stability.n_bootstrap);
+    println!(
+        "─── threshold stability (B = {} bootstrap resamples) ───",
+        stability.n_bootstrap
+    );
     println!(
         "{:<14} {:<14} {:>10} {:>10} {:>12} {:>12}",
-        "min_p_distr.",
-        "min_p_amb.",
-        "lift_stddev",
-        "argmax_freq",
-        "ci90_low",
-        "ci90_high"
+        "min_p_distr.", "min_p_amb.", "lift_stddev", "argmax_freq", "ci90_low", "ci90_high"
     );
     println!("{}", "─".repeat(80));
     for (i, row) in report.rows.iter().enumerate() {
@@ -296,10 +287,7 @@ async fn main() -> anyhow::Result<()> {
             "  argmax sweep setting:  min_p_distractor={:.2}, min_p_ambiguous={:.2}",
             best.min_p_distractor, best.min_p_ambiguous
         );
-        println!(
-            "  mean_recall_lift:      {:+.3}",
-            best.mean_recall_lift
-        );
+        println!("  mean_recall_lift:      {:+.3}", best.mean_recall_lift);
         // Is the argmax stable?
         if let Some(i) = report.rows.iter().position(|r| std::ptr::eq(r, best)) {
             let af = stability.argmax_frequency.get(i).copied().unwrap_or(0.0);
@@ -308,13 +296,9 @@ async fn main() -> anyhow::Result<()> {
                 af * 100.0
             );
             if af < 0.5 {
-                println!(
-                    "  → WARNING: best setting is NOT stable. Multiple settings tied."
-                );
+                println!("  → WARNING: best setting is NOT stable. Multiple settings tied.");
             } else if af < 0.8 {
-                println!(
-                    "  → caution: best setting is somewhat stable but not decisive."
-                );
+                println!("  → caution: best setting is somewhat stable but not decisive.");
             } else {
                 println!("  → best setting is stable.");
             }

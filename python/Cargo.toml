@@ -2,6 +2,14 @@
 # build (so `cargo build --workspace` at the repo root never needs Python).
 [workspace]
 
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+needless_range_loop = "allow"
+
 [package]
 name = "redhop-py"
 version = "0.1.0"
@@ -21,3 +29,6 @@ redhop-context  = { path = "../crates/context" }
 redhop-document = { path = "../crates/document" }
 serde_json      = "1"
 pyo3           = { version = "0.23", features = ["extension-module", "abi3-py39"] }
+
+[lints]
+workspace = true

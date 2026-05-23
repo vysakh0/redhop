@@ -393,14 +393,23 @@ impl ContextReport {
             "  Input distractors:  {:.0}% of retrieved chunks\n",
             self.input_distractor_ratio * 100.0
         ));
-        s.push_str(&format!("  Distractors pruned: {}\n", self.removed.distractor));
+        s.push_str(&format!(
+            "  Distractors pruned: {}\n",
+            self.removed.distractor
+        ));
         if self.removed.redundant > 0 {
-            s.push_str(&format!("  Duplicates pruned:  {}\n", self.removed.redundant));
+            s.push_str(&format!(
+                "  Duplicates pruned:  {}\n",
+                self.removed.redundant
+            ));
         }
         if self.removed.budget > 0 {
             s.push_str(&format!("  Budget-trimmed:     {}\n", self.removed.budget));
         }
-        s.push_str(&format!("  Second-hop rescues: {}\n", self.second_hop_rescue_count));
+        s.push_str(&format!(
+            "  Second-hop rescues: {}\n",
+            self.second_hop_rescue_count
+        ));
         s.push_str(&format!(
             "  Estimated waste:    {} tokens on distractors\n",
             self.economics.estimated_waste_tokens
@@ -470,7 +479,10 @@ impl ContextReport {
                         self.n_selected, self.n_input_chunks
                     )
                 } else {
-                    format!("kept all {} retrieved chunks — full evidence preserved", self.n_input_chunks)
+                    format!(
+                        "kept all {} retrieved chunks — full evidence preserved",
+                        self.n_input_chunks
+                    )
                 };
                 result(s, &[kept, "avoided unnecessary intervention".into()]);
             }
@@ -495,7 +507,10 @@ impl ContextReport {
                         self.token_savings_pct(),
                         self.removed.distractor
                     ),
-                    format!("retained {:.0}% of query-relevant evidence", self.retained_evidence_ratio * 100.0),
+                    format!(
+                        "retained {:.0}% of query-relevant evidence",
+                        self.retained_evidence_ratio * 100.0
+                    ),
                 ];
                 if self.second_hop_rescue_count > 0 {
                     r.push(format!(
@@ -612,9 +627,11 @@ pub fn build_context(
             items.sort_by(|a, b| {
                 let a_seed = !a.is_distractor;
                 let b_seed = !b.is_distractor;
-                b_seed
-                    .cmp(&a_seed)
-                    .then(b.grounding.partial_cmp(&a.grounding).unwrap_or(std::cmp::Ordering::Equal))
+                b_seed.cmp(&a_seed).then(
+                    b.grounding
+                        .partial_cmp(&a.grounding)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
             });
             n_dropped_distractor = before - items.len(); // true junk dropped
         }
@@ -757,12 +774,19 @@ pub fn analyze_context(
     let total_tokens: usize = items.iter().map(|i| i.tokens).sum();
     // Second-hop candidates: below-bar chunks linked to a seed (what
     // ReasoningPreserving *would* rescue).
-    let seed_terms: Vec<&HashSet<String>> =
-        items.iter().filter(|i| !i.is_distractor).map(|i| &i.c_terms).collect();
+    let seed_terms: Vec<&HashSet<String>> = items
+        .iter()
+        .filter(|i| !i.is_distractor)
+        .map(|i| &i.c_terms)
+        .collect();
     let candidates = items
         .iter()
         .filter(|i| i.is_distractor)
-        .filter(|i| seed_terms.iter().any(|s| jaccard(&i.c_terms, s) >= cfg.link_min_jaccard))
+        .filter(|i| {
+            seed_terms
+                .iter()
+                .any(|s| jaccard(&i.c_terms, s) >= cfg.link_min_jaccard)
+        })
         .count();
     let economics = economics(&q_terms, &items, n_input_distractor, cfg);
     ContextReport {
@@ -853,7 +877,8 @@ fn characterize(
                 .chunk
                 .text
                 .unicode_words()
-                .filter_map(normalize).filter(|t| q_terms.contains(t))
+                .filter_map(normalize)
+                .filter(|t| q_terms.contains(t))
                 .count();
             Item {
                 chunk: r.chunk.clone(),
@@ -905,7 +930,8 @@ fn economics(
             i.chunk
                 .text
                 .unicode_words()
-                .filter_map(normalize).filter(|t| q_terms.contains(t))
+                .filter_map(normalize)
+                .filter(|t| q_terms.contains(t))
                 .count()
         })
         .sum();
@@ -925,7 +951,10 @@ fn economics(
         .sum();
 
     // Redundancy: mean pairwise cosine among selected embeddings.
-    let embs: Vec<&Embedding> = selected.iter().filter_map(|i| i.embedding.as_ref()).collect();
+    let embs: Vec<&Embedding> = selected
+        .iter()
+        .filter_map(|i| i.embedding.as_ref())
+        .collect();
     let redundancy = if embs.len() >= 2 {
         let mut acc = 0.0;
         let mut n = 0;
@@ -1082,7 +1111,11 @@ mod tests {
         let q = Query::new("rust safety");
         let chunks = vec![
             // low density: 2 relevant of 8 tokens
-            rr("dilute", "rust safety amid lots of extra filler words here now", None),
+            rr(
+                "dilute",
+                "rust safety amid lots of extra filler words here now",
+                None,
+            ),
             // high density: 2 relevant of 2 tokens
             rr("dense", "rust safety", None),
         ];
@@ -1134,9 +1167,17 @@ mod tests {
             rr("hop1", "the safety lamp was invented by humphry davy", None),
             // second hop: shares almost nothing with the query, but shares
             // the bridge entity "humphry davy" with hop1
-            rr("hop2", "humphry davy born penzance cornwall england chemist", None),
+            rr(
+                "hop2",
+                "humphry davy born penzance cornwall england chemist",
+                None,
+            ),
             // true junk: unrelated to query AND to hop1
-            rr("junk", "photosynthesis converts sunlight chemical energy green plants", None),
+            rr(
+                "junk",
+                "photosynthesis converts sunlight chemical energy green plants",
+                None,
+            ),
         ]
     }
 
@@ -1154,7 +1195,11 @@ mod tests {
     #[test]
     fn reasoning_preserving_rescues_linked_second_hop_drops_true_junk() {
         let q = Query::new("what nationality was the safety lamp inventor");
-        let ctx = build_context(&q, &bridge_chunks(), &bridge_cfg(ContextStrategy::ReasoningPreserving));
+        let ctx = build_context(
+            &q,
+            &bridge_chunks(),
+            &bridge_cfg(ContextStrategy::ReasoningPreserving),
+        );
         let ids: Vec<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
         assert!(ids.contains(&"hop1"), "seed hop1 should be kept");
         assert!(ids.contains(&"hop2"), "linked second hop should be rescued");
@@ -1166,19 +1211,31 @@ mod tests {
         // The two strategies differ exactly on the reasoning-critical chunk.
         let q = Query::new("what nationality was the safety lamp inventor");
         let chunks = bridge_chunks();
-        let filtered = build_context(&q, &chunks, &bridge_cfg(ContextStrategy::DistractorFiltered));
-        let preserving = build_context(&q, &chunks, &bridge_cfg(ContextStrategy::ReasoningPreserving));
-        assert!(!filtered.chunks.iter().any(|c| c.id.as_str() == "hop2"),
-            "distractor filter should drop the low-relevance second hop");
-        assert!(preserving.chunks.iter().any(|c| c.id.as_str() == "hop2"),
-            "reasoning-preserving should rescue it");
+        let filtered = build_context(
+            &q,
+            &chunks,
+            &bridge_cfg(ContextStrategy::DistractorFiltered),
+        );
+        let preserving = build_context(
+            &q,
+            &chunks,
+            &bridge_cfg(ContextStrategy::ReasoningPreserving),
+        );
+        assert!(
+            !filtered.chunks.iter().any(|c| c.id.as_str() == "hop2"),
+            "distractor filter should drop the low-relevance second hop"
+        );
+        assert!(
+            preserving.chunks.iter().any(|c| c.id.as_str() == "hop2"),
+            "reasoning-preserving should rescue it"
+        );
     }
 
     #[test]
     fn economics_reports_density_and_waste() {
         let q = Query::new("rust memory safety");
         let chunks = vec![
-            rr("a", "rust memory safety", None), // all relevant
+            rr("a", "rust memory safety", None),         // all relevant
             rr("c", "cooking bread recipe flour", None), // distractor
         ];
         let ctx = build_context(
@@ -1224,17 +1281,33 @@ mod tests {
     fn invariant_no_strategy_exceeds_token_budget() {
         let q = Query::new("rust memory safety guarantees");
         let chunks = vec![
-            rr("a", "rust memory safety guarantees ownership borrow checker", None),
+            rr(
+                "a",
+                "rust memory safety guarantees ownership borrow checker",
+                None,
+            ),
             rr("b", "rust prevents data races at compile time safety", None),
-            rr("c", "cooking bread recipe flour yeast water salt oven", None),
-            rr("d", "memory safety without garbage collection in rust", None),
+            rr(
+                "c",
+                "cooking bread recipe flour yeast water salt oven",
+                None,
+            ),
+            rr(
+                "d",
+                "memory safety without garbage collection in rust",
+                None,
+            ),
         ];
         for s in all_strategies() {
             for budget in [1usize, 3, 5, 8, 50] {
                 let ctx = build_context(
                     &q,
                     &chunks,
-                    &ContextConfig { token_budget: budget, strategy: s, ..Default::default() },
+                    &ContextConfig {
+                        token_budget: budget,
+                        strategy: s,
+                        ..Default::default()
+                    },
                 );
                 assert!(
                     ctx.total_tokens() <= budget,
@@ -1301,7 +1374,10 @@ mod tests {
         let preserving = build_context(
             &q,
             &chunks,
-            &ContextConfig { strategy: ContextStrategy::ReasoningPreserving, ..aggressive },
+            &ContextConfig {
+                strategy: ContextStrategy::ReasoningPreserving,
+                ..aggressive
+            },
         );
         assert!(!filtered.chunks.iter().any(|c| c.id.as_str() == "hop2"));
         assert!(preserving.chunks.iter().any(|c| c.id.as_str() == "hop2"));
@@ -1329,8 +1405,14 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(ctx.report.removed.budget, 0, "filter_context must not drop for budget");
-        assert!(ctx.chunks.iter().all(|c| c.id.as_str() != "c"), "junk still filtered");
+        assert_eq!(
+            ctx.report.removed.budget, 0,
+            "filter_context must not drop for budget"
+        );
+        assert!(
+            ctx.chunks.iter().all(|c| c.id.as_str() != "c"),
+            "junk still filtered"
+        );
         assert_eq!(ctx.chunks.len(), 2);
     }
 
@@ -1377,7 +1459,10 @@ mod tests {
         let raw = build_context(
             &q,
             &bridge_chunks(),
-            &ContextConfig { strategy: ContextStrategy::RawTopK, ..cfg },
+            &ContextConfig {
+                strategy: ContextStrategy::RawTopK,
+                ..cfg
+            },
         );
         assert!(raw.report.economics.distractor_ratio > 0.0);
         assert_eq!(raw.report.second_hop_rescue_count, 0);
@@ -1432,7 +1517,11 @@ mod tests {
         let chunks = vec![
             rr("a", dup, None),
             rr("b", dup, None), // exact lexical duplicate, no embeddings
-            rr("c", "python is a dynamically typed scripting language", None),
+            rr(
+                "c",
+                "python is a dynamically typed scripting language",
+                None,
+            ),
         ];
         let cfg = ContextConfig {
             strategy: ContextStrategy::RedundancyPruned,
@@ -1440,7 +1529,10 @@ mod tests {
             ..Default::default()
         };
         let out = build_context(&q, &chunks, &cfg);
-        assert_eq!(out.report.removed.redundant, 1, "the duplicate should be dropped");
+        assert_eq!(
+            out.report.removed.redundant, 1,
+            "the duplicate should be dropped"
+        );
         assert_eq!(out.chunks.iter().filter(|c| c.text == dup).count(), 1);
     }
 
@@ -1482,7 +1574,10 @@ mod tests {
         let pass = build_context(&q, &bridge_chunks(), &pass_cfg);
         assert_eq!(pass.report.auto_decision(), AutoDecision::Passthrough);
         let r = pass.report.render(None);
-        assert!(r.contains("Auto → passthrough"), "missing passthrough decision:\n{r}");
+        assert!(
+            r.contains("Auto → passthrough"),
+            "missing passthrough decision:\n{r}"
+        );
         assert!(r.contains("left the context intact"));
         assert!(r.contains("Why:") && r.contains("Result:"));
 
@@ -1494,7 +1589,10 @@ mod tests {
         let prune = build_context(&q, &bridge_chunks(), &prune_cfg);
         assert_eq!(prune.report.auto_decision(), AutoDecision::Prune);
         let r = prune.report.render(None);
-        assert!(r.contains("Auto → pruning"), "missing pruning decision:\n{r}");
+        assert!(
+            r.contains("Auto → pruning"),
+            "missing pruning decision:\n{r}"
+        );
     }
 
     #[test]

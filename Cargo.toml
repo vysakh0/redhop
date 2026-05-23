@@ -19,6 +19,20 @@ members = [
     "crates/cli",
 ]
 
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused = "warn"
+
+[workspace.lints.clippy]
+# Opinionated baseline: the standard clippy groups are warnings, enforced as
+# errors in CI (`cargo clippy -- -D warnings`). priority -1 lets the specific
+# allows below win.
+all = { level = "warn", priority = -1 }
+# Deliberately permitted: index-based loops are clearer than iterator chains in
+# numeric / parallel-array kernels (pooling, centroids, bootstrap), and this is
+# a style call, not a correctness one.
+needless_range_loop = "allow"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

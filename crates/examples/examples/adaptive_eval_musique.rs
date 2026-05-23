@@ -101,11 +101,8 @@ async fn main() -> anyhow::Result<()> {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 60, 90, 0)?;
     let embedder = HashingEmbedder::with_dim(256);
-    let corpus = dataset.to_labeled_corpus(
-        &chunker,
-        |q| Some(embedder.embed(q)),
-        default_regime,
-    )?;
+    let corpus =
+        dataset.to_labeled_corpus(&chunker, |q| Some(embedder.embed(q)), default_regime)?;
     println!(
         "built LabeledCorpus: {} docs, {} queries ({:.1}s)",
         corpus.docs.len(),
@@ -259,10 +256,7 @@ async fn main() -> anyhow::Result<()> {
             best.min_p_distractor, best.min_p_ambiguous
         );
         println!("  mean_recall_lift:       {:+.3}", best.mean_recall_lift);
-        println!(
-            "  intervention_rate:      {:.2}",
-            best.intervention_rate
-        );
+        println!("  intervention_rate:      {:.2}", best.intervention_rate);
         println!(
             "  fraction_useful:        {:.2}",
             best.fraction_useful_interventions
@@ -270,7 +264,10 @@ async fn main() -> anyhow::Result<()> {
     }
     println!("  classifier accuracy:    {:.1}%", cm.accuracy * 100.0);
     println!("  ECE (calibration):      {:.3}", diag.ece);
-    println!("  total runtime:          {:.1}s", t_total.elapsed().as_secs_f32());
+    println!(
+        "  total runtime:          {:.1}s",
+        t_total.elapsed().as_secs_f32()
+    );
     println!("════════════════════════════════════════════════════════════════════════");
 
     Ok(())

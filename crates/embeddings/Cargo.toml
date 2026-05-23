@@ -36,3 +36,6 @@ tokenizers = { version = "0.20", optional = true, default-features = false, feat
 
 [dev-dependencies]
 tokio = { workspace = true }
+
+[lints]
+workspace = true

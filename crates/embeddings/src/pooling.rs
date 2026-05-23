@@ -49,7 +49,11 @@ pub fn pool(
         seq_len * hidden_dim,
         "hidden_states shape mismatch"
     );
-    assert_eq!(attention_mask.len(), seq_len, "attention_mask shape mismatch");
+    assert_eq!(
+        attention_mask.len(),
+        seq_len,
+        "attention_mask shape mismatch"
+    );
 
     match pooling {
         Pooling::Cls => {

@@ -15,12 +15,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use parking_lot::RwLock;
 use redhop_core::{
     Chunk, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown,
     VectorIndex,
 };
 use redhop_storage::ChunkStore;
-use parking_lot::RwLock;
 
 /// Dense retriever pairing a [`VectorIndex`] with a [`ChunkStore`].
 pub struct DenseRetriever {
@@ -57,9 +57,7 @@ impl Retriever for DenseRetriever {
         top_k: usize,
     ) -> redhop_core::Result<Vec<RetrievalResult>> {
         let qe = query.embedding.as_ref().ok_or_else(|| {
-            Error::Embedding(
-                "dense retrieval requires a precomputed query embedding".into(),
-            )
+            Error::Embedding("dense retrieval requires a precomputed query embedding".into())
         })?;
         let hits = self.index.read().search(qe, top_k.max(1))?;
         let mut out = Vec::with_capacity(hits.len());
@@ -106,14 +104,12 @@ mod tests {
     #[test]
     fn dense_round_trip() {
         rt().block_on(async {
-            let idx: Arc<RwLock<dyn VectorIndex>> =
-                Arc::new(RwLock::new(FlatVectorIndex::new(3)));
+            let idx: Arc<RwLock<dyn VectorIndex>> = Arc::new(RwLock::new(FlatVectorIndex::new(3)));
             let store = Arc::new(ChunkStore::new());
             let mut r = DenseRetriever::new(idx, store);
 
             let mk = |id: &str, e: Vec<f32>| {
-                Chunk::new(id, id, "doc", TokenCount(1))
-                    .with_embedding(Embedding::from(e))
+                Chunk::new(id, id, "doc", TokenCount(1)).with_embedding(Embedding::from(e))
             };
             r.index(&[
                 mk("a", vec![1.0, 0.0, 0.0]),
@@ -133,8 +129,7 @@ mod tests {
     #[test]
     fn dense_requires_query_embedding() {
         rt().block_on(async {
-            let idx: Arc<RwLock<dyn VectorIndex>> =
-                Arc::new(RwLock::new(FlatVectorIndex::new(3)));
+            let idx: Arc<RwLock<dyn VectorIndex>> = Arc::new(RwLock::new(FlatVectorIndex::new(3)));
             let store = Arc::new(ChunkStore::new());
             let r = DenseRetriever::new(idx, store);
             assert!(r.retrieve(&Query::new("no emb"), 1).await.is_err());

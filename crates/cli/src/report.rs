@@ -41,6 +41,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 }
 
 /// Reduce a known artifact shape to (title, column headers, rows, metadata lines).
+#[allow(clippy::type_complexity)]
 fn flatten(v: &Value) -> anyhow::Result<(String, Vec<String>, Vec<Vec<String>>, Vec<String>)> {
     let results = v
         .get("results")
@@ -49,19 +50,53 @@ fn flatten(v: &Value) -> anyhow::Result<(String, Vec<String>, Vec<Vec<String>>, 
 
     // Collect a stable, readable column set across the two known shapes.
     let cols: Vec<(&str, fn(&Value) -> Option<String>)> = vec![
-        ("population", |r| r.get("population").and_then(Value::as_str).map(str::to_string)),
-        ("strategy", |r| r.get("strategy").and_then(Value::as_str).map(str::to_string)),
+        ("population", |r| {
+            r.get("population")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
+        ("strategy", |r| {
+            r.get("strategy")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
         ("budget", |r| r.get("budget").map(num)),
-        ("chunks", |r| r.get("report").and_then(|x| x.get("n_selected")).map(num)),
-        ("tokens", |r| r.get("report").and_then(|x| x.get("total_tokens")).map(num)
-            .or_else(|| r.get("mean_tokens").map(num))),
-        ("rescued", |r| r.get("report").and_then(|x| x.get("second_hop_rescue_count")).map(num)
-            .or_else(|| r.get("mean_second_hop_rescue").map(num))),
-        ("density", |r| r.get("report").and_then(|x| x.get("economics")).and_then(|x| x.get("evidence_density")).map(num)
-            .or_else(|| r.get("evidence_density").map(num))),
-        ("gold_ret", |r| r.get("gold_retention").map(num).or_else(|| r.get("gold_ret").map(num))),
-        ("second_hop_ret", |r| r.get("second_hop_ret").map(num)
-            .or_else(|| r.get("second_hop_retained").map(|b| b.as_bool().map(|x| if x {"yes".into()} else {"no".into()}).unwrap_or_else(|| num(b))))),
+        ("chunks", |r| {
+            r.get("report").and_then(|x| x.get("n_selected")).map(num)
+        }),
+        ("tokens", |r| {
+            r.get("report")
+                .and_then(|x| x.get("total_tokens"))
+                .map(num)
+                .or_else(|| r.get("mean_tokens").map(num))
+        }),
+        ("rescued", |r| {
+            r.get("report")
+                .and_then(|x| x.get("second_hop_rescue_count"))
+                .map(num)
+                .or_else(|| r.get("mean_second_hop_rescue").map(num))
+        }),
+        ("density", |r| {
+            r.get("report")
+                .and_then(|x| x.get("economics"))
+                .and_then(|x| x.get("evidence_density"))
+                .map(num)
+                .or_else(|| r.get("evidence_density").map(num))
+        }),
+        ("gold_ret", |r| {
+            r.get("gold_retention")
+                .map(num)
+                .or_else(|| r.get("gold_ret").map(num))
+        }),
+        ("second_hop_ret", |r| {
+            r.get("second_hop_ret").map(num).or_else(|| {
+                r.get("second_hop_retained").map(|b| {
+                    b.as_bool()
+                        .map(|x| if x { "yes".into() } else { "no".into() })
+                        .unwrap_or_else(|| num(b))
+                })
+            })
+        }),
     ];
 
     // Keep only columns that have at least one value.
@@ -75,14 +110,23 @@ fn flatten(v: &Value) -> anyhow::Result<(String, Vec<String>, Vec<Vec<String>>, 
     }
     let rows: Vec<Vec<String>> = results
         .iter()
-        .map(|r| keepers.iter().map(|f| f(r).unwrap_or_else(|| "-".into())).collect())
+        .map(|r| {
+            keepers
+                .iter()
+                .map(|f| f(r).unwrap_or_else(|| "-".into()))
+                .collect()
+        })
         .collect();
 
     let title = v
         .get("benchmark")
         .and_then(Value::as_str)
         .map(|b| format!("Benchmark: {b}"))
-        .or_else(|| v.get("command").and_then(Value::as_str).map(|c| format!("Report: {c}")))
+        .or_else(|| {
+            v.get("command")
+                .and_then(Value::as_str)
+                .map(|c| format!("Report: {c}"))
+        })
         .unwrap_or_else(|| "RedHop report".into());
 
     let mut meta = Vec::new();
@@ -107,14 +151,26 @@ fn num(v: &Value) -> String {
     }
 }
 
-fn render_markdown(title: &str, headers: &[String], rows: &[Vec<String>], meta: &[String]) -> String {
+fn render_markdown(
+    title: &str,
+    headers: &[String],
+    rows: &[Vec<String>],
+    meta: &[String],
+) -> String {
     let mut s = format!("# {title}\n\n");
     for m in meta {
         s.push_str(&format!("- {m}\n"));
     }
     s.push('\n');
     s.push_str(&format!("| {} |\n", headers.join(" | ")));
-    s.push_str(&format!("| {} |\n", headers.iter().map(|_| "---").collect::<Vec<_>>().join(" | ")));
+    s.push_str(&format!(
+        "| {} |\n",
+        headers
+            .iter()
+            .map(|_| "---")
+            .collect::<Vec<_>>()
+            .join(" | ")
+    ));
     for row in rows {
         s.push_str(&format!("| {} |\n", row.join(" | ")));
     }
@@ -126,7 +182,14 @@ fn render_html(title: &str, headers: &[String], rows: &[Vec<String>], meta: &[St
     let th: String = headers.iter().map(|h| format!("<th>{h}</th>")).collect();
     let trs: String = rows
         .iter()
-        .map(|r| format!("<tr>{}</tr>", r.iter().map(|c| format!("<td>{c}</td>")).collect::<String>()))
+        .map(|r| {
+            format!(
+                "<tr>{}</tr>",
+                r.iter()
+                    .map(|c| format!("<td>{c}</td>"))
+                    .collect::<String>()
+            )
+        })
         .collect();
     let meta_html: String = meta.iter().map(|m| format!("<li>{m}</li>")).collect();
     format!(

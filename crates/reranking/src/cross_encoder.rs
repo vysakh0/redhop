@@ -91,9 +91,9 @@ mod onnx_impl {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
-    use redhop_core::{Error, Query, Reranker, Result, RetrievalResult};
     use ort::session::{builder::GraphOptimizationLevel, Session};
     use ort::value::Tensor;
+    use redhop_core::{Error, Query, Reranker, Result, RetrievalResult};
     use tokenizers::Tokenizer;
 
     use super::apply_scores;
@@ -243,8 +243,7 @@ mod onnx_impl {
             if candidates.is_empty() {
                 return Ok(candidates);
             }
-            let passages: Vec<String> =
-                candidates.iter().map(|r| r.chunk.text.clone()).collect();
+            let passages: Vec<String> = candidates.iter().map(|r| r.chunk.text.clone()).collect();
             let scores = self.score_pairs(&query.text, &passages)?;
             Ok(apply_scores(candidates, &scores, top_k))
         }

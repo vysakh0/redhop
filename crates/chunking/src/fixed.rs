@@ -73,8 +73,8 @@ impl Chunker for FixedChunker {
 
             let id = ChunkId::new(format!("{}::fixed::{}", doc.source, idx));
             let tokens = self.tokenizer.count_tokens(slice)?;
-            let mut chunk = Chunk::new(id, slice, &doc.source, tokens)
-                .with_metadata(doc.metadata.clone());
+            let mut chunk =
+                Chunk::new(id, slice, &doc.source, tokens).with_metadata(doc.metadata.clone());
             chunk.metadata.insert(
                 "byte_offset".to_string(),
                 serde_json::json!({ "start": byte_start, "end": byte_end }),

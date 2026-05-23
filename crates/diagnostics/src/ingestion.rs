@@ -136,8 +136,7 @@ pub fn diagnose_ingestion(chunks: &[Chunk], cfg: &IngestionThresholds) -> Ingest
         table_scores.push((i, table_noise_chunk(&c.text)));
     }
 
-    report.ocr_noise_score =
-        ocr_scores.iter().map(|(_, s)| *s).sum::<f32>() / chunks.len() as f32;
+    report.ocr_noise_score = ocr_scores.iter().map(|(_, s)| *s).sum::<f32>() / chunks.len() as f32;
     report.table_noise_score =
         table_scores.iter().map(|(_, s)| *s).sum::<f32>() / chunks.len() as f32;
     report.fragmentation_score =
@@ -316,10 +315,7 @@ fn table_noise_chunk(text: &str) -> f32 {
 fn duplicate_ratio(chunks: &[Chunk], cfg: &IngestionThresholds) -> (f32, Vec<usize>) {
     let k = cfg.shingle_k.max(1);
     // Build shingle sets.
-    let shingle_sets: Vec<Vec<u64>> = chunks
-        .iter()
-        .map(|c| shingles(&c.text, k))
-        .collect();
+    let shingle_sets: Vec<Vec<u64>> = chunks.iter().map(|c| shingles(&c.text, k)).collect();
 
     // Inverted index: shingle → chunk indices.
     let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
@@ -371,10 +367,7 @@ fn shingles(text: &str, k: usize) -> Vec<u64> {
         }
         return vec![hash_words(&words)];
     }
-    let mut set: Vec<u64> = words
-        .windows(k)
-        .map(hash_words)
-        .collect();
+    let mut set: Vec<u64> = words.windows(k).map(hash_words).collect();
     set.sort_unstable();
     set.dedup();
     set
@@ -424,8 +417,7 @@ fn boilerplate_ratio(chunks: &[Chunk], cfg: &IngestionThresholds) -> f32 {
     let mut line_chunk_count: HashMap<String, usize> = HashMap::new();
     let mut total_lines = 0usize;
     for c in chunks {
-        let mut seen_in_chunk: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen_in_chunk: std::collections::HashSet<String> = std::collections::HashSet::new();
         for raw in c.text.lines() {
             let norm = normalize_line(raw);
             if norm.is_empty() {
@@ -443,7 +435,7 @@ fn boilerplate_ratio(chunks: &[Chunk], cfg: &IngestionThresholds) -> f32 {
     }
     let min_chunks = (chunks.len() as f32 * cfg.boilerplate_min_chunk_fraction).ceil() as usize;
     let min_chunks = min_chunks.max(2); // a line in a single chunk isn't boilerplate
-    // Count total line *occurrences* that belong to boilerplate lines.
+                                        // Count total line *occurrences* that belong to boilerplate lines.
     let mut boilerplate_occurrences = 0usize;
     for c in chunks {
         for raw in c.text.lines() {
@@ -556,7 +548,11 @@ mod tests {
         assert!(r.ocr_noise_score < 0.10, "ocr {}", r.ocr_noise_score);
         assert!(r.duplicate_ratio < 0.20, "dup {}", r.duplicate_ratio);
         assert!(r.boilerplate_ratio < 0.15, "boiler {}", r.boilerplate_ratio);
-        assert!(r.fragmentation_score < 0.40, "frag {}", r.fragmentation_score);
+        assert!(
+            r.fragmentation_score < 0.40,
+            "frag {}",
+            r.fragmentation_score
+        );
         assert!(r.table_noise_score < 0.25, "table {}", r.table_noise_score);
         assert!(r.warnings.is_empty(), "warnings: {:?}", r.warnings);
     }
@@ -598,10 +594,19 @@ mod tests {
             )
         };
         let corpus = vec![
-            mk(1, "First section discusses the quarterly revenue figures and growth."),
-            mk(2, "Second section covers the operating expenses and margins."),
+            mk(
+                1,
+                "First section discusses the quarterly revenue figures and growth.",
+            ),
+            mk(
+                2,
+                "Second section covers the operating expenses and margins.",
+            ),
             mk(3, "Third section reviews the cash flow and balance sheet."),
-            mk(4, "Fourth section analyzes the competitive landscape and risks."),
+            mk(
+                4,
+                "Fourth section analyzes the competitive landscape and risks.",
+            ),
         ];
         let r = diagnose_ingestion(&corpus, &IngestionThresholds::default());
         assert!(r.boilerplate_ratio > 0.15, "boiler {}", r.boilerplate_ratio);
@@ -611,12 +616,25 @@ mod tests {
     #[test]
     fn fragmentation_detected() {
         let corpus = vec![
-            chunk("c1", "and then the process continues without a clear ending so the reader"),
-            chunk("c2", "is left wondering what happened because the chunk boundary cut"),
-            chunk("c3", "right through the middle of an important explanatory sentence"),
+            chunk(
+                "c1",
+                "and then the process continues without a clear ending so the reader",
+            ),
+            chunk(
+                "c2",
+                "is left wondering what happened because the chunk boundary cut",
+            ),
+            chunk(
+                "c3",
+                "right through the middle of an important explanatory sentence",
+            ),
         ];
         let r = diagnose_ingestion(&corpus, &IngestionThresholds::default());
-        assert!(r.fragmentation_score > 0.40, "frag {}", r.fragmentation_score);
+        assert!(
+            r.fragmentation_score > 0.40,
+            "frag {}",
+            r.fragmentation_score
+        );
         assert!(r.warnings.iter().any(|w| w.code == "fragmentation"));
     }
 

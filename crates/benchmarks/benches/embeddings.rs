@@ -21,11 +21,15 @@ fn corpus(n: usize) -> Vec<String> {
         "retrieval augmented generation grounds language models in external evidence passages",
         "dense retrieval encodes queries and documents into a shared vector space for ranking",
     ];
-    (0..n).map(|i| templates[i % templates.len()].to_string()).collect()
+    (0..n)
+        .map(|i| templates[i % templates.len()].to_string())
+        .collect()
 }
 
 fn rt() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread().build().unwrap()
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap()
 }
 
 fn bench_hashing(c: &mut Criterion) {

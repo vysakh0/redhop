@@ -81,20 +81,36 @@ fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;
     const STOPWORDS: &[&str] = &[
-        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are",
-        "this", "that", "with", "as", "be", "by", "on", "at", "it",
+        "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "this", "that",
+        "with", "as", "be", "by", "on", "at", "it",
     ];
     const TOPIC_FELINE: &[&str] = &[
-        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs",
-        "mews", "tabby",
+        "cat", "cats", "kitten", "kittens", "feline", "felines", "purr", "purrs", "mews", "tabby",
     ];
     const TOPIC_RUNTIME: &[&str] = &[
-        "tokio", "executor", "executors", "scheduler", "schedulers", "future",
-        "futures", "async", "runtime", "runtimes", "await",
+        "tokio",
+        "executor",
+        "executors",
+        "scheduler",
+        "schedulers",
+        "future",
+        "futures",
+        "async",
+        "runtime",
+        "runtimes",
+        "await",
     ];
     const TOPIC_DATABASE: &[&str] = &[
-        "postgres", "postgresql", "database", "databases", "sql", "transaction",
-        "transactions", "acid", "row", "rows",
+        "postgres",
+        "postgresql",
+        "database",
+        "databases",
+        "sql",
+        "transaction",
+        "transactions",
+        "acid",
+        "row",
+        "rows",
     ];
 
     fn hash_word(w: &str) -> u64 {
@@ -199,10 +215,7 @@ async fn main() -> anyhow::Result<()> {
         let query = Query::new(text).with_embedding(embed(text));
         let state = rag.adaptive_run(query).await?;
 
-        let intervened = state
-            .history
-            .iter()
-            .any(|t| !t.action.is_terminal());
+        let intervened = state.history.iter().any(|t| !t.action.is_terminal());
 
         println!("================ {label} :: {text} ================");
         println!(
@@ -212,11 +225,7 @@ async fn main() -> anyhow::Result<()> {
                 .as_ref()
                 .map(|r| r.argmax.code())
                 .unwrap_or("none"),
-            state
-                .regime
-                .as_ref()
-                .map(|r| r.p(r.argmax))
-                .unwrap_or(0.0)
+            state.regime.as_ref().map(|r| r.p(r.argmax)).unwrap_or(0.0)
         );
         println!("iterations       = {}", state.iteration);
         println!("intervened       = {}", intervened);

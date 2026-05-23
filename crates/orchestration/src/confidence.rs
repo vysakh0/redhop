@@ -108,9 +108,7 @@ fn softmax_with_fitted_temperature(scores: &[f32]) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{
-        Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount,
-    };
+    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(score: f32) -> RetrievalResult {
         RetrievalResult {
@@ -174,8 +172,12 @@ mod tests {
 
     #[test]
     fn aggregate_higher_for_peaked_than_flat() {
-        let peaked = compute_confidence(&[r(10.0), r(1.0), r(0.5)]).aggregate.unwrap();
-        let flat = compute_confidence(&[r(1.0), r(1.0), r(1.0)]).aggregate.unwrap();
+        let peaked = compute_confidence(&[r(10.0), r(1.0), r(0.5)])
+            .aggregate
+            .unwrap();
+        let flat = compute_confidence(&[r(1.0), r(1.0), r(1.0)])
+            .aggregate
+            .unwrap();
         assert!(peaked > flat);
     }
 }

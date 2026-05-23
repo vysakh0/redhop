@@ -40,9 +40,7 @@ use crate::types::{DiagnosticsReport, Query, RetrievalResult};
 /// `BTreeMap` and `Ord` derivations exist so a probability map keyed on
 /// regime serializes in deterministic order, which matters for snapshot
 /// testing and FFI round-trips.
-#[derive(
-    Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum RetrievalRegime {
     /// High grounding, high concentration, low saturation. Retrieval is
     /// done; stop iterating.
@@ -213,9 +211,7 @@ impl RegimeDistribution {
 /// current level to decide whether escalation is still possible.
 ///
 /// [rbc]: ../../redhop_orchestration/struct.RuleBasedClassifier.html
-#[derive(
-    Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum RerankerLevel {
     /// No reranker applied.
     None,

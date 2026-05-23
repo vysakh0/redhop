@@ -139,9 +139,18 @@ async fn main() -> anyhow::Result<()> {
     println!("  chunk_purity:           {:?}", report.chunk_purity);
     println!("  answer_density:         {:?}", report.answer_density);
     println!("  distractor_ratio:       {:?}", report.distractor_ratio);
-    println!("  evidence_concentration: {:?}", report.evidence_concentration);
-    println!("  retrieval_saturation:   {:?}", report.retrieval_saturation);
-    println!("  retrieval_confidence:   {:?}", report.retrieval_confidence);
+    println!(
+        "  evidence_concentration: {:?}",
+        report.evidence_concentration
+    );
+    println!(
+        "  retrieval_saturation:   {:?}",
+        report.retrieval_saturation
+    );
+    println!(
+        "  retrieval_confidence:   {:?}",
+        report.retrieval_confidence
+    );
     for w in &report.warnings {
         println!("  ⚠ {} — {}", w.code, w.message);
     }

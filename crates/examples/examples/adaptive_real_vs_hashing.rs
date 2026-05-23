@@ -52,10 +52,8 @@ use redhop_retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
+const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
+const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 60;
 const TOP_K: usize = 4;
 const DISTRACTOR_GRID: [f32; 2] = [0.40, 0.50];
@@ -152,18 +150,15 @@ async fn run_arm(
     chunker: &SentenceChunker,
 ) -> anyhow::Result<ArmMetrics> {
     // Pre-embed queries with this arm's provider.
-    let q_texts: Vec<String> = dataset.examples.iter().map(|e| e.question.clone()).collect();
-    let q_vecs = provider.embed(&q_texts).await?;
-    let q_map: HashMap<String, Embedding> = q_texts
-        .into_iter()
-        .zip(q_vecs.into_iter())
+    let q_texts: Vec<String> = dataset
+        .examples
+        .iter()
+        .map(|e| e.question.clone())
         .collect();
+    let q_vecs = provider.embed(&q_texts).await?;
+    let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs.into_iter()).collect();
 
-    let corpus = dataset.to_labeled_corpus(
-        chunker,
-        |q| q_map.get(q).cloned(),
-        default_regime,
-    )?;
+    let corpus = dataset.to_labeled_corpus(chunker, |q| q_map.get(q).cloned(), default_regime)?;
 
     // Chunk + embed corpus (chunk ids match the loader's gold ids).
     let chunks = chunker.chunk_batch(&corpus.docs)?;
@@ -179,11 +174,14 @@ async fn run_arm(
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
-    let diagnostics: Arc<dyn DiagnosticsEngine> =
-        Arc::new(LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic));
+    let diagnostics: Arc<dyn DiagnosticsEngine> = Arc::new(
+        LayeredDiagnosticsEngine::lexical_and_semantic(lexical, semantic),
+    );
     let classifier: Arc<dyn RegimeClassifier> = Arc::new(RuleBasedClassifier::new());
-    let rerankers: Vec<(RerankerLevel, Arc<dyn Reranker>)> =
-        vec![(RerankerLevel::Lexical, Arc::new(LexicalGroundingReranker::default()))];
+    let rerankers: Vec<(RerankerLevel, Arc<dyn Reranker>)> = vec![(
+        RerankerLevel::Lexical,
+        Arc::new(LexicalGroundingReranker::default()),
+    )];
 
     let sweep = ThresholdSweep {
         min_p_distractor_grid: DISTRACTOR_GRID.to_vec(),
@@ -208,15 +206,22 @@ async fn main() -> anyhow::Result<()> {
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
-    println!("HotpotQA sample: {} items, top_k={}\n", dataset.examples.len(), TOP_K);
+    println!(
+        "HotpotQA sample: {} items, top_k={}\n",
+        dataset.examples.len(),
+        TOP_K
+    );
 
     println!("arm A: hashing embeddings (CI baseline substrate)...");
     let hashing: Arc<dyn EmbeddingProvider> = Arc::new(HashingProvider::with_dim(384));
     let a = run_arm("hashing", hashing, &dataset, &chunker).await?;
 
     println!("arm B: BGE-small ONNX (real semantic substrate)...");
-    let bge: Arc<dyn EmbeddingProvider> =
-        Arc::new(OnnxEmbedder::load(BGE_MODEL, BGE_TOKENIZER, EmbedderConfig::bge(384))?);
+    let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
+        BGE_MODEL,
+        BGE_TOKENIZER,
+        EmbedderConfig::bge(384),
+    )?);
     let b = run_arm("BGE-small", bge, &dataset, &chunker).await?;
 
     // ── Side-by-side ──
@@ -228,15 +233,53 @@ async fn main() -> anyhow::Result<()> {
     let pct = |v: f32| format!("{:.0}%", v * 100.0);
     println!("  {:<26} {:>12} {:>12}", "metric", a.label, b.label);
     println!("  {}", "─".repeat(52));
-    row("intervention rate", a.intervention_rate, b.intervention_rate, &pct);
+    row(
+        "intervention rate",
+        a.intervention_rate,
+        b.intervention_rate,
+        &pct,
+    );
     row("useful %", a.fraction_useful, b.fraction_useful, &pct);
-    row("mean recall lift", a.mean_recall_lift, b.mean_recall_lift, &f3);
-    row("mean rerank calls/q", a.mean_rerank_calls, b.mean_rerank_calls, &f3);
-    row("rerank compute avoided", a.rerank_compute_reduction, b.rerank_compute_reduction, &pct);
-    row("mean useful lift", a.mean_useful_lift, b.mean_useful_lift, &f3);
-    row("mean harmful lift", a.mean_harmful_lift, b.mean_harmful_lift, &f3);
-    println!("  {:<26} {:>12} {:>12}", "wasted interventions", a.wasted, b.wasted);
-    row("classifier accuracy", a.classifier_accuracy, b.classifier_accuracy, &pct);
+    row(
+        "mean recall lift",
+        a.mean_recall_lift,
+        b.mean_recall_lift,
+        &f3,
+    );
+    row(
+        "mean rerank calls/q",
+        a.mean_rerank_calls,
+        b.mean_rerank_calls,
+        &f3,
+    );
+    row(
+        "rerank compute avoided",
+        a.rerank_compute_reduction,
+        b.rerank_compute_reduction,
+        &pct,
+    );
+    row(
+        "mean useful lift",
+        a.mean_useful_lift,
+        b.mean_useful_lift,
+        &f3,
+    );
+    row(
+        "mean harmful lift",
+        a.mean_harmful_lift,
+        b.mean_harmful_lift,
+        &f3,
+    );
+    println!(
+        "  {:<26} {:>12} {:>12}",
+        "wasted interventions", a.wasted, b.wasted
+    );
+    row(
+        "classifier accuracy",
+        a.classifier_accuracy,
+        b.classifier_accuracy,
+        &pct,
+    );
     row("ECE (calibration)", a.ece, b.ece, &f3);
 
     // ── Headline ──
@@ -246,8 +289,14 @@ async fn main() -> anyhow::Result<()> {
     let d_useful = b.fraction_useful - a.fraction_useful;
     let d_rerank = b.mean_rerank_calls - a.mean_rerank_calls;
     let d_ece = b.ece - a.ece;
-    println!("  Δ intervention rate (BGE − hashing):  {:+.1} pts", d_interv * 100.0);
-    println!("  Δ useful %        (BGE − hashing):    {:+.1} pts", d_useful * 100.0);
+    println!(
+        "  Δ intervention rate (BGE − hashing):  {:+.1} pts",
+        d_interv * 100.0
+    );
+    println!(
+        "  Δ useful %        (BGE − hashing):    {:+.1} pts",
+        d_useful * 100.0
+    );
     println!("  Δ rerank calls/q  (BGE − hashing):    {:+.3}", d_rerank);
     println!("  Δ ECE             (BGE − hashing):    {:+.3}", d_ece);
     println!();

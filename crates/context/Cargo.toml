@@ -21,3 +21,6 @@ rust-stemmers        = "1.2"
 
 [dev-dependencies]
 redhop-core = { workspace = true }
+
+[lints]
+workspace = true

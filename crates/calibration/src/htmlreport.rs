@@ -73,7 +73,7 @@ pub fn render_html(outcomes: &[QueryOutcome], opts: &ReportOptions) -> String {
         .filter(|o| o.intervened && o.recall_lift < -1e-6)
         .count();
     let n_wasted = n_intervened - n_useful - n_harmful;
-    let n_abstained = outcomes.iter().filter(|o| o.abstained).count();
+    let _n_abstained = outcomes.iter().filter(|o| o.abstained).count();
 
     let roi = opts
         .uniform_rerank_lift
@@ -164,10 +164,21 @@ code {{ background:#f3f4f6; padding:.1rem .35rem; border-radius:4px; font-size:.
 
     // ── Stat cards ─────────────────────────────────────────────────
     h.push_str(r#"<div class="cards">"#);
-    h.push_str(&card("mean recall lift", &format!("{:+.3}", econ.mean_recall_lift), ""));
+    h.push_str(&card(
+        "mean recall lift",
+        &format!("{:+.3}", econ.mean_recall_lift),
+        "",
+    ));
     h.push_str(&card(
         "intervention rate",
-        &format!("{:.0}%", if n > 0 { n_intervened as f32 / n as f32 * 100.0 } else { 0.0 }),
+        &format!(
+            "{:.0}%",
+            if n > 0 {
+                n_intervened as f32 / n as f32 * 100.0
+            } else {
+                0.0
+            }
+        ),
         &format!("{n_intervened} / {n}"),
     ));
     h.push_str(&card(
@@ -245,8 +256,14 @@ code {{ background:#f3f4f6; padding:.1rem .35rem; border-radius:4px; font-size:.
     // ── Economics table ───────────────────────────────────────────
     h.push_str("<h2>Cost economics</h2>");
     h.push_str("<table>");
-    h.push_str(&row2("mean adaptive cost / query", &format!("{:.2}", econ.mean_adaptive_cost)));
-    h.push_str(&row2("uniform-rerank cost / query", &format!("{:.2}", econ.uniform_cost)));
+    h.push_str(&row2(
+        "mean adaptive cost / query",
+        &format!("{:.2}", econ.mean_adaptive_cost),
+    ));
+    h.push_str(&row2(
+        "uniform-rerank cost / query",
+        &format!("{:.2}", econ.uniform_cost),
+    ));
     h.push_str(&row2(
         "cost fraction vs uniform",
         &format!("{:.0}%", econ.cost_fraction_vs_uniform * 100.0),
@@ -258,7 +275,10 @@ code {{ background:#f3f4f6; padding:.1rem .35rem; border-radius:4px; font-size:.
     if let Some(cpl) = econ.cost_per_unit_lift {
         h.push_str(&row2("cost per unit recall-lift", &format!("{:.1}", cpl)));
     }
-    h.push_str(&row2("mean rerank calls / query", &format!("{:.2}", econ.mean_rerank_calls)));
+    h.push_str(&row2(
+        "mean rerank calls / query",
+        &format!("{:.2}", econ.mean_rerank_calls),
+    ));
     h.push_str("</table>");
 
     // ── Reliability / calibration ─────────────────────────────────

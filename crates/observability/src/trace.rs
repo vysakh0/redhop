@@ -109,8 +109,7 @@ impl RetrievalTrace {
             .collect();
 
         let total_latency_ms = iterations.iter().map(|i| i.latency_ms).sum();
-        let total_retrieval_calls =
-            1 + iterations.iter().map(|i| i.retrieval_calls).sum::<u32>();
+        let total_retrieval_calls = 1 + iterations.iter().map(|i| i.retrieval_calls).sum::<u32>();
         let total_rerank_calls = iterations.iter().map(|i| i.rerank_calls).sum();
         let intervened = state.history.iter().any(|t| !t.action.is_terminal());
         let terminal_action = state.history.last().and_then(|t| {
@@ -146,7 +145,9 @@ impl RetrievalTrace {
     /// Convenience: did this query's controller fire a reranker
     /// escalation?
     pub fn escalated(&self) -> bool {
-        self.iterations.iter().any(|i| i.action == "escalate_reranker")
+        self.iterations
+            .iter()
+            .any(|i| i.action == "escalate_reranker")
     }
 
     /// Convenience: did this query's controller expand top-k?
@@ -160,8 +161,8 @@ mod tests {
     use super::*;
     use redhop_core::{
         Budget, Chunk, ConfidenceProfile, DiagnosticsReport, Query, RegimeDistribution,
-        RerankerLevel, RetrievalAction, RetrievalRegime, Score, StopReason,
-        TakenAction, TokenCount,
+        RerankerLevel, RetrievalAction, RetrievalRegime, Score, StopReason, TakenAction,
+        TokenCount,
     };
     use std::collections::BTreeMap;
 

@@ -20,9 +20,9 @@ use crate::pooling::l2_normalize;
 
 const STOPWORDS: &[&str] = &[
     "the", "a", "an", "and", "or", "of", "in", "to", "for", "is", "are", "was", "were", "be",
-    "been", "being", "this", "that", "these", "those", "with", "as", "by", "on", "at", "it",
-    "its", "from", "but", "if", "then", "than", "so", "such", "do", "does", "did", "have", "has",
-    "had", "will", "would", "could", "should",
+    "been", "being", "this", "that", "these", "those", "with", "as", "by", "on", "at", "it", "its",
+    "from", "but", "if", "then", "than", "so", "such", "do", "does", "did", "have", "has", "had",
+    "will", "would", "could", "should",
 ];
 
 fn is_stopword(s: &str) -> bool {
@@ -91,7 +91,9 @@ mod tests {
     use super::*;
 
     fn rt() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread().build().unwrap()
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
     }
 
     #[test]
@@ -99,7 +101,10 @@ mod tests {
         rt().block_on(async {
             let p = HashingProvider::with_dim(128);
             let out = p
-                .embed(&["rust memory safety".to_string(), "cooking recipes".to_string()])
+                .embed(&[
+                    "rust memory safety".to_string(),
+                    "cooking recipes".to_string(),
+                ])
                 .await
                 .unwrap();
             assert_eq!(out.len(), 2);
@@ -120,7 +125,11 @@ mod tests {
                 .await
                 .unwrap();
             let cos = |a: &Embedding, b: &Embedding| -> f32 {
-                a.as_slice().iter().zip(b.as_slice()).map(|(x, y)| x * y).sum()
+                a.as_slice()
+                    .iter()
+                    .zip(b.as_slice())
+                    .map(|(x, y)| x * y)
+                    .sum()
             };
             assert!(cos(&v[0], &v[1]) > cos(&v[0], &v[2]) + 0.2);
         });
