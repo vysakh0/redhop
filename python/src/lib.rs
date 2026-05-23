@@ -12,7 +12,7 @@ use pyo3::types::PyDict;
 use redhop_context::{
     analyze_context as rh_analyze, build_context as rh_build, filter_context as rh_filter,
     context_economics as rh_economics, grounding_score as rh_grounding, link_strength as rh_link,
-    ContextConfig, ContextReport as RhReport, ContextStrategy,
+    AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy,
 };
 use redhop_core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
@@ -149,6 +149,26 @@ impl ContextReport {
     #[getter]
     fn strategy(&self) -> &'static str {
         strategy_to_str(self.inner.strategy)
+    }
+    /// What the caller requested (may be "auto"). Differs from `strategy` when
+    /// the Auto policy resolved to a concrete action.
+    #[getter]
+    fn requested_strategy(&self) -> &'static str {
+        strategy_to_str(self.inner.requested_strategy)
+    }
+    /// The runtime's Auto decision: "passthrough", "prune", or "not_auto".
+    #[getter]
+    fn auto_decision(&self) -> &'static str {
+        match self.inner.auto_decision() {
+            AutoDecision::NotAuto => "not_auto",
+            AutoDecision::Passthrough => "passthrough",
+            AutoDecision::Prune => "prune",
+        }
+    }
+    /// Total tokens in the input (retrieved) set, before assembly.
+    #[getter]
+    fn input_tokens(&self) -> usize {
+        self.inner.input_tokens
     }
     #[getter]
     fn token_budget(&self) -> usize {

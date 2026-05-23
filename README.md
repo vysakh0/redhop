@@ -56,19 +56,40 @@ print(ctx.report)                             # observability ↓
 ```
 
 ```text
-Context Optimization Report
-───────────────────────────
-Strategy: ReasoningPreserving
+RedHop Decision Report
+══════════════════════
 
-Input chunks:        8
-Output chunks:       2
-Tokens:              100 → 30  (-70%)
-Distractors pruned:  6
-Reasoning rescues:   1
+Decision: Auto → pruning (intervened on a diluted context)
 
-Evidence density:    0.10 → 0.20
-Retained evidence:   100%
+  Why:
+    - input is large: 31480 tokens > 1500 gate
+    - large/diluted contexts dilute attention; pruning recovers signal density
+  Result:
+    - 31480 → 1980 tokens (-94%), 22 distractor chunk(s) removed
+    - retained 100% of query-relevant evidence
+    - preserved 1 second-hop link(s) a plain filter would drop
+
+Economics
+─────────
+  Retrieved tokens:   31480
+  Final tokens:       1980  (-94%)
+  Token budget:       8192 (24% used)
+  Evidence density:   0.10 → 0.31
+  Retained evidence:  100%
+
+Diagnostics
+───────────
+  Chunks:             24 → 3
+  Input distractors:  92% of retrieved chunks
+  Distractors pruned: 22
+  Second-hop rescues: 1
+  Estimated waste:    0 tokens on distractors
 ```
+
+The report is the explanation layer: every Auto decision says **what it did,
+why, and the result** — including when it deliberately does *nothing*
+(`Decision: Auto → passthrough`), so a no-op reads as an intentional, trustworthy
+choice rather than a silent skip.
 
 ## Context strategies, side by side
 

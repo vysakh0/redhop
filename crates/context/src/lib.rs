@@ -246,15 +246,42 @@ pub struct RemovedBreakdown {
     pub total: usize,
 }
 
+/// The runtime's decision for one assembly, made interpretable. For the
+/// [`ContextStrategy::Auto`] policy this is the headline: did RedHop
+/// deliberately leave the context intact, or did it intervene?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoDecision {
+    /// A concrete strategy was requested — no policy decision was made.
+    NotAuto,
+    /// Auto deliberately left the context intact (small/undiluted input;
+    /// pruning is measured to be wash-to-harmful under headroom).
+    Passthrough,
+    /// Auto chose to intervene (large/diluted input; pruning recovers signal
+    /// density). The context was pruned to budget.
+    Prune,
+}
+
 /// Full observability trace for one context assembly — the telemetry every
-/// strategy emits. Superset of [`ContextEconomics`]; serializable for
-/// benchmark/JSON output and deployment dashboards.
+/// strategy emits, and the **explanation layer** for the runtime's decision.
+/// Superset of [`ContextEconomics`]; serializable for benchmark/JSON output
+/// and deployment dashboards.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextReport {
-    /// Strategy that produced this context.
+    /// Strategy that actually produced this context (Auto is resolved to a
+    /// concrete strategy here).
     pub strategy: ContextStrategy,
+    /// Strategy the caller requested — may be [`ContextStrategy::Auto`]. The
+    /// difference from `strategy` is what makes an Auto decision visible.
+    pub requested_strategy: ContextStrategy,
     /// Configured token budget.
     pub token_budget: usize,
+    /// Total tokens in the *input* (retrieved) set, before assembly. The
+    /// "before" side of the token economics, and what the Auto gate compares.
+    pub input_tokens: usize,
+    /// The [`ContextStrategy::Auto`] passthrough gate in effect (input at or
+    /// below this many tokens passes through; above it prunes).
+    pub auto_gate_tokens: usize,
     /// Tokens actually used.
     pub total_tokens: usize,
     /// `total_tokens / token_budget`. Always `<= 1.0` (the budget is a hard cap).
@@ -284,89 +311,202 @@ pub struct ContextReport {
 }
 
 impl ContextReport {
-    /// Render a human-readable "Context Optimization Report" — makes the
-    /// invisible visible. Pass the `analyze_context` report as `before` to
-    /// show the token/density deltas; pass `None` for the assembled view only.
+    /// The runtime's decision for this assembly — the headline for the
+    /// [`ContextStrategy::Auto`] policy. Lets callers branch on *what RedHop
+    /// did and why* without parsing the rendered text.
+    pub fn auto_decision(&self) -> AutoDecision {
+        if self.requested_strategy != ContextStrategy::Auto {
+            AutoDecision::NotAuto
+        } else if self.strategy == ContextStrategy::RawTopK {
+            AutoDecision::Passthrough
+        } else {
+            AutoDecision::Prune
+        }
+    }
+
+    /// Token change from input to assembled context, as a signed percentage
+    /// (negative = fewer tokens, the usual good case).
+    fn token_savings_pct(&self) -> f32 {
+        if self.input_tokens > 0 {
+            100.0 * (self.total_tokens as f32 - self.input_tokens as f32) / self.input_tokens as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Render the **RedHop Decision Report** — an interpretable explanation of
+    /// what the runtime did and why, not a metric dump. Three layers: a
+    /// human-readable decision, the token/evidence economics, and technical
+    /// diagnostics for deep debugging.
+    ///
+    /// `before` is accepted for backward compatibility; the report is now
+    /// self-contained (it carries `input_tokens`), so `None` renders the full
+    /// view. When supplied, `before` is used only to show the density delta.
     pub fn render(&self, before: Option<&ContextReport>) -> String {
         let mut s = String::new();
-        s.push_str("Context Optimization Report\n");
-        s.push_str("───────────────────────────\n");
-        s.push_str(&format!("Strategy: {:?}\n\n", self.strategy));
+        s.push_str("RedHop Decision Report\n");
+        s.push_str("══════════════════════\n\n");
 
-        let in_chunks = before.map(|b| b.n_input_chunks).unwrap_or(self.n_input_chunks);
-        s.push_str(&format!("Input chunks:        {in_chunks}\n"));
-        s.push_str(&format!("Output chunks:       {}\n", self.n_selected));
-        if let Some(b) = before {
-            // Negative = fewer tokens than the raw input (the usual, good case).
-            let pct = if b.total_tokens > 0 {
-                100.0 * (self.total_tokens as f32 - b.total_tokens as f32) / b.total_tokens as f32
-            } else {
-                0.0
-            };
-            s.push_str(&format!(
-                "Tokens:              {} → {}  ({pct:+.0}%)\n",
-                b.total_tokens, self.total_tokens
-            ));
-        } else {
-            s.push_str(&format!("Tokens:              {}\n", self.total_tokens));
-        }
-        s.push_str(&format!("Distractors pruned:  {}\n", self.removed.distractor));
-        if self.removed.redundant > 0 {
-            s.push_str(&format!("Duplicates pruned:   {}\n", self.removed.redundant));
-        }
-        if self.removed.budget > 0 {
-            s.push_str(&format!("Budget-trimmed:      {}\n", self.removed.budget));
-        }
-        s.push_str(&format!("Reasoning rescues:   {}\n\n", self.second_hop_rescue_count));
+        // ── Layer 1: the decision, in plain language ───────────────────────
+        self.render_decision(&mut s);
 
-        if let Some(b) = before {
-            s.push_str(&format!(
-                "Evidence density:    {:.2} → {:.2}\n",
+        // ── Layer 2: economics ─────────────────────────────────────────────
+        s.push_str("\nEconomics\n─────────\n");
+        s.push_str(&format!("  Retrieved tokens:   {}\n", self.input_tokens));
+        s.push_str(&format!(
+            "  Final tokens:       {}  ({:+.0}%)\n",
+            self.total_tokens,
+            self.token_savings_pct()
+        ));
+        s.push_str(&format!(
+            "  Token budget:       {} ({:.0}% used)\n",
+            self.token_budget,
+            self.token_utilization * 100.0
+        ));
+        match before {
+            Some(b) => s.push_str(&format!(
+                "  Evidence density:   {:.2} → {:.2}\n",
                 b.economics.evidence_density, self.economics.evidence_density
-            ));
-        } else {
-            s.push_str(&format!("Evidence density:    {:.2}\n", self.economics.evidence_density));
+            )),
+            None => s.push_str(&format!(
+                "  Evidence density:   {:.2}\n",
+                self.economics.evidence_density
+            )),
         }
         s.push_str(&format!(
-            "Retained evidence:   {:.0}%\n",
+            "  Retained evidence:  {:.0}%\n",
             self.retained_evidence_ratio * 100.0
         ));
-        s.push_str(&format!("Token utilization:   {:.0}%\n", self.token_utilization * 100.0));
+
+        // ── Layer 3: technical diagnostics ─────────────────────────────────
+        s.push_str("\nDiagnostics\n───────────\n");
         s.push_str(&format!(
-            "Estimated waste:     {} tokens on distractors\n",
+            "  Chunks:             {} → {}\n",
+            self.n_input_chunks, self.n_selected
+        ));
+        s.push_str(&format!(
+            "  Input distractors:  {:.0}% of retrieved chunks\n",
+            self.input_distractor_ratio * 100.0
+        ));
+        s.push_str(&format!("  Distractors pruned: {}\n", self.removed.distractor));
+        if self.removed.redundant > 0 {
+            s.push_str(&format!("  Duplicates pruned:  {}\n", self.removed.redundant));
+        }
+        if self.removed.budget > 0 {
+            s.push_str(&format!("  Budget-trimmed:     {}\n", self.removed.budget));
+        }
+        s.push_str(&format!("  Second-hop rescues: {}\n", self.second_hop_rescue_count));
+        s.push_str(&format!(
+            "  Estimated waste:    {} tokens on distractors\n",
             self.economics.estimated_waste_tokens
         ));
 
-        // Warnings — surface what the optimizer did and didn't do.
+        // Warnings — things worth a second look.
         let mut warnings: Vec<String> = Vec::new();
-        if self.second_hop_rescue_count > 0 {
-            warnings.push(format!(
-                "rescued {} low-relevance linked chunk(s) (possible second hops)",
-                self.second_hop_rescue_count
-            ));
-        }
-        if self.removed.redundant > 0 {
-            warnings.push(format!("{} near-duplicate chunk(s) pruned", self.removed.redundant));
-        }
         if self.removed.budget > 0 {
             warnings.push(format!(
                 "{} chunk(s) dropped for token budget — consider raising it",
                 self.removed.budget
             ));
         }
-        if self.economics.distractor_ratio > 0.05 && self.removed.distractor == 0 {
+        // Note leftover distractors only when it wasn't a *deliberate* Auto
+        // passthrough — there, keeping them is the explained, intended choice,
+        // not something to warn about.
+        if self.economics.distractor_ratio > 0.05
+            && self.removed.distractor == 0
+            && self.auto_decision() != AutoDecision::Passthrough
+        {
             warnings.push(format!(
                 "context still contains distractors (ratio {:.2}); strategy did not filter",
                 self.economics.distractor_ratio
             ));
         }
         if !warnings.is_empty() {
-            s.push_str("\nWarnings:\n");
+            s.push_str("\nWarnings\n────────\n");
             for w in warnings {
-                s.push_str(&format!("- {w}\n"));
+                s.push_str(&format!("  - {w}\n"));
             }
         }
         s
+    }
+
+    /// Layer 1: the decision narrative ("what / why / result").
+    fn render_decision(&self, s: &mut String) {
+        let why = |s: &mut String, lines: &[String]| {
+            s.push_str("  Why:\n");
+            for l in lines {
+                s.push_str(&format!("    - {l}\n"));
+            }
+        };
+        let result = |s: &mut String, lines: &[String]| {
+            s.push_str("  Result:\n");
+            for l in lines {
+                s.push_str(&format!("    - {l}\n"));
+            }
+        };
+
+        match self.auto_decision() {
+            AutoDecision::Passthrough => {
+                s.push_str("Decision: Auto → passthrough (left the context intact)\n\n");
+                why(
+                    s,
+                    &[
+                        format!(
+                            "input is small: {} tokens ≤ {} gate",
+                            self.input_tokens, self.auto_gate_tokens
+                        ),
+                        "under headroom, pruning is measured to be wash-to-harmful".into(),
+                        "intervention predicted to add no signal density here".into(),
+                    ],
+                );
+                let kept = if self.removed.budget > 0 {
+                    format!(
+                        "kept {}/{} chunks (budget cap only; no relevance pruning)",
+                        self.n_selected, self.n_input_chunks
+                    )
+                } else {
+                    format!("kept all {} retrieved chunks — full evidence preserved", self.n_input_chunks)
+                };
+                result(s, &[kept, "avoided unnecessary intervention".into()]);
+            }
+            AutoDecision::Prune => {
+                s.push_str("Decision: Auto → pruning (intervened on a diluted context)\n\n");
+                why(
+                    s,
+                    &[
+                        format!(
+                            "input is large: {} tokens > {} gate",
+                            self.input_tokens, self.auto_gate_tokens
+                        ),
+                        "large/diluted contexts dilute attention; pruning recovers signal density"
+                            .into(),
+                    ],
+                );
+                let mut r = vec![
+                    format!(
+                        "{} → {} tokens ({:+.0}%), {} distractor chunk(s) removed",
+                        self.input_tokens,
+                        self.total_tokens,
+                        self.token_savings_pct(),
+                        self.removed.distractor
+                    ),
+                    format!("retained {:.0}% of query-relevant evidence", self.retained_evidence_ratio * 100.0),
+                ];
+                if self.second_hop_rescue_count > 0 {
+                    r.push(format!(
+                        "preserved {} second-hop link(s) a plain filter would drop",
+                        self.second_hop_rescue_count
+                    ));
+                }
+                result(s, &r);
+            }
+            AutoDecision::NotAuto => {
+                s.push_str(&format!(
+                    "Decision: {:?} (explicitly requested — no Auto policy decision)\n",
+                    self.strategy
+                ));
+            }
+        }
     }
 }
 
@@ -506,6 +646,7 @@ pub fn build_context(
     let report = make_report(
         cfg,
         strategy,
+        total_input_tokens,
         retrieved.len(),
         n_distractor_total,
         &selected,
@@ -525,9 +666,11 @@ pub fn build_context(
 }
 
 /// Assemble the [`ContextReport`] from the selection result.
+#[allow(clippy::too_many_arguments)]
 fn make_report(
     cfg: &ContextConfig,
     strategy: ContextStrategy,
+    input_tokens: usize,
     n_input: usize,
     n_input_distractor: usize,
     selected: &[Item],
@@ -547,7 +690,10 @@ fn make_report(
     let rescued = selected.iter().filter(|i| i.rescued).count();
     ContextReport {
         strategy,
+        requested_strategy: cfg.strategy,
         token_budget: cfg.token_budget,
+        input_tokens,
+        auto_gate_tokens: cfg.auto_passthrough_max_tokens,
         total_tokens,
         token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
         n_input_chunks: n_input,
@@ -609,7 +755,10 @@ pub fn analyze_context(
         // For Auto, report the action the gate would take on this input
         // (passthrough vs prune) — the diagnostic answer to "should I prune?".
         strategy: cfg.strategy.resolve(total_tokens, cfg),
+        requested_strategy: cfg.strategy,
         token_budget: cfg.token_budget,
+        input_tokens: total_tokens,
+        auto_gate_tokens: cfg.auto_passthrough_max_tokens,
         total_tokens,
         token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
         n_input_chunks: n_input,
@@ -1274,12 +1423,43 @@ mod tests {
         let before = analyze_context(&q, &bridge_chunks(), &cfg);
         let after = build_context(&q, &bridge_chunks(), &cfg);
         let s = after.report.render(Some(&before));
-        assert!(s.contains("Context Optimization Report"));
+        assert!(s.contains("RedHop Decision Report"));
+        // Explicit strategy → not an Auto policy decision.
+        assert_eq!(after.report.auto_decision(), AutoDecision::NotAuto);
         assert!(s.contains("ReasoningPreserving"));
-        assert!(s.contains("Reasoning rescues:"));
-        // before has 3 chunks, after drops the junk → token delta is negative.
+        assert!(s.contains("Second-hop rescues:"));
+        assert!(s.contains("Economics") && s.contains("Diagnostics"));
+        // chunks delta uses '→'
         assert!(s.contains('→'));
-        assert!(after.report.render(None).contains("Tokens:"));
+        let solo = after.report.render(None);
+        assert!(solo.contains("Final tokens:") && solo.contains("Retrieved tokens:"));
+    }
+
+    #[test]
+    fn auto_decision_is_explained_in_the_report() {
+        let q = Query::new("what nationality was the safety lamp inventor");
+
+        // High gate → Auto passes through; the report must SAY so and why.
+        let pass_cfg = ContextConfig {
+            auto_passthrough_max_tokens: 8_000,
+            ..bridge_cfg(ContextStrategy::Auto)
+        };
+        let pass = build_context(&q, &bridge_chunks(), &pass_cfg);
+        assert_eq!(pass.report.auto_decision(), AutoDecision::Passthrough);
+        let r = pass.report.render(None);
+        assert!(r.contains("Auto → passthrough"), "missing passthrough decision:\n{r}");
+        assert!(r.contains("left the context intact"));
+        assert!(r.contains("Why:") && r.contains("Result:"));
+
+        // Low gate → Auto prunes; the report must SAY so and why.
+        let prune_cfg = ContextConfig {
+            auto_passthrough_max_tokens: 10,
+            ..bridge_cfg(ContextStrategy::Auto)
+        };
+        let prune = build_context(&q, &bridge_chunks(), &prune_cfg);
+        assert_eq!(prune.report.auto_decision(), AutoDecision::Prune);
+        let r = prune.report.render(None);
+        assert!(r.contains("Auto → pruning"), "missing pruning decision:\n{r}");
     }
 
     #[test]

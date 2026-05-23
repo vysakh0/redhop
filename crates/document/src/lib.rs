@@ -119,6 +119,13 @@ impl Document {
 
     /// Build from chunks with an explicit [`DocumentConfig`].
     pub fn from_chunks_with(chunks: Vec<Chunk>, cfg: DocumentConfig) -> Result<Self> {
+        if chunks.is_empty() {
+            return Err(redhop_core::Error::InvalidConfig(
+                "cannot build a Document with no chunks — the text was empty or produced no \
+                 chunks. Pass non-empty text to `from_text`, or chunks to `from_chunks`."
+                    .into(),
+            ));
+        }
         // A current-thread runtime is enough: the internal retriever's work is
         // CPU-bound (Tantivy on a blocking worker); we only block_on it.
         let rt = Builder::new_current_thread().build()?;
@@ -212,6 +219,14 @@ mod tests {
         assert!(report.n_input_chunks > 0);
         // Auto on a small retrieval → passthrough (no pruning).
         assert_eq!(report.strategy, ContextStrategy::RawTopK);
+    }
+
+    #[test]
+    fn empty_document_errors_clearly() {
+        let err = Document::from_chunks(vec![]).map(|_| ()).unwrap_err().to_string();
+        assert!(err.contains("no chunks"), "unhelpful error: {err}");
+        // Whitespace-only text produces no chunks → same clear error.
+        assert!(Document::from_text("doc", "   \n  ").is_err());
     }
 
     #[test]
