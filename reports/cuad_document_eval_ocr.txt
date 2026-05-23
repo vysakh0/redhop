@@ -1,0 +1,21 @@
+CUAD Document eval (no LLM) — /Users/vysakh/projects/neorag1/crates/examples/../../data/cuad/cuad_sample.json
+  perturbation: ocr
+  contracts: 50   answerable queries: 644
+  candidate_k: 20   budget: 2048 tok
+
+Token economics (end-to-end, the product path)
+  avg full-contract tokens:  10140
+  avg assembled tokens:      1910
+  end-to-end reduction:      -81%
+
+Auto decisions
+  passthrough: 25   prune: 619
+
+Evidence retention (gold-span word-recall in the assembled context)
+  retrieval ceiling (top-20, no prune):  mean 0.97   ≥0.5 99%   ≥0.8 98%
+  end-to-end (top-20 + Auto prune):      mean 0.91   ≥0.5 96%   ≥0.8 85%
+  → the gap is what pruning costs in evidence retention
+
+Latency
+  doc build (chunk+index):   p50 1.0ms   p95 4.8ms
+  per-query context():       p50 1.7ms   p95 3.4ms

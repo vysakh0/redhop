@@ -142,6 +142,12 @@ impl Document {
         self.chunks.is_empty()
     }
 
+    /// Total tokens across all of the document's chunks — the full size before
+    /// any retrieval or context allocation.
+    pub fn total_tokens(&self) -> usize {
+        self.chunks.iter().map(|c| c.token_count.value()).sum()
+    }
+
     /// Assemble the reasoning context for a query: retrieve candidates from
     /// the internal index, then allocate them under the context policy.
     /// Returns the prompt context plus a [`ContextReport`] of what it did.

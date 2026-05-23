@@ -169,20 +169,23 @@ impl Retriever for Bm25Retriever {
 /// Strip Tantivy query-parser metacharacters so user input is treated as a
 /// plain bag-of-words. Lexical operators are useful but should be opt-in via
 /// a future structured-query API rather than implicit in free-text queries.
+/// Reduce arbitrary natural-language text to a clean bag of word tokens, so
+/// Tantivy's `QueryParser` never sees its query meta-syntax. We keep only
+/// alphanumerics (Unicode) and collapse everything else to whitespace; the
+/// parser then ORs the resulting terms over the text field. This is what keeps
+/// `doc.context("Highlight the parts (if any)… “requirements”…")` from being a
+/// parse error — a real natural-language query must never crash internal
+/// retrieval. Ranking is unchanged (same content terms reach the index).
 fn sanitize_query(s: &str) -> String {
-    const META: &[char] = &[
-        '+', '-', '!', '(', ')', '{', '}', '[', ']', '^', '"', '~', '*', '?', ':', '\\', '/', '|',
-        '&',
-    ];
     let cleaned: String = s
         .chars()
-        .map(|c| if META.contains(&c) { ' ' } else { c })
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
         .collect();
-    let trimmed = cleaned.trim();
-    if trimmed.is_empty() {
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
         "*".to_string()
     } else {
-        trimmed.to_string()
+        collapsed
     }
 }
 
@@ -232,9 +235,15 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_strips_metachars() {
-        assert_eq!(sanitize_query("foo:bar +baz"), "foo bar  baz");
-        assert_eq!(sanitize_query(" "), "*");
+    fn sanitize_reduces_to_word_bag() {
+        // Meta-chars and punctuation collapse to single spaces (no parser syntax).
+        assert_eq!(sanitize_query("foo:bar +baz"), "foo bar baz");
+        // Natural-language query with quotes/parens/smart-quotes never crashes.
+        assert_eq!(
+            sanitize_query("Highlight parts (if any) of “Exclusivity”."),
+            "Highlight parts if any of Exclusivity"
+        );
+        assert_eq!(sanitize_query("   "), "*");
     }
 
     #[test]

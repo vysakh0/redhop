@@ -30,6 +30,7 @@ redhop-orchestration = { workspace = true }
 redhop-calibration   = { workspace = true }
 redhop-observability = { workspace = true }
 redhop-context       = { workspace = true }
+redhop-document      = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
