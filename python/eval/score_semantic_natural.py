@@ -25,6 +25,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 CONTEXTS = REPO / "exports" / "semantic_natural_contexts.jsonl"
+SIGNALS = REPO / "exports" / "semantic_natural_signals.jsonl"
 CACHE = REPO / "exports" / "semantic_natural_cache.json"
 MODEL = "openai/gpt-4o-mini"
 
@@ -123,6 +124,36 @@ def main() -> None:
             cells.append(f"{a['f1']/n:.2f}/{a['em']/n:.2f}")
         n = agg[(subset, "bm25")]["n"]
         print(f"  {subset:<8} (n={n:>4}) {cells[0]:>13} {cells[1]:>13} {cells[2]:>13}")
+
+    # Conditional escalation downstream (reuses cached answers — no new calls).
+    if not SIGNALS.exists():
+        return
+    margin = {r["id"]: r["margin"] for r in (json.loads(l) for l in SIGNALS.read_text().splitlines() if l.strip())}
+    gold = {r["id"]: r["gold_answer"] for r in rows}
+    ids = sorted(gold)
+
+    def policy_f1(pick):  # pick(id) -> mode
+        f1s = ems = esc = 0.0
+        for i in ids:
+            mode = pick(i)
+            ans = cache.get(f"{i}|{mode}", "")
+            f1s += f1(ans, gold[i])
+            ems += em(ans, gold[i])
+            esc += int(mode == "dense")
+        m = len(ids)
+        return f1s / m, ems / m, 100 * esc / m
+
+    print("\nConditional escalation downstream (margin < τ → dense)  [cached, free]")
+    print(f"  {'policy':<22} {'F1':>6} {'EM':>6} {'escalated%':>11}")
+    for label, pick in [
+        ("always bm25", lambda i: "bm25"),
+        ("always dense", lambda i: "dense"),
+    ]:
+        a, b, e = policy_f1(pick)
+        print(f"  {label:<22} {a:>6.2f} {b:>6.2f} {e:>10.0f}%")
+    for tau in (0.20, 0.30, 0.50):
+        a, b, e = policy_f1(lambda i, t=tau: "dense" if margin.get(i, 1.0) < t else "bm25")
+        print(f"  {'margin<'+format(tau,'.2f'):<22} {a:>6.2f} {b:>6.2f} {e:>10.0f}%")
 
 
 if __name__ == "__main__":

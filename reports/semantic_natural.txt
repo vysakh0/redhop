@@ -8,11 +8,24 @@ Gold-paragraph recall@3 by subset and mode
   semantic       (n= 205)     0.61     0.84     0.75
   ALL            (n= 397)     0.70     0.83     0.80
 
-Confidence-gated escalation (BM25 → dense when top-hit overlap < τ)
-  τ              recall     escalated%
-  0.10             0.70             0%
-  0.20             0.70             1%
-  0.30             0.70             3%
-  (compare to always-bm25 0.70 / always-dense 0.83)
+Does BM25 uncertainty separate the subsets? (mean signal)
+  signal                      lexical   semantic
+  margin (1=confident)          0.282      0.248
+  entropy (high=flat)           0.955      0.968
 
-Tier-3 contexts → /Users/vysakh/projects/neorag1/crates/examples/../../exports/semantic_natural_contexts.jsonl
+Trigger: low margin → escalate (margin < τ)
+  τ          escal.%   sem.capt.%   lex.false%    recall
+  0.10           22%          25%          20%      0.74
+  0.20           44%          46%          42%      0.77
+  0.30           61%          65%          56%      0.80
+  0.50           88%          92%          84%      0.81
+
+Trigger: high entropy → escalate (entropy > τ)
+  τ          escal.%   sem.capt.%   lex.false%    recall
+  0.50          100%         100%         100%      0.83
+  0.70           99%         100%          99%      0.83
+  0.85           97%          98%          97%      0.83
+
+  baselines: always-bm25 0.70 / always-dense 0.83 (escalate 100%)
+
+Tier-3 contexts + signals → exports/semantic_natural_*.jsonl

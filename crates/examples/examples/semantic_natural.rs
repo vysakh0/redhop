@@ -9,10 +9,11 @@
 //!   - semantic-heavy  = low overlap (the regime where lexis and meaning diverge)
 //!   - lexical-friendly = high overlap
 //!
-//! Tier-1 (here, free): gold-paragraph recall@K per subset per mode + a
-//! confidence-gated escalation probe (use BM25 unless its top hit has low
-//! lexical overlap with the query → escalate to dense). Tier-3 contexts are
-//! emitted to exports/ for downstream LLM answer scoring.
+//! Tier-1 (here, free): gold-paragraph recall@K per subset per mode, plus
+//! escalation-trigger probes — does any deterministic BM25 score-distribution
+//! signal (top1−top2 margin, top-k entropy) separate semantic-heavy from
+//! lexical-friendly so we can escalate to dense only when it pays? Per-item
+//! signals + Tier-3 contexts are emitted to exports/ for downstream scoring.
 //!
 //! Run:  cargo run -p redhop-examples --example semantic_natural --features onnx --release
 
@@ -156,13 +157,21 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    // Per-(subset, mode) recall + the gate probe + Tier-3 emit.
+    // Per-(subset, mode) recall, BM25 score-signal rows, and Tier-3 emit.
     let modes = ["bm25", "dense", "hybrid"];
     let mut stats: std::collections::HashMap<(&str, &str), Rec> = std::collections::HashMap::new();
-    // Gate: BM25 unless its top hit has query overlap < τ → escalate to dense.
-    let gate_taus = [0.10f32, 0.20, 0.30];
-    let mut gate: Vec<(Rec, usize)> = gate_taus.iter().map(|_| (Rec::default(), 0usize)).collect();
     let mut emit = String::new();
+    let mut sig = String::new();
+
+    // One record per item for the escalation-trigger sweeps.
+    struct Row {
+        subset: &'static str,
+        bm25_r: f64,
+        dense_r: f64,
+        margin: f32,  // (top1-top2)/top1: 1 = confident, 0 = ambiguous
+        entropy: f32, // normalized entropy of top-k BM25 scores: high = flat/uncertain
+    }
+    let mut rows: Vec<Row> = Vec::new();
 
     let mut off = 0usize;
     for (qi, it) in items.iter().enumerate() {
@@ -199,7 +208,8 @@ async fn main() -> anyhow::Result<()> {
         };
 
         let mut ctx_by_mode = std::collections::HashMap::new();
-        let mut bm25_top_overlap = 0.0f32;
+        let mut recalls: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+        let mut bm25_scores: Vec<f32> = Vec::new();
         for mode in modes {
             let retr = match mode {
                 "bm25" => &bm25,
@@ -207,39 +217,63 @@ async fn main() -> anyhow::Result<()> {
                 _ => &hybrid,
             };
             let res = retr.retrieve(&q, TOP_K).await?;
-            stats
-                .entry((subset, mode))
-                .or_default()
-                .add(recall_of(&res));
-            stats.entry(("ALL", mode)).or_default().add(recall_of(&res));
+            let r = recall_of(&res);
+            recalls.insert(mode, r);
+            stats.entry((subset, mode)).or_default().add(r);
+            stats.entry(("ALL", mode)).or_default().add(r);
             if mode == "bm25" {
-                if let Some(top) = res.first() {
-                    bm25_top_overlap = grounding_score(&it.question, &top.chunk.text);
-                }
+                bm25_scores = res.iter().map(|x| x.score.value).collect();
             }
-            let ctx = res
+            ctx_by_mode.insert(
+                mode,
+                res.iter()
+                    .take(TOP_K)
+                    .map(|r| r.chunk.text.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            );
+        }
+
+        // BM25 score-distribution signals — the candidate escalation triggers.
+        let top1 = bm25_scores.first().copied().unwrap_or(0.0);
+        let top2 = bm25_scores.get(1).copied().unwrap_or(0.0);
+        let margin = if top1 > 0.0 {
+            (top1 - top2) / top1
+        } else {
+            0.0
+        };
+        let ksum: f32 = bm25_scores.iter().take(TOP_K).sum();
+        let kn = bm25_scores.iter().take(TOP_K).count().max(1) as f32;
+        let entropy = if ksum > 0.0 && kn > 1.0 {
+            let h: f32 = bm25_scores
                 .iter()
                 .take(TOP_K)
-                .map(|r| r.chunk.text.clone())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            ctx_by_mode.insert(mode, ctx);
-        }
+                .map(|s| {
+                    let p = s / ksum;
+                    if p > 0.0 {
+                        -p * p.ln()
+                    } else {
+                        0.0
+                    }
+                })
+                .sum();
+            h / kn.ln()
+        } else {
+            0.0
+        };
+        rows.push(Row {
+            subset,
+            bm25_r: recalls["bm25"],
+            dense_r: recalls["dense"],
+            margin,
+            entropy,
+        });
 
-        // Gate probe: low BM25 top-hit overlap ⇒ escalate to dense.
-        for (gi, &tau) in gate_taus.iter().enumerate() {
-            let escalate = bm25_top_overlap < tau;
-            let res = if escalate {
-                dense.retrieve(&q, TOP_K).await?
-            } else {
-                bm25.retrieve(&q, TOP_K).await?
-            };
-            gate[gi].0.add(recall_of(&res));
-            if escalate {
-                gate[gi].1 += 1;
-            }
-        }
-
+        sig.push_str(&serde_json::to_string(&serde_json::json!({
+            "id": qi, "subset": subset, "margin": margin, "entropy": entropy,
+            "bm25_recall": recalls["bm25"], "dense_recall": recalls["dense"],
+        }))?);
+        sig.push('\n');
         for mode in modes {
             emit.push_str(&serde_json::to_string(&serde_json::json!({
                 "id": qi, "subset": subset, "mode": mode,
@@ -270,26 +304,95 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    println!("\nConfidence-gated escalation (BM25 → dense when top-hit overlap < τ)");
-    println!("  {:<10} {:>10} {:>14}", "τ", "recall", "escalated%");
-    let total = items.len() as f64;
-    for (gi, &tau) in gate_taus.iter().enumerate() {
-        println!(
-            "  {:<10.2} {:>10.2} {:>13.0}%",
-            tau,
-            gate[gi].0.mean(),
-            100.0 * gate[gi].1 as f64 / total
-        );
-    }
+    // ── The crux: does BM25 uncertainty separate the subsets? ──
+    let smean = |sub: &str, sel: fn(&Row) -> f32| -> f32 {
+        let v: Vec<f32> = rows
+            .iter()
+            .filter(|r| sub == "ALL" || r.subset == sub)
+            .map(sel)
+            .collect();
+        if v.is_empty() {
+            0.0
+        } else {
+            v.iter().sum::<f32>() / v.len() as f32
+        }
+    };
+    println!("\nDoes BM25 uncertainty separate the subsets? (mean signal)");
+    println!("  {:<24} {:>10} {:>10}", "signal", "lexical", "semantic");
     println!(
-        "  (compare to always-bm25 {:.2} / always-dense {:.2})",
+        "  {:<24} {:>10.3} {:>10.3}",
+        "margin (1=confident)",
+        smean("lexical", |r| r.margin),
+        smean("semantic", |r| r.margin)
+    );
+    println!(
+        "  {:<24} {:>10.3} {:>10.3}",
+        "entropy (high=flat)",
+        smean("lexical", |r| r.entropy),
+        smean("semantic", |r| r.entropy)
+    );
+
+    // ── Trigger sweeps: escalate to dense when BM25 looks uncertain ──
+    let n_sem = rows
+        .iter()
+        .filter(|r| r.subset == "semantic")
+        .count()
+        .max(1) as f64;
+    let n_lex = rows.iter().filter(|r| r.subset == "lexical").count().max(1) as f64;
+    let total = rows.len() as f64;
+    let sweep = |name: &str, taus: &[f32], esc: fn(&Row, f32) -> bool| {
+        println!("\nTrigger: {name}");
+        println!(
+            "  {:<8} {:>9} {:>12} {:>12} {:>9}",
+            "τ", "escal.%", "sem.capt.%", "lex.false%", "recall"
+        );
+        for &tau in taus {
+            let (mut esc_n, mut sem_c, mut lex_f, mut rec) = (0.0, 0.0, 0.0, 0.0);
+            for r in &rows {
+                let e = esc(r, tau);
+                if e {
+                    esc_n += 1.0;
+                    if r.subset == "semantic" {
+                        sem_c += 1.0;
+                    } else {
+                        lex_f += 1.0;
+                    }
+                }
+                rec += if e { r.dense_r } else { r.bm25_r };
+            }
+            println!(
+                "  {:<8.2} {:>8.0}% {:>11.0}% {:>11.0}% {:>9.2}",
+                tau,
+                100.0 * esc_n / total,
+                100.0 * sem_c / n_sem,
+                100.0 * lex_f / n_lex,
+                rec / total
+            );
+        }
+    };
+    sweep(
+        "low margin → escalate (margin < τ)",
+        &[0.10, 0.20, 0.30, 0.50],
+        |r, t| r.margin < t,
+    );
+    sweep(
+        "high entropy → escalate (entropy > τ)",
+        &[0.50, 0.70, 0.85],
+        |r, t| r.entropy > t,
+    );
+    println!(
+        "\n  baselines: always-bm25 {:.2} / always-dense {:.2} (escalate 100%)",
         stats.get(&("ALL", "bm25")).unwrap().mean(),
         stats.get(&("ALL", "dense")).unwrap().mean()
     );
 
-    let out = redhop_examples::exports_path("semantic_natural_contexts.jsonl");
-    std::fs::create_dir_all(out.parent().unwrap())?;
-    std::fs::write(&out, emit)?;
-    println!("\nTier-3 contexts → {}", out.display());
+    let dir = redhop_examples::exports_path("semantic_natural_contexts.jsonl");
+    std::fs::create_dir_all(dir.parent().unwrap())?;
+    std::fs::write(&dir, emit)?;
+    std::fs::write(
+        redhop_examples::exports_path("semantic_natural_signals.jsonl"),
+        sig,
+    )?;
+    println!("\nTier-3 contexts + signals → exports/semantic_natural_*.jsonl");
     Ok(())
 }

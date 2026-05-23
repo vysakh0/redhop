@@ -1,15 +1,4 @@
-1191 rows; 1191 LLM calls (model=openai/gpt-4o-mini)
-  ...100/1191
-  ...200/1191
-  ...300/1191
-  ...400/1191
-  ...500/1191
-  ...600/1191
-  ...700/1191
-  ...800/1191
-  ...900/1191
-  ...1000/1191
-  ...1100/1191
+1191 rows; 0 LLM calls (model=openai/gpt-4o-mini)
 
 Downstream answer quality (gpt-4o-mini) — F1 / EM by subset × mode
   subset                bm25         dense        hybrid
@@ -17,3 +6,11 @@ Downstream answer quality (gpt-4o-mini) — F1 / EM by subset × mode
   lexical  (n= 192)     0.57/0.46     0.60/0.48     0.63/0.51
   semantic (n= 205)     0.38/0.29     0.54/0.44     0.45/0.35
   ALL      (n= 397)     0.47/0.37     0.57/0.46     0.54/0.43
+
+Conditional escalation downstream (margin < τ → dense)  [cached, free]
+  policy                     F1     EM  escalated%
+  always bm25              0.47   0.37          0%
+  always dense             0.57   0.46        100%
+  margin<0.20              0.52   0.41         44%
+  margin<0.30              0.55   0.44         61%
+  margin<0.50              0.56   0.46         88%

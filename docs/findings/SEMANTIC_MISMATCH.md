@@ -3,9 +3,13 @@
 > **Question (not "are embeddings better"):** *where* does lexical (BM25)
 > retrieval fail, and *when* does semantic (dense) retrieval materially help?
 > **Status:** Confirmed across controlled + natural data, Tier-1 *and* Tier-3.
-> On natural HotpotQA, dense beats BM25 by +0.16 F1 on semantic-heavy questions
-> and ~0 on lexical-friendly. The conditional-escalation *value* is proven; a
-> good query-time *trigger* is the open problem (the obvious one is a null).
+> Dense beats BM25 by +0.16 F1 on semantic-heavy questions and ~0 on
+> lexical-friendly — the *value* of escalation is real and observable. But a
+> cheap, deterministic escalation *trigger* is a **null**: neither query↔hit
+> lexical overlap nor BM25 score margin/entropy separates the regimes, and
+> conditional escalation gives no selective gain over linear interpolation. The
+> conditionality of value is confirmed; conditionality of action via a simple
+> signal is falsified.
 > **Setup:** 25 controlled items across 5 regimes. Each has a GOLD passage
 > (semantically right, usually low lexical overlap with the query), a TRAP
 > passage (high lexical overlap, wrong meaning — a BM25 attractor), and
@@ -145,16 +149,85 @@ BM25's top hit has low lexical overlap with the query (τ ∈ {0.10, 0.20, 0.30}
 | - | ------ | --------- |
 | 0.10 / 0.20 / 0.30 | 0.70 / 0.70 / 0.70 | 0% / 1% / 3% |
 
-It **escalates almost nothing and captures none** of dense's +0.13 ALL gain
-(always-BM25 0.70 vs always-dense 0.83). On HotpotQA the query shares entity terms
-with the top hit *even when retrieval is wrong*, so query↔top-hit overlap stays
-high. **The conditional-escalation value is proven (+0.16 F1 where it matters);
-the detection signal is the unsolved part.** A BM25 score-margin / spread signal,
-or query-side cues, is the next thing to try — this overlap trigger is a null.
+It escalates almost nothing on HotpotQA (the query shares entity terms with the
+top hit even when retrieval is wrong, so overlap stays high) — a null.
 
-## Updated bottom line
+## Phase 3 — can the escalation be triggered at all? (score-distribution signals)
 
-Lexical-first is the right default (free, exact, dominant where lexis aligns), and
-**escalating to dense on semantic-heavy queries is worth a real +0.16 F1** — but a
-*good escalation trigger remains open*, and blind hybrid is only safe off the
-adversarial regime. Conditional, evidence-bounded — not "embeddings everywhere."
+The hypothesis: maybe semantic-heavy failures show up as *BM25 uncertainty*
+(ambiguous / flat score distribution) rather than low query↔hit overlap. We
+tested two deterministic, gold-free signals from the BM25 result: **margin**
+`(top1−top2)/top1` (1 = confident, 0 = ambiguous) and **normalized entropy** of
+the top-k scores (high = flat).
+
+**The crux — do the signals separate the subsets? Barely / no:**
+
+| signal | lexical-friendly | semantic-heavy |
+| ------ | ---------------- | -------------- |
+| margin (1 = confident) | 0.282 | 0.248 |
+| entropy (high = flat)  | 0.955 | 0.968 |
+
+Margin is *slightly* lower on semantic-heavy; entropy is essentially identical
+(uniformly flat on both). Neither cleanly distinguishes the regime.
+
+**Trigger sweep (escalate to dense when BM25 looks uncertain):**
+
+| margin < τ | escalate | sem. capture | lex. false | recall |
+| ---------- | -------- | ------------ | ---------- | ------ |
+| 0.10 | 22% | 25% | 20% | 0.74 |
+| 0.20 | 44% | 46% | 42% | 0.77 |
+| 0.30 | 61% | 65% | 56% | 0.80 |
+| 0.50 | 88% | 92% | 84% | 0.81 |
+
+At every threshold **semantic-capture ≈ lexical-false** — the trigger escalates
+both subsets at nearly the same rate, i.e. barely better than random. (Entropy is
+worse: it fires ~100% always, collapsing to always-dense.)
+
+**Downstream confirms it — the conditional policy just interpolates linearly:**
+
+| policy | F1 | EM | escalated |
+| ------ | -- | -- | --------- |
+| always BM25 | 0.47 | 0.37 | 0% |
+| always dense | 0.57 | 0.46 | 100% |
+| margin < 0.20 | 0.52 | 0.41 | 44% |
+| margin < 0.30 | 0.55 | 0.44 | 61% |
+| margin < 0.50 | 0.56 | 0.46 | 88% |
+
+F1 rises in lock-step with escalation rate — **no selective gain**. To get
+near-dense F1 you escalate ~88% (≈ always-dense). There is no "capture most of
+dense's wins at near-BM25 cost."
+
+## Bottom line — answering the systems question honestly
+
+> *Can retrieval sophistication itself become conditional and observable?*
+
+- **The value is real and observable:** dense materially helps semantic-heavy
+  queries (+0.23 recall, +0.16 F1) and is ~neutral elsewhere.
+- **But a cheap, deterministic *trigger* does not exist** among the obvious
+  candidates. Two independent signal families — query↔hit lexical overlap *and*
+  BM25 score margin/entropy — both **fail to separate** the regimes. Conditional
+  escalation gives no selective advantage over linear interpolation: cost ≈
+  benefit. So *conditional escalation is not operationally viable with a simple
+  signal* on this data. Plainly: a null.
+- **And it may not need to be.** Dense (weakly) *dominates* BM25 in **both**
+  subsets here (lexical 0.60 ≥ 0.57 F1; semantic 0.54 ≥ 0.38) at only a ~2 ms
+  absolute embedding tax — so the honest operational choice is **binary**: run
+  dense (or hybrid — best on lexical, fine on semantic) when you can afford a
+  local embedder; stay on BM25 when you can't, accepting the semantic-heavy loss.
+  A trigger would only matter if dense were *wasteful* on lexical-friendly
+  queries, and the data says it isn't.
+
+The "lexical-first + conditional dense escalation" idea is therefore **half
+confirmed, half falsified**: the conditionality of *value* is real; the
+conditionality of *action via a cheap trigger* is not. We document the null
+rather than ship a trigger that doesn't work.
+
+## Next (open, honest)
+
+- A learned/threshold trigger on *richer* signals (BM25 score calibrated to the
+  corpus, query length/specificity, answer-type) might separate the regimes —
+  but that risks an ML classifier, which is out of scope here. Documented as
+  open, not pursued.
+- A second natural dataset with a stronger semantic-heavy tail (MS MARCO
+  paraphrase, or a deliberately reformulated query set) would test whether the
+  "dense weakly dominates" result is HotpotQA-specific.
