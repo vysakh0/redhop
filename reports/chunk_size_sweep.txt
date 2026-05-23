@@ -1,0 +1,24 @@
+
+==== HotpotQA multi-hop (tight budget — the gap)  (budget 400, n=200) ====
+  redhop[reason,cs=64]       tok   383   recall 0.88   ≥0.8  70%
+  redhop[reason,cs=128]      tok   354   recall 0.89   ≥0.8  74%
+  redhop[reason,cs=192]      tok   351   recall 0.89   ≥0.8  74%
+  redhop[reason,cs=256]      tok   298   recall 0.81   ≥0.8  54%
+  redhop[raw_to,cs=64]       tok   383   recall 0.90   ≥0.8  76%
+  redhop[raw_to,cs=128]      tok   354   recall 0.90   ≥0.8  77%
+  redhop[raw_to,cs=192]      tok   350   recall 0.88   ≥0.8  70%
+  redhop[raw_to,cs=256]      tok   298   recall 0.80   ≥0.8  53%
+  langchain (baseline)       tok   329   recall 0.87   ≥0.8  71%
+  llamaindex (baseline)      tok   333   recall 0.88   ≥0.8  71%
+
+==== CUAD contracts (does finer hurt here?)  (budget 2000, n=200) ====
+  redhop[reason,cs=64]       tok  1896   recall 0.86   ≥0.8  71%
+  redhop[reason,cs=128]      tok  1904   recall 0.88   ≥0.8  77%
+  redhop[reason,cs=192]      tok  1861   recall 0.89   ≥0.8  81%
+  redhop[reason,cs=256]      tok  1829   recall 0.90   ≥0.8  81%
+  redhop[raw_to,cs=64]       tok  1929   recall 0.89   ≥0.8  77%
+  redhop[raw_to,cs=128]      tok  1905   recall 0.92   ≥0.8  83%
+  redhop[raw_to,cs=192]      tok  1874   recall 0.92   ≥0.8  84%
+  redhop[raw_to,cs=256]      tok  1837   recall 0.92   ≥0.8  84%
+  langchain (baseline)       tok  1821   recall 0.87   ≥0.8  72%
+  llamaindex (baseline)      tok  1814   recall 0.93   ≥0.8  86%

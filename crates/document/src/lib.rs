@@ -70,8 +70,12 @@ pub struct DocumentConfig {
 impl Default for DocumentConfig {
     fn default() -> Self {
         Self {
-            target_tokens: 256,
-            max_tokens: 512,
+            // 128-token chunks: a sweep across budgets/datasets showed finer
+            // chunks pack better under tight budgets (multi-hop ≥0.8 retention
+            // 54%→77%) and tie at large budgets — so 128 is the robust default
+            // over the previous 256. See docs/findings/CHUNK_GRANULARITY.md.
+            target_tokens: 128,
+            max_tokens: 256,
             overlap_sentences: 1,
             candidate_k: 20,
             // The runtime's philosophy: size-gated, conservative, observable.
@@ -163,24 +167,31 @@ impl Document {
     /// Assemble the reasoning context for a query: retrieve candidates from
     /// the internal index, then allocate them under the context policy.
     /// Returns the prompt context plus a [`ContextReport`] of what it did.
+    ///
+    /// Uses the document's default token budget. Budget is a *query-time*
+    /// concern (it doesn't touch the index) — vary it per call with
+    /// [`Document::context_with`].
     pub fn context(&mut self, query: &str) -> Result<BuiltContext> {
-        let results = self.retrieve(query, self.cfg.candidate_k)?;
-        Ok(build_context(
-            &Query::new(query),
-            &results,
-            &self.cfg.context,
-        ))
+        self.context_with(query, None, None)
     }
 
-    /// Like [`Document::context`] but overriding how many candidates to
-    /// retrieve before assembly.
-    pub fn context_with_k(&mut self, query: &str, candidate_k: usize) -> Result<BuiltContext> {
-        let results = self.retrieve(query, candidate_k)?;
-        Ok(build_context(
-            &Query::new(query),
-            &results,
-            &self.cfg.context,
-        ))
+    /// [`Document::context`] with optional per-query overrides. `budget` and
+    /// `candidate_k` are query-time and require **no** re-indexing (unlike
+    /// chunk size, which is fixed at construction). `None` keeps the
+    /// document's default.
+    pub fn context_with(
+        &mut self,
+        query: &str,
+        budget: Option<usize>,
+        candidate_k: Option<usize>,
+    ) -> Result<BuiltContext> {
+        let k = candidate_k.unwrap_or(self.cfg.candidate_k);
+        let results = self.retrieve(query, k)?;
+        let mut cfg = self.cfg.context.clone();
+        if let Some(b) = budget {
+            cfg.token_budget = b;
+        }
+        Ok(build_context(&Query::new(query), &results, &cfg))
     }
 
     /// Diagnose the retrieval for a query **without** modifying anything:

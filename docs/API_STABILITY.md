@@ -20,8 +20,10 @@ These are the supported entry points. Within 0.x we avoid breaking them, and any
 breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 
 **Python (`redhop`)**
-- `Document.from_text(text, ...)`, `Document.from_chunks(chunks, ...)`
-- `Document.context(query)`, `Document.analyze(query)`, `Document.n_chunks`
+- `Document.from_text(text, chunk_size=…, chunk_overlap=…, strategy=…, …)` and
+  `Document.from_chunks(chunks, …)` — `chunk_size`/`chunk_overlap` are index-time
+- `Document.context(query, budget=…)` — `budget` is a query-time override (no
+  re-indexing); `Document.analyze(query)`, `Document.n_chunks`
 - `build_context(query, retrieved_chunks, strategy=..., token_budget=..., ...)`
 - `filter_context(...)`, `analyze_context(...)`, `context_economics(...)`
 - `grounding_score(query, text)`, `link_strength(a, b)`

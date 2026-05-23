@@ -28,6 +28,14 @@ minor releases may break; breaking changes are noted here).
   and API-stability doc.
 
 ### Changed
+- **Default chunk size 256 → 128 tokens.** A chunk_size × budget × dataset sweep
+  (vs LangChain/LlamaIndex) showed granularity — not the assembly strategy — is
+  the lever: finer chunks lift multi-hop ≥0.8 evidence retention 54%→77% (ahead
+  of both frameworks) and tie at large budgets. See
+  `docs/findings/CHUNK_GRANULARITY.md`.
+- **`Document` API split by cost:** `chunk_size` / `chunk_overlap` on `from_text`
+  (index-time), `budget` on `context(query, budget=...)` (query-time, no
+  re-indexing). Rust: `Document::context_with`.
 - BM25 query handling reduces arbitrary natural-language queries to a clean word
   bag, so `doc.context(question)` never crashes on punctuation/quotes (ranking
   unchanged).

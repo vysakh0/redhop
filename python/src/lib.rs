@@ -436,10 +436,13 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn doc_config(
     strategy: Option<String>,
     token_budget: usize,
     candidate_k: usize,
+    chunk_size: usize,
+    chunk_overlap: usize,
 ) -> PyResult<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match strategy {
@@ -452,9 +455,13 @@ fn doc_config(
         ..base.context
     };
     Ok(DocumentConfig {
+        // chunk_size is the target tokens/chunk; cap (max) at 2x so an
+        // occasional long sentence isn't split mid-thought.
+        target_tokens: chunk_size,
+        max_tokens: chunk_size * 2,
+        overlap_sentences: chunk_overlap,
         candidate_k,
         context,
-        ..base
     })
 }
 
@@ -468,24 +475,40 @@ struct Document {
 
 #[pymethods]
 impl Document {
-    /// Build from raw text (chunked internally). `strategy` defaults to the
-    /// size-gated Auto policy (pass through under headroom, prune under dilution).
+    /// Build from raw text (chunked + indexed internally).
+    ///
+    /// `chunk_size` (target tokens/chunk) and `chunk_overlap` are **index-time**
+    /// — they fix how the document is split and cannot change per query.
+    /// `token_budget` is the *default* assembly budget; override it per call on
+    /// `context(query, budget=...)` (query-time, no re-indexing). `strategy`
+    /// defaults to the size-gated Auto policy.
     #[staticmethod]
-    #[pyo3(signature = (text, source="document", strategy=None, token_budget=8192, candidate_k=20))]
+    #[pyo3(signature = (text, source="document", strategy=None, chunk_size=128,
+                        chunk_overlap=1, token_budget=8192, candidate_k=20))]
+    #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
         source: &str,
         strategy: Option<String>,
+        chunk_size: usize,
+        chunk_overlap: usize,
         token_budget: usize,
         candidate_k: usize,
     ) -> PyResult<Self> {
-        let cfg = doc_config(strategy, token_budget, candidate_k)?;
+        let cfg = doc_config(
+            strategy,
+            token_budget,
+            candidate_k,
+            chunk_size,
+            chunk_overlap,
+        )?;
         Ok(Self {
             inner: to_py(RhDocument::from_text_with(source, text, cfg))?,
         })
     }
 
     /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
+    /// `chunk_size`/`chunk_overlap` don't apply here (you chunked already).
     #[staticmethod]
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20))]
     fn from_chunks(
@@ -498,16 +521,20 @@ impl Document {
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let cfg = doc_config(strategy, token_budget, candidate_k)?;
+        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1)?;
         Ok(Self {
             inner: to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?,
         })
     }
 
     /// Assemble the reasoning context for a query (retrieve → allocate).
-    /// Returns a `BuiltContext` with `.text()` and `.report`.
-    fn context(&mut self, query: &str) -> PyResult<BuiltContext> {
-        Ok(py_built(to_py(self.inner.context(query))?))
+    /// `budget` overrides the document's default token budget for this call
+    /// only (query-time; no re-indexing). Returns a `BuiltContext`.
+    #[pyo3(signature = (query, budget=None))]
+    fn context(&mut self, query: &str, budget: Option<usize>) -> PyResult<BuiltContext> {
+        Ok(py_built(to_py(
+            self.inner.context_with(query, budget, None),
+        )?))
     }
 
     /// Diagnose retrieval for a query **without** modifying anything (pure
