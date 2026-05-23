@@ -147,6 +147,20 @@ quality change — don't optimize reflexively.
 → **RedHop:** the `ContextReport` quantifies what each decision bought
 (`total_tokens`, `estimated_waste_tokens`, `retained_evidence_ratio`).
 
+### 10. For semantic recall: lexical topology first, local refinement second
+BM25 misses paraphrase/synonym queries (the answer text shares no vocabulary with
+the query). Dense fixes it — but you don't need a global vector index to get it.
+Let BM25 prune the corpus to a candidate pool, then rerank *only that pool* with a
+dense model. Measured: this matches **global** dense on recall *and* answers
+(recovers ~96% of its gains), beats naive hybrid, needs **no ANN and no escalation
+trigger** — because BM25's top-50 almost always already contains the gold, just
+ranked low.
+→ **What to do:** don't reach for a vector DB to handle semantic queries; BM25 +
+local dense rerank gets there with the dense model touching only K candidates.
+→ **Caveat:** works when BM25 *candidate* recall is high (partial lexical
+overlap). On pure-synonym queries (zero overlap), gold won't be in the pool and
+only global dense helps. → [LOCAL_RERANK.md](findings/LOCAL_RERANK.md).
+
 ---
 
 ## Measure what you did (observability > cleverness)

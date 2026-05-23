@@ -200,6 +200,9 @@ dense's wins at near-BM25 cost."
 
 ## Phase 4 — local semantic refinement over lexical topology (the resolution)
 
+> Written up as a standalone finding: **[LOCAL_RERANK.md](LOCAL_RERANK.md)**. The
+> summary below is the same result in the context of this study.
+
 Phase 3 left an impasse: dense helps, but no cheap *trigger* tells us when to
 escalate. Phase 4 dissolves it with a different shape — **don't decide whether to
 escalate; bound the semantic work instead.** BM25 prunes a large corpus to a
