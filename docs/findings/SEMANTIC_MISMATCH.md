@@ -2,8 +2,10 @@
 
 > **Question (not "are embeddings better"):** *where* does lexical (BM25)
 > retrieval fail, and *when* does semantic (dense) retrieval materially help?
-> **Status:** Tier-1 (controlled) confirmed — a clean, conditional boundary.
-> Tier-3 (downstream answers on natural data) is the pending materiality layer.
+> **Status:** Confirmed across controlled + natural data, Tier-1 *and* Tier-3.
+> On natural HotpotQA, dense beats BM25 by +0.16 F1 on semantic-heavy questions
+> and ~0 on lexical-friendly. The conditional-escalation *value* is proven; a
+> good query-time *trigger* is the open problem (the obvious one is a null).
 > **Setup:** 25 controlled items across 5 regimes. Each has a GOLD passage
 > (semantically right, usually low lexical overlap with the query), a TRAP
 > passage (high lexical overlap, wrong meaning — a BM25 attractor), and
@@ -95,12 +97,64 @@ justified.
 - We did **not** tune a fancier fusion; a *gated* fusion (use dense's order when
   BM25 confidence is low) is an obvious follow-up the data motivates.
 
-## Next
+## Phase 2 — natural data + downstream answers (HotpotQA distractor)
 
-1. **Natural-data Tier-1 + Tier-3:** split a real QA set into lexical-friendly vs
-   semantic-heavy subsets by query↔gold lexical overlap; compare BM25 / dense /
-   hybrid retrieval recall *and* downstream answer F1/EM. Measures real-world
-   materiality + whether the boundary holds off the synthetic set.
-2. **A confidence-gated escalation probe:** escalate to dense only when BM25's top
-   score is weak; measure whether it captures dense's mismatch wins at near-BM25
-   average cost.
+Does the boundary hold off the synthetic set, and does it change *answers*? We
+split 397 HotpotQA items into **lexical-friendly** (query↔gold overlap above the
+median 0.857) vs **semantic-heavy** (below), retrieve the 2 gold paragraphs from
+each item's 10-paragraph pool with each mode, and answer with gpt-4o-mini.
+(`semantic_natural` example + `score_semantic_natural.py`.)
+
+**Tier-1 — gold-paragraph recall@3:**
+
+| subset | BM25 | dense | hybrid |
+| ------ | ---- | ----- | ------ |
+| lexical-friendly (n=192) | 0.79 | 0.82 | **0.85** |
+| **semantic-heavy (n=205)** | **0.61** | **0.84** | 0.75 |
+| ALL | 0.70 | 0.83 | 0.80 |
+
+**Tier-3 — downstream answer quality (F1 / EM):**
+
+| subset | BM25 | dense | hybrid |
+| ------ | ---- | ----- | ------ |
+| lexical-friendly | 0.57 / 0.46 | 0.60 / 0.48 | **0.63 / 0.51** |
+| **semantic-heavy** | 0.38 / 0.29 | **0.54 / 0.44** | 0.45 / 0.35 |
+| ALL | 0.47 / 0.37 | **0.57 / 0.46** | 0.54 / 0.43 |
+
+Reading:
+- **The boundary holds on real data.** Dense beats BM25 by **+0.23 recall** and
+  **+0.16 F1 / +0.15 EM** on the semantic-heavy subset, and barely moves the
+  lexical-friendly one (+0.03 F1). Less extreme than the synthetic probe (natural
+  BM25 is 0.61, not 0%) — but the *direction and conditionality* replicate.
+- **This time retrieval *does* translate downstream.** Unlike the framework
+  comparison (where a retention lead washed out at answer time), here BM25
+  genuinely *misses* the gold evidence on semantic-heavy items, so the model
+  can't answer — and dense recovering the evidence recovers the answer.
+- **Naive hybrid is fine on natural data.** Best on lexical (0.63 F1), middling on
+  semantic (0.45) — its catastrophic failure was specific to the *adversarial*
+  synthetic traps, not real questions. (Honest correction to the Phase-1 read:
+  "hybrid is harmful" is true only in adversarial-mismatch regimes.)
+
+## Honest negative — the simple escalation gate does not fire
+
+The natural test of "lexical-first + conditional dense escalation" needs a
+*query-time, gold-free* trigger. We tried the obvious one — escalate to dense when
+BM25's top hit has low lexical overlap with the query (τ ∈ {0.10, 0.20, 0.30}):
+
+| τ | recall | escalated |
+| - | ------ | --------- |
+| 0.10 / 0.20 / 0.30 | 0.70 / 0.70 / 0.70 | 0% / 1% / 3% |
+
+It **escalates almost nothing and captures none** of dense's +0.13 ALL gain
+(always-BM25 0.70 vs always-dense 0.83). On HotpotQA the query shares entity terms
+with the top hit *even when retrieval is wrong*, so query↔top-hit overlap stays
+high. **The conditional-escalation value is proven (+0.16 F1 where it matters);
+the detection signal is the unsolved part.** A BM25 score-margin / spread signal,
+or query-side cues, is the next thing to try — this overlap trigger is a null.
+
+## Updated bottom line
+
+Lexical-first is the right default (free, exact, dominant where lexis aligns), and
+**escalating to dense on semantic-heavy queries is worth a real +0.16 F1** — but a
+*good escalation trigger remains open*, and blind hybrid is only safe off the
+adversarial regime. Conditional, evidence-bounded — not "embeddings everywhere."

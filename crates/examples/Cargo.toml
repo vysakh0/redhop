@@ -152,3 +152,8 @@ workspace = true
 name = "semantic_mismatch"
 path = "examples/semantic_mismatch.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "semantic_natural"
+path = "examples/semantic_natural.rs"
+required-features = ["onnx"]

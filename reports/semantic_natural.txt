@@ -1,0 +1,18 @@
+loading BGE-small ONNX...
+items: 397  median query↔gold overlap: 0.857  (split point)
+
+Gold-paragraph recall@3 by subset and mode
+  subset                     bm25    dense   hybrid
+  ──────────────────────────────────────────────────
+  lexical        (n= 192)     0.79     0.82     0.85
+  semantic       (n= 205)     0.61     0.84     0.75
+  ALL            (n= 397)     0.70     0.83     0.80
+
+Confidence-gated escalation (BM25 → dense when top-hit overlap < τ)
+  τ              recall     escalated%
+  0.10             0.70             0%
+  0.20             0.70             1%
+  0.30             0.70             3%
+  (compare to always-bm25 0.70 / always-dense 0.83)
+
+Tier-3 contexts → /Users/vysakh/projects/neorag1/crates/examples/../../exports/semantic_natural_contexts.jsonl
