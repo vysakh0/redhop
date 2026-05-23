@@ -1,0 +1,30 @@
+[CUAD] 150 items × 4 systems; 600 LLM calls
+  ...100/600
+  ...200/600
+  ...300/600
+  ...400/600
+  ...500/600
+  ...600/600
+
+==== CUAD  (gpt-4o-mini, budget 2000, n=150) ====
+  system             F1     EM  refusal%
+  --------------------------------------
+  redhop          0.324  0.153       49%
+  redhop[topk]    0.342  0.173       47%
+  langchain       0.248  0.107       59%
+  llamaindex      0.350  0.160       47%
+[HotpotQA] 150 items × 4 systems; 600 LLM calls
+  ...100/600
+  ...200/600
+  ...300/600
+  ...400/600
+  ...500/600
+  ...600/600
+
+==== HotpotQA  (gpt-4o-mini, budget 400, n=150) ====
+  system             F1     EM  refusal%
+  --------------------------------------
+  redhop          0.514  0.413       30%
+  redhop[topk]    0.515  0.413       30%
+  langchain       0.499  0.387       33%
+  llamaindex      0.497  0.420       33%
