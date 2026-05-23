@@ -156,6 +156,7 @@ fn main() -> anyhow::Result<()> {
                 strategy: ContextStrategy::DistractorFiltered,
                 distractor_min_grounding: DISTRACTOR_GROUNDING,
                 link_min_jaccard: 0.12,
+                auto_passthrough_max_tokens: 8_000,
                 redundancy_max_cosine: 1.0,
             },
         );

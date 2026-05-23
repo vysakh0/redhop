@@ -143,11 +143,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--model", type=str, default="haiku")
+    ap.add_argument("--input", type=str, default=str(CONTEXTS),
+                    help="contexts JSONL (default: exports/reasoning_qa_contexts.jsonl)")
     args = ap.parse_args()
 
-    rows = [json.loads(l) for l in CONTEXTS.read_text().splitlines() if l.strip()]
+    contexts = Path(args.input)
+    # Cache is per-context-set: different contexts (e.g. different τ) must not
+    # collide on the (id|cond|model) key.
+    cache_file = contexts.with_name(contexts.stem + "_cache.json")
+
+    rows = [json.loads(l) for l in contexts.read_text().splitlines() if l.strip()]
     rows = rows[: args.n]
-    cache: dict[str, str] = json.loads(CACHE.read_text()) if CACHE.exists() else {}
+    cache: dict[str, str] = json.loads(cache_file.read_text()) if cache_file.exists() else {}
 
     total = len(rows) * len(CONDITIONS)
     cached_n = sum(1 for r in rows for c in CONDITIONS
@@ -165,19 +172,39 @@ def main() -> None:
     rescued_delta: list[float] = []
     both_kept_delta: list[float] = []
 
-    done = 0
+    # Phase 1: fill the cache for all uncached (query, condition) pairs in
+    # parallel. The calls are pure I/O waits (network + model latency), so a
+    # thread pool turns a ~1h sequential run into a few minutes. Resumable:
+    # anything already cached is skipped.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    pending = [
+        (f"{r['id']}|{cond}|{args.model}", r["question"], r[cond])
+        for r in rows for cond in CONDITIONS
+        if f"{r['id']}|{cond}|{args.model}" not in cache
+    ]
+    if pending:
+        print(f"  dispatching {len(pending)} uncached calls across 16 workers...")
+        done = 0
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            futs = {ex.submit(ask_llm, q, ctx, args.model): key for key, q, ctx in pending}
+            for fut in as_completed(futs):
+                res = fut.result()
+                if res.startswith("[ERROR"):
+                    continue  # don't cache failures — let a re-run retry them
+                cache[futs[fut]] = res
+                done += 1
+                if done % 50 == 0:
+                    cache_file.write_text(json.dumps(cache))
+                    print(f"  ...{done}/{len(pending)} new calls")
+        cache_file.write_text(json.dumps(cache))
+
+    # Phase 2: analysis reads purely from the now-complete cache.
     for r in rows:
         per = {}
         for cond in CONDITIONS:
             key = f"{r['id']}|{cond}|{args.model}"
-            ans = cache.get(key)
-            if ans is None:
-                ans = ask_llm(r["question"], r[cond], args.model)
-                cache[key] = ans
-                done += 1
-                if done % 25 == 0:
-                    CACHE.write_text(json.dumps(cache))
-                    print(f"  ...{done} new calls")
+            ans = cache.get(key, "")
             rec = kw_recall(ans, r["gold_answer"])
             per[cond] = rec
             kw[cond].append(rec)
@@ -192,7 +219,7 @@ def main() -> None:
         else:
             both_kept_delta.append(per["ctx_reasoning"] - per["ctx_filtered"])
 
-    CACHE.write_text(json.dumps(cache))
+    cache_file.write_text(json.dumps(cache))
 
     print("\n──── downstream QA by condition (n={}, {}) ────".format(len(rows), args.model))
     print(f"  {'condition':<16} {'kw_recall':>10} {'refusal%':>10}")

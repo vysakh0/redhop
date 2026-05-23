@@ -1,9 +1,10 @@
 # Reasoning-Preserving vs Aggressive Filtering — End-to-End QA (n=300, CIs)
 
 > **Hypothesis:** keeping the reasoning-critical second hop (not just relevance) produces better downstream answers.
-> **Status:** Confirmed across 3 model families, n=300 each, paired bootstrap 95% CIs.
-> **Setup:** 300 gap-qualified multi-hop HotpotQA queries; generators: claude-haiku, gpt-4o-mini, llama-3.3-70b; gold-keyword recall.
-> **Headline:** aggressive filtering is **net-harmful on all 3 models** (filter−polluted −0.06 to −0.12); the rescued-subset gain replicates (+0.15 to +0.22). The general law is an **asymmetry of magnitudes** — missing reasoning evidence hurts more than irrelevant context — *not* "distractors are harmless" (distractors DO hurt Llama-70B, +0.051 sig; they're inert only on frontier models).
+> **Status:** Confirmed across 4 model families, n=300 each, paired bootstrap 95% CIs.
+> **Setup:** 300 gap-qualified multi-hop HotpotQA queries; generators: claude-haiku, gpt-4o-mini, qwen3.5-flash, llama-3.3-70b; gold-keyword recall.
+> **Headline:** aggressive filtering is **net-harmful on all 4 models** (filter−polluted −0.06 to −0.15); the rescued-subset gain replicates (+0.15 to +0.23). The general law is an **asymmetry of magnitudes** — missing reasoning evidence hurts more than irrelevant context — *not* "distractors are harmless." Distractor-sensitivity splits by model **tier, not age**: both non-frontier models are hurt (qwen3.5-flash +0.045, llama-70b +0.051, both sig), frontier models (haiku, gpt-4o-mini) are inert.
+> **Scope:** this is the *small-context* regime; at large (~30k-token) contexts a different effect dominates — see [CONTEXT_DILUTION.md](CONTEXT_DILUTION.md).
 > **Reproduce:** `cargo run -p redhop-examples --example emit_reasoning_qa` then `python python/eval/score_reasoning_qa.py --n 300 --model <id>` (outputs in [reports/reasoning_qa_crossmodel/](../../reports/reasoning_qa_crossmodel/)).
 > **Justifies API:** `build_context(strategy = ReasoningPreserving)` — the conservative default (remove some junk, never drop the bridge) is the right call for *all* model regimes.
 > **Caveats:** lexical kw-recall proxy; rescued subset small (~26/300, so aggregate reasoning−filter is dilution-limited); single dataset (HotpotQA). See §caveats and the cross-model section.
@@ -44,34 +45,47 @@ haiku` calls, paired bootstrap 95% CIs.
 
 (Table above is the original haiku run on the *prior* grounding signal.)
 
-## Cross-model replication (3 families) — the robust result
+## Cross-model replication (4 families, all on the new signal) — the robust result
 
 The single-generator result was the headline limitation. Re-run on the
-new-signal contexts across three families ([reports/reasoning_qa_crossmodel/](../../reports/reasoning_qa_crossmodel/)):
+new-signal contexts across four families, all apples-to-apples
+([reports/reasoning_qa_crossmodel/](../../reports/reasoning_qa_crossmodel/)):
 
-| model | gold | polluted | filtered | reasoning | distractors hurt (gold−poll) | filter harm (filt−poll) | rescued (reason−filt) |
-| ----- | ---- | -------- | -------- | --------- | ---------------------------- | ----------------------- | --------------------- |
-| gpt-4o-mini | 0.730 | 0.714 | 0.606 | 0.621 | +0.016 (ns) | **−0.108** | +0.218 [.08,.37] |
-| llama-3.3-70b | 0.699 | 0.648 | 0.586 | 0.603 | **+0.051** [.018,.084] | **−0.062** | +0.154 [.00,.35] |
-| haiku *(prior signal)* | 0.830 | 0.829 | 0.705 | 0.740 | +0.001 (ns) | −0.124 | +0.173 [.04,.32] |
+| model | tier | gold | polluted | filtered | reasoning | distractors hurt (gold−poll) | filter harm (filt−poll) | rescued (reason−filt) |
+| ----- | ---- | ---- | -------- | -------- | --------- | ---------------------------- | ----------------------- | --------------------- |
+| haiku | frontier | 0.817 | 0.822 | 0.676 | 0.681 | −0.005 (ns) | **−0.146** | +0.231 [.04,.42] (n=26) |
+| gpt-4o-mini | frontier | 0.730 | 0.714 | 0.606 | 0.621 | +0.016 (ns) | **−0.108** | +0.218 [.08,.37] (n=26) |
+| qwen3.5-flash | non-frontier | 0.743 | 0.698 | 0.589 | 0.604 | **+0.045** [.011,.082] | **−0.109** | +0.205 [.06,.36] (n=26) |
+| llama-3.3-70b | non-frontier | 0.699 | 0.648 | 0.586 | 0.603 | **+0.051** [.018,.084] | **−0.062** | +0.154 [.00,.35] (n=26) |
 
 Two things, one robust and one a nuance:
 
-1. **Robust: aggressive filtering is net-harmful on every model** (−0.06 to −0.12),
-   *including* Llama-70B, where distractors genuinely bite. The "cure worse than
-   the disease" does not depend on the generator.
-2. **Nuance (generator-dependent): whether distractors *alone* hurt depends on
-   model strength.** Frontier models (haiku, gpt-4o-mini) are nearly inert to
-   off-document distractors; **Llama-3.3-70B is measurably hurt (+0.051, CI
-   excludes 0).** So the real, model-independent law is the **asymmetry of
-   magnitudes**: missing reasoning evidence hurts *more* than irrelevant context.
-   On Llama, distractors cost 0.051 but filtering them away cost 0.062 more — the
-   reasoning-evidence loss (~0.11) dominates.
+1. **Robust: aggressive filtering is net-harmful on every model** (−0.06 to −0.15),
+   *including* the non-frontier models where distractors genuinely bite. The "cure
+   worse than the disease" does not depend on the generator.
+2. **Nuance — the split is by model *tier*, not model age.** Whether distractors
+   *alone* hurt depends on robustness: **frontier models (haiku, gpt-4o-mini) are
+   inert** to off-document distractors (gold ≈ polluted, ns); **both non-frontier
+   models are measurably hurt** — and crucially this includes the *recent*
+   qwen3.5-flash (+0.045, CI excludes 0), not just the older Llama-3.3-70B (+0.051).
+   So distractor-sensitivity is a property of model strength/robustness, **not an
+   artifact of one old model.** The model-independent law is the **asymmetry of
+   magnitudes**: missing reasoning evidence hurts *more* than irrelevant context —
+   on the sensitive models, distractors cost ~0.05 but filtering them away costs
+   ~0.06–0.11 *more* on top.
 
 The causal mechanism (rescued-subset gain, ~0 control) replicates in direction on
-all three; strong on haiku/gpt-4o-mini, borderline on Llama (CI lower bound 0.000).
-The aggregate reasoning−filter delta is dilution-limited (rescue fires on ~9% of
-queries), so the *rescued subset* is the result that travels, not the average.
+all four; strong on haiku/gpt-4o-mini/qwen, borderline on Llama (CI lower bound
+0.000). The aggregate reasoning−filter delta is dilution-limited (rescue fires on
+~9% of queries), so the *rescued subset* is the result that travels, not the
+average.
+
+> **Scope note (see [CONTEXT_DILUTION.md](CONTEXT_DILUTION.md)):** this entire
+> experiment runs at *small* contexts (gold + 8 distractors, generous budget) — the
+> regime where the second-hop tax lives. At *large* contexts (~30k tokens), a
+> different effect dominates (dilution), pruning *recovers* accuracy, and the
+> bridge-aware advantage washes out. The two findings live at different context
+> scales and should not be conflated.
 
 ## The headline is not what we expected — and it's stronger for the thesis
 

@@ -1,0 +1,29 @@
+scoring 120 queries × 4 conds (model=openai/gpt-4o-mini); 480 uncached
+  ...50/480
+  ...100/480
+  ...150/480
+  ...200/480
+  ...250/480
+  ...300/480
+  ...350/480
+  ...400/480
+  ...450/480
+
+──── downstream QA by condition (n=120, openai/gpt-4o-mini) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.729        16%
+  ctx_polluted          0.597        28%
+  ctx_pruned            0.699        18%
+  ctx_topk              0.712        15%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  DILUTION: pruned − polluted (recovery):  +0.102  [+0.040, +0.167]  ✓ sig
+  bridge-aware: pruned − topk          :  -0.013  [-0.067, +0.037]  ~ ns
+  ceiling gap: gold − polluted         :  +0.132  [+0.067, +0.205]  ✓ sig
+
+  second-hop-rescued subset (pruned kept it, topk dropped): n=0
+
+  Read: pruned−polluted > 0 ⇒ dilution is real and pruning recovers
+  accuracy (the library earns its keep at large windows). ≈ 0 ⇒ the
+  model handles the bloat fine and the optimizer adds no accuracy.

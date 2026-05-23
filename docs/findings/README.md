@@ -38,7 +38,8 @@ in full as the template model.
 | Finding | Status | Headline | Reproduce |
 | ------- | ------ | -------- | --------- |
 | [SECOND_HOP_TAX](SECOND_HOP_TAX.md) | **Confirmed** (n=1327, CIs) | Every relevance-based selection taxes the multi-hop second hop; a 0.30 filter keeps only 44% of second hops | `cargo run -p redhop-examples --example second_hop_retention --release` |
-| [REASONING_PRESERVATION](REASONING_PRESERVATION.md) | **Confirmed** (n=300, CIs) | ReasoningPreserving beats aggressive filtering end-to-end (+0.035, CI excl. 0); gain causally localized to gold reachability (+0.173 rescued / ~0 control) | `python ../neorag/scripts/score_reasoning_qa.py --n 300` |
+| [REASONING_PRESERVATION](REASONING_PRESERVATION.md) | **Confirmed** (4 models, n=300, CIs) | Aggressive filtering is net-harmful on all 4 models (−0.06 to −0.15); rescued-subset gain +0.15 to +0.23. Distractor-sensitivity splits by tier not age (non-frontier hurt, frontier inert) | `python python/eval/score_reasoning_qa.py --n 300 --model <id>` |
+| [CONTEXT_DILUTION](CONTEXT_DILUTION.md) | **Confirmed (conditional)** (3 models, n=200, CIs) | At ~30k-token contexts, stuffing-it-all-in collapses accuracy; pruning recovers it where dilution bites (gpt-4o-mini +0.211) but is null on dilution-robust models. Win is generic pruning, not ReasoningPreserving | `cargo run -p redhop-examples --example emit_dilution --release` + `python python/eval/score_dilution.py --n 200 --model <id>` |
 | [RERANKING_LIMITS](RERANKING_LIMITS.md) | **Falsified hypothesis** | "A stronger reranker recovers dense's missed recall" — uniform cross-encoder made recall *worse* (−0.029); helps 12% / hurts 17% | `cargo run -p redhop-examples --example ce_escalation_economics --features onnx --release` |
 | [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md) | **Partially falsified** | "Distractor filtering is a free win" — distractors hurt (causal, +0.033), but filtering's net benefit is sign-unstable on multi-hop (the n=20→30 flip) | `cargo run -p redhop-examples --example emit_qa_contexts --release` |
 | [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md) | **Confirmed** | Distractors hurt & density helps on real LLM outputs (pooled −0.375 / +0.539); max-density pruning drops the second hop | `cargo run -p redhop-examples --example context_economics --features onnx --release` |
@@ -72,6 +73,7 @@ built around that measured geometry.
 ## APIs grounded in this evidence
 
 - `build_context(strategy = ReasoningPreserving)` → [SECOND_HOP_TAX](SECOND_HOP_TAX.md), [REASONING_PRESERVATION](REASONING_PRESERVATION.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
+- `build_context` as dilution-pruner at large contexts (generic pruning, size-gated) → [CONTEXT_DILUTION](CONTEXT_DILUTION.md)
 - `build_context(strategy = DistractorFiltered)` (low threshold only) → [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
 - selective reranker escalation (not uniform) → [RERANKING_LIMITS](RERANKING_LIMITS.md)
 - conservative adaptive controller (zero-harm, retriever-coupled actions) → [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md), [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md)

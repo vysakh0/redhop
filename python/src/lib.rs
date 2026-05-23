@@ -26,10 +26,11 @@ fn strategy_from_str(s: &str) -> PyResult<ContextStrategy> {
         "redundancy_pruned" => ContextStrategy::RedundancyPruned,
         "max_density" => ContextStrategy::MaxDensity,
         "reasoning_preserving" => ContextStrategy::ReasoningPreserving,
+        "auto" => ContextStrategy::Auto,
         other => {
             return Err(PyValueError::new_err(format!(
                 "unknown strategy '{other}' (expected: raw_topk, distractor_filtered, \
-                 redundancy_pruned, max_density, reasoning_preserving)"
+                 redundancy_pruned, max_density, reasoning_preserving, auto)"
             )))
         }
     })
@@ -42,6 +43,7 @@ fn strategy_to_str(s: ContextStrategy) -> &'static str {
         ContextStrategy::RedundancyPruned => "redundancy_pruned",
         ContextStrategy::MaxDensity => "max_density",
         ContextStrategy::ReasoningPreserving => "reasoning_preserving",
+        ContextStrategy::Auto => "auto",
     }
 }
 
@@ -115,6 +117,7 @@ fn config(
     token_budget: usize,
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
 ) -> PyResult<ContextConfig> {
     let strat = match strategy {
@@ -126,6 +129,7 @@ fn config(
         strategy: strat,
         distractor_min_grounding,
         link_min_jaccard,
+        auto_passthrough_max_tokens,
         redundancy_max_cosine,
     })
 }
@@ -251,7 +255,7 @@ impl BuiltContext {
 
 #[pyfunction]
 #[pyo3(signature = (query, retrieved_chunks, strategy=None, token_budget=8192,
-       distractor_min_grounding=0.10, link_min_jaccard=0.12, redundancy_max_cosine=0.92))]
+       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92))]
 #[allow(clippy::too_many_arguments)]
 fn build_context(
     query: &str,
@@ -260,9 +264,10 @@ fn build_context(
     token_budget: usize,
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
 ) -> PyResult<BuiltContext> {
-    let cfg = config(strategy, token_budget, distractor_min_grounding, link_min_jaccard, redundancy_max_cosine)?;
+    let cfg = config(strategy, token_budget, distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens, redundancy_max_cosine)?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let before = rh_analyze(&q, &retrieved, &cfg);
@@ -277,17 +282,19 @@ fn build_context(
 
 #[pyfunction]
 #[pyo3(signature = (query, retrieved_chunks, strategy=None,
-       distractor_min_grounding=0.10, link_min_jaccard=0.12, redundancy_max_cosine=0.92))]
+       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92))]
+#[allow(clippy::too_many_arguments)]
 fn filter_context(
     query: &str,
     retrieved_chunks: &Bound<'_, PyAny>,
     strategy: Option<String>,
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
 ) -> PyResult<BuiltContext> {
     // filter = build with no budget truncation.
-    let cfg = config(strategy, usize::MAX, distractor_min_grounding, link_min_jaccard, redundancy_max_cosine)?;
+    let cfg = config(strategy, usize::MAX, distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens, redundancy_max_cosine)?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let before = rh_analyze(&q, &retrieved, &cfg);
@@ -301,14 +308,20 @@ fn filter_context(
 }
 
 #[pyfunction]
-#[pyo3(signature = (query, retrieved_chunks, distractor_min_grounding=0.10, link_min_jaccard=0.12))]
+#[pyo3(signature = (query, retrieved_chunks, strategy=None, distractor_min_grounding=0.10,
+       link_min_jaccard=0.12, auto_passthrough_max_tokens=1500))]
 fn analyze_context(
     query: &str,
     retrieved_chunks: &Bound<'_, PyAny>,
+    strategy: Option<String>,
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: usize,
 ) -> PyResult<ContextReport> {
-    let cfg = config(None, usize::MAX, distractor_min_grounding, link_min_jaccard, 0.92)?;
+    // strategy is recorded on the report; with "auto" the reported strategy is
+    // the gate's decision for this input (passthrough vs prune) — pure diagnostics.
+    let cfg = config(strategy, usize::MAX, distractor_min_grounding, link_min_jaccard,
+                     auto_passthrough_max_tokens, 0.92)?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let report = rh_analyze(&q, &retrieved, &cfg);
@@ -324,7 +337,7 @@ fn context_economics(
     distractor_min_grounding: f32,
     link_min_jaccard: f32,
 ) -> PyResult<String> {
-    let cfg = config(None, usize::MAX, distractor_min_grounding, link_min_jaccard, 0.92)?;
+    let cfg = config(None, usize::MAX, distractor_min_grounding, link_min_jaccard, 8_000, 0.92)?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
     let econ = rh_economics(&q, &retrieved, &cfg);

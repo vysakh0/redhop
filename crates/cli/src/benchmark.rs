@@ -42,6 +42,7 @@ pub struct Args {
     distractor_min_grounding: f32,
     #[arg(long, default_value_t = 0.12)]
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: 8_000,
     /// Directory for results.json + SUMMARY.md.
     #[arg(long, default_value = "redhop_bench_out")]
     out_dir: String,
@@ -126,6 +127,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                     strategy: strat,
                     distractor_min_grounding: a.distractor_min_grounding,
                     link_min_jaccard: a.link_min_jaccard,
+                    auto_passthrough_max_tokens: 8_000,
                     redundancy_max_cosine: 0.92,
                 };
                 let ctx = build_context(&query, &results, &cfg);

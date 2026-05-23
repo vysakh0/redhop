@@ -78,15 +78,16 @@ fn join_ctx(chunks: &[Chunk]) -> String {
         .join("\n\n")
 }
 
-fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy) -> Vec<Chunk> {
+fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy, tau: f32) -> Vec<Chunk> {
     build_context(
         query,
         &as_results(set),
         &ContextConfig {
             token_budget: 100_000, // generous: isolate the FILTER decision, not budget
             strategy,
-            distractor_min_grounding: AGGRESSIVE_THRESHOLD,
+            distractor_min_grounding: tau,
             link_min_jaccard: LINK_MIN_JACCARD,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
         },
     )
@@ -94,6 +95,12 @@ fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy) -> Vec<Chunk> 
 }
 
 fn main() -> anyhow::Result<()> {
+    // Filter threshold τ: default 0.20 (aggressive, to expose the tax);
+    // set REDHOP_FILTER_TAU=0.10 to emit at the library's conservative default.
+    let tau: f32 = std::env::var("REDHOP_FILTER_TAU")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(AGGRESSIVE_THRESHOLD);
     let mut dataset = HotpotQADataset::from_path(
         redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json"),
     )?;
@@ -169,8 +176,8 @@ fn main() -> anyhow::Result<()> {
         }
 
         let query = Query::new(&lq.text);
-        let filtered = build(&query, &polluted, ContextStrategy::DistractorFiltered);
-        let reasoning = build(&query, &polluted, ContextStrategy::ReasoningPreserving);
+        let filtered = build(&query, &polluted, ContextStrategy::DistractorFiltered, tau);
+        let reasoning = build(&query, &polluted, ContextStrategy::ReasoningPreserving, tau);
 
         let sh_in = |set: &[Chunk]| set.iter().any(|c| c.id == second.0);
         let sh_filtered = sh_in(&filtered);
@@ -212,13 +219,14 @@ fn main() -> anyhow::Result<()> {
         n += 1;
     }
 
-    let out_path = redhop_examples::exports_path("reasoning_qa_contexts.jsonl");
+    let out_name = format!("reasoning_qa_contexts_t{:02}.jsonl", (tau * 100.0).round() as i32);
+    let out_path = redhop_examples::exports_path(&out_name);
     if let Some(dir) = out_path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(&out_path, out)?;
     println!("wrote {n} gap-qualified multi-hop cases → {}", out_path.display());
-    println!("  filter threshold (aggressive): {AGGRESSIVE_THRESHOLD}");
+    println!("  filter threshold τ: {tau}");
     println!(
         "  second-hop retention (reachability): filtered {}/{} ({:.0}%), reasoning {}/{} ({:.0}%)",
         sh_kept_filtered, n, sh_kept_filtered as f32 / n.max(1) as f32 * 100.0,

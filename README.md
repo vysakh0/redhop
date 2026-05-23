@@ -145,6 +145,7 @@ See [crates/cli/README.md](crates/cli/README.md).
 ## Documentation
 
 - **Docs site** (mdBook): `docs/book/` — `mdbook serve docs/book`
+- **Retrieval & context tips** (start here): [docs/retrievaltips.md](docs/retrievaltips.md) — the operational laws and which API applies each
 - **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Evidence layer**: [docs/findings/](docs/findings/README.md) ·
   **Benchmarks**: [benchmarks/](benchmarks/README.md) ·

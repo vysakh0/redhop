@@ -165,6 +165,7 @@ fn main() -> anyhow::Result<()> {
                     strategy: strat,
                     distractor_min_grounding: DISTRACTOR_MIN_GROUNDING,
                     link_min_jaccard: LINK_MIN_JACCARD,
+                    auto_passthrough_max_tokens: 8_000,
                     redundancy_max_cosine: 1.0,
                 };
                 let ctx = build_context(&case.query, &case.retrieved, &cfg);

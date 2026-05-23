@@ -1,0 +1,72 @@
+scoring 300 queries × 4 conditions = 1200 LLM calls (model=openai/gpt-4o-mini, already cached=0)
+
+  ...25 new calls
+  ...50 new calls
+  ...75 new calls
+  ...100 new calls
+  ...125 new calls
+  ...150 new calls
+  ...175 new calls
+  ...200 new calls
+  ...225 new calls
+  ...250 new calls
+  ...275 new calls
+  ...300 new calls
+  ...325 new calls
+  ...350 new calls
+  ...375 new calls
+  ...400 new calls
+  ...425 new calls
+  ...450 new calls
+  ...475 new calls
+  ...500 new calls
+  ...525 new calls
+  ...550 new calls
+  ...575 new calls
+  ...600 new calls
+  ...625 new calls
+  ...650 new calls
+  ...675 new calls
+  ...700 new calls
+  ...725 new calls
+  ...750 new calls
+  ...775 new calls
+  ...800 new calls
+  ...825 new calls
+  ...850 new calls
+  ...875 new calls
+  ...900 new calls
+  ...925 new calls
+  ...950 new calls
+  ...975 new calls
+  ...1000 new calls
+  ...1025 new calls
+  ...1050 new calls
+  ...1075 new calls
+  ...1100 new calls
+  ...1125 new calls
+  ...1150 new calls
+  ...1175 new calls
+  ...1200 new calls
+
+──── downstream QA by condition (n=300, openai/gpt-4o-mini) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.729        14%
+  ctx_polluted          0.711        13%
+  ctx_filtered          0.680        19%
+  ctx_reasoning         0.698        19%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  distractors hurt   (gold_only − polluted):  +0.018  [-0.012, +0.049]
+  REASONING vs FILTER (reasoning − filtered):  +0.018  [-0.009, +0.045]
+      → ~ reasoning vs filter within noise at this n (CI includes 0) — report honestly
+
+──── mechanism: reachability → reasoning success (full-gold split) ────
+  RESCUED subset (reasoning kept MORE gold than filtered):  n=10
+     reasoning − filtered on rescued:  +0.067  [+0.000, +0.200]
+  CONTROL subset (IDENTICAL gold retention):                n=290
+     reasoning − filtered on control:  +0.016  [-0.011, +0.045]
+  Theory: the gain should concentrate in RESCUED (gold reachability
+  differs) and CONTROL should be ~0 (same gold). A non-zero CONTROL now
+  means the residual is NOT gold loss but junk readmission / reordering.

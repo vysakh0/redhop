@@ -29,6 +29,7 @@ pub struct Args {
     distractor_min_grounding: f32,
     #[arg(long, default_value_t = 0.12)]
     link_min_jaccard: f32,
+    auto_passthrough_max_tokens: 8_000,
     /// Optional comma-separated gold chunk ids → enables retention columns.
     #[arg(long)]
     gold_ids: Option<String>,
@@ -79,6 +80,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             strategy: strat,
             distractor_min_grounding: a.distractor_min_grounding,
             link_min_jaccard: a.link_min_jaccard,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 0.92,
         };
         let ctx = build_context(&query, &retrieved, &cfg);

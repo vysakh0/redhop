@@ -112,6 +112,51 @@ pub enum ContextStrategy {
     /// (n=300 end-to-end QA, +0.035 CI-significant, gain causally
     /// localized to gold reachability).
     ReasoningPreserving,
+    /// Size-gated policy: **decide whether to prune at all** from the input
+    /// size, because that — not the pruning algorithm — is what the
+    /// measurements show matters.
+    ///
+    /// - **Small input** (total input tokens ≤ `auto_passthrough_max_tokens`):
+    ///   pass the context through unpruned (behaves like [`RawTopK`]). Under
+    ///   headroom, relevance-based pruning is a wash-to-harmful — it can only
+    ///   remove information the model would have tolerated, and on multi-hop it
+    ///   risks the second-hop tax. So the right move is to not touch it.
+    /// - **Large input** (above the gate): the context is big enough that
+    ///   attention *dilutes* (lost-in-the-middle); stuffing it all in collapses
+    ///   accuracy, and pruning to the budget *recovers* it. Behaves like
+    ///   [`ReasoningPreserving`] (drop unlinked junk, keep seeds + linked hops,
+    ///   fill the budget).
+    ///
+    /// The load-bearing decision is the **gate (input size)**, not the pruner:
+    /// in the dilution regime any sensible pruner captures the recoverable gain
+    /// (`ReasoningPreserving` ties naive density-truncation downstream). See
+    /// `docs/findings/CONTEXT_DILUTION.md` (the size crossover, n=200, CIs) and
+    /// `docs/findings/REASONING_PRESERVATION.md` (why pruning hurts under
+    /// headroom). The gain is also model-dependent (large on dilution-sensitive
+    /// models, ~0 on models that tolerate the bloat).
+    ///
+    /// The gate default (`auto_passthrough_max_tokens` ≈ 1500) is calibrated by
+    /// a size sweep: on gpt-4o-mini, pruning recovers accuracy at every size
+    /// from ~1.5k tokens up (monotonic, CI-significant), with no harmful regime
+    /// above the gate. Tune it up to be more conservative (prune less).
+    Auto,
+}
+
+impl ContextStrategy {
+    /// Resolve a meta-strategy ([`Auto`]) to the concrete strategy it acts as
+    /// for an input of `total_input_tokens`. Concrete strategies return self.
+    fn resolve(self, total_input_tokens: usize, cfg: &ContextConfig) -> ContextStrategy {
+        match self {
+            ContextStrategy::Auto => {
+                if total_input_tokens <= cfg.auto_passthrough_max_tokens {
+                    ContextStrategy::RawTopK
+                } else {
+                    ContextStrategy::ReasoningPreserving
+                }
+            }
+            concrete => concrete,
+        }
+    }
 }
 
 /// Configuration for [`build_context`].
@@ -131,6 +176,11 @@ pub struct ContextConfig {
     /// as *linked* to a seed (and therefore rescued as a possible second
     /// hop) rather than dropped as junk. Used by `ReasoningPreserving`.
     pub link_min_jaccard: f32,
+    /// Input-size gate for [`ContextStrategy::Auto`]: at or below this many
+    /// total input tokens, Auto passes the context through unpruned; above it,
+    /// Auto prunes (the dilution regime). Provisional default pending the size
+    /// sweep — see `docs/findings/CONTEXT_DILUTION.md`.
+    pub auto_passthrough_max_tokens: usize,
 }
 
 impl Default for ContextConfig {
@@ -146,6 +196,15 @@ impl Default for ContextConfig {
             distractor_min_grounding: 0.10,
             redundancy_max_cosine: 0.92,
             link_min_jaccard: 0.12,
+            // Gate calibrated by the size sweep (CONTEXT_DILUTION.md): pruning
+            // recovers accuracy at every measured size from ~1.5k tokens up
+            // (monotonic, all CI-significant on gpt-4o-mini), with no harmful
+            // regime above it. The crossover sits below ~1.5k (between the
+            // ~0.5k/8-distractor regime where pruning is neutral and ~1.5k/50
+            // where it already helps). 1500 is the conservative low edge of the
+            // measured-benefit range: prune where we have evidence it helps,
+            // pass through below it where evidence is absent.
+            auto_passthrough_max_tokens: 1_500,
         }
     }
 }
@@ -358,8 +417,12 @@ pub fn build_context(
     let mut n_dropped_distractor = 0;
     let mut n_dropped_redundant = 0;
 
-    // Ordering / filtering per strategy.
-    match cfg.strategy {
+    // Resolve the meta-strategy (Auto) from input size before acting.
+    let total_input_tokens: usize = items.iter().map(|i| i.tokens).sum();
+    let strategy = cfg.strategy.resolve(total_input_tokens, cfg);
+
+    // Ordering / filtering per (resolved) strategy.
+    match strategy {
         ContextStrategy::RawTopK => { /* keep retrieval order */ }
         ContextStrategy::DistractorFiltered => {
             let before = items.len();
@@ -374,6 +437,8 @@ pub fn build_context(
             });
         }
         ContextStrategy::RedundancyPruned => { /* handled in the fill loop */ }
+        // Auto is resolved to a concrete strategy above; never reaches here.
+        ContextStrategy::Auto => unreachable!("Auto resolved before match"),
         ContextStrategy::ReasoningPreserving => {
             // Seeds = clearly query-relevant chunks. Rescued = below-bar
             // chunks lexically linked to a seed (shared bridge entity).
@@ -419,7 +484,7 @@ pub fn build_context(
             n_dropped_budget += 1;
             continue;
         }
-        if cfg.strategy == ContextStrategy::RedundancyPruned {
+        if strategy == ContextStrategy::RedundancyPruned {
             if let Some(e) = &item.embedding {
                 let redundant = selected.iter().any(|s| {
                     s.embedding
@@ -440,6 +505,7 @@ pub fn build_context(
     let economics = economics(&q_terms, &selected, n_distractor_total, cfg);
     let report = make_report(
         cfg,
+        strategy,
         retrieved.len(),
         n_distractor_total,
         &selected,
@@ -461,6 +527,7 @@ pub fn build_context(
 /// Assemble the [`ContextReport`] from the selection result.
 fn make_report(
     cfg: &ContextConfig,
+    strategy: ContextStrategy,
     n_input: usize,
     n_input_distractor: usize,
     selected: &[Item],
@@ -479,7 +546,7 @@ fn make_report(
     // (flagged during the ReasoningPreserving pass; 0 for other strategies).
     let rescued = selected.iter().filter(|i| i.rescued).count();
     ContextReport {
-        strategy: cfg.strategy,
+        strategy,
         token_budget: cfg.token_budget,
         total_tokens,
         token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
@@ -539,7 +606,9 @@ pub fn analyze_context(
         .count();
     let economics = economics(&q_terms, &items, n_input_distractor, cfg);
     ContextReport {
-        strategy: cfg.strategy,
+        // For Auto, report the action the gate would take on this input
+        // (passthrough vs prune) — the diagnostic answer to "should I prune?".
+        strategy: cfg.strategy.resolve(total_tokens, cfg),
         token_budget: cfg.token_budget,
         total_tokens,
         token_utilization: total_tokens as f32 / cfg.token_budget.max(1) as f32,
@@ -914,6 +983,7 @@ mod tests {
             strategy: s,
             distractor_min_grounding: 0.25,
             link_min_jaccard: 0.05,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
         }
     }
@@ -1060,6 +1130,7 @@ mod tests {
             token_budget: 1000,
             distractor_min_grounding: 0.25,
             link_min_jaccard: 0.05,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             strategy: ContextStrategy::DistractorFiltered,
         };
@@ -1125,6 +1196,7 @@ mod tests {
             strategy: ContextStrategy::ReasoningPreserving,
             distractor_min_grounding: 0.25,
             link_min_jaccard: 0.05,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
         };
         let rp = build_context(&q, &bridge_chunks(), &cfg);
@@ -1149,6 +1221,46 @@ mod tests {
     }
 
     #[test]
+    fn auto_gates_on_input_size() {
+        // bridge_chunks total ≈ 22 tokens. Auto must pass through under a high
+        // gate (don't prune small contexts) and prune under a low gate (the
+        // dilution regime). The deciding variable is input size, not the pruner.
+        let q = Query::new("what nationality was the safety lamp inventor");
+
+        // High gate → passthrough: behaves as RawTopK, keeps the junk, no rescue.
+        let big_gate = ContextConfig {
+            auto_passthrough_max_tokens: 8_000,
+            ..bridge_cfg(ContextStrategy::Auto)
+        };
+        let pass = build_context(&q, &bridge_chunks(), &big_gate);
+        assert_eq!(pass.report.strategy, ContextStrategy::RawTopK);
+        assert!(pass.chunks.iter().any(|c| c.id.as_str() == "junk"));
+        assert_eq!(pass.report.second_hop_rescue_count, 0);
+
+        // Low gate → prune: behaves as ReasoningPreserving, drops junk, rescues
+        // the linked second hop.
+        let small_gate = ContextConfig {
+            auto_passthrough_max_tokens: 10,
+            ..bridge_cfg(ContextStrategy::Auto)
+        };
+        let prune = build_context(&q, &bridge_chunks(), &small_gate);
+        assert_eq!(prune.report.strategy, ContextStrategy::ReasoningPreserving);
+        assert!(!prune.chunks.iter().any(|c| c.id.as_str() == "junk"));
+        assert!(prune.chunks.iter().any(|c| c.id.as_str() == "hop2"));
+        assert!(prune.report.second_hop_rescue_count >= 1);
+
+        // analyze_context reports the action the gate *would* take (diagnostic).
+        assert_eq!(
+            analyze_context(&q, &bridge_chunks(), &big_gate).strategy,
+            ContextStrategy::RawTopK
+        );
+        assert_eq!(
+            analyze_context(&q, &bridge_chunks(), &small_gate).strategy,
+            ContextStrategy::ReasoningPreserving
+        );
+    }
+
+    #[test]
     fn render_shows_token_delta_and_rescue() {
         let q = Query::new("what nationality was the safety lamp inventor");
         let cfg = ContextConfig {
@@ -1156,6 +1268,7 @@ mod tests {
             strategy: ContextStrategy::ReasoningPreserving,
             distractor_min_grounding: 0.25,
             link_min_jaccard: 0.05,
+            auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
         };
         let before = analyze_context(&q, &bridge_chunks(), &cfg);
@@ -1178,6 +1291,7 @@ mod tests {
             &ContextConfig {
                 distractor_min_grounding: 0.25,
                 link_min_jaccard: 0.05,
+                auto_passthrough_max_tokens: 8_000,
                 ..Default::default()
             },
         );

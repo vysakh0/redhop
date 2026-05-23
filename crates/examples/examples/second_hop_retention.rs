@@ -164,6 +164,7 @@ fn cfg(strategy: ContextStrategy, tau: f32, budget: usize) -> ContextConfig {
         strategy,
         distractor_min_grounding: tau,
         link_min_jaccard: 0.12,
+        auto_passthrough_max_tokens: 8_000,
         redundancy_max_cosine: 1.0,
     }
 }

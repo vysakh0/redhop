@@ -1,0 +1,31 @@
+scoring 200 queries × 4 conds (model=meta-llama/llama-3.3-70b-instruct); 509 uncached
+  ...50/509
+  ...100/509
+  ...150/509
+  ...200/509
+  ...250/509
+  ...300/509
+  ...350/509
+  ...400/509
+  ...450/509
+  ...500/509
+
+──── downstream QA by condition (n=200, meta-llama/llama-3.3-70b-instruct) ────
+  condition         kw_recall   refusal%
+  ────────────────────────────────────────
+  ctx_gold_only         0.701        10%
+  ctx_polluted          0.612        10%
+  ctx_pruned            0.574        26%
+  ctx_topk              0.568        23%
+
+──── decisive paired comparisons (95% bootstrap CI) ────
+  DILUTION: pruned − polluted (recovery):  -0.039  [-0.114, +0.037]  ~ ns
+  bridge-aware: pruned − topk          :  +0.005  [-0.045, +0.055]  ~ ns
+  ceiling gap: gold − polluted         :  +0.089  [+0.014, +0.159]  ✓ sig
+
+  second-hop-rescued subset (pruned kept it, topk dropped): n=2
+     pruned − topk on rescued:  +0.500  [+0.000, +1.000]
+
+  Read: pruned−polluted > 0 ⇒ dilution is real and pruning recovers
+  accuracy (the library earns its keep at large windows). ≈ 0 ⇒ the
+  model handles the bloat fine and the optimizer adds no accuracy.

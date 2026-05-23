@@ -51,13 +51,21 @@ def build_context(
     *,
     distractor_min_grounding: float = 0.10,
     link_min_jaccard: float = 0.12,
+    auto_passthrough_max_tokens: int = 1500,
     redundancy_max_cosine: float = 0.92,
 ) -> BuiltContext:
     """Assemble a finite-attention context. Returns a :class:`BuiltContext`
-    with ``.text()`` (the prompt string) and ``.report`` (telemetry)."""
+    with ``.text()`` (the prompt string) and ``.report`` (telemetry).
+
+    ``strategy="auto"`` is the size-gated policy: pass the context through
+    unchanged when it is small (pruning is wash-to-harmful under headroom), and
+    prune only when the input exceeds ``auto_passthrough_max_tokens`` (the
+    large-context dilution regime, where pruning recovers accuracy). See
+    ``docs/findings/CONTEXT_DILUTION.md``."""
     return _build_context(
         query, list(retrieved_chunks), strategy, token_budget,
-        distractor_min_grounding, link_min_jaccard, redundancy_max_cosine,
+        distractor_min_grounding, link_min_jaccard,
+        auto_passthrough_max_tokens, redundancy_max_cosine,
     )
 
 
@@ -68,13 +76,15 @@ def filter_context(
     *,
     distractor_min_grounding: float = 0.10,
     link_min_jaccard: float = 0.12,
+    auto_passthrough_max_tokens: int = 1500,
     redundancy_max_cosine: float = 0.92,
 ) -> BuiltContext:
     """Filter junk without budget truncation ("clean it up, I'll manage the
     budget"). Returns a :class:`BuiltContext`."""
     return _filter_context(
         query, list(retrieved_chunks), strategy,
-        distractor_min_grounding, link_min_jaccard, redundancy_max_cosine,
+        distractor_min_grounding, link_min_jaccard,
+        auto_passthrough_max_tokens, redundancy_max_cosine,
     )
 
 
@@ -82,13 +92,20 @@ def analyze_context(
     query: str,
     retrieved_chunks: Sequence[Chunk],
     *,
+    strategy: str | None = None,
     distractor_min_grounding: float = 0.10,
     link_min_jaccard: float = 0.12,
+    auto_passthrough_max_tokens: int = 1500,
 ) -> ContextReport:
     """Characterize a retrieved set **without** modifying it (pure diagnostics):
-    distractor load, evidence density, and rescuable second-hop candidates."""
+    distractor load, evidence density, and rescuable second-hop candidates.
+
+    Pass ``strategy="auto"`` to ask *"would the size gate prune this?"* — the
+    returned ``report.strategy`` is the decision (``"raw_topk"`` = pass through,
+    ``"reasoning_preserving"`` = prune) without modifying the context."""
     return _analyze_context(
-        query, list(retrieved_chunks), distractor_min_grounding, link_min_jaccard,
+        query, list(retrieved_chunks), strategy,
+        distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens,
     )
 
 
