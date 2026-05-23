@@ -1,14 +1,18 @@
 
 ==== CUAD (contracts) — answer-span retention  (budget 2000 tok, BM25, n=300) ====
-  system       avg tokens  mean recall   ≥0.5   ≥0.8
-  --------------------------------------------------
-  redhop             1822         0.89    94%    79%
-  langchain          1813         0.87    93%    73%
-  llamaindex         1806         0.93    96%    86%
+  system           avg tokens  mean recall   ≥0.5   ≥0.8
+  ------------------------------------------------------
+  redhop[reason]         1822         0.89    94%    79%
+  redhop[density]        1830         0.85    91%    71%
+  redhop[topk]           1826         0.91    95%    83%
+  langchain              1813         0.87    93%    73%
+  llamaindex             1806         0.93    96%    86%
 
 ==== HotpotQA (multi-hop) — supporting-sentence retention  (budget 400 tok, BM25, n=300) ====
-  system       avg tokens  mean recall   ≥0.5   ≥0.8
-  --------------------------------------------------
-  redhop              292         0.81    92%    56%
-  langchain           328         0.88    96%    71%
-  llamaindex          329         0.88    96%    72%
+  system           avg tokens  mean recall   ≥0.5   ≥0.8
+  ------------------------------------------------------
+  redhop[reason]          292         0.81    92%    56%
+  redhop[density]         292         0.71    78%    40%
+  redhop[topk]            292         0.80    92%    54%
+  langchain               328         0.88    96%    71%
+  llamaindex              329         0.88    96%    72%

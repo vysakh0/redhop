@@ -74,9 +74,9 @@ def fill(ordered: list[str], budget: int) -> str:
 
 # ---- the three systems: (doc_text, query, budget) -> assembled context ----
 
-def ctx_redhop(doc_text: str, query: str, budget: int) -> str:
+def ctx_redhop(doc_text: str, query: str, budget: int, strategy: str = "reasoning_preserving") -> str:
     doc = redhop.Document.from_text(
-        doc_text, strategy="reasoning_preserving", token_budget=budget, candidate_k=CANDIDATE_K
+        doc_text, strategy=strategy, token_budget=budget, candidate_k=CANDIDATE_K
     )
     return doc.context(query).text()
 
@@ -104,7 +104,17 @@ def ctx_llamaindex(doc_text: str, query: str, budget: int) -> str:
     return fill([h.node.get_content() for h in hits], budget)
 
 
-SYSTEMS = {"redhop": ctx_redhop, "langchain": ctx_langchain, "llamaindex": ctx_llamaindex}
+SYSTEMS = {
+    # RedHop variants isolate whether the gap is the *strategy* (dropping /
+    # under-filling) or the pipeline: reasoning_preserving drops unlinked
+    # low-relevance chunks; max_density / raw_topk fill the budget like the
+    # other frameworks do.
+    "redhop[reason]": lambda d, q, b: ctx_redhop(d, q, b, "reasoning_preserving"),
+    "redhop[density]": lambda d, q, b: ctx_redhop(d, q, b, "max_density"),
+    "redhop[topk]": lambda d, q, b: ctx_redhop(d, q, b, "raw_topk"),
+    "langchain": ctx_langchain,
+    "llamaindex": ctx_llamaindex,
+}
 
 
 def evaluate(items, budget: int, label: str):
@@ -125,14 +135,15 @@ def evaluate(items, budget: int, label: str):
             a["r80"] += int(r >= 0.8)
             a["n"] += 1
 
-    print(f"\n==== {label}  (budget {budget} tok, BM25, n={agg['redhop']['n']}) ====")
-    print(f"  {'system':<12} {'avg tokens':>10} {'mean recall':>12} {'≥0.5':>6} {'≥0.8':>6}")
-    print("  " + "-" * 50)
+    n_items = next(iter(agg.values()))["n"]
+    print(f"\n==== {label}  (budget {budget} tok, BM25, n={n_items}) ====")
+    print(f"  {'system':<16} {'avg tokens':>10} {'mean recall':>12} {'≥0.5':>6} {'≥0.8':>6}")
+    print("  " + "-" * 54)
     for name in SYSTEMS:
         a = agg[name]
         n = max(a["n"], 1)
         print(
-            f"  {name:<12} {a['tok'] / n:>10.0f} {a['rec'] / n:>12.2f} "
+            f"  {name:<16} {a['tok'] / n:>10.0f} {a['rec'] / n:>12.2f} "
             f"{100 * a['r50'] / n:>5.0f}% {100 * a['r80'] / n:>5.0f}%"
         )
 
