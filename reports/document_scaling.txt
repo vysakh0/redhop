@@ -1,0 +1,11 @@
+Document scaling (local, no LLM) — /Users/vysakh/projects/neorag1/crates/examples/../../data/cuad/cuad_sample.json
+  pooled contracts available: 50   queries/size: 25
+
+  contracts    tokens   chunks   chunk_ms   index_ms   q_p50_ms   q_p95_ms
+          1      6655       29        1.2        5.3       1.74       2.07
+          5     23429      100        2.3        4.4       1.75       1.89
+         15    138786      596       10.8        6.9       1.83       1.96
+         30    270856     1160       20.7        9.9       1.85       2.02
+         50    467433     2008       37.6       14.3       1.88       2.06
+
+(For peak RSS: run this under `/usr/bin/time -l`.)

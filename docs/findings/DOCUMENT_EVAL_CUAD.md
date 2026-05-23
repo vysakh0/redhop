@@ -77,18 +77,69 @@ Reading:
 - **No crashes under any perturbation** (after the query-sanitization fix below) —
   the runtime degrades gracefully, it does not fall over.
 - **Duplication is the real stressor.** Triplicating the document drops
-  end-to-end ≥0.8 retention from 88% → **70%**: the default path does *not*
-  deduplicate, so duplicate chunks fill the candidate set and the token budget,
-  crowding out unique evidence. (The retrieval ceiling also dips, 98%→90%,
-  because duplicates displace the gold chunk from the top-20.) This is an honest
-  limitation, not a bug — and it points at `RedundancyPruned`/dedup-awareness for
-  known-duplicated corpora, a measured future option, **not** a default change
-  here.
+  end-to-end ≥0.8 retention from 88% → **70%**: the default `Auto` path does
+  *not* deduplicate, so duplicate chunks fill the candidate set and the token
+  budget, crowding out unique evidence. (The retrieval ceiling also dips,
+  98%→90%, because duplicates displace the gold chunk from the top-20.) The
+  dedup follow-up below fixes this for duplicated corpora.
 - **Moderate OCR fragmentation is tolerated.** Splitting 15% of long words
   mid-word barely moves the retrieval ceiling (98%) and only nudges end-to-end
   ≥0.8 retention 88%→85% — BM25 still matches on the unsplit majority of query
   terms. Heavier fragmentation would degrade more; this motivates semantic
   retrieval as a future option, not a present claim.
+
+## Dedup follow-up — RedundancyPruned for duplicated corpora (measured)
+
+Does `RedundancyPruned` recover the `dup` regime? **First measurement: no** —
+because the local/BM25 `Document` path produces chunks **without embeddings**,
+and `RedundancyPruned` originally deduplicated only via embedding cosine, so it
+was structurally inert here (`removed.redundant` = 0; the small 70→76 wobble was
+just RawTopK-order vs ReasoningPreserving-reorder, not dedup).
+
+The fix is an **embedding-free lexical near-duplicate guard**: when embeddings
+are absent, `RedundancyPruned` drops chunks with term-set Jaccard ≥ 0.9 against
+an already-selected chunk. Re-measured on `dup`:
+
+| dup regime | end-to-end mean recall | ≥0.5 | ≥0.8 | reduction |
+| ---------- | ---------------------- | ---- | ---- | --------- |
+| `Auto` (default, no dedup) | 0.86 | 92% | 70% | −93% |
+| `RedundancyPruned` (lexical dedup) | **0.94** | **97%** | **89%** | −94% |
+| (reference: no duplication, `Auto`) | 0.93 | 96% | 88% | −80% |
+
+**Lexical dedup fully recovers retention** on duplicated corpora — 70% → 89%
+≥0.8, matching the non-duplicated baseline (88%) — at no extra latency and
+without an embedding model. So for known-duplicated/messy corpora the guidance is
+`strategy="redundancy_pruned"`; the **default `Auto` stays unchanged** (no
+evidence to flip the default, and most corpora aren't triplicated). This is the
+measure→fix→measure loop: the gap was real, the fix is bounded (dedup, not a new
+strategy), and it's justified by the number.
+
+## Performance & memory scaling
+
+Concatenating contracts into one document and growing it (`eval_document_scaling`,
+25 queries/size, local, no LLM):
+
+| contracts | tokens | chunks | chunk ms | index ms | query p50 | query p95 |
+| --------- | ------ | ------ | -------- | -------- | --------- | --------- |
+| 1  | 6,655   | 29    | 1.2  | 5.3  | 1.74ms | 2.07ms |
+| 5  | 23,429  | 100   | 2.3  | 4.4  | 1.75ms | 1.89ms |
+| 15 | 138,786 | 596   | 10.8 | 6.9  | 1.83ms | 1.96ms |
+| 30 | 270,856 | 1,160 | 20.7 | 9.9  | 1.85ms | 2.02ms |
+| 50 | 467,433 | 2,008 | 37.6 | 14.3 | 1.88ms | 2.06ms |
+
+Peak RSS for the whole sweep (dominated by the 467k-token doc): **90 MB**.
+
+Reading:
+- **Per-query latency is flat (~1.8ms) regardless of document size** — 6.7k →
+  467k tokens barely moves it. BM25 index lookup is independent of corpus size,
+  so `doc.context(query)` stays sub-2ms even on a half-million-token document.
+- Chunking is linear in text size (~0.08ms per 1k tokens); the lazy index builds
+  in <15ms even at 2,000 chunks. A ~467k-token document is ready to query in
+  <40ms total.
+- **Local-first holds:** <100MB RSS, no vector infra, no network. The whole
+  in-memory BM25 index for half a million tokens fits comfortably.
+- Today indexing is **one-shot and lazy** (built on first query). Incremental /
+  add-more-text indexing is a future option, not built (no need surfaced yet).
 
 ## Bug found and fixed by this eval
 
@@ -123,5 +174,5 @@ crash internal retrieval. (`crates/retrieval/src/bm25.rs`.)
 
 1. **Tier 3 (LLM):** does the assembled context answer CUAD clauses as well as
    the full contract? The claim that closes the loop — spends credits.
-2. Dedup-aware handling for known-duplicated corpora (measure `RedundancyPruned`
-   on the `dup` regime before any default change).
+2. ~~Dedup for duplicated corpora~~ **(done — RedundancyPruned now does
+   embedding-free lexical dedup; recovers `dup` retention 70%→89%.)**

@@ -162,6 +162,19 @@ fn main() -> anyhow::Result<()> {
     let candidate_k = DocumentConfig::default().candidate_k;
     // Tier-2 robustness: REDHOP_CUAD_PERTURB = none (default) | dup | ocr.
     let mode = std::env::var("REDHOP_CUAD_PERTURB").unwrap_or_else(|_| "none".into());
+    // Strategy override for the end-to-end path (default = Auto).
+    let strategy = match std::env::var("REDHOP_DOC_STRATEGY").as_deref() {
+        Ok("raw_topk") => ContextStrategy::RawTopK,
+        Ok("distractor_filtered") => ContextStrategy::DistractorFiltered,
+        Ok("redundancy_pruned") => ContextStrategy::RedundancyPruned,
+        Ok("max_density") => ContextStrategy::MaxDensity,
+        Ok("reasoning_preserving") => ContextStrategy::ReasoningPreserving,
+        _ => ContextStrategy::Auto,
+    };
+    let e2e_cfg = || DocumentConfig {
+        context: ContextConfig { strategy, ..DocumentConfig::default().context },
+        ..DocumentConfig::default()
+    };
 
     let mut end_to_end = Acc::default();
     let mut retrieval_only = Acc::default();
@@ -174,7 +187,7 @@ fn main() -> anyhow::Result<()> {
             let context = perturb(&para.context, &mode);
             // Default Document (Auto + budget) — the product path.
             let t0 = Instant::now();
-            let mut doc = match Document::from_text(&c.title, &context) {
+            let mut doc = match Document::from_text_with(&c.title, &context, e2e_cfg()) {
                 Ok(d) => d,
                 Err(_) => continue,
             };
@@ -226,7 +239,7 @@ fn main() -> anyhow::Result<()> {
     let q = end_to_end.n.max(1) as f64;
 
     println!("CUAD Document eval (no LLM) — {}", path.display());
-    println!("  perturbation: {mode}");
+    println!("  perturbation: {mode}   strategy: {strategy:?}");
     println!("  contracts: {n_contracts}   answerable queries: {}", end_to_end.n);
     println!("  candidate_k: {candidate_k}   budget: {} tok\n", DocumentConfig::default().context.token_budget);
 

@@ -70,6 +70,11 @@ use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
+/// Term-set Jaccard at/above which two chunks are treated as near-exact
+/// lexical duplicates by `RedundancyPruned` when embeddings are absent (the
+/// local/BM25 path). High by design — only near-identical chunks are dropped.
+const NEAR_DUP_JACCARD: f32 = 0.9;
+
 /// How to allocate the token budget across retrieved chunks.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -625,17 +630,26 @@ pub fn build_context(
             continue;
         }
         if strategy == ContextStrategy::RedundancyPruned {
-            if let Some(e) = &item.embedding {
-                let redundant = selected.iter().any(|s| {
+            let redundant = match &item.embedding {
+                // Embeddings present: semantic redundancy via cosine.
+                Some(e) => selected.iter().any(|s| {
                     s.embedding
                         .as_ref()
                         .map(|se| cosine(e, se) > cfg.redundancy_max_cosine)
                         .unwrap_or(false)
-                });
-                if redundant {
-                    n_dropped_redundant += 1;
-                    continue;
-                }
+                }),
+                // No embeddings (the local/BM25 path): fall back to a near-exact
+                // *lexical* duplicate test (term-set Jaccard). This makes
+                // RedundancyPruned actually dedup duplicated/messy corpora
+                // without requiring an embedding model. Measured on CUAD `dup`:
+                // see docs/findings/DOCUMENT_EVAL_CUAD.md.
+                None => selected
+                    .iter()
+                    .any(|s| jaccard(&item.c_terms, &s.c_terms) >= NEAR_DUP_JACCARD),
+            };
+            if redundant {
+                n_dropped_redundant += 1;
+                continue;
             }
         }
         total += item.tokens;
@@ -1407,6 +1421,27 @@ mod tests {
             analyze_context(&q, &bridge_chunks(), &small_gate).strategy,
             ContextStrategy::ReasoningPreserving
         );
+    }
+
+    #[test]
+    fn redundancy_pruned_dedups_lexically_without_embeddings() {
+        // The local/BM25 path has no embeddings; RedundancyPruned must still
+        // drop near-exact duplicate chunks (the CUAD `dup` regime fix).
+        let q = Query::new("rust memory safety");
+        let dup = "rust guarantees memory safety without a garbage collector";
+        let chunks = vec![
+            rr("a", dup, None),
+            rr("b", dup, None), // exact lexical duplicate, no embeddings
+            rr("c", "python is a dynamically typed scripting language", None),
+        ];
+        let cfg = ContextConfig {
+            strategy: ContextStrategy::RedundancyPruned,
+            token_budget: 1000,
+            ..Default::default()
+        };
+        let out = build_context(&q, &chunks, &cfg);
+        assert_eq!(out.report.removed.redundant, 1, "the duplicate should be dropped");
+        assert_eq!(out.chunks.iter().filter(|c| c.text == dup).count(), 1);
     }
 
     #[test]
