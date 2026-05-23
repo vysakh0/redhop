@@ -7,9 +7,10 @@
 > lexical-friendly — the *value* of escalation is real and observable. But a
 > cheap, deterministic escalation *trigger* is a **null**: neither query↔hit
 > lexical overlap nor BM25 score margin/entropy separates the regimes, and
-> conditional escalation gives no selective gain over linear interpolation. The
-> conditionality of value is confirmed; conditionality of action via a simple
-> signal is falsified.
+> conditional escalation gives no selective gain over linear interpolation.
+> **The resolution: don't trigger — bound it.** BM25-prune + *local* dense rerank
+> over the candidate pool recovers ~96% of global dense's gains at bounded cost
+> and no vector infra (Phase 4), conditional on BM25's candidate recall@K.
 > **Setup:** 25 controlled items across 5 regimes. Each has a GOLD passage
 > (semantically right, usually low lexical overlap with the query), a TRAP
 > passage (high lexical overlap, wrong meaning — a BM25 attractor), and
@@ -197,6 +198,60 @@ F1 rises in lock-step with escalation rate — **no selective gain**. To get
 near-dense F1 you escalate ~88% (≈ always-dense). There is no "capture most of
 dense's wins at near-BM25 cost."
 
+## Phase 4 — local semantic refinement over lexical topology (the resolution)
+
+Phase 3 left an impasse: dense helps, but no cheap *trigger* tells us when to
+escalate. Phase 4 dissolves it with a different shape — **don't decide whether to
+escalate; bound the semantic work instead.** BM25 prunes a large corpus to a
+candidate pool; dense reranks *only within that pool* (local), never embedding the
+whole corpus (global). Tested on a **global** HotpotQA corpus (3,957 deduped
+paragraphs, so BM25 top-50 is a real prune), arms = bm25 / global dense / local
+rerank / hybrid.
+
+**Recall@3 by subset and arm:**
+
+| subset | bm25 | global dense | local rerank | hybrid |
+| ------ | ---- | ------------ | ------------ | ------ |
+| lexical-friendly | 0.68 | 0.80 | **0.81** | 0.77 |
+| semantic-heavy | 0.50 | 0.80 | 0.79 | 0.67 |
+| ALL | 0.59 | 0.80 | **0.80** | 0.72 |
+
+**The crux — BM25 recall@50 (the ceiling local rerank can reach):** lexical
+0.987, **semantic 0.937**, ALL 0.961. Gold is almost always *in* BM25's top-50,
+even on semantic-heavy queries — BM25 just ranks it low. So dense only needs to
+*reorder the pool*, not search the corpus.
+
+**Semantic recovery:** of the 165 queries where global dense beat BM25@3, **local
+rerank recovered 158 (96%)**; only 7 (4%) genuinely needed global dense (gold fell
+outside the top-50).
+
+**Compute:** dense work is bounded to 50 candidates (cosine **0.019 ms**) vs
+global search 0.505 ms over 3,957 — and **no global ANN / vector index** is
+required; BM25 (which scales trivially) does the corpus-wide pruning.
+
+Reading:
+- **Local rerank matches global dense** (0.80 = 0.80) and **beats naive hybrid**
+  (0.72) — no fusion poisoning, because dense *reorders* rather than *votes
+  against* BM25.
+- **It resolves the no-trigger problem.** You don't detect when to escalate;
+  local rerank is bounded and cheap enough to run **always** over the BM25
+  candidates. "Lexical topology first, semantic refinement second" —
+  unconditionally.
+- **The honest cap is BM25 *candidate* recall.** It works here because BM25
+  recall@50 is 0.94 even on semantic-heavy (there's *partial* lexical overlap to
+  surface gold at depth 50). On **pure-synonym** mismatch (the controlled probe,
+  where gold shared ~0 query terms), BM25 candidate recall would collapse and
+  local rerank would degrade toward BM25 — only global dense could help. The 4%
+  "global-dense-only" residual is exactly that tail.
+- **Compute is bounded, not free.** The embedder cost is real — it's K candidate
+  embeddings (at query time) or the corpus (precomputed once). Local rerank's win
+  is *bounding dense to K and dropping the global ANN*, not eliminating the model.
+
+This is a **retrieval-runtime hypothesis, now supported** (not a new algorithm):
+on workloads where BM25 has decent first-stage *candidate* recall, BM25-prune +
+local dense rerank recovers ~all of global dense's quality at bounded cost and no
+vector infra.
+
 ## Bottom line — answering the systems question honestly
 
 > *Can retrieval sophistication itself become conditional and observable?*
@@ -217,17 +272,23 @@ dense's wins at near-BM25 cost."
   A trigger would only matter if dense were *wasteful* on lexical-friendly
   queries, and the data says it isn't.
 
-The "lexical-first + conditional dense escalation" idea is therefore **half
-confirmed, half falsified**: the conditionality of *value* is real; the
-conditionality of *action via a cheap trigger* is not. We document the null
-rather than ship a trigger that doesn't work.
+**The resolution (Phase 4):** the trigger was the wrong frame. Instead of
+deciding *when* to pay for global dense, **bound the dense work to BM25's
+candidate pool and always rerank it locally** — recovering ~96% of global dense's
+gains at bounded cost and no vector infra. So:
+
+> **Lexical topology first → local semantic refinement second → runtime
+> economics always visible.** No global ANN, no escalation trigger.
+
+This is RedHop's retrieval-runtime direction, now evidence-backed — *conditional
+on BM25 having decent first-stage candidate recall* (the honest cap; pure-synonym
+workloads with ~zero lexical overlap still need global dense for the residual).
 
 ## Next (open, honest)
 
-- A learned/threshold trigger on *richer* signals (BM25 score calibrated to the
-  corpus, query length/specificity, answer-type) might separate the regimes —
-  but that risks an ML classifier, which is out of scope here. Documented as
-  open, not pursued.
-- A second natural dataset with a stronger semantic-heavy tail (MS MARCO
-  paraphrase, or a deliberately reformulated query set) would test whether the
-  "dense weakly dominates" result is HotpotQA-specific.
+- **Wire BM25-prune + local rerank into the `Document` path** (behind the onnx
+  feature) as the semantic-capable retrieval mode — the product payoff of Phase 4.
+- **Tier-3 on the local-rerank arm:** recall = global dense here, and Phase 2
+  showed dense's recall→answer link, so answer F1 should follow — but verify.
+- A second dataset with a stronger semantic tail (MS MARCO / reformulated queries)
+  to test where BM25 candidate recall@K finally breaks (the local-rerank cap).

@@ -157,3 +157,8 @@ required-features = ["onnx"]
 name = "semantic_natural"
 path = "examples/semantic_natural.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "semantic_local_rerank"
+path = "examples/semantic_local_rerank.rs"
+required-features = ["onnx"]
