@@ -122,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
     // Queries with gold chunk ids (supporting titles present in the pool).
     struct QItem {
         question: String,
+        answer: String,
         gold: HashSet<String>,
         overlap: f32,
     }
@@ -143,10 +144,15 @@ async fn main() -> anyhow::Result<()> {
             .join(" ");
         qs.push(QItem {
             question: ex.question.clone(),
+            answer: ex.answer.clone(),
             overlap: grounding_score(&ex.question, &gold_text),
             gold,
         });
     }
+    let text_by_id: HashMap<String, String> = chunks
+        .iter()
+        .map(|c| (c.id.as_str().to_string(), c.text.clone()))
+        .collect();
 
     println!(
         "global corpus: {} unique paragraphs; {} queries; K_cand={K_CAND}, top-{TOP_K}",
@@ -207,6 +213,7 @@ async fn main() -> anyhow::Result<()> {
                                                                // bm25@TOP_K missed, how often does local_rerank recover?
     let (mut recov_total, mut recov_local, mut recov_global_only) = (0usize, 0usize, 0usize);
     let (mut t_bm25, mut t_dense, mut t_local) = (0.0f64, 0.0f64, 0.0f64);
+    let mut emit = String::new(); // per-arm contexts for Tier-3
 
     for (qi, q) in qs.iter().enumerate() {
         let subset = if q.overlap <= median {
@@ -284,7 +291,59 @@ async fn main() -> anyhow::Result<()> {
                 recov_global_only += 1;
             }
         }
+
+        // Emit per-arm top-TOP_K contexts for Tier-3 answer scoring.
+        let join = |texts: Vec<String>| texts.join("\n\n");
+        let ctx = [
+            (
+                "bm25",
+                join(
+                    cand.iter()
+                        .take(TOP_K)
+                        .map(|r| r.chunk.text.clone())
+                        .collect(),
+                ),
+            ),
+            (
+                "global_dense",
+                join(
+                    gd.iter()
+                        .take(TOP_K)
+                        .map(|r| r.chunk.text.clone())
+                        .collect(),
+                ),
+            ),
+            (
+                "local_rerank",
+                join(
+                    scored
+                        .iter()
+                        .take(TOP_K)
+                        .map(|(id, _)| text_by_id[*id].clone())
+                        .collect(),
+                ),
+            ),
+            (
+                "hybrid",
+                join(
+                    hyb.iter()
+                        .take(TOP_K)
+                        .map(|r| r.chunk.text.clone())
+                        .collect(),
+                ),
+            ),
+        ];
+        for (arm, c) in ctx {
+            emit.push_str(&serde_json::to_string(&serde_json::json!({
+                "id": qi, "subset": subset, "arm": arm,
+                "question": q.question, "gold_answer": q.answer, "context": c,
+            }))?);
+            emit.push('\n');
+        }
     }
+    let out = redhop_examples::exports_path("semantic_local_rerank_contexts.jsonl");
+    std::fs::create_dir_all(out.parent().unwrap())?;
+    std::fs::write(&out, emit)?;
 
     // ── Tables ──
     println!("\nRecall@{TOP_K} by subset and arm (median overlap split {median:.3})");

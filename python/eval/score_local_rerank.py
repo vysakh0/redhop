@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Tier-3 for the local-rerank experiment: does local rerank's recall match
+global dense on downstream ANSWER quality (not just retrieval)?
+
+Reads exports/semantic_local_rerank_contexts.jsonl (per (item, arm): the top-K
+context + question + gold answer + subset), answers each with gpt-4o-mini, scores
+SQuAD-style F1/EM by arm × subset. Parallel, cached, resumable. Needs
+OPENROUTER_API_KEY.
+
+Run:  python python/eval/score_local_rerank.py [--n 0=all]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import string
+import urllib.request
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+CONTEXTS = REPO / "exports" / "semantic_local_rerank_contexts.jsonl"
+CACHE = REPO / "exports" / "semantic_local_rerank_cache.json"
+MODEL = "openai/gpt-4o-mini"
+ARMS = ["bm25", "global_dense", "local_rerank", "hybrid"]
+
+
+def norm(s: str) -> str:
+    s = "".join(c for c in s.lower() if c not in string.punctuation)
+    return " ".join(re.sub(r"\b(a|an|the)\b", " ", s).split())
+
+
+def f1(pred: str, gold: str) -> float:
+    p, g = norm(pred).split(), norm(gold).split()
+    if not p or not g:
+        return float(p == g)
+    same = sum((Counter(p) & Counter(g)).values())
+    if same == 0:
+        return 0.0
+    prec, rec = same / len(p), same / len(g)
+    return 2 * prec * rec / (prec + rec)
+
+
+def em(pred: str, gold: str) -> float:
+    return float(norm(pred) == norm(gold))
+
+
+def ask(prompt: str) -> str:
+    key = os.environ["OPENROUTER_API_KEY"]
+    body = json.dumps(
+        {"model": MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0}
+    ).encode()
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=body,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read())["choices"][0]["message"]["content"].strip()
+    except Exception as e:  # noqa: BLE001
+        return f"[ERROR {e}]"
+
+
+def prompt_for(ctx: str, q: str) -> str:
+    return (
+        "Answer the question using ONLY the context below. Be concise (a few words). "
+        "If the context does not contain the answer, reply exactly INSUFFICIENT.\n\n"
+        f"Context:\n{ctx}\n\nQuestion: {q}\n\nAnswer:"
+    )
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--n", type=int, default=0)
+    args = ap.parse_args()
+
+    rows = [json.loads(l) for l in CONTEXTS.read_text().splitlines() if l.strip()]
+    if args.n:
+        rows = [r for r in rows if r["id"] < args.n]
+    cache: dict[str, str] = json.loads(CACHE.read_text()) if CACHE.exists() else {}
+    key = lambda r: f"{r['id']}|{r['arm']}"
+
+    pending = [(key(r), prompt_for(r["context"], r["question"])) for r in rows if key(r) not in cache]
+    print(f"{len(rows)} rows; {len(pending)} LLM calls ({MODEL})")
+    if pending:
+        done = 0
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            futs = {ex.submit(ask, p): k for k, p in pending}
+            for fut in as_completed(futs):
+                res = fut.result()
+                if not res.startswith("[ERROR"):
+                    cache[futs[fut]] = res
+                done += 1
+                if done % 200 == 0:
+                    CACHE.write_text(json.dumps(cache))
+                    print(f"  ...{done}/{len(pending)}")
+        CACHE.write_text(json.dumps(cache))
+
+    agg = defaultdict(lambda: {"f1": 0.0, "em": 0.0, "n": 0})
+    for r in rows:
+        ans = cache.get(key(r), "")
+        for bucket in ((r["subset"], r["arm"]), ("ALL", r["arm"])):
+            a = agg[bucket]
+            a["f1"] += f1(ans, r["gold_answer"])
+            a["em"] += em(ans, r["gold_answer"])
+            a["n"] += 1
+
+    print("\nDownstream answer quality (gpt-4o-mini) — F1 / EM by subset × arm")
+    print(f"  {'subset':<10} " + " ".join(f"{a:>14}" for a in ARMS))
+    print("  " + "-" * 70)
+    for subset in ("lexical", "semantic", "ALL"):
+        cells = []
+        for arm in ARMS:
+            a = agg[(subset, arm)]
+            n = max(a["n"], 1)
+            cells.append(f"{a['f1']/n:.2f}/{a['em']/n:.2f}")
+        n = agg[(subset, "bm25")]["n"]
+        print(f"  {subset:<6}(n={n:>4}) " + " ".join(f"{c:>14}" for c in cells))
+
+
+if __name__ == "__main__":
+    main()

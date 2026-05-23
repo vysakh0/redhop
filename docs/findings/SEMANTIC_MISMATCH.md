@@ -225,6 +225,19 @@ even on semantic-heavy queries — BM25 just ranks it low. So dense only needs t
 rerank recovered 158 (96%)**; only 7 (4%) genuinely needed global dense (gold fell
 outside the top-50).
 
+**Tier-3 — it holds at the answer level too (gpt-4o-mini, F1 / EM):**
+
+| subset | bm25 | global dense | local rerank | hybrid |
+| ------ | ---- | ------------ | ------------ | ------ |
+| lexical | 0.47 / 0.39 | 0.57 / 0.47 | **0.59 / 0.47** | 0.56 / 0.47 |
+| semantic | 0.27 / 0.21 | 0.52 / 0.42 | 0.50 / 0.40 | 0.38 / 0.30 |
+| ALL | 0.37 / 0.29 | **0.54 / 0.44** | **0.54 / 0.43** | 0.47 / 0.38 |
+
+Local rerank's recall win **translates fully to answers**: it equals global dense
+at ALL (0.54 = 0.54 F1), is within 0.02 on semantic-heavy (recovering the +0.23 F1
+over BM25), marginally better on lexical, and beats hybrid throughout. So the
+bounded-dense architecture is sound end-to-end, not just at retrieval.
+
 **Compute:** dense work is bounded to 50 candidates (cosine **0.019 ms**) vs
 global search 0.505 ms over 3,957 — and **no global ANN / vector index** is
 required; BM25 (which scales trivially) does the corpus-wide pruning.
@@ -288,7 +301,7 @@ workloads with ~zero lexical overlap still need global dense for the residual).
 
 - **Wire BM25-prune + local rerank into the `Document` path** (behind the onnx
   feature) as the semantic-capable retrieval mode — the product payoff of Phase 4.
-- **Tier-3 on the local-rerank arm:** recall = global dense here, and Phase 2
-  showed dense's recall→answer link, so answer F1 should follow — but verify.
+- ~~**Tier-3 on the local-rerank arm**~~ **(done — local rerank = global dense on
+  answer F1, 0.54 = 0.54 ALL; within 0.02 on semantic-heavy).**
 - A second dataset with a stronger semantic tail (MS MARCO / reformulated queries)
   to test where BM25 candidate recall@K finally breaks (the local-rerank cap).

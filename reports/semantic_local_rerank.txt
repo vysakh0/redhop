@@ -17,8 +17,8 @@ Semantic recovery (queries where global dense beat bm25@3): n=165
   local rerank recovered: 158/165 (96%)   only global dense could: 7 (4%)
 
 Latency / compute (per query, mean):
-  bm25 retrieve:        0.240 ms
-  global dense search:  0.505 ms (over 3957 chunks)
-  local rerank:         0.019 ms (cosine over 50 candidates)
+  bm25 retrieve:        0.268 ms
+  global dense search:  0.562 ms (over 3957 chunks)
+  local rerank:         0.020 ms (cosine over 50 candidates)
   embedding calls/query: local rerank needs 50 chunk-embeds if NOT precomputed
     (global dense needs the whole corpus pre-embedded + stored — the infra local rerank avoids)
