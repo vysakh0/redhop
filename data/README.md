@@ -9,6 +9,7 @@ directory via `redhop_examples::data_path(...)` (override with `REDHOP_DATA_DIR`
 | `hotpotqa/hotpot_dev_distractor_v1.json` | HotpotQA dev (distractor) | Yang et al., 2018 — CC BY-SA 4.0 |
 | `musique/dev.jsonl` | MuSiQue dev (answerable) | Trivedi et al., 2022 — CC BY 4.0 |
 | `cuad/cuad_sample.json` | CUAD v1 — 50 contracts, answerable clause QAs only (real long legal documents + gold answer spans) | The Atticus Project, 2021 — CC BY 4.0 |
+| `semantic_mismatch.json` | Hand-authored controlled lexical-vs-semantic probe (query / gold / lexical-trap / distractors) | RedHop, 2026 — original, Apache-2.0 |
 
 The CUAD sample is the first 50 contracts of CUADv1 (SQuAD format), keeping only
 answerable questions (gold spans present). Source: `TheAtticusProject/cuad`
