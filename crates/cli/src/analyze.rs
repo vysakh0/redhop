@@ -19,7 +19,6 @@ pub struct Args {
     distractor_min_grounding: f32,
     #[arg(long, default_value_t = 0.12)]
     link_min_jaccard: f32,
-    auto_passthrough_max_tokens: 8_000,
     /// Emit the raw ContextReport JSON instead of the rendered report.
     #[arg(long)]
     json: bool,

@@ -29,7 +29,6 @@ pub struct Args {
     distractor_min_grounding: f32,
     #[arg(long, default_value_t = 0.12)]
     link_min_jaccard: f32,
-    auto_passthrough_max_tokens: 8_000,
     /// Optional comma-separated gold chunk ids → enables retention columns.
     #[arg(long)]
     gold_ids: Option<String>,

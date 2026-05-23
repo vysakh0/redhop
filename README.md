@@ -29,14 +29,26 @@ falsified hypotheses, in the [evidence layer](docs/findings/README.md).
 
 ## Quick example (Python)
 
+Reason over a document — chunking, indexing, and retrieval are internal; you
+think in documents and queries, not retrieval infrastructure:
+
 ```python
 import redhop
 
+doc = redhop.Document.from_text(text)         # bring your own parser/OCR
+ctx = doc.context("Why did the proposed method fail?")
+response = llm.generate(ctx.text())           # any provider; no lock-in
+print(ctx.report)                             # what was retrieved/pruned, and why
+```
+
+Already have chunks? The low-level surface is still first-class:
+
+```python
 chunks = retriever.retrieve(query)            # your stack
 ctx = redhop.build_context(
     query=query,
     retrieved_chunks=chunks,                  # list of dicts or strings
-    strategy="reasoning_preserving",          # the safe default
+    strategy="auto",                          # size-gated: pass under headroom, prune under dilution
     token_budget=12000,
 )
 response = llm.generate(ctx.text())           # your stack

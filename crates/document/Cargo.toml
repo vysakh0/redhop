@@ -1,0 +1,24 @@
+[package]
+name = "redhop-document"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Reasoning-aware document context runtime — the high-level surface over RedHop's chunking, retrieval, and context allocation"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redhop-core      = { workspace = true }
+redhop-chunking  = { workspace = true }
+redhop-retrieval = { workspace = true }
+redhop-context   = { workspace = true }
+tokio            = { workspace = true }
+
+[dev-dependencies]
+redhop-core = { workspace = true }

@@ -18,6 +18,7 @@ use redhop_core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
+use redhop_document::{Document as RhDocument, DocumentConfig};
 
 fn strategy_from_str(s: &str) -> PyResult<ContextStrategy> {
     Ok(match s {
@@ -358,11 +359,103 @@ fn link_strength(a: &str, b: &str) -> f32 {
     rh_link(a, b)
 }
 
+/// Build the Python `BuiltContext` wrapper from a Rust one.
+fn py_built(ctx: redhop_context::BuiltContext) -> BuiltContext {
+    let text = ctx.text();
+    let chunks = ctx.chunks.iter().map(|c| c.text.clone()).collect();
+    let rendered = ctx.report.render(None);
+    BuiltContext { text, chunks, report: ContextReport { inner: ctx.report, rendered } }
+}
+
+fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
+    r.map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn doc_config(
+    strategy: Option<String>,
+    token_budget: usize,
+    candidate_k: usize,
+) -> PyResult<DocumentConfig> {
+    let mut cfg = DocumentConfig::default();
+    cfg.candidate_k = candidate_k;
+    cfg.context.token_budget = token_budget;
+    if let Some(s) = strategy {
+        cfg.context.strategy = strategy_from_str(&s)?;
+    }
+    Ok(cfg)
+}
+
+/// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
+/// internal retrieval, and reasoning-aware context allocation. Retrieval is an
+/// internal detail — you think in documents and queries, not retrievers.
+#[pyclass]
+struct Document {
+    inner: RhDocument,
+}
+
+#[pymethods]
+impl Document {
+    /// Build from raw text (chunked internally). `strategy` defaults to the
+    /// size-gated Auto policy (pass through under headroom, prune under dilution).
+    #[staticmethod]
+    #[pyo3(signature = (text, source="document", strategy=None, token_budget=8192, candidate_k=20))]
+    fn from_text(
+        text: &str,
+        source: &str,
+        strategy: Option<String>,
+        token_budget: usize,
+        candidate_k: usize,
+    ) -> PyResult<Self> {
+        let cfg = doc_config(strategy, token_budget, candidate_k)?;
+        Ok(Self { inner: to_py(RhDocument::from_text_with(source, text, cfg))? })
+    }
+
+    /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
+    #[staticmethod]
+    #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20))]
+    fn from_chunks(
+        chunks: &Bound<'_, PyAny>,
+        strategy: Option<String>,
+        token_budget: usize,
+        candidate_k: usize,
+    ) -> PyResult<Self> {
+        let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?.into_iter().map(|r| r.chunk).collect();
+        let cfg = doc_config(strategy, token_budget, candidate_k)?;
+        Ok(Self { inner: to_py(RhDocument::from_chunks_with(chunk_vec, cfg))? })
+    }
+
+    /// Assemble the reasoning context for a query (retrieve → allocate).
+    /// Returns a `BuiltContext` with `.text()` and `.report`.
+    fn context(&mut self, query: &str) -> PyResult<BuiltContext> {
+        Ok(py_built(to_py(self.inner.context(query))?))
+    }
+
+    /// Diagnose retrieval for a query **without** modifying anything (pure
+    /// observability). For `strategy="auto"`, `report.strategy` is the decision.
+    fn analyze(&mut self, query: &str) -> PyResult<ContextReport> {
+        let report = to_py(self.inner.analyze(query))?;
+        let rendered = report.render(None);
+        Ok(ContextReport { inner: report, rendered })
+    }
+
+    #[getter]
+    fn n_chunks(&self) -> usize {
+        self.inner.len()
+    }
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+    fn __repr__(&self) -> String {
+        format!("Document({} chunks)", self.inner.len())
+    }
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<BuiltContext>()?;
     m.add_class::<ContextReport>()?;
+    m.add_class::<Document>()?;
     m.add_function(wrap_pyfunction!(build_context, m)?)?;
     m.add_function(wrap_pyfunction!(filter_context, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_context, m)?)?;

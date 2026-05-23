@@ -1,24 +1,31 @@
 """RedHop — reasoning-preserving context optimization for RAG systems.
 
-RedHop sits **between retrieval and generation**. You hand it the chunks your
-retriever returned and a token budget; it assembles the prompt context —
-pruning distractors, preserving reasoning-critical "second-hop" evidence, and
-reporting exactly what it did. It is *not* a retriever, vector DB, agent
-framework, or workflow engine.
+A **reasoning-aware context runtime for document reasoning**. You have
+documents and need reasoning; you should not have to wire up retrievers, vector
+DBs, or query engines. It is *not* a retriever, vector DB, agent framework, or
+workflow engine — and it does not parse PDFs (bring your own text).
+
+High-level surface — reason over a document:
 
     import redhop
 
+    doc = redhop.Document.from_text(text)          # chunked + indexed internally
+    ctx = doc.context("Why did the proposed method fail?")
+    response = llm.generate(ctx.text())            # any provider; no lock-in
+    print(ctx.report)                              # what was retrieved/pruned, and why
+
+Low-level surface — you already have chunks (still first-class):
+
     ctx = redhop.build_context(
         query=query,
-        retrieved_chunks=chunks,          # list of dicts/strings
-        strategy="reasoning_preserving",  # the safe default
+        retrieved_chunks=chunks,   # list of dicts/strings
+        strategy="auto",           # size-gated: pass under headroom, prune under dilution
         token_budget=12000,
     )
-    response = llm.generate(ctx.text())
-    print(ctx.report)                     # Context Optimization Report
 
-This package is a thin binding over the Rust `redhop-context` crate (built
-with pyo3/maturin). Rust is the source of truth; no logic is duplicated here.
+This package is a thin binding over the Rust `redhop-context` /
+`redhop-document` crates (built with pyo3/maturin). Rust is the source of
+truth; no logic is duplicated here.
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ from typing import Any, Mapping, Sequence
 from ._redhop import (
     BuiltContext,
     ContextReport,
+    Document,
     analyze_context as _analyze_context,
     build_context as _build_context,
     context_economics as _context_economics,
@@ -129,6 +137,7 @@ def report_to_dict(report: ContextReport) -> dict[str, Any]:
 
 
 __all__ = [
+    "Document",
     "build_context",
     "filter_context",
     "analyze_context",
