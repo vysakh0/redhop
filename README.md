@@ -184,8 +184,20 @@ See [crates/cli/README.md](crates/cli/README.md).
   **Benchmarks**: [benchmarks/](benchmarks/README.md) ·
   **Reports**: [reports/](reports/README.md)
 - **Python**: [python/README.md](python/README.md) ·
+  **Quickstart**: [python/examples/quickstart.py](python/examples/quickstart.py)
+- **API stability**: [docs/API_STABILITY.md](docs/API_STABILITY.md) ·
+  **Changelog**: [CHANGELOG.md](CHANGELOG.md) ·
   **Roadmap**: [ROADMAP.md](ROADMAP.md) · **FAQ**: [FAQ.md](FAQ.md)
+
+## Install (alpha)
+
+```bash
+# Python (built from source via maturin; PyPI wheels coming):
+pip install maturin
+cd python && maturin develop --release
+python examples/quickstart.py
+```
 
 ## License
 
-Apache-2.0.
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).

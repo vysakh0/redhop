@@ -48,11 +48,31 @@ def test_context_economics_returns_dict():
     assert "distractor_ratio" in econ
 
 
+def test_document_path_and_decision():
+    text = " ".join(c["text"] for c in CHUNKS)
+    doc = redhop.Document.from_text(text)
+    assert doc.n_chunks >= 1
+    ctx = doc.context(QUERY)
+    assert isinstance(ctx.text(), str) and ctx.text()
+    # Small input → Auto deliberately passes through, and says so.
+    assert ctx.report.auto_decision == "passthrough"
+    assert ctx.report.requested_strategy == "auto"
+    # analyze() is non-destructive and reports the same decision.
+    assert doc.analyze(QUERY).auto_decision == "passthrough"
+
+
+def test_empty_document_raises():
+    import pytest
+
+    with pytest.raises(Exception):
+        redhop.Document.from_text("   ")
+
+
 def test_report_to_dict_and_str():
     ctx = redhop.build_context(QUERY, CHUNKS, token_budget=12000, **KW)
     d = redhop.report_to_dict(ctx.report)
     assert d["strategy"] == "reasoning_preserving"
-    assert "Context Optimization Report" in str(ctx.report)
+    assert "RedHop Decision Report" in str(ctx.report)
 
 
 def test_unknown_strategy_raises():

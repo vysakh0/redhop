@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (all targets)
+        run: cargo build --workspace --all-targets
+      - name: Test
+        run: cargo test --workspace
+
+  python:
+    name: Python wheel + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install build tooling
+        run: pip install maturin pytest
+      - name: Build + install the extension
+        working-directory: python
+        run: maturin develop --release
+      - name: Unit tests
+        working-directory: python
+        run: python -m pytest tests/ -q
+      - name: Quickstart smoke (Document path, no network/LLM)
+        working-directory: python
+        run: python examples/quickstart.py
