@@ -67,10 +67,18 @@ impl OnnxEmbedder {
         tokenizer_path: impl AsRef<Path>,
         config: EmbedderConfig,
     ) -> Result<Self> {
+        // ONNX Runtime defaults to a single intra-op thread under `ort` here,
+        // which makes batched CPU embedding ~Nx slower than it needs to be.
+        // Use all available cores for intra-op parallelism.
+        let intra_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
         let session = Session::builder()
             .map_err(|e| Error::Embedding(format!("ort builder: {e}")))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| Error::Embedding(format!("ort opt level: {e}")))?
+            .with_intra_threads(intra_threads)
+            .map_err(|e| Error::Embedding(format!("ort intra threads: {e}")))?
             .commit_from_file(model_path.as_ref())
             .map_err(|e| Error::Embedding(format!("ort load: {e}")))?;
 

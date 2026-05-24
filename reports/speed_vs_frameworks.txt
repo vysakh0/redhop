@@ -1,0 +1,55 @@
+LLM is explicitly disabled. Using MockLLM.
+
+====================================================================================
+1 contract(s) — ~13,572 tokens (~54,290 chars)
+====================================================================================
+
+  LEXICAL  (BM25, no embeddings)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (BM25)                  —    0.00s    0.00s    0.00s     1.0ms
+  LangChain (BM25)             148    0.01s    0.00s    0.01s     0.1ms
+  LlamaIndex (BM25)            103    0.02s    0.00s    0.02s     0.1ms
+
+  SEMANTIC (embeddings, e5-small)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (dense rerank)          —    0.14s    1.73s    1.87s     5.4ms
+  LangChain (vector)           148    0.42s    0.03s    0.44s    14.1ms
+  LlamaIndex (vector)          103    0.29s    0.01s    0.29s     5.5ms
+
+====================================================================================
+5 contract(s) — ~38,103 tokens (~152,413 chars)
+====================================================================================
+
+  LEXICAL  (BM25, no embeddings)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (BM25)                  —    0.00s    0.00s    0.01s     1.1ms
+  LangChain (BM25)             415    0.01s    0.00s    0.01s     0.1ms
+  LlamaIndex (BM25)            311    0.05s    0.00s    0.05s     0.1ms
+
+  SEMANTIC (embeddings, e5-small)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (dense rerank)          —    0.15s    8.08s    8.23s     4.2ms
+  LangChain (vector)           415    1.49s    0.01s    1.50s     7.1ms
+  LlamaIndex (vector)          311    1.00s    0.01s    1.01s     7.3ms
+
+====================================================================================
+15 contract(s) — ~188,762 tokens (~755,048 chars)
+====================================================================================
+
+  LEXICAL  (BM25, no embeddings)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (BM25)                  —    0.01s    0.01s    0.02s     1.0ms
+  LangChain (BM25)            2066    0.05s    0.00s    0.05s     0.7ms
+  LlamaIndex (BM25)           1584    0.25s    0.00s    0.25s     0.1ms
+
+  SEMANTIC (embeddings, e5-small)
+  system                    chunks  build_s  1st-q_s   TTFA_s   warm_ms
+  --------------------------------------------------------------------
+  RedHop (dense rerank)          —    0.16s   51.09s   51.26s     4.3ms
+  LangChain (vector)          2066    7.55s    0.02s    7.57s    16.4ms
+  LlamaIndex (vector)         1584    6.51s    0.02s    6.53s    18.4ms
