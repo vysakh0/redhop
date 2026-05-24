@@ -490,6 +490,7 @@ fn apply_rerank(
     embedder_model: Option<String>,
     embedder_tokenizer: Option<String>,
     embedder_dim: usize,
+    embedder_pooling: Option<String>,
 ) -> PyResult<RhDocument> {
     let (model, tokenizer) = match (embedder_model, embedder_tokenizer) {
         (Some(m), Some(t)) => (m, t),
@@ -500,12 +501,22 @@ fn apply_rerank(
             ))
         }
     };
-    let embedder = redhop_embeddings::OnnxEmbedder::load(
-        &model,
-        &tokenizer,
-        redhop_embeddings::EmbedderConfig::bge(embedder_dim),
-    )
-    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    // BGE preset = CLS pooling + L2, no prefix. Override pooling to "mean" for
+    // mean-pooled families (MiniLM, GTE, …). Asymmetric-prefix models (E5) are not
+    // supported on this single-embedder path.
+    let mut config = redhop_embeddings::EmbedderConfig::bge(embedder_dim);
+    config.pooling = match embedder_pooling.as_deref() {
+        None | Some("cls") => redhop_embeddings::Pooling::Cls,
+        Some("mean") => redhop_embeddings::Pooling::Mean,
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown embedder_pooling '{other}'; use 'cls' (default, e.g. BGE) or 'mean' \
+                 (e.g. MiniLM / GTE)"
+            )))
+        }
+    };
+    let embedder = redhop_embeddings::OnnxEmbedder::load(&model, &tokenizer, config)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(doc.with_embedder(std::sync::Arc::new(embedder)))
 }
 
@@ -515,6 +526,7 @@ fn apply_rerank(
     _embedder_model: Option<String>,
     _embedder_tokenizer: Option<String>,
     _embedder_dim: usize,
+    _embedder_pooling: Option<String>,
 ) -> PyResult<RhDocument> {
     Err(PyValueError::new_err(
         "retrieval='rerank' needs an ONNX-enabled build of redhop — the default wheel is \
@@ -544,7 +556,7 @@ impl Document {
     #[pyo3(signature = (text, source="document", strategy=None, chunk_size=128,
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
                         retrieval=None, embedder_model=None, embedder_tokenizer=None,
-                        embedder_dim=384, candidate_pool=50))]
+                        embedder_dim=384, embedder_pooling=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -558,6 +570,7 @@ impl Document {
         embedder_model: Option<String>,
         embedder_tokenizer: Option<String>,
         embedder_dim: usize,
+        embedder_pooling: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
@@ -572,7 +585,13 @@ impl Document {
         )?;
         let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
         if rerank {
-            inner = apply_rerank(inner, embedder_model, embedder_tokenizer, embedder_dim)?;
+            inner = apply_rerank(
+                inner,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+            )?;
         }
         Ok(Self { inner })
     }
@@ -582,7 +601,7 @@ impl Document {
     #[staticmethod]
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
                         retrieval=None, embedder_model=None, embedder_tokenizer=None,
-                        embedder_dim=384, candidate_pool=50))]
+                        embedder_dim=384, embedder_pooling=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -593,6 +612,7 @@ impl Document {
         embedder_model: Option<String>,
         embedder_tokenizer: Option<String>,
         embedder_dim: usize,
+        embedder_pooling: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
@@ -604,7 +624,13 @@ impl Document {
         let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if rerank {
-            inner = apply_rerank(inner, embedder_model, embedder_tokenizer, embedder_dim)?;
+            inner = apply_rerank(
+                inner,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+            )?;
         }
         Ok(Self { inner })
     }
