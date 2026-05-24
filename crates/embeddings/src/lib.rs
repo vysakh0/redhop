@@ -43,6 +43,9 @@ pub mod pooling;
 #[cfg(feature = "onnx")]
 pub mod onnx;
 
+#[cfg(feature = "onnx")]
+pub mod registry;
+
 pub use cache::CachedEmbedder;
 pub use config::EmbedderConfig;
 pub use hashing::HashingProvider;
@@ -50,3 +53,6 @@ pub use pooling::{l2_normalize, pool, Pooling};
 
 #[cfg(feature = "onnx")]
 pub use onnx::OnnxEmbedder;
+
+#[cfg(feature = "onnx")]
+pub use registry::{available_models, resolve_model, ResolvedModel, DEFAULT_MODEL};

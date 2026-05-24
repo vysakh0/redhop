@@ -488,6 +488,7 @@ fn doc_config(
 #[allow(clippy::too_many_arguments)]
 fn apply_rerank(
     doc: RhDocument,
+    model: Option<String>,
     embedder_model: Option<String>,
     embedder_tokenizer: Option<String>,
     embedder_dim: usize,
@@ -495,47 +496,62 @@ fn apply_rerank(
     embedder_query_prefix: Option<String>,
     embedder_passage_prefix: Option<String>,
 ) -> PyResult<RhDocument> {
-    let (model, tokenizer) = match (embedder_model, embedder_tokenizer) {
-        (Some(m), Some(t)) => (m, t),
-        _ => {
-            return Err(PyValueError::new_err(
-                "retrieval='rerank' requires `embedder_model` and `embedder_tokenizer` paths \
-                 (download an ONNX embedding model, e.g. BAAI/bge-small-en-v1.5).",
-            ))
-        }
-    };
-    let pooling = match embedder_pooling.as_deref() {
-        None | Some("cls") => redhop_embeddings::Pooling::Cls,
-        Some("mean") => redhop_embeddings::Pooling::Mean,
-        Some(other) => {
-            return Err(PyValueError::new_err(format!(
-                "unknown embedder_pooling '{other}'; use 'cls' (default, e.g. BGE) or 'mean' \
-                 (e.g. MiniLM / GTE / E5)"
-            )))
-        }
-    };
-    // Build an OnnxEmbedder with the given pooling and a text prefix. BGE preset
-    // gives CLS + L2, no prefix; we override pooling and prefix as needed.
-    let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
-        let mut config = redhop_embeddings::EmbedderConfig::bge(embedder_dim);
-        config.pooling = pooling;
-        config.prefix = prefix.to_string();
-        redhop_embeddings::OnnxEmbedder::load(&model, &tokenizer, config)
-            .map_err(|e| PyValueError::new_err(e.to_string()))
-    };
+    // Path A — explicit model files (custom / offline / power user). These win
+    // if given; `model=` is ignored.
+    if let (Some(m), Some(t)) = (embedder_model.as_ref(), embedder_tokenizer.as_ref()) {
+        let pooling = match embedder_pooling.as_deref() {
+            None | Some("cls") => redhop_embeddings::Pooling::Cls,
+            Some("mean") => redhop_embeddings::Pooling::Mean,
+            Some(other) => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown embedder_pooling '{other}'; use 'cls' (default, e.g. BGE) or 'mean' \
+                     (e.g. MiniLM / GTE / E5)"
+                )))
+            }
+        };
+        let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
+            let mut config = redhop_embeddings::EmbedderConfig::bge(embedder_dim);
+            config.pooling = pooling;
+            config.prefix = prefix.to_string();
+            redhop_embeddings::OnnxEmbedder::load(m, t, config)
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        };
+        return match (embedder_query_prefix, embedder_passage_prefix) {
+            (q, p) if q.is_some() || p.is_some() => {
+                let passage = load(p.as_deref().unwrap_or(""))?;
+                let query = load(q.as_deref().unwrap_or(""))?;
+                Ok(doc
+                    .with_embedder(std::sync::Arc::new(passage))
+                    .with_query_embedder(std::sync::Arc::new(query)))
+            }
+            _ => Ok(doc.with_embedder(std::sync::Arc::new(load("")?))),
+        };
+    }
 
-    match (embedder_query_prefix, embedder_passage_prefix) {
-        // Asymmetric (e.g. E5): a passage-prefixed embedder for docs + a
-        // query-prefixed embedder for queries.
-        (q, p) if q.is_some() || p.is_some() => {
-            let passage = load(p.as_deref().unwrap_or(""))?;
-            let query = load(q.as_deref().unwrap_or(""))?;
-            Ok(doc
-                .with_embedder(std::sync::Arc::new(passage))
-                .with_query_embedder(std::sync::Arc::new(query)))
-        }
-        // Symmetric (BGE / MiniLM / GTE): one embedder for both sides.
-        _ => Ok(doc.with_embedder(std::sync::Arc::new(load("")?))),
+    // Path B — model-by-name, auto-downloaded from HuggingFace (cached). With
+    // neither `model` nor explicit paths, fall back to the recommended default.
+    let name = model
+        .as_deref()
+        .unwrap_or(redhop_embeddings::DEFAULT_MODEL);
+    let resolved =
+        redhop_embeddings::resolve_model(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
+        redhop_embeddings::OnnxEmbedder::load(
+            &resolved.model_path,
+            &resolved.tokenizer_path,
+            resolved.config(prefix),
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+    };
+    if resolved.is_asymmetric() {
+        let passage = load(&resolved.passage_prefix)?;
+        let query = load(&resolved.query_prefix)?;
+        Ok(doc
+            .with_embedder(std::sync::Arc::new(passage))
+            .with_query_embedder(std::sync::Arc::new(query)))
+    } else {
+        // passage_prefix == query_prefix (usually ""): one embedder for both sides.
+        Ok(doc.with_embedder(std::sync::Arc::new(load(&resolved.passage_prefix)?)))
     }
 }
 
@@ -543,6 +559,7 @@ fn apply_rerank(
 #[allow(clippy::too_many_arguments)]
 fn apply_rerank(
     _doc: RhDocument,
+    _model: Option<String>,
     _embedder_model: Option<String>,
     _embedder_tokenizer: Option<String>,
     _embedder_dim: usize,
@@ -577,7 +594,7 @@ impl Document {
     #[staticmethod]
     #[pyo3(signature = (text, source="document", strategy=None, chunk_size=128,
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
-                        retrieval=None, embedder_model=None, embedder_tokenizer=None,
+                        retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
@@ -590,6 +607,7 @@ impl Document {
         token_budget: usize,
         candidate_k: usize,
         retrieval: Option<String>,
+        model: Option<String>,
         embedder_model: Option<String>,
         embedder_tokenizer: Option<String>,
         embedder_dim: usize,
@@ -612,6 +630,7 @@ impl Document {
         if rerank {
             inner = apply_rerank(
                 inner,
+                model,
                 embedder_model,
                 embedder_tokenizer,
                 embedder_dim,
@@ -627,7 +646,7 @@ impl Document {
     /// `chunk_size`/`chunk_overlap` don't apply here (you chunked already).
     #[staticmethod]
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
-                        retrieval=None, embedder_model=None, embedder_tokenizer=None,
+                        retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
@@ -637,6 +656,7 @@ impl Document {
         token_budget: usize,
         candidate_k: usize,
         retrieval: Option<String>,
+        model: Option<String>,
         embedder_model: Option<String>,
         embedder_tokenizer: Option<String>,
         embedder_dim: usize,
@@ -656,6 +676,7 @@ impl Document {
         if rerank {
             inner = apply_rerank(
                 inner,
+                model,
                 embedder_model,
                 embedder_tokenizer,
                 embedder_dim,

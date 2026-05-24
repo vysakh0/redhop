@@ -1,8 +1,19 @@
 # Dense-tier DX: `model="…"` with auto-download (design spec)
 
-> **Status:** Proposed (Option 1, chosen). **Goal:** remove the ONNX-export
-> friction from the dense rerank tier so it's a one-liner, while keeping RedHop's
-> Rust engine, lightweight default build, and offline guarantees.
+> **Status:** **Implemented** (Option 1). `model="…"` with HF auto-download ships in
+> `redhop-embeddings::registry` + the Python binding. Validated end-to-end: a cold
+> `from_text(text, retrieval="rerank", model="bge-small")` downloads (~35 MB) and
+> answers; `retrieval="rerank"` alone uses the default; unknown names error with the
+> known-model list + the explicit-paths escape hatch. **Goal:** remove the ONNX-export
+> friction from the dense rerank tier so it's a one-liner, while keeping RedHop's Rust
+> engine, lightweight default build, and offline guarantees.
+>
+> **Notes from implementation:** uses **`hf-hub` 0.5** with `ureq` + **`rustls-tls`**
+> (no OpenSSL → clean Linux/Windows/macOS builds). hf-hub 0.3 was rejected — it
+> mishandled the non-LFS redirect for `tokenizer.json` (`RelativeUrlWithoutBase`).
+> Default model is `Qdrant/bge-small-en-v1.5-onnx-Q` (single self-contained int8 file).
+> **Follow-up:** pin repo revisions to commit SHAs (currently `main`); add e5/minilm
+> entries; consider exposing `available_models()` to Python.
 
 ## Problem
 
