@@ -18,7 +18,7 @@ use redhop_core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
-use redhop_document::{Document as RhDocument, DocumentConfig};
+use redhop_document::{Document as RhDocument, DocumentConfig, RetrievalMode};
 
 fn strategy_from_str(s: &str) -> PyResult<ContextStrategy> {
     Ok(match s {
@@ -436,6 +436,20 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResult<RetrievalMode> {
+    Ok(match retrieval {
+        None | Some("lexical") => RetrievalMode::Lexical,
+        Some("rerank") => RetrievalMode::DenseRerank {
+            candidate_pool: candidate_pool.max(1),
+        },
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown retrieval mode '{other}'; use 'lexical' (default) or 'rerank'"
+            )))
+        }
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn doc_config(
     strategy: Option<String>,
@@ -443,6 +457,7 @@ fn doc_config(
     candidate_k: usize,
     chunk_size: usize,
     chunk_overlap: usize,
+    retrieval_mode: RetrievalMode,
 ) -> PyResult<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match strategy {
@@ -461,8 +476,51 @@ fn doc_config(
         max_tokens: chunk_size * 2,
         overlap_sentences: chunk_overlap,
         candidate_k,
+        retrieval_mode,
         context,
     })
+}
+
+/// Attach a dense embedder for `retrieval="rerank"`. The ONNX runtime + model
+/// live behind the crate's `onnx` feature; the default (lexical) wheel raises a
+/// clear error rather than silently degrading.
+#[cfg(feature = "onnx")]
+fn apply_rerank(
+    doc: RhDocument,
+    embedder_model: Option<String>,
+    embedder_tokenizer: Option<String>,
+    embedder_dim: usize,
+) -> PyResult<RhDocument> {
+    let (model, tokenizer) = match (embedder_model, embedder_tokenizer) {
+        (Some(m), Some(t)) => (m, t),
+        _ => {
+            return Err(PyValueError::new_err(
+                "retrieval='rerank' requires `embedder_model` and `embedder_tokenizer` paths \
+                 (download an ONNX embedding model, e.g. BAAI/bge-small-en-v1.5).",
+            ))
+        }
+    };
+    let embedder = redhop_embeddings::OnnxEmbedder::load(
+        &model,
+        &tokenizer,
+        redhop_embeddings::EmbedderConfig::bge(embedder_dim),
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(doc.with_embedder(std::sync::Arc::new(embedder)))
+}
+
+#[cfg(not(feature = "onnx"))]
+fn apply_rerank(
+    _doc: RhDocument,
+    _embedder_model: Option<String>,
+    _embedder_tokenizer: Option<String>,
+    _embedder_dim: usize,
+) -> PyResult<RhDocument> {
+    Err(PyValueError::new_err(
+        "retrieval='rerank' needs an ONNX-enabled build of redhop — the default wheel is \
+         lexical-only (no native runtime). Reinstall an onnx-enabled build (built with the \
+         `onnx` cargo feature, e.g. `maturin develop --features onnx`).",
+    ))
 }
 
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
@@ -484,7 +542,9 @@ impl Document {
     /// defaults to the size-gated Auto policy.
     #[staticmethod]
     #[pyo3(signature = (text, source="document", strategy=None, chunk_size=128,
-                        chunk_overlap=1, token_budget=8192, candidate_k=20))]
+                        chunk_overlap=1, token_budget=8192, candidate_k=20,
+                        retrieval=None, embedder_model=None, embedder_tokenizer=None,
+                        embedder_dim=384, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -494,37 +554,59 @@ impl Document {
         chunk_overlap: usize,
         token_budget: usize,
         candidate_k: usize,
+        retrieval: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: usize,
+        candidate_pool: usize,
     ) -> PyResult<Self> {
+        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+        let rerank = matches!(mode, RetrievalMode::DenseRerank { .. });
         let cfg = doc_config(
             strategy,
             token_budget,
             candidate_k,
             chunk_size,
             chunk_overlap,
+            mode,
         )?;
-        Ok(Self {
-            inner: to_py(RhDocument::from_text_with(source, text, cfg))?,
-        })
+        let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
+        if rerank {
+            inner = apply_rerank(inner, embedder_model, embedder_tokenizer, embedder_dim)?;
+        }
+        Ok(Self { inner })
     }
 
     /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
     /// `chunk_size`/`chunk_overlap` don't apply here (you chunked already).
     #[staticmethod]
-    #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20))]
+    #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
+                        retrieval=None, embedder_model=None, embedder_tokenizer=None,
+                        embedder_dim=384, candidate_pool=50))]
+    #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
         strategy: Option<String>,
         token_budget: usize,
         candidate_k: usize,
+        retrieval: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: usize,
+        candidate_pool: usize,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1)?;
-        Ok(Self {
-            inner: to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?,
-        })
+        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+        let rerank = matches!(mode, RetrievalMode::DenseRerank { .. });
+        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
+        let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
+        if rerank {
+            inner = apply_rerank(inner, embedder_model, embedder_tokenizer, embedder_dim)?;
+        }
+        Ok(Self { inner })
     }
 
     /// Assemble the reasoning context for a query (retrieve → allocate).
