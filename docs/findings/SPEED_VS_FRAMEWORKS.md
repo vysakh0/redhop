@@ -107,9 +107,16 @@ Still no ANN/vector index (cached vectors + exact cosine over a small pool), so 
    6ms/chunk; raw Python ORT 15ms/chunk; RedHop's `ort` path ~2× beyond that. So two
    gaps — ORT-CPU is ~2.5× slower than PyTorch+Accelerate for this small model, and our
    `ort` integration leaves ~2× more on the table. PyTorch-level speed **is reachable
-   from Rust** (it's a dependency-weight tradeoff, not a limitation): ORT's **CoreML EP**
-   (Apple, smallest effort), a **candle**+Accelerate/Metal backend, **ggml**/llama.cpp
-   bindings, or **`tch`/libtorch** (PyTorch's own backend, heavy dep). Worth doing only
-   if dense-rerank setup speed becomes a priority — the BM25 default needs none of it.
-5. **Measurement caveat.** Absolute setup seconds vary run-to-run under machine load;
+   from Rust** (a dependency-weight tradeoff, not a limitation): ORT hardware EPs
+   (CoreML/CUDA/DirectML), a **candle**+Accelerate/Metal/CUDA backend, **ggml** bindings,
+   or **`tch`/libtorch** (heavy dep). Worth doing only if dense-rerank setup speed becomes
+   a priority — the BM25 default needs none of it.
+5. **CoreML EP tested and rejected for this model.** Tried ORT's CoreML EP (Apple): the
+   transformer ONNX fragments into 109 partitions (only 330/614 nodes supported) and then
+   **crashes at runtime** (`error code: -1`). Heavy CPU↔ANE partitioning would be slow
+   even if it ran. Not viable without a CoreML-friendly static-shape export; Mac-only
+   regardless. Cross-platform direction instead: **tuned ORT CPU + int8 as the portable
+   default (Linux/Windows/macOS), with CUDA/DirectML EPs as opt-in Cargo features** for
+   server GPUs (robust for transformer ONNX; untested on this Mac).
+6. **Measurement caveat.** Absolute setup seconds vary run-to-run under machine load;
    treat them as indicative and trust within-run ratios (int8 ≈ 2×, thread A/B above).
