@@ -1,9 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # No push trigger — CI runs on pull requests and on-demand only, not on every
+  # push to main.
   pull_request:
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
 concurrency:
