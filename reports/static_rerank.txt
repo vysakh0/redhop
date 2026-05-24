@@ -1,0 +1,13 @@
+loaded 400 queries from rerank_pool.jsonl
+
+Recall@3 by subset (same BM25 pool, static-embedding rerank)
+  method                         lexical  semantic     ALL
+  --------------------------------------------------------
+  BM25 (pool order)                0.684     0.505   0.591
+  potion-retrieval-32M             0.578     0.536   0.556
+  static-retrieval-mrl-en-v1       0.585     0.556   0.570
+  BGE-small (ONNX) reference       0.808     0.795   0.801
+
+vs BGE on semantic-heavy slice (the slice that matters):
+  potion-retrieval-32M         semantic R@3 0.536  (-0.259 vs BGE)
+  static-retrieval-mrl-en-v1   semantic R@3 0.556  (-0.239 vs BGE)

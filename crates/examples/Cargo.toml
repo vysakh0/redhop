@@ -162,3 +162,16 @@ required-features = ["onnx"]
 name = "semantic_local_rerank"
 path = "examples/semantic_local_rerank.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "export_semantic_pool"
+path = "examples/export_semantic_pool.rs"
+
+[[example]]
+name = "export_rerank_pool"
+path = "examples/export_rerank_pool.rs"
+
+[[example]]
+name = "semantic_reasoning_rerank"
+path = "examples/semantic_reasoning_rerank.rs"
+required-features = ["onnx"]

@@ -1,0 +1,17 @@
+global corpus: 3957 paragraphs; 400 queries (100% have >=2 gold facts); K_cand=50, top-3
+loading BGE-small ONNX + embedding corpus...
+
+Recall@3 by subset and arm (median overlap split 0.857)
+  arm                        lexical    semantic         ALL
+  ──────────────────────────────────────────────────────────
+  dense                        0.808       0.795       0.801
+  rescue@0                     0.808       0.795       0.801
+  rescue@0.25                  0.811       0.795       0.802
+  rescue@0.5                   0.806       0.785       0.795
+  rescue@1                     0.793       0.783       0.787
+  rescue@2                     0.759       0.768       0.764
+  rescue@4                     0.725       0.715       0.720
+
+Second-hop recovery (queries with a gold in the pool but missed by dense@3): n=148
+  rescue recovered (best β): 26 (18%)   rescue hurt: 0 (0%)   net: +26
+  (best-β is an oracle upper bound on what linkage rescue can add; see per-arm table for a FIXED β.)
