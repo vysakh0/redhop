@@ -161,6 +161,28 @@ local dense rerank gets there with the dense model touching only K candidates.
 overlap). On pure-synonym queries (zero overlap), gold won't be in the pool and
 only global dense helps. → [LOCAL_RERANK.md](findings/LOCAL_RERANK.md).
 
+### 11. Pick the retrieval tier by your dependency budget, not reflexively
+There's a genuine ladder, and **nothing in the middle is worth a dependency** —
+the only thing that buys the big semantic jump is a contextual model. Measured on
+HotpotQA multi-hop (recall@3):
+
+| tier | dependency | semantic R@3 | when |
+| ---- | ---------- | ------------ | ---- |
+| **BM25** (default) | none | 0.49 | lexical / keyword workloads |
+| + corpus-graph second-order rerank | none (external `semantic-bm25`) | 0.56 | air-gapped / no-model-allowed |
+| + dense local rerank (BGE) | ONNX + ~133 MB | **0.80** | semantic recall matters, model OK |
+
+→ **What to do:** default to BM25; opt into dense local rerank
+(`Document` with `RetrievalMode::DenseRerank` + `with_embedder`) when semantic
+recall matters. The zero-model corpus-graph tier (`semantic-bm25`) is for
+deployments that can't ship a model — it's the best *free* option (≈ a pretrained
+static-embedding table), not a dense replacement.
+→ **Why no middle:** corpus-graph and static embeddings are both non-contextual,
+so they share one ~0.56–0.61 ceiling; BGE's edge is *contextualization*.
+Static-embedding rerankers do **not** beat the free corpus-graph tier.
+→ Evidence: [SEMANTIC_ZERO_DEP.md](findings/SEMANTIC_ZERO_DEP.md),
+[DENSE_RERANK_CEILING.md](findings/DENSE_RERANK_CEILING.md).
+
 ---
 
 ## Measure what you did (observability > cleverness)

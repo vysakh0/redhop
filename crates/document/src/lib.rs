@@ -24,11 +24,16 @@
 //! Marker, Unstructured, …) and it is **not** an orchestration / agent /
 //! workflow runtime.
 //!
-//! Internally it retrieves (BM25 today), but retrieval is an implementation
-//! detail: the user mental model is *documents + reasoning*, not *retrieval
-//! infrastructure*. This crate is pure layering over [`redhop_chunking`],
-//! [`redhop_retrieval`], and [`redhop_context`] — no new logic, no new
-//! architecture tower.
+//! Internally it retrieves, but retrieval is an implementation detail: the user
+//! mental model is *documents + reasoning*, not *retrieval infrastructure*. The
+//! default is BM25 ([`RetrievalMode::Lexical`]) — zero dependencies, best for
+//! lexical workloads. For semantic-heavy queries, opt into
+//! [`RetrievalMode::DenseRerank`] and inject an embedder via
+//! [`Document::with_embedder`] (BM25 prune → local dense rerank, no ANN). A
+//! zero-model semantic tier lives in the external `semantic-bm25` crate and is
+//! deliberately not wired here. This crate is pure layering over
+//! [`redhop_chunking`], [`redhop_retrieval`], and [`redhop_context`] — no new
+//! logic, no new architecture tower.
 //!
 //! The default context policy is [`ContextStrategy::Auto`]: do nothing under
 //! headroom, prune under dilution, preserve bridge evidence, and report every
@@ -44,11 +49,34 @@ use redhop_context::{
     analyze_context, build_context, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
 };
 use redhop_core::{
-    Chunk, Chunker, Document as SourceDoc, Query, Result, RetrievalResult, Retriever,
-    TokenizerBackend,
+    Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Result, RetrievalResult,
+    Retriever, TokenizerBackend,
 };
-use redhop_retrieval::Bm25Retriever;
+use redhop_retrieval::{Bm25Retriever, LocalRerankRetriever};
 use tokio::runtime::{Builder, Runtime};
+
+/// How a [`Document`] retrieves candidates internally.
+///
+/// The default ([`RetrievalMode::Lexical`]) is BM25 — zero dependencies, fast,
+/// and the right tool for lexical/keyword workloads. For semantic-heavy queries
+/// (paraphrase, low query↔passage overlap), opt into [`RetrievalMode::DenseRerank`]
+/// and supply an embedder via [`Document::with_embedder`]: BM25 prunes the corpus
+/// to a candidate pool, then a dense model reorders *only that pool*
+/// (`docs/findings/LOCAL_RERANK.md`). A zero-model semantic tier (corpus-graph
+/// second-order rerank) lives in the external `semantic-bm25` crate and is
+/// deliberately *not* wired here (`docs/findings/SEMANTIC_ZERO_DEP.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetrievalMode {
+    /// BM25 lexical retrieval. The default; needs no model or embedder.
+    Lexical,
+    /// BM25 prune → local dense rerank of the candidate pool. Requires an
+    /// embedder set via [`Document::with_embedder`]. `candidate_pool` is the BM25
+    /// prune depth the dense stage reorders (e.g. 50).
+    DenseRerank {
+        /// BM25 candidate-pool depth reordered by the dense stage.
+        candidate_pool: usize,
+    },
+}
 
 /// Tuning for a [`Document`]'s internal chunking, retrieval, and context
 /// policy. Every field has an evidence-backed default; users reason about
@@ -63,6 +91,8 @@ pub struct DocumentConfig {
     pub overlap_sentences: usize,
     /// How many candidate chunks to retrieve before context assembly.
     pub candidate_k: usize,
+    /// Retrieval mode. Defaults to [`RetrievalMode::Lexical`] (BM25).
+    pub retrieval_mode: RetrievalMode,
     /// Context-assembly policy. Defaults to [`ContextStrategy::Auto`].
     pub context: ContextConfig,
 }
@@ -78,6 +108,7 @@ impl Default for DocumentConfig {
             max_tokens: 256,
             overlap_sentences: 1,
             candidate_k: 20,
+            retrieval_mode: RetrievalMode::Lexical,
             // The runtime's philosophy: size-gated, conservative, observable.
             context: ContextConfig {
                 strategy: ContextStrategy::Auto,
@@ -94,9 +125,13 @@ pub struct Document {
     chunks: Vec<Chunk>,
     cfg: DocumentConfig,
     rt: Runtime,
+    // Optional embedder for `RetrievalMode::DenseRerank`. None for the default
+    // lexical path, so the ONNX/model dependency only exists when a caller opts
+    // in by supplying one via `with_embedder`.
+    embedder: Option<Arc<dyn EmbeddingProvider>>,
     // Lazily built on first query so construction is cheap (goal: lazy
-    // chunk/index init). `Bm25Retriever` is in-memory (Tantivy RAM index).
-    retriever: Option<Bm25Retriever>,
+    // chunk/index init).
+    retriever: Option<Box<dyn Retriever>>,
 }
 
 impl Document {
@@ -144,8 +179,22 @@ impl Document {
             chunks,
             cfg,
             rt,
+            embedder: None,
             retriever: None,
         })
+    }
+
+    /// Supply the embedder used by [`RetrievalMode::DenseRerank`]. The library
+    /// stays neutral about model choice — build any [`EmbeddingProvider`]
+    /// yourself (e.g. an ONNX BGE embedder behind your own `onnx` feature) and
+    /// inject it here. No effect under [`RetrievalMode::Lexical`].
+    ///
+    /// Call before the first `context`/`analyze` query (it resets the lazily
+    /// built index).
+    pub fn with_embedder(mut self, embedder: Arc<dyn EmbeddingProvider>) -> Self {
+        self.embedder = Some(embedder);
+        self.retriever = None;
+        self
     }
 
     /// Number of chunks the document holds.
@@ -208,7 +257,20 @@ impl Document {
 
     fn ensure_indexed(&mut self) -> Result<()> {
         if self.retriever.is_none() {
-            let mut r = Bm25Retriever::new()?;
+            let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
+                RetrievalMode::Lexical => Box::new(Bm25Retriever::new()?),
+                RetrievalMode::DenseRerank { candidate_pool } => {
+                    let embedder = self.embedder.clone().ok_or_else(|| {
+                        redhop_core::Error::InvalidConfig(
+                            "RetrievalMode::DenseRerank requires an embedder — supply one with \
+                             `Document::with_embedder(...)`, or use the default \
+                             RetrievalMode::Lexical."
+                                .into(),
+                        )
+                    })?;
+                    Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?)
+                }
+            };
             self.rt.block_on(r.index(&self.chunks))?;
             self.retriever = Some(r);
         }
@@ -303,5 +365,63 @@ mod tests {
         assert_eq!(doc.len(), 2);
         let ctx = doc.context("who invented the safety lamp").unwrap();
         assert!(!ctx.text().is_empty());
+    }
+
+    // Deterministic stub embedder (no model) for the DenseRerank path.
+    struct StubEmbedder;
+
+    #[async_trait::async_trait]
+    impl EmbeddingProvider for StubEmbedder {
+        async fn embed(&self, texts: &[String]) -> Result<Vec<redhop_core::Embedding>> {
+            Ok(texts
+                .iter()
+                .map(|t| {
+                    redhop_core::Embedding::from(vec![
+                        t.matches("alpha").count() as f32,
+                        t.matches("beta").count() as f32,
+                    ])
+                })
+                .collect())
+        }
+        fn dim(&self) -> usize {
+            2
+        }
+        fn name(&self) -> &'static str {
+            "stub"
+        }
+    }
+
+    fn rerank_cfg() -> DocumentConfig {
+        DocumentConfig {
+            retrieval_mode: RetrievalMode::DenseRerank { candidate_pool: 10 },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dense_rerank_without_embedder_errors_clearly() {
+        let chunks = vec![Chunk::new(
+            "a",
+            "alpha text",
+            "doc",
+            redhop_core::TokenCount(2),
+        )];
+        let mut doc = Document::from_chunks_with(chunks, rerank_cfg()).unwrap();
+        let err = doc.context("alpha").unwrap_err().to_string();
+        assert!(err.contains("embedder"), "unhelpful error: {err}");
+    }
+
+    #[test]
+    fn dense_rerank_reorders_with_injected_embedder() {
+        let chunks = vec![
+            Chunk::new("a", "alpha alpha alpha", "doc", redhop_core::TokenCount(3)),
+            Chunk::new("b", "beta beta beta", "doc", redhop_core::TokenCount(3)),
+        ];
+        let mut doc = Document::from_chunks_with(chunks, rerank_cfg())
+            .unwrap()
+            .with_embedder(Arc::new(StubEmbedder));
+        // Query lexically hits both; the embedding leans to "beta".
+        let ctx = doc.context("alpha beta beta").unwrap();
+        assert!(ctx.text().contains("beta"));
     }
 }

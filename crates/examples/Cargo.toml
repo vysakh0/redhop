@@ -172,6 +172,11 @@ name = "export_rerank_pool"
 path = "examples/export_rerank_pool.rs"
 
 [[example]]
+name = "document_rerank"
+path = "examples/document_rerank.rs"
+required-features = ["onnx"]
+
+[[example]]
 name = "semantic_reasoning_rerank"
 path = "examples/semantic_reasoning_rerank.rs"
 required-features = ["onnx"]
