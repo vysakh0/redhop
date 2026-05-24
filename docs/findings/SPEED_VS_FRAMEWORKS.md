@@ -92,12 +92,13 @@ Still no ANN/vector index (cached vectors + exact cosine over a small pool), so 
 
 1. **ONNX intra-op threads fix (shipped), now env-configurable.** `OnnxEmbedder::load`
    never set `with_intra_threads`, so ORT ran ~single-threaded. Defaulting to the core
-   count cut rerank embed-all 70s → 51s @189k and, with the release build, dropped warm
-   queries (BM25 9.6ms → 1.0ms; rerank 13ms → 4.3ms). A clean interleaved A/B confirmed
-   **more threads is faster for this `ort` build** (10 → ~51s vs 4 → ~72s) — note this is
-   the *opposite* of what raw Python `onnxruntime` preferred (~4 threads), i.e. thread
-   tuning is runtime-version-specific. Exposed `REDHOP_ONNX_INTRA_THREADS` to tune.
-   (`crates/embeddings/src/onnx.rs`.)
+   count is **~4.5× faster** on rerank embed-all in a controlled same-build A/B (5
+   contracts: 1 thread 37.5s → all cores 8.3s; +int8 7× → 5.3s), and with the release
+   build warm queries dropped sharply (BM25 9.6ms → ~1.0ms; rerank 13ms → ~4ms). A clean
+   interleaved A/B confirmed **more threads is faster for this `ort` build** (10 → ~51s
+   vs 4 → ~72s @189k) — the *opposite* of what raw Python `onnxruntime` preferred (~4
+   threads), i.e. thread tuning is runtime-version-specific. Exposed
+   `REDHOP_ONNX_INTRA_THREADS` to tune. (`crates/embeddings/src/onnx.rs`.)
 2. **int8 quantization is the recommended rerank model trade** — embed-all ~51s → ~27s
    (within-run ~2×) at a 4× smaller model (133MB → 34MB). This is the most reliable lever.
 3. **Stop marketing speed as a differentiator.** Site copy corrected from a misleading
