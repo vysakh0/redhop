@@ -98,6 +98,39 @@ let reranker = OnnxCrossEncoder::load("ce/model.onnx", "ce/tokenizer.json", 512)
 # }
 ```
 
+## Wiring it as the `Document` semantic tier
+
+This is the dependency cost of RedHop's **semantic retrieval tier**. The default
+`Document` is BM25 — zero model, fully offline. To get semantic recall you opt in:
+enable the `onnx` feature, **download a model** (above), and inject the embedder.
+
+```rust
+# #[cfg(feature = "onnx")]
+# fn demo() -> redhop_core::Result<()> {
+use std::sync::Arc;
+use redhop_core::EmbeddingProvider;
+use redhop_document::{Document, DocumentConfig, RetrievalMode};
+use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
+
+let embedder: Arc<dyn EmbeddingProvider> =
+    Arc::new(OnnxEmbedder::load("bge/model.onnx", "bge/tokenizer.json", EmbedderConfig::bge(384))?);
+
+let cfg = DocumentConfig {
+    retrieval_mode: RetrievalMode::DenseRerank { candidate_pool: 50 },
+    ..Default::default()
+};
+let mut doc = Document::from_text_with("doc.txt", "…", cfg)?.with_embedder(embedder);
+let _ctx = doc.context("a paraphrased / semantic query")?;
+# Ok(()) }
+```
+
+BM25 prunes the corpus to `candidate_pool` candidates; the dense model reorders
+only that pool — **no vector DB, no ANN**. Selecting `DenseRerank` without an
+embedder is a clear error, so the model dependency is explicit, never implicit.
+Runnable example: `cargo run -p redhop-examples --example document_rerank --features onnx`.
+The tier trade-offs (and where the free tiers fall short) are measured in
+`docs/findings/SEMANTIC_ZERO_DEP.md` and `docs/findings/LOCAL_RERANK.md`.
+
 ## Benchmark plan (run on a real box)
 
 The harness is in place; the numbers below are what you fill in.
