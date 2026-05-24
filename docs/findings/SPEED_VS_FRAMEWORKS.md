@@ -90,14 +90,26 @@ Still no ANN/vector index (cached vectors + exact cosine over a small pool), so 
 
 ## What changed afterward
 
-1. **ONNX intra-op threads fix (shipped).** `OnnxEmbedder::load` never set
-   `with_intra_threads`, so ORT ran ~single-threaded. Setting it to the core count cut
-   rerank embed-all ~1.4× (189k: 70s → 51s) and, with the release build, dropped warm
-   queries (BM25 9.6ms → 1.0ms; rerank 13ms → 4.3ms). (`crates/embeddings/src/onnx.rs`.)
-2. **int8 quantization is the recommended rerank model trade** — embed-all 50.5s →
-   26.6s at a 4× smaller model (133MB → 34MB).
-3. **Stop marketing speed as a differentiator.** The site copy was corrected from a
-   misleading lexical-vs-vector comparison to honest per-scenario numbers; the pitch is
-   the runtime, not the clock.
-4. **Open:** ORT CPU embedding is ~4× slower than torch here (graph/op tuning, a faster
-   embedder, or a GPU/CoreML EP could close it) — but speed isn't the strategic claim.
+1. **ONNX intra-op threads fix (shipped), now env-configurable.** `OnnxEmbedder::load`
+   never set `with_intra_threads`, so ORT ran ~single-threaded. Defaulting to the core
+   count cut rerank embed-all 70s → 51s @189k and, with the release build, dropped warm
+   queries (BM25 9.6ms → 1.0ms; rerank 13ms → 4.3ms). A clean interleaved A/B confirmed
+   **more threads is faster for this `ort` build** (10 → ~51s vs 4 → ~72s) — note this is
+   the *opposite* of what raw Python `onnxruntime` preferred (~4 threads), i.e. thread
+   tuning is runtime-version-specific. Exposed `REDHOP_ONNX_INTRA_THREADS` to tune.
+   (`crates/embeddings/src/onnx.rs`.)
+2. **int8 quantization is the recommended rerank model trade** — embed-all ~51s → ~27s
+   (within-run ~2×) at a 4× smaller model (133MB → 34MB). This is the most reliable lever.
+3. **Stop marketing speed as a differentiator.** Site copy corrected from a misleading
+   lexical-vs-vector comparison to honest per-scenario numbers; the pitch is the runtime,
+   not the clock.
+4. **The embedding engine, diagnosed.** Same 1,209-chunk workload: PyTorch+Accelerate
+   6ms/chunk; raw Python ORT 15ms/chunk; RedHop's `ort` path ~2× beyond that. So two
+   gaps — ORT-CPU is ~2.5× slower than PyTorch+Accelerate for this small model, and our
+   `ort` integration leaves ~2× more on the table. PyTorch-level speed **is reachable
+   from Rust** (it's a dependency-weight tradeoff, not a limitation): ORT's **CoreML EP**
+   (Apple, smallest effort), a **candle**+Accelerate/Metal backend, **ggml**/llama.cpp
+   bindings, or **`tch`/libtorch** (PyTorch's own backend, heavy dep). Worth doing only
+   if dense-rerank setup speed becomes a priority — the BM25 default needs none of it.
+5. **Measurement caveat.** Absolute setup seconds vary run-to-run under machine load;
+   treat them as indicative and trust within-run ratios (int8 ≈ 2×, thread A/B above).

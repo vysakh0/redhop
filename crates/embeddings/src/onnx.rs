@@ -67,12 +67,21 @@ impl OnnxEmbedder {
         tokenizer_path: impl AsRef<Path>,
         config: EmbedderConfig,
     ) -> Result<Self> {
-        // ONNX Runtime defaults to a single intra-op thread under `ort` here,
-        // which makes batched CPU embedding ~Nx slower than it needs to be.
-        // Use all available cores for intra-op parallelism.
-        let intra_threads = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1);
+        // Intra-op thread count for the CPU EP. ORT defaults to ~single-threaded
+        // under `ort` here, which makes batched embedding far slower than it needs
+        // to be. Measured on this `ort`/ONNX-Runtime build, embedding throughput
+        // *improves* with all cores (10 threads ~51s vs 4 threads ~72s for the
+        // rerank embed-all), so default to the core count. `REDHOP_ONNX_INTRA_THREADS`
+        // overrides for other hardware/runtime versions.
+        let intra_threads = std::env::var("REDHOP_ONNX_INTRA_THREADS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1)
+            });
         let session = Session::builder()
             .map_err(|e| Error::Embedding(format!("ort builder: {e}")))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
