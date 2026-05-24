@@ -127,8 +127,11 @@ pub struct Document {
     rt: Runtime,
     // Optional embedder for `RetrievalMode::DenseRerank`. None for the default
     // lexical path, so the ONNX/model dependency only exists when a caller opts
-    // in by supplying one via `with_embedder`.
+    // in by supplying one via `with_embedder`. Embeds passages (and the query,
+    // unless a separate `query_embedder` is set).
     embedder: Option<Arc<dyn EmbeddingProvider>>,
+    // Optional separate query-side embedder for asymmetric models (e.g. E5).
+    query_embedder: Option<Arc<dyn EmbeddingProvider>>,
     // Lazily built on first query so construction is cheap (goal: lazy
     // chunk/index init).
     retriever: Option<Box<dyn Retriever>>,
@@ -180,6 +183,7 @@ impl Document {
             cfg,
             rt,
             embedder: None,
+            query_embedder: None,
             retriever: None,
         })
     }
@@ -193,6 +197,17 @@ impl Document {
     /// built index).
     pub fn with_embedder(mut self, embedder: Arc<dyn EmbeddingProvider>) -> Self {
         self.embedder = Some(embedder);
+        self.retriever = None;
+        self
+    }
+
+    /// Supply a **separate query-side embedder** for asymmetric models — e.g. E5,
+    /// which needs a `passage:` prefix on documents (the [`Document::with_embedder`]
+    /// one) and a `query:` prefix on queries (this one). For symmetric models
+    /// (BGE, MiniLM) you don't need this — `with_embedder` alone handles both.
+    /// Has no effect under [`RetrievalMode::Lexical`].
+    pub fn with_query_embedder(mut self, query_embedder: Arc<dyn EmbeddingProvider>) -> Self {
+        self.query_embedder = Some(query_embedder);
         self.retriever = None;
         self
     }
@@ -268,7 +283,14 @@ impl Document {
                                 .into(),
                         )
                     })?;
-                    Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?)
+                    match self.query_embedder.clone() {
+                        Some(q) => Box::new(LocalRerankRetriever::new_with_query_embedder(
+                            embedder,
+                            q,
+                            candidate_pool,
+                        )?),
+                        None => Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?),
+                    }
                 }
             };
             self.rt.block_on(r.index(&self.chunks))?;

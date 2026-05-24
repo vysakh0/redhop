@@ -31,7 +31,13 @@ const EMBED_BATCH: usize = 64;
 /// scores the BM25 candidate pool, never the whole corpus.
 pub struct LocalRerankRetriever {
     bm25: Bm25Retriever,
+    /// Embeds the passages (chunks) at index time.
     embedder: Arc<dyn EmbeddingProvider>,
+    /// Optional separate embedder for the query side. `None` reuses `embedder`
+    /// (symmetric models like BGE/MiniLM). Set it for asymmetric models that apply
+    /// different query vs passage handling — e.g. E5's `query:` / `passage:`
+    /// prefixes, where both sides share weights but differ in prefix.
+    query_embedder: Option<Arc<dyn EmbeddingProvider>>,
     /// BM25 prune depth — how many lexical candidates the dense stage reorders.
     candidate_pool: usize,
     /// Precomputed chunk embeddings, keyed by chunk id.
@@ -41,7 +47,8 @@ pub struct LocalRerankRetriever {
 impl LocalRerankRetriever {
     /// Construct a local-rerank retriever over a fresh BM25 index. `candidate_pool`
     /// is the BM25 prune depth (e.g. 50) that the dense stage reorders; it should
-    /// be ≥ the final `top_k` you intend to request.
+    /// be ≥ the final `top_k` you intend to request. The one embedder is used for
+    /// both passages and queries (symmetric models).
     pub fn new(
         embedder: Arc<dyn EmbeddingProvider>,
         candidate_pool: usize,
@@ -49,6 +56,25 @@ impl LocalRerankRetriever {
         Ok(Self {
             bm25: Bm25Retriever::new()?,
             embedder,
+            query_embedder: None,
+            candidate_pool: candidate_pool.max(1),
+            embeddings: HashMap::new(),
+        })
+    }
+
+    /// Like [`LocalRerankRetriever::new`] but with a **separate query embedder**.
+    /// `passage_embedder` embeds the chunks at index time; `query_embedder` embeds
+    /// the query at retrieval time — for asymmetric models (e.g. E5, which needs a
+    /// `passage:` prefix on documents and a `query:` prefix on queries).
+    pub fn new_with_query_embedder(
+        passage_embedder: Arc<dyn EmbeddingProvider>,
+        query_embedder: Arc<dyn EmbeddingProvider>,
+        candidate_pool: usize,
+    ) -> redhop_core::Result<Self> {
+        Ok(Self {
+            bm25: Bm25Retriever::new()?,
+            embedder: passage_embedder,
+            query_embedder: Some(query_embedder),
             candidate_pool: candidate_pool.max(1),
             embeddings: HashMap::new(),
         })
@@ -92,18 +118,21 @@ impl Retriever for LocalRerankRetriever {
         if cand.is_empty() {
             return Ok(cand);
         }
-        // Query embedding: reuse a precomputed one, else embed the query text.
+        // Query embedding: reuse a precomputed one, else embed the query text with
+        // the query-side embedder (falls back to the passage embedder if none).
         let qe = match &query.embedding {
             Some(e) => e.clone(),
-            None => self
-                .embedder
-                .embed(std::slice::from_ref(&query.text))
-                .await?
-                .into_iter()
-                .next()
-                .ok_or_else(|| {
-                    Error::Embedding("embedder returned no vector for the query".into())
-                })?,
+            None => {
+                let q_embedder = self.query_embedder.as_ref().unwrap_or(&self.embedder);
+                q_embedder
+                    .embed(std::slice::from_ref(&query.text))
+                    .await?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| {
+                        Error::Embedding("embedder returned no vector for the query".into())
+                    })?
+            }
         };
         // Local refinement: reorder only the pool by cosine.
         let mut scored: Vec<RetrievalResult> = cand
@@ -207,6 +236,46 @@ mod tests {
             let q = Query::new("alpha beta gamma beta");
             let res = r.retrieve(&q, 1).await.unwrap();
             assert_eq!(res[0].chunk.id.as_str(), "b");
+        });
+    }
+
+    /// Embeds every text to a fixed vector — stands in for an asymmetric query
+    /// embedder whose output is decided by the embedder, not the query text.
+    struct ConstEmbedder(Vec<f32>);
+
+    #[async_trait]
+    impl EmbeddingProvider for ConstEmbedder {
+        async fn embed(&self, texts: &[String]) -> redhop_core::Result<Vec<Embedding>> {
+            Ok(texts
+                .iter()
+                .map(|_| Embedding::from(self.0.clone()))
+                .collect())
+        }
+        fn dim(&self) -> usize {
+            self.0.len()
+        }
+        fn name(&self) -> &'static str {
+            "const"
+        }
+    }
+
+    #[test]
+    fn separate_query_embedder_drives_the_query_side() {
+        rt().block_on(async {
+            // Passages embedded by presence (StubEmbedder); the query embedder is a
+            // *different* one that ignores the text and points at "gamma".
+            let mut r = LocalRerankRetriever::new_with_query_embedder(
+                Arc::new(StubEmbedder),
+                Arc::new(ConstEmbedder(vec![0.0, 0.0, 1.0])),
+                10,
+            )
+            .unwrap();
+            r.index(&chunks()).await.unwrap();
+            // Query text leans "alpha", but the query embedder forces gamma — so
+            // chunk "c" wins, proving the query side used the query embedder.
+            let q = Query::new("alpha beta gamma");
+            let res = r.retrieve(&q, 1).await.unwrap();
+            assert_eq!(res[0].chunk.id.as_str(), "c");
         });
     }
 }
