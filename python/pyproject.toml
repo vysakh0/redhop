@@ -21,6 +21,17 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
 ]
 
+# Capability tiers. The native engine + parsers are compiled into the published
+# wheel; these extras name the tiers so `pip install "redhop[semantic]"` reads
+# meaningfully and reserves the names for any future Python-side helper deps.
+[project.optional-dependencies]
+# Semantic retrieval: local embedding model for retrieval="hybrid"/"semantic".
+semantic = []
+# Document parsing: from_file/from_folder for DOCX/PPTX/XLSX/PDF.
+files = []
+# Everything.
+all = ["redhop[semantic]", "redhop[files]"]
+
 [project.urls]
 Homepage = "https://github.com/redhop/redhop"
 Repository = "https://github.com/redhop/redhop"

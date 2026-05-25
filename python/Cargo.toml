@@ -24,11 +24,14 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [features]
-# Off by default: the standard wheel is lexical-only (no native ONNX runtime).
-# Build with `--features onnx` for the dense-rerank retrieval tier.
-onnx = ["redhop-embeddings/onnx"]
-# Build with `--features files` for Document.from_file parsing
-# (text/markdown/DOCX today; PPTX/XLSX/PDF coming).
+# Semantic retrieval tier: the local embedding model behind retrieval="hybrid"
+# and retrieval="semantic". Off by default so the base wheel stays lean; the
+# published `redhop[semantic]` wheel is built with it.
+semantic = ["redhop-embeddings/onnx"]
+# Deprecated alias for `semantic` — kept so existing build commands still work.
+onnx = ["semantic"]
+# `redhop[files]` parsing tier: Document.from_file/from_folder for
+# DOCX/PPTX/XLSX/PDF (text/markdown/code work without it).
 files = ["dep:redhop-files"]
 
 [dependencies]

@@ -541,10 +541,10 @@ fn doc_config(
     })
 }
 
-/// Attach a dense embedder for `retrieval="semantic"`. The ONNX runtime + model
-/// live behind the crate's `onnx` feature; the default (lexical) wheel raises a
-/// clear error rather than silently degrading.
-#[cfg(feature = "onnx")]
+/// Attach a dense embedder for `retrieval="semantic"`/`"hybrid"`. The embedding
+/// engine + model live behind the crate's `semantic` feature; the lean (lexical)
+/// wheel raises a clear error rather than silently degrading.
+#[cfg(feature = "semantic")]
 #[allow(clippy::too_many_arguments)]
 fn apply_dense_embedder(
     doc: RhDocument,
@@ -615,7 +615,7 @@ fn apply_dense_embedder(
     }
 }
 
-#[cfg(not(feature = "onnx"))]
+#[cfg(not(feature = "semantic"))]
 #[allow(clippy::too_many_arguments)]
 fn apply_dense_embedder(
     _doc: RhDocument,
@@ -628,9 +628,8 @@ fn apply_dense_embedder(
     _embedder_passage_prefix: Option<String>,
 ) -> PyResult<RhDocument> {
     Err(PyValueError::new_err(
-        "retrieval='semantic' needs an ONNX-enabled build of redhop — the default wheel is \
-         lexical-only (no native runtime). Reinstall an onnx-enabled build (built with the \
-         `onnx` cargo feature, e.g. `maturin develop --features onnx`).",
+        "retrieval='semantic'/'hybrid' needs the semantic tier — this install is lexical-only. \
+         Install it with `pip install \"redhop[semantic]\"`.",
     ))
 }
 
