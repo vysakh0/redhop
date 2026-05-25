@@ -172,8 +172,8 @@ name = "export_rerank_pool"
 path = "examples/export_rerank_pool.rs"
 
 [[example]]
-name = "document_rerank"
-path = "examples/document_rerank.rs"
+name = "document_dense"
+path = "examples/document_dense.rs"
 required-features = ["onnx"]
 
 [[example]]

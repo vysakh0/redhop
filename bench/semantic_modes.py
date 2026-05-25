@@ -32,7 +32,6 @@ print(f"{len(items)} queries · {len(pool)} passages pooled\n")
 
 MODES = [
     ("lexical (BM25)", dict(retrieval="lexical")),
-    ("local rerank", dict(retrieval="rerank", model="bge-small")),
     ("global dense", dict(retrieval="dense", model="bge-small")),
 ]
 

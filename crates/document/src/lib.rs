@@ -28,8 +28,8 @@
 //! mental model is *documents + reasoning*, not *retrieval infrastructure*. The
 //! default is BM25 ([`RetrievalMode::Lexical`]) — zero dependencies, best for
 //! lexical workloads. For semantic-heavy queries, opt into
-//! [`RetrievalMode::DenseRerank`] and inject an embedder via
-//! [`Document::with_embedder`] (BM25 prune → local dense rerank, no ANN). A
+//! [`RetrievalMode::Dense`] and inject an embedder via
+//! [`Document::with_embedder`] (exact cosine over every chunk, no ANN). A
 //! zero-model semantic tier lives in the external `semantic-bm25` crate and is
 //! deliberately not wired here. This crate is pure layering over
 //! [`redhop_chunking`], [`redhop_retrieval`], and [`redhop_context`] — no new
@@ -59,28 +59,21 @@ use tokio::runtime::{Builder, Runtime};
 ///
 /// The default ([`RetrievalMode::Lexical`]) is BM25 — zero dependencies, fast,
 /// and the right tool for lexical/keyword workloads. For semantic-heavy queries
-/// (paraphrase, low query↔passage overlap), opt into [`RetrievalMode::DenseRerank`]
-/// and supply an embedder via [`Document::with_embedder`]: BM25 prunes the corpus
-/// to a candidate pool, then a dense model reorders *only that pool*
-/// (`docs/findings/LOCAL_RERANK.md`). A zero-model semantic tier (corpus-graph
-/// second-order rerank) lives in the external `semantic-bm25` crate and is
-/// deliberately *not* wired here (`docs/findings/SEMANTIC_ZERO_DEP.md`).
+/// (paraphrase, low query↔passage overlap), opt into [`RetrievalMode::Dense`]
+/// and supply an embedder via [`Document::with_embedder`]: the dense model
+/// cosines the query against *every* chunk — exact brute force, no ANN, for
+/// bounded corpora (`docs/findings/GLOBAL_DENSE.md`). A zero-model semantic tier
+/// (corpus-graph second-order rerank) lives in the external `semantic-bm25` crate
+/// and is deliberately *not* wired here (`docs/findings/SEMANTIC_ZERO_DEP.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetrievalMode {
     /// BM25 lexical retrieval. The default; needs no model or embedder.
     Lexical,
-    /// BM25 prune → local dense rerank of the candidate pool. Requires an
-    /// embedder set via [`Document::with_embedder`]. `candidate_pool` is the BM25
-    /// prune depth the dense stage reorders (e.g. 50).
-    DenseRerank {
-        /// BM25 candidate-pool depth reordered by the dense stage.
-        candidate_pool: usize,
-    },
     /// Global dense: cosine the query against **every** chunk embedding (exact
-    /// brute force, no BM25 prune, no ANN). Requires an embedder. For
-    /// paraphrase/synonym-heavy **bounded** corpora where the answer may share
-    /// no terms with the query; O(N) cosine per query — at scale, use a real
-    /// vector store.
+    /// brute force, no ANN). Requires an embedder set via
+    /// [`Document::with_embedder`]. For paraphrase/synonym-heavy queries on
+    /// **bounded** corpora where the answer may share no terms with the query;
+    /// O(N) cosine per query — at scale, use a real vector store.
     Dense,
 }
 
@@ -131,7 +124,7 @@ pub struct Document {
     chunks: Vec<Chunk>,
     cfg: DocumentConfig,
     rt: Runtime,
-    // Optional embedder for `RetrievalMode::DenseRerank`. None for the default
+    // Optional embedder for `RetrievalMode::Dense`. None for the default
     // lexical path, so the ONNX/model dependency only exists when a caller opts
     // in by supplying one via `with_embedder`. Embeds passages (and the query,
     // unless a separate `query_embedder` is set).
@@ -194,7 +187,7 @@ impl Document {
         })
     }
 
-    /// Supply the embedder used by [`RetrievalMode::DenseRerank`]. The library
+    /// Supply the embedder used by [`RetrievalMode::Dense`]. The library
     /// stays neutral about model choice — build any [`EmbeddingProvider`]
     /// yourself (e.g. an ONNX BGE embedder behind your own `onnx` feature) and
     /// inject it here. No effect under [`RetrievalMode::Lexical`].
@@ -280,24 +273,6 @@ impl Document {
         if self.retriever.is_none() {
             let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
                 RetrievalMode::Lexical => Box::new(Bm25Retriever::new()?),
-                RetrievalMode::DenseRerank { candidate_pool } => {
-                    let embedder = self.embedder.clone().ok_or_else(|| {
-                        redhop_core::Error::InvalidConfig(
-                            "RetrievalMode::DenseRerank requires an embedder — supply one with \
-                             `Document::with_embedder(...)`, or use the default \
-                             RetrievalMode::Lexical."
-                                .into(),
-                        )
-                    })?;
-                    match self.query_embedder.clone() {
-                        Some(q) => Box::new(LocalRerankRetriever::new_with_query_embedder(
-                            embedder,
-                            q,
-                            candidate_pool,
-                        )?),
-                        None => Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?),
-                    }
-                }
                 RetrievalMode::Dense => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
                         redhop_core::Error::InvalidConfig(
@@ -411,7 +386,7 @@ mod tests {
         assert!(!ctx.text().is_empty());
     }
 
-    // Deterministic stub embedder (no model) for the DenseRerank path.
+    // Deterministic stub embedder (no model) for the Dense path.
     struct StubEmbedder;
 
     #[async_trait::async_trait]
@@ -437,7 +412,7 @@ mod tests {
 
     fn rerank_cfg() -> DocumentConfig {
         DocumentConfig {
-            retrieval_mode: RetrievalMode::DenseRerank { candidate_pool: 10 },
+            retrieval_mode: RetrievalMode::Dense,
             ..Default::default()
         }
     }

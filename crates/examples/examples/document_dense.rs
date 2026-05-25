@@ -1,11 +1,12 @@
-//! Using the opt-in semantic tier: `Document` with `RetrievalMode::DenseRerank`.
+//! Using the opt-in semantic tier: `Document` with `RetrievalMode::Dense`.
 //!
 //! The default `Document` is BM25 (zero deps). For semantic-heavy queries you
-//! inject an embedder and switch the mode — BM25 prunes to a candidate pool, a
-//! dense model reorders only that pool (no ANN). The ONNX dependency lives here,
-//! at the construction site, not in the library.
+//! inject an embedder and switch to `Dense` — the model cosines the query
+//! against *every* chunk (exact brute force, no ANN), so a paraphrase answer
+//! that shares no terms with the query is still reachable. The ONNX dependency
+//! lives here, at the construction site, not in the library.
 //!
-//! Run:  cargo run -p redhop-examples --example document_rerank --features onnx --release
+//! Run:  cargo run -p redhop-examples --example document_dense --features onnx --release
 
 use std::sync::Arc;
 
@@ -39,17 +40,15 @@ fn main() -> anyhow::Result<()> {
     let cfg = DocumentConfig {
         target_tokens: 16,
         max_tokens: 32,
-        retrieval_mode: RetrievalMode::DenseRerank { candidate_pool: 50 },
+        retrieval_mode: RetrievalMode::Dense,
         ..Default::default()
     };
     let mut doc = Document::from_text_with("hr.txt", TEXT, cfg)?.with_embedder(embedder);
 
-    // This is an API-usage demo. The query shares the term "employee" with two
-    // chunks (the termination and the budget "review"); the dense stage reorders
-    // the lexical pool toward the termination chunk. The *measured* semantic-recall
-    // benefit (dense reordering a large BM25 pool) is in docs/findings/LOCAL_RERANK.md;
-    // note dense rerank only helps when BM25's pool already contains the chunk —
-    // pure zero-overlap synonyms need a global dense index, by design.
+    // "leave the company" shares no terms with "terminated for cause", so BM25
+    // alone would miss it. Global dense cosines every chunk and surfaces the
+    // termination chunk anyway. The measured benefit is in
+    // docs/findings/GLOBAL_DENSE.md (synonym-mismatch recall@1 20%→88%).
     let ctx = doc.context(QUERY)?;
     println!("query: {QUERY}\n--- assembled context ---\n{}", ctx.text());
     Ok(())

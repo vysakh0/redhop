@@ -436,17 +436,14 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResult<RetrievalMode> {
+fn retrieval_from_str(retrieval: Option<&str>) -> PyResult<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
-        Some("rerank") => RetrievalMode::DenseRerank {
-            candidate_pool: candidate_pool.max(1),
-        },
         Some("dense") => RetrievalMode::Dense,
         Some(other) => {
             return Err(PyValueError::new_err(format!(
-                "unknown retrieval mode '{other}'; use 'lexical' (default), 'rerank' \
-                 (BM25 prune → dense), or 'dense' (global dense, bounded corpora)"
+                "unknown retrieval mode '{other}'; use 'lexical' (default, BM25) or \
+                 'dense' (global dense over every chunk, for bounded corpora)"
             )))
         }
     })
@@ -483,12 +480,12 @@ fn doc_config(
     })
 }
 
-/// Attach a dense embedder for `retrieval="rerank"`. The ONNX runtime + model
+/// Attach a dense embedder for `retrieval="dense"`. The ONNX runtime + model
 /// live behind the crate's `onnx` feature; the default (lexical) wheel raises a
 /// clear error rather than silently degrading.
 #[cfg(feature = "onnx")]
 #[allow(clippy::too_many_arguments)]
-fn apply_rerank(
+fn apply_dense_embedder(
     doc: RhDocument,
     model: Option<String>,
     embedder_model: Option<String>,
@@ -559,7 +556,7 @@ fn apply_rerank(
 
 #[cfg(not(feature = "onnx"))]
 #[allow(clippy::too_many_arguments)]
-fn apply_rerank(
+fn apply_dense_embedder(
     _doc: RhDocument,
     _model: Option<String>,
     _embedder_model: Option<String>,
@@ -570,7 +567,7 @@ fn apply_rerank(
     _embedder_passage_prefix: Option<String>,
 ) -> PyResult<RhDocument> {
     Err(PyValueError::new_err(
-        "retrieval='rerank' needs an ONNX-enabled build of redhop — the default wheel is \
+        "retrieval='dense' needs an ONNX-enabled build of redhop — the default wheel is \
          lexical-only (no native runtime). Reinstall an onnx-enabled build (built with the \
          `onnx` cargo feature, e.g. `maturin develop --features onnx`).",
     ))
@@ -598,7 +595,7 @@ impl Document {
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50))]
+                        embedder_passage_prefix=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -616,13 +613,9 @@ impl Document {
         embedder_pooling: Option<String>,
         embedder_query_prefix: Option<String>,
         embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
     ) -> PyResult<Self> {
-        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let rerank = matches!(
-            mode,
-            RetrievalMode::DenseRerank { .. } | RetrievalMode::Dense
-        );
+        let mode = retrieval_from_str(retrieval.as_deref())?;
+        let needs_embedder = matches!(mode, RetrievalMode::Dense);
         let cfg = doc_config(
             strategy,
             token_budget,
@@ -632,8 +625,8 @@ impl Document {
             mode,
         )?;
         let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
-        if rerank {
-            inner = apply_rerank(
+        if needs_embedder {
+            inner = apply_dense_embedder(
                 inner,
                 model,
                 embedder_model,
@@ -653,7 +646,7 @@ impl Document {
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50))]
+                        embedder_passage_prefix=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -668,21 +661,17 @@ impl Document {
         embedder_pooling: Option<String>,
         embedder_query_prefix: Option<String>,
         embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let rerank = matches!(
-            mode,
-            RetrievalMode::DenseRerank { .. } | RetrievalMode::Dense
-        );
+        let mode = retrieval_from_str(retrieval.as_deref())?;
+        let needs_embedder = matches!(mode, RetrievalMode::Dense);
         let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
-        if rerank {
-            inner = apply_rerank(
+        if needs_embedder {
+            inner = apply_dense_embedder(
                 inner,
                 model,
                 embedder_model,
