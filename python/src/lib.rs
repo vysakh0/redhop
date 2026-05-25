@@ -579,6 +579,54 @@ fn apply_dense_embedder(
     ))
 }
 
+/// Shared construction for text-backed documents (used by `from_text` and
+/// `from_file`): resolve the tier, build the config, chunk+index, attach the
+/// embedder if the tier needs one.
+#[allow(clippy::too_many_arguments)]
+fn build_text_doc(
+    source: &str,
+    text: &str,
+    strategy: Option<String>,
+    chunk_size: usize,
+    chunk_overlap: usize,
+    token_budget: usize,
+    candidate_k: usize,
+    retrieval: Option<String>,
+    model: Option<String>,
+    embedder_model: Option<String>,
+    embedder_tokenizer: Option<String>,
+    embedder_dim: usize,
+    embedder_pooling: Option<String>,
+    embedder_query_prefix: Option<String>,
+    embedder_passage_prefix: Option<String>,
+    candidate_pool: usize,
+) -> PyResult<RhDocument> {
+    let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+    let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
+    let cfg = doc_config(
+        strategy,
+        token_budget,
+        candidate_k,
+        chunk_size,
+        chunk_overlap,
+        mode,
+    )?;
+    let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
+    if needs_embedder {
+        inner = apply_dense_embedder(
+            inner,
+            model,
+            embedder_model,
+            embedder_tokenizer,
+            embedder_dim,
+            embedder_pooling,
+            embedder_query_prefix,
+            embedder_passage_prefix,
+        )?;
+    }
+    Ok(inner)
+}
+
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
 /// internal retrieval, and reasoning-aware context allocation. Retrieval is an
 /// internal detail — you think in documents and queries, not retrievers.
@@ -621,29 +669,96 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
-        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(
+        let inner = build_text_doc(
+            source,
+            text,
             strategy,
-            token_budget,
-            candidate_k,
             chunk_size,
             chunk_overlap,
-            mode,
+            token_budget,
+            candidate_k,
+            retrieval,
+            model,
+            embedder_model,
+            embedder_tokenizer,
+            embedder_dim,
+            embedder_pooling,
+            embedder_query_prefix,
+            embedder_passage_prefix,
+            candidate_pool,
         )?;
-        let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
-        if needs_embedder {
-            inner = apply_dense_embedder(
-                inner,
-                model,
-                embedder_model,
-                embedder_tokenizer,
-                embedder_dim,
-                embedder_pooling,
-                embedder_query_prefix,
-                embedder_passage_prefix,
-            )?;
+        Ok(Self { inner })
+    }
+
+    /// Build straight from a file on disk — RedHop reads it, chunks, and indexes;
+    /// the file path becomes each chunk's source (toward citations).
+    ///
+    /// Today this supports **UTF-8 text files** (`.txt`, `.md`, `.rst`, source code,
+    /// `.json`, `.csv`, logs, …). PDF / DOCX / PPTX parsing is the `redhop[files]`
+    /// tier (coming) — until then, extract text yourself and use `from_text`.
+    #[staticmethod]
+    #[pyo3(signature = (path, strategy=None, chunk_size=128, chunk_overlap=1,
+                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
+                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
+                        embedder_pooling=None, embedder_query_prefix=None,
+                        embedder_passage_prefix=None, candidate_pool=50))]
+    #[allow(clippy::too_many_arguments)]
+    fn from_file(
+        path: &str,
+        strategy: Option<String>,
+        chunk_size: usize,
+        chunk_overlap: usize,
+        token_budget: usize,
+        candidate_k: usize,
+        retrieval: Option<String>,
+        model: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: usize,
+        embedder_pooling: Option<String>,
+        embedder_query_prefix: Option<String>,
+        embedder_passage_prefix: Option<String>,
+        candidate_pool: usize,
+    ) -> PyResult<Self> {
+        // Binary office/PDF formats need the (forthcoming) redhop[files] parsers.
+        let lower = path.to_lowercase();
+        const NEEDS_PARSER: &[&str] = &[
+            ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp",
+            ".ods", ".rtf",
+        ];
+        if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
+            return Err(PyValueError::new_err(format!(
+                "from_file can't parse {} yet — that's the redhop[files] tier (PDF/DOCX/PPTX \
+                 via native parsers), coming soon. For now, extract the text yourself and use \
+                 from_text(), or pass a text file (.txt/.md/code/…).",
+                ext.trim_start_matches('.')
+            )));
         }
+        let text = std::fs::read_to_string(path).map_err(|e| {
+            PyValueError::new_err(format!(
+                "could not read '{path}' as text ({e}). from_file currently supports UTF-8 text \
+                 files; PDF/DOCX/PPTX support (redhop[files]) is coming — until then parse to \
+                 text yourself and use from_text()."
+            ))
+        })?;
+        let inner = build_text_doc(
+            path,
+            &text,
+            strategy,
+            chunk_size,
+            chunk_overlap,
+            token_budget,
+            candidate_k,
+            retrieval,
+            model,
+            embedder_model,
+            embedder_tokenizer,
+            embedder_dim,
+            embedder_pooling,
+            embedder_query_prefix,
+            embedder_passage_prefix,
+            candidate_pool,
+        )?;
         Ok(Self { inner })
     }
 
