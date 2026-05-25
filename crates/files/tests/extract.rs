@@ -34,11 +34,17 @@ fn xlsx_sheets() {
 }
 
 #[test]
-fn pdf_text() {
+fn pdf_text_with_page_numbers() {
     let doc = extract("tests/fixtures/sample.pdf").expect("extract pdf");
     let text = doc.plain_text();
     assert!(text.contains("Delaware"), "pdf text missing: {text}");
     assert!(text.contains("terminate"), "pdf page 2 text missing");
+    // One section per page, tagged with its page number.
+    assert!(doc.sections.iter().any(|s| s.page == Some(1)), "page 1 missing");
+    assert!(doc.sections.iter().any(|s| s.page == Some(2)), "page 2 missing");
+    // The page-2 term sits in a section tagged page 2, not page 1.
+    let p2 = doc.sections.iter().find(|s| s.text.contains("terminate")).unwrap();
+    assert_eq!(p2.page, Some(2), "page-2 text mis-attributed");
 }
 
 #[test]
