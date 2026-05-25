@@ -140,8 +140,22 @@ impl Retriever for LocalRerankRetriever {
         if self.global {
             self.chunks = chunks.to_vec();
         }
-        // Precompute chunk embeddings (batched) so retrieval only embeds the query.
-        for batch in chunks.chunks(EMBED_BATCH) {
+        // Reuse any embedding already carried on a chunk (e.g. loaded from a
+        // persisted index); only embed the ones that lack one. This makes
+        // re-indexing a mostly-unchanged corpus incremental — we pay the
+        // embedding cost only for new/changed chunks.
+        let to_embed: Vec<&Chunk> = chunks
+            .iter()
+            .filter(|c| match &c.embedding {
+                Some(e) => {
+                    self.embeddings.insert(c.id.as_str().to_string(), e.clone());
+                    false
+                }
+                None => true,
+            })
+            .collect();
+        // Precompute the rest (batched) so retrieval only embeds the query.
+        for batch in to_embed.chunks(EMBED_BATCH) {
             let texts: Vec<String> = batch.iter().map(|c| c.text.clone()).collect();
             let embs = self.embedder.embed(&texts).await?;
             for (c, e) in batch.iter().zip(embs) {
@@ -149,6 +163,10 @@ impl Retriever for LocalRerankRetriever {
             }
         }
         Ok(())
+    }
+
+    fn embeddings(&self) -> Option<&HashMap<String, redhop_core::Embedding>> {
+        Some(&self.embeddings)
     }
 
     async fn retrieve(
@@ -287,6 +305,23 @@ mod tests {
             let res = r.retrieve(&q, 3).await.unwrap();
             assert_eq!(res[0].chunk.id.as_str(), "c");
             assert_eq!(res[0].score.method, RetrievalMethod::Rerank);
+        });
+    }
+
+    #[test]
+    fn reuses_precomputed_chunk_embeddings() {
+        rt().block_on(async {
+            let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
+            // Chunk "a" carries an embedding the StubEmbedder would never produce
+            // for "alpha alpha alpha" (it'd be [3,0,0]). If index() reused it, the
+            // cached vector is this one; if it re-embedded, it'd be [3,0,0].
+            let mut cs = chunks();
+            cs[0].embedding = Some(Embedding::from(vec![9.0, 9.0, 9.0]));
+            r.index(&cs).await.unwrap();
+            let cached = r.embeddings().expect("dense retriever caches embeddings");
+            assert_eq!(cached.get("a").unwrap().as_slice(), &[9.0, 9.0, 9.0]);
+            // A chunk without a preset embedding is still computed normally.
+            assert_eq!(cached.get("b").unwrap().as_slice(), &[0.0, 2.0, 0.0]);
         });
     }
 

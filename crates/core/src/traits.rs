@@ -139,6 +139,13 @@ pub trait Retriever: Send + Sync {
 
     /// Human-readable name, used in diagnostics.
     fn name(&self) -> &'static str;
+
+    /// Computed per-chunk embeddings, keyed by chunk id, when this retriever
+    /// caches them (dense/hybrid). `None` for retrievers that don't embed (BM25).
+    /// Lets callers persist embeddings so they aren't recomputed on reload.
+    fn embeddings(&self) -> Option<&std::collections::HashMap<String, crate::Embedding>> {
+        None
+    }
 }
 
 /// Reorders retrieval results using additional signal.

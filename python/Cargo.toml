@@ -37,6 +37,7 @@ redhop-context    = { path = "../crates/context" }
 redhop-document   = { path = "../crates/document" }
 redhop-embeddings = { path = "../crates/embeddings", default-features = false }
 redhop-files      = { path = "../crates/files", optional = true }
+serde           = { version = "1", features = ["derive"] }
 serde_json      = "1"
 pyo3           = { version = "0.23", features = ["extension-module", "abi3-py39"] }
 

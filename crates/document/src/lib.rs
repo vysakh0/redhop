@@ -158,6 +158,14 @@ pub struct Document {
     retriever: Option<Box<dyn Retriever>>,
 }
 
+/// Renumber chunk ids to `0..n` so a merged set (e.g. from several files) has
+/// unique ids. Embeddings/metadata ride on the chunk, so renumbering is safe.
+fn reassign_ids(chunks: &mut [Chunk]) {
+    for (i, c) in chunks.iter_mut().enumerate() {
+        c.id = redhop_core::ChunkId::new(format!("{i}"));
+    }
+}
+
 impl Document {
     /// Build a document from raw text, chunking it with the default policy.
     /// Bring your own parser/OCR — this layer takes text, not PDFs.
@@ -203,6 +211,24 @@ impl Document {
         files: Vec<(String, Vec<Section>)>,
         cfg: DocumentConfig,
     ) -> Result<Self> {
+        let mut all: Vec<Chunk> = Vec::new();
+        for (source, sections) in &files {
+            all.extend(Self::chunk_sections(source, sections, &cfg)?);
+        }
+        reassign_ids(&mut all);
+        Self::from_chunks_with(all, cfg)
+    }
+
+    /// Chunk **one** source's sections into chunks (carrying `page`/`heading`/
+    /// `line` metadata), *without* building a `Document`. Ids start at 0 — callers
+    /// that merge chunks from several sources must re-id (see [`Document::from_chunks_with`]).
+    /// This is the building block for incremental / persisted indexing: re-chunk
+    /// only the files that changed, keep the cached chunks for the rest.
+    pub fn chunk_sections(
+        source: &str,
+        sections: &[Section],
+        cfg: &DocumentConfig,
+    ) -> Result<Vec<Chunk>> {
         let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
         let chunker = SentenceChunker::new(
             tok,
@@ -210,35 +236,30 @@ impl Document {
             cfg.max_tokens,
             cfg.overlap_sentences,
         )?;
-        let mut all: Vec<Chunk> = Vec::new();
-        let mut next_id = 0usize;
-        for (source, sections) in &files {
-            for sec in sections {
-                if sec.text.trim().is_empty() {
-                    continue;
-                }
-                let mut chunks =
-                    chunker.chunk(&SourceDoc::new(source.clone(), sec.text.clone()))?;
-                for c in &mut chunks {
-                    c.id = redhop_core::ChunkId::new(format!("{next_id}"));
-                    next_id += 1;
-                    if let Some(p) = sec.page {
-                        c.metadata
-                            .insert("page".to_string(), serde_json::Value::from(p as u64));
-                    }
-                    if let Some(h) = &sec.heading {
-                        c.metadata
-                            .insert("heading".to_string(), serde_json::Value::String(h.clone()));
-                    }
-                    if let Some(l) = sec.line {
-                        c.metadata
-                            .insert("line".to_string(), serde_json::Value::from(l as u64));
-                    }
-                }
-                all.extend(chunks);
+        let mut out: Vec<Chunk> = Vec::new();
+        for sec in sections {
+            if sec.text.trim().is_empty() {
+                continue;
             }
+            let mut chunks = chunker.chunk(&SourceDoc::new(source.to_string(), sec.text.clone()))?;
+            for c in &mut chunks {
+                if let Some(p) = sec.page {
+                    c.metadata
+                        .insert("page".to_string(), serde_json::Value::from(p as u64));
+                }
+                if let Some(h) = &sec.heading {
+                    c.metadata
+                        .insert("heading".to_string(), serde_json::Value::String(h.clone()));
+                }
+                if let Some(l) = sec.line {
+                    c.metadata
+                        .insert("line".to_string(), serde_json::Value::from(l as u64));
+                }
+            }
+            out.extend(chunks);
         }
-        Self::from_chunks_with(all, cfg)
+        reassign_ids(&mut out);
+        Ok(out)
     }
 
     /// Build from chunks you already produced (your own chunker/parser).
@@ -295,6 +316,33 @@ impl Document {
     /// Number of chunks the document holds.
     pub fn len(&self) -> usize {
         self.chunks.len()
+    }
+
+    /// The document's chunks (text, source, citation metadata, and embedding when
+    /// one has been attached). Read-only view for inspection or persistence.
+    pub fn chunks(&self) -> &[Chunk] {
+        &self.chunks
+    }
+
+    /// The chunks **with embeddings filled in** — indexes the document if needed
+    /// (so dense/hybrid embeddings are computed), then returns a clone of the
+    /// chunks with each `embedding` populated from the retriever's cache. For the
+    /// lexical tier (no embeddings) this is just the chunks. Use this to persist a
+    /// folder index: saved chunks carry their vectors, so reloading skips
+    /// re-embedding everything.
+    pub fn embedded_chunks(&mut self) -> Result<Vec<Chunk>> {
+        self.ensure_indexed()?;
+        let mut out = self.chunks.clone();
+        if let Some(map) = self.retriever.as_ref().and_then(|r| r.embeddings()) {
+            for c in &mut out {
+                if c.embedding.is_none() {
+                    if let Some(e) = map.get(c.id.as_str()) {
+                        c.embedding = Some(e.clone());
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Whether the document has no chunks.
