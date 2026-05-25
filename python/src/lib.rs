@@ -628,8 +628,9 @@ fn apply_dense_embedder(
     _embedder_passage_prefix: Option<String>,
 ) -> PyResult<RhDocument> {
     Err(PyValueError::new_err(
-        "retrieval='semantic'/'hybrid' needs the semantic tier — this install is lexical-only. \
-         Install it with `pip install \"redhop[semantic]\"`.",
+        "retrieval='semantic'/'hybrid' needs the semantic tier, which this build was compiled \
+         without. The standard `pip install redhop` includes it — reinstall that; if you built \
+         from source, add `--features semantic`.",
     ))
 }
 
@@ -637,7 +638,7 @@ fn apply_dense_embedder(
 ///
 /// With the `files` feature, `redhop-files` parses text/markdown/DOCX (PPTX/XLSX/
 /// PDF coming). Without it, only UTF-8 text files are read; binary formats return
-/// a clear "install redhop[files]" error.
+/// a clear, helpful error.
 #[cfg(feature = "files")]
 fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     let doc = redhop_files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -657,15 +658,16 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     ];
     if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
         return Err(PyValueError::new_err(format!(
-            "from_file can't parse {} on this build — install the parsing tier \
-             (`pip install \"redhop[files]\"`), or extract the text yourself and use from_text().",
+            "from_file can't parse {} — this build was compiled without the document parsers. \
+             The standard `pip install redhop` includes them (reinstall that); from source, add \
+             `--features files`. Or extract the text yourself and use from_text().",
             ext.trim_start_matches('.')
         )));
     }
     let text = std::fs::read_to_string(path).map_err(|e| {
         PyValueError::new_err(format!(
-            "could not read '{path}' as text ({e}). This build supports UTF-8 text files; \
-             for PDF/DOCX/PPTX install redhop[files]."
+            "could not read '{path}' as text ({e}). This build reads UTF-8 text files; \
+             PDF/DOCX/PPTX/XLSX parsing is in the standard `pip install redhop`."
         ))
     })?;
     Ok((path.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
@@ -945,8 +947,8 @@ fn build_folder_persisted(
     }
     if all.is_empty() {
         return Err(PyValueError::new_err(format!(
-            "from_folder: no readable files found under '{}'. The base install reads \
-             text/code files; install `redhop[files]` to also ingest PDF/DOCX/PPTX/XLSX.",
+            "from_folder: no readable files found under '{}'. This build reads \
+             text/code files; the standard `pip install redhop` also parses PDF/DOCX/PPTX/XLSX.",
             folder.display()
         )));
     }
@@ -1130,7 +1132,7 @@ impl Document {
     /// for citations.
     ///
     /// The base install reads **UTF-8 text & code** (`.txt`, `.md`, `.rst`, source,
-    /// `.json`, `.csv`, logs, …). Install `redhop[files]` to also parse PDF, DOCX,
+    /// `.json`, `.csv`, logs, …). The standard `pip install redhop` also parses PDF, DOCX,
     /// PPTX, and XLSX.
     #[staticmethod]
     #[pyo3(signature = (path, strategy=None, chunk_size=128, chunk_overlap=1,
@@ -1184,7 +1186,7 @@ impl Document {
     /// Files it can't parse (unsupported formats, unreadable bytes) are skipped;
     /// hidden entries and build/cache dirs (`node_modules`, `target`, `__pycache__`,
     /// …) are ignored. With the base install only text/code files are read; install
-    /// `redhop[files]` to also ingest PDF/DOCX/PPTX/XLSX. `recursive=False` stays in
+    /// the standard install also parses PDF/DOCX/PPTX/XLSX. `recursive=False` stays in
     /// the top level.
     ///
     /// Set `persist=True` to save the index to disk and **incrementally reload** it:
@@ -1266,7 +1268,7 @@ impl Document {
         if files.is_empty() {
             return Err(PyValueError::new_err(format!(
                 "from_folder: no readable files found under '{path}'. The base install reads \
-                 text/code files; install `redhop[files]` to also ingest PDF/DOCX/PPTX/XLSX."
+                 text/code files; the standard `pip install redhop` also parses PDF/DOCX/PPTX/XLSX."
             )));
         }
         let inner = build_text_doc(
