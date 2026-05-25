@@ -32,7 +32,7 @@ print(f"{len(items)} queries · {len(pool)} passages pooled\n")
 
 MODES = [
     ("lexical (BM25)", dict(retrieval="lexical")),
-    ("global dense", dict(retrieval="dense", model="bge-small")),
+    ("global dense", dict(retrieval="semantic", model="bge-small")),
 ]
 
 # Short passages (~12–20 tok); budgets sized for ~1 and ~3 passages.

@@ -439,11 +439,12 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
 fn retrieval_from_str(retrieval: Option<&str>) -> PyResult<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
-        Some("dense") => RetrievalMode::Dense,
+        // "semantic" is the user-facing name; "dense" is a kept alias.
+        Some("semantic") | Some("dense") => RetrievalMode::Dense,
         Some(other) => {
             return Err(PyValueError::new_err(format!(
                 "unknown retrieval mode '{other}'; use 'lexical' (default, BM25) or \
-                 'dense' (global dense over every chunk, for bounded corpora)"
+                 'semantic' (embeds every chunk, exact cosine, for bounded corpora)"
             )))
         }
     })
@@ -480,7 +481,7 @@ fn doc_config(
     })
 }
 
-/// Attach a dense embedder for `retrieval="dense"`. The ONNX runtime + model
+/// Attach a dense embedder for `retrieval="semantic"`. The ONNX runtime + model
 /// live behind the crate's `onnx` feature; the default (lexical) wheel raises a
 /// clear error rather than silently degrading.
 #[cfg(feature = "onnx")]
@@ -567,7 +568,7 @@ fn apply_dense_embedder(
     _embedder_passage_prefix: Option<String>,
 ) -> PyResult<RhDocument> {
     Err(PyValueError::new_err(
-        "retrieval='dense' needs an ONNX-enabled build of redhop — the default wheel is \
+        "retrieval='semantic' needs an ONNX-enabled build of redhop — the default wheel is \
          lexical-only (no native runtime). Reinstall an onnx-enabled build (built with the \
          `onnx` cargo feature, e.g. `maturin develop --features onnx`).",
     ))

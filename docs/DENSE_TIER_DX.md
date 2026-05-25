@@ -2,8 +2,8 @@
 
 > **Status:** **Implemented** (Option 1). `model="…"` with HF auto-download ships in
 > `redhop-embeddings::registry` + the Python binding. Validated end-to-end: a cold
-> `from_text(text, retrieval="dense", model="bge-small")` downloads (~35 MB) and
-> answers; `retrieval="dense"` alone uses the default; unknown names error with the
+> `from_text(text, retrieval="semantic", model="bge-small")` downloads (~35 MB) and
+> answers; `retrieval="semantic"` alone uses the default; unknown names error with the
 > known-model list + the explicit-paths escape hatch. **Goal:** remove the ONNX-export
 > friction from the dense rerank tier so it's a one-liner, while keeping RedHop's Rust
 > engine, lightweight default build, and offline guarantees.
@@ -21,7 +21,7 @@ Today, opting into dense rerank makes the user *produce and locate model files*:
 
 ```python
 doc = redhop.Document.from_text(
-    text, retrieval="dense",
+    text, retrieval="semantic",
     embedder_model="bge/model.onnx",        # they must export this
     embedder_tokenizer="bge/tokenizer.json",
     embedder_dim=384, embedder_pooling="cls",
@@ -50,14 +50,14 @@ the dependency, to keep control of pooling/prefixes and the Decision Report.
 
 ```python
 # one-liner: downloads the default (quantized BGE-small) on first use, cached
-doc = redhop.Document.from_text(text, retrieval="dense")
+doc = redhop.Document.from_text(text, retrieval="semantic")
 
 # pick a known model by name
-doc = redhop.Document.from_text(text, retrieval="dense", model="bge-small")
+doc = redhop.Document.from_text(text, retrieval="semantic", model="bge-small")
 
 # power user / offline / custom model: explicit paths still work, unchanged
 doc = redhop.Document.from_text(
-    text, retrieval="dense",
+    text, retrieval="semantic",
     embedder_model="/path/model.onnx", embedder_tokenizer="/path/tokenizer.json",
     embedder_dim=384, embedder_pooling="cls",
 )

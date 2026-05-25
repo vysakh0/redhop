@@ -11,7 +11,7 @@
 > — 25 queries, each with a GOLD passage (semantically right, low lexical overlap),
 > a TRAP (high lexical overlap, wrong meaning — a BM25 attractor), and distractors;
 > all 100 passages pooled into one corpus. Metric: is GOLD retrieved (recall@1 /
-> recall@3), no LLM. Embedder: BGE-small (int8) via the `retrieval="dense"` /
+> recall@3), no LLM. Embedder: BGE-small (int8) via the `retrieval="semantic"` /
 > `"rerank"` tiers. Global dense = exact cosine over **all** chunks, **no ANN**.
 > **Headline:** recall@1 — lexical **20%**, local rerank **32%**, **global dense 88%**;
 > recall@3 — 20% / 32% / **96%**. Local rerank barely beats BM25 because it inherits
@@ -77,7 +77,7 @@ Setup = time to first answer (embed-all); warm = median per-query after indexing
 
 ## What changed afterward
 
-- **Shipped `RetrievalMode::Dense` / `retrieval="dense"`** — global, exact brute-force
+- **Shipped `RetrievalMode::Dense` / `retrieval="semantic"`** — global, exact brute-force
   cosine over all cached chunk embeddings, no BM25 prune, no ANN. Implemented in
   `LocalRerankRetriever::global()` (`crates/retrieval/src/local_rerank.rs`), wired
   through `redhop-document` and the Python binding.
