@@ -42,6 +42,14 @@ pub struct LocalRerankRetriever {
     candidate_pool: usize,
     /// Precomputed chunk embeddings, keyed by chunk id.
     embeddings: HashMap<String, redhop_core::Embedding>,
+    /// When true, skip the BM25 prune and cosine the query against **every**
+    /// chunk (exact, brute-force — still no ANN). Recovers pure-paraphrase
+    /// queries that share no terms with the answer, at O(N) cosine per query;
+    /// for *bounded* corpora only (at scale, use a real vector store).
+    global: bool,
+    /// Chunks retained for the global path (so it can score chunks BM25 would
+    /// never surface). Only populated when `global` is set.
+    chunks: Vec<Chunk>,
 }
 
 impl LocalRerankRetriever {
@@ -59,7 +67,37 @@ impl LocalRerankRetriever {
             query_embedder: None,
             candidate_pool: candidate_pool.max(1),
             embeddings: HashMap::new(),
+            global: false,
+            chunks: Vec::new(),
         })
+    }
+
+    /// Switch to **global** dense: cosine the query against every chunk
+    /// embedding (exact brute force, no BM25 prune, no ANN). Use for
+    /// paraphrase/synonym-heavy bounded corpora where the answer may share no
+    /// terms with the query; O(N) cosine per query.
+    pub fn global(mut self) -> Self {
+        self.global = true;
+        self
+    }
+
+    /// Embed the query: reuse a precomputed embedding, else embed the text with
+    /// the query-side embedder (falling back to the passage embedder).
+    async fn embed_query(&self, query: &Query) -> redhop_core::Result<redhop_core::Embedding> {
+        match &query.embedding {
+            Some(e) => Ok(e.clone()),
+            None => {
+                let q_embedder = self.query_embedder.as_ref().unwrap_or(&self.embedder);
+                q_embedder
+                    .embed(std::slice::from_ref(&query.text))
+                    .await?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| {
+                        Error::Embedding("embedder returned no vector for the query".into())
+                    })
+            }
+        }
     }
 
     /// Like [`LocalRerankRetriever::new`] but with a **separate query embedder**.
@@ -77,6 +115,8 @@ impl LocalRerankRetriever {
             query_embedder: Some(query_embedder),
             candidate_pool: candidate_pool.max(1),
             embeddings: HashMap::new(),
+            global: false,
+            chunks: Vec::new(),
         })
     }
 }
@@ -96,6 +136,10 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 impl Retriever for LocalRerankRetriever {
     async fn index(&mut self, chunks: &[Chunk]) -> redhop_core::Result<()> {
         self.bm25.index(chunks).await?;
+        // The global path scores chunks BM25 would never surface, so retain them.
+        if self.global {
+            self.chunks = chunks.to_vec();
+        }
         // Precompute chunk embeddings (batched) so retrieval only embeds the query.
         for batch in chunks.chunks(EMBED_BATCH) {
             let texts: Vec<String> = batch.iter().map(|c| c.text.clone()).collect();
@@ -112,28 +156,48 @@ impl Retriever for LocalRerankRetriever {
         query: &Query,
         top_k: usize,
     ) -> redhop_core::Result<Vec<RetrievalResult>> {
+        let qe = self.embed_query(query).await?;
+
+        // Global dense: cosine the query against EVERY chunk (no BM25 prune), so
+        // a pure-paraphrase answer that shares no terms with the query is still
+        // reachable. Exact brute force — no ANN.
+        if self.global {
+            let mut scored: Vec<RetrievalResult> = self
+                .chunks
+                .iter()
+                .filter_map(|c| {
+                    let emb = self.embeddings.get(c.id.as_str())?;
+                    let s = cosine(qe.as_slice(), emb.as_slice());
+                    let mut r = RetrievalResult::new(
+                        c.clone(),
+                        Score {
+                            value: s,
+                            method: RetrievalMethod::Rerank,
+                        },
+                    );
+                    r.breakdown = ScoreBreakdown {
+                        dense: Some(s),
+                        ..Default::default()
+                    };
+                    Some(r)
+                })
+                .collect();
+            scored.sort_by(|a, b| {
+                b.score
+                    .value
+                    .partial_cmp(&a.score.value)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            scored.truncate(top_k.max(1));
+            return Ok(scored);
+        }
+
         // Lexical prune: fetch the candidate pool (at least as deep as top_k).
         let pool = self.candidate_pool.max(top_k.max(1));
         let cand = self.bm25.retrieve(query, pool).await?;
         if cand.is_empty() {
             return Ok(cand);
         }
-        // Query embedding: reuse a precomputed one, else embed the query text with
-        // the query-side embedder (falls back to the passage embedder if none).
-        let qe = match &query.embedding {
-            Some(e) => e.clone(),
-            None => {
-                let q_embedder = self.query_embedder.as_ref().unwrap_or(&self.embedder);
-                q_embedder
-                    .embed(std::slice::from_ref(&query.text))
-                    .await?
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| {
-                        Error::Embedding("embedder returned no vector for the query".into())
-                    })?
-            }
-        };
         // Local refinement: reorder only the pool by cosine.
         let mut scored: Vec<RetrievalResult> = cand
             .into_iter()

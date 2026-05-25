@@ -442,9 +442,11 @@ fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResul
         Some("rerank") => RetrievalMode::DenseRerank {
             candidate_pool: candidate_pool.max(1),
         },
+        Some("dense") => RetrievalMode::Dense,
         Some(other) => {
             return Err(PyValueError::new_err(format!(
-                "unknown retrieval mode '{other}'; use 'lexical' (default) or 'rerank'"
+                "unknown retrieval mode '{other}'; use 'lexical' (default), 'rerank' \
+                 (BM25 prune → dense), or 'dense' (global dense, bounded corpora)"
             )))
         }
     })
@@ -617,7 +619,10 @@ impl Document {
         candidate_pool: usize,
     ) -> PyResult<Self> {
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let rerank = matches!(mode, RetrievalMode::DenseRerank { .. });
+        let rerank = matches!(
+            mode,
+            RetrievalMode::DenseRerank { .. } | RetrievalMode::Dense
+        );
         let cfg = doc_config(
             strategy,
             token_budget,
@@ -670,7 +675,10 @@ impl Document {
             .map(|r| r.chunk)
             .collect();
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let rerank = matches!(mode, RetrievalMode::DenseRerank { .. });
+        let rerank = matches!(
+            mode,
+            RetrievalMode::DenseRerank { .. } | RetrievalMode::Dense
+        );
         let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if rerank {

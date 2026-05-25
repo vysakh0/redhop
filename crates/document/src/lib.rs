@@ -76,6 +76,12 @@ pub enum RetrievalMode {
         /// BM25 candidate-pool depth reordered by the dense stage.
         candidate_pool: usize,
     },
+    /// Global dense: cosine the query against **every** chunk embedding (exact
+    /// brute force, no BM25 prune, no ANN). Requires an embedder. For
+    /// paraphrase/synonym-heavy **bounded** corpora where the answer may share
+    /// no terms with the query; O(N) cosine per query — at scale, use a real
+    /// vector store.
+    Dense,
 }
 
 /// Tuning for a [`Document`]'s internal chunking, retrieval, and context
@@ -291,6 +297,22 @@ impl Document {
                         )?),
                         None => Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?),
                     }
+                }
+                RetrievalMode::Dense => {
+                    let embedder = self.embedder.clone().ok_or_else(|| {
+                        redhop_core::Error::InvalidConfig(
+                            "RetrievalMode::Dense requires an embedder — supply one with \
+                             `Document::with_embedder(...)`, or use the default \
+                             RetrievalMode::Lexical."
+                                .into(),
+                        )
+                    })?;
+                    // candidate_pool is unused for global; pass a sane value.
+                    let r = match self.query_embedder.clone() {
+                        Some(q) => LocalRerankRetriever::new_with_query_embedder(embedder, q, 1)?,
+                        None => LocalRerankRetriever::new(embedder, 1)?,
+                    };
+                    Box::new(r.global())
                 }
             };
             self.rt.block_on(r.index(&self.chunks))?;
