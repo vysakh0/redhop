@@ -436,14 +436,20 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-fn retrieval_from_str(retrieval: Option<&str>) -> PyResult<RetrievalMode> {
+fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResult<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
+        // BM25 prune → dense rerank the pool: scales to large corpora, no vector DB.
+        Some("hybrid") => RetrievalMode::Hybrid {
+            candidate_pool: candidate_pool.max(1),
+        },
+        // Global dense over every chunk: best recall on small/bounded corpora.
         Some("semantic") => RetrievalMode::Dense,
         Some(other) => {
             return Err(PyValueError::new_err(format!(
-                "unknown retrieval mode '{other}'; use 'lexical' (default, BM25) or \
-                 'semantic' (embeds every chunk, exact cosine, for bounded corpora)"
+                "unknown retrieval mode '{other}'; use 'lexical' (default, BM25), 'hybrid' \
+                 (BM25 prune → dense rerank — large corpora, no vector DB), or 'semantic' \
+                 (global dense over every chunk — small/bounded corpora)"
             )))
         }
     })
@@ -595,7 +601,7 @@ impl Document {
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None))]
+                        embedder_passage_prefix=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -613,9 +619,10 @@ impl Document {
         embedder_pooling: Option<String>,
         embedder_query_prefix: Option<String>,
         embedder_passage_prefix: Option<String>,
+        candidate_pool: usize,
     ) -> PyResult<Self> {
-        let mode = retrieval_from_str(retrieval.as_deref())?;
-        let needs_embedder = matches!(mode, RetrievalMode::Dense);
+        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+        let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
         let cfg = doc_config(
             strategy,
             token_budget,
@@ -646,7 +653,7 @@ impl Document {
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None))]
+                        embedder_passage_prefix=None, candidate_pool=50))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -661,13 +668,14 @@ impl Document {
         embedder_pooling: Option<String>,
         embedder_query_prefix: Option<String>,
         embedder_passage_prefix: Option<String>,
+        candidate_pool: usize,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let mode = retrieval_from_str(retrieval.as_deref())?;
-        let needs_embedder = matches!(mode, RetrievalMode::Dense);
+        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+        let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
         let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if needs_embedder {

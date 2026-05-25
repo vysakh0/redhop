@@ -69,11 +69,19 @@ use tokio::runtime::{Builder, Runtime};
 pub enum RetrievalMode {
     /// BM25 lexical retrieval. The default; needs no model or embedder.
     Lexical,
+    /// Hybrid: BM25 prunes the corpus to a candidate pool, then a dense model
+    /// reorders **only that pool**. Requires an embedder. Embeds only the
+    /// ~`candidate_pool` candidates per query (not the whole corpus), so it scales
+    /// to **large local corpora without a vector DB** — the agent/folder case.
+    Hybrid {
+        /// BM25 candidate-pool depth the dense stage reorders (e.g. 50).
+        candidate_pool: usize,
+    },
     /// Global dense: cosine the query against **every** chunk embedding (exact
     /// brute force, no ANN). Requires an embedder set via
-    /// [`Document::with_embedder`]. For paraphrase/synonym-heavy queries on
-    /// **bounded** corpora where the answer may share no terms with the query;
-    /// O(N) cosine per query — at scale, use a real vector store.
+    /// [`Document::with_embedder`]. Best recall on **bounded** corpora; embeds the
+    /// whole corpus up front, so it doesn't scale to large/persistent collections —
+    /// use `Hybrid` (no DB) or a real vector store there.
     Dense,
 }
 
@@ -273,6 +281,24 @@ impl Document {
         if self.retriever.is_none() {
             let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
                 RetrievalMode::Lexical => Box::new(Bm25Retriever::new()?),
+                RetrievalMode::Hybrid { candidate_pool } => {
+                    let embedder = self.embedder.clone().ok_or_else(|| {
+                        redhop_core::Error::InvalidConfig(
+                            "RetrievalMode::Hybrid requires an embedder — supply one with \
+                             `Document::with_embedder(...)`, or use the default \
+                             RetrievalMode::Lexical."
+                                .into(),
+                        )
+                    })?;
+                    match self.query_embedder.clone() {
+                        Some(q) => Box::new(LocalRerankRetriever::new_with_query_embedder(
+                            embedder,
+                            q,
+                            candidate_pool,
+                        )?),
+                        None => Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?),
+                    }
+                }
                 RetrievalMode::Dense => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
                         redhop_core::Error::InvalidConfig(
