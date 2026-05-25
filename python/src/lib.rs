@@ -439,8 +439,7 @@ fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
 fn retrieval_from_str(retrieval: Option<&str>) -> PyResult<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
-        // "semantic" is the user-facing name; "dense" is a kept alias.
-        Some("semantic") | Some("dense") => RetrievalMode::Dense,
+        Some("semantic") => RetrievalMode::Dense,
         Some(other) => {
             return Err(PyValueError::new_err(format!(
                 "unknown retrieval mode '{other}'; use 'lexical' (default, BM25) or \
