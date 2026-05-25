@@ -12,9 +12,13 @@ use zip::ZipArchive;
 use crate::{ExtractError, ExtractedDoc, Section};
 
 pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let file = std::fs::File::open(path).map_err(ExtractError::Io)?;
-    let mut zip =
-        ZipArchive::new(file).map_err(|e| ExtractError::Parse(format!("pptx zip: {e}")))?;
+    let data = std::fs::read(path).map_err(ExtractError::Io)?;
+    extract_bytes(&data, source)
+}
+
+pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
+    let mut zip = ZipArchive::new(std::io::Cursor::new(data))
+        .map_err(|e| ExtractError::Parse(format!("pptx zip: {e}")))?;
 
     let mut slides: Vec<String> = Vec::new();
     for i in 0..zip.len() {

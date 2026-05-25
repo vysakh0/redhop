@@ -120,6 +120,44 @@ def test_from_file_binary_formats(fname, query, want_key):
 
 
 # --------------------------------------------------------------------------- #
+# from_bytes  (cloud object storage / HTTP / DB blobs)
+# --------------------------------------------------------------------------- #
+def test_from_bytes_text_with_source_key():
+    # e.g. data = s3.get_object(...)["Body"].read()
+    doc = redhop.Document.from_bytes(
+        b"the refund window is thirty days from purchase", source="s3://bucket/notes.txt"
+    )
+    c = doc.context("refund window").citations[0]
+    assert c["source"] == "s3://bucket/notes.txt"
+    assert c["page"] is None and c["heading"] is None
+
+
+@files_only
+def test_from_bytes_markdown_heading():
+    md = b"# Title\nintro\n\n## Refunds\nrefund within thirty days\n"
+    cites = redhop.Document.from_bytes(md, source="policy.md").context("refund thirty").citations
+    hit = next((c for c in cites if "refund" in c["text"].lower()), None)
+    assert hit and hit["heading"] == "Refunds"
+
+
+@files_only
+@pytest.mark.skipif(not os.path.isdir(FIXTURES), reason="rust fixtures not found")
+def test_from_bytes_pdf_pages():
+    data = open(os.path.join(FIXTURES, "sample.pdf"), "rb").read()
+    ctx = redhop.Document.from_bytes(data, source="contract.pdf").context(
+        "governing law delaware terminate"
+    )
+    assert ctx.citations and ctx.citations[0]["source"] == "contract.pdf"
+    assert any(c["page"] is not None for c in ctx.citations)
+
+
+@files_only
+def test_from_bytes_unsupported_extension_errors():
+    with pytest.raises(Exception):
+        redhop.Document.from_bytes(b"\x89PNG...", source="logo.png")
+
+
+# --------------------------------------------------------------------------- #
 # from_folder
 # --------------------------------------------------------------------------- #
 def _mkfolder(tmp_path):

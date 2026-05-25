@@ -634,20 +634,52 @@ fn apply_dense_embedder(
     ))
 }
 
-/// Read a file to `(source, text)` for `from_file`.
+/// Read a file to `(source, sections)` for `from_file`.
 ///
-/// With the `files` feature, `redhop-files` parses text/markdown/DOCX (PPTX/XLSX/
-/// PDF coming). Without it, only UTF-8 text files are read; binary formats return
-/// a clear, helpful error.
+/// With the `files` feature, `redhop-files` parses text/markdown/code + DOCX/PPTX/
+/// XLSX/PDF. Without it, only UTF-8 text files are read; binary formats return a
+/// clear, helpful error.
 #[cfg(feature = "files")]
 fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     let doc = redhop_files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let sections = doc
-        .sections
+    Ok((doc.source, to_rh_sections(doc.sections)))
+}
+
+/// Map `redhop-files` sections to the binding's `RhSection`.
+#[cfg(feature = "files")]
+fn to_rh_sections(sections: Vec<redhop_files::Section>) -> Vec<RhSection> {
+    sections
         .into_iter()
         .map(|s| RhSection { text: s.text, page: s.page, heading: s.heading, line: s.line })
-        .collect();
-    Ok((doc.source, sections))
+        .collect()
+}
+
+/// Parse already-in-memory `bytes` to `(source, sections)` for `from_bytes`.
+/// `name` (e.g. `"contract.pdf"`) selects the parser by extension and becomes the
+/// citation source.
+#[cfg(feature = "files")]
+fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
+    let doc =
+        redhop_files::extract_bytes(data, name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((doc.source, to_rh_sections(doc.sections)))
+}
+
+#[cfg(not(feature = "files"))]
+fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
+    let lower = name.to_lowercase();
+    const NEEDS_PARSER: &[&str] = &[
+        ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp", ".ods", ".rtf",
+    ];
+    if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
+        return Err(PyValueError::new_err(format!(
+            "from_bytes can't parse {} — this build was compiled without the document parsers. \
+             The standard `pip install redhop` includes them. Or decode the text yourself and \
+             use from_text().",
+            ext.trim_start_matches('.')
+        )));
+    }
+    let text = String::from_utf8_lossy(data).into_owned();
+    Ok((name.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
 }
 
 #[cfg(not(feature = "files"))]
@@ -1159,6 +1191,60 @@ impl Document {
         candidate_pool: usize,
     ) -> PyResult<Self> {
         let (source, sections) = extract_file_text(path)?;
+        let inner = build_text_doc(
+            vec![(source, sections)],
+            strategy,
+            chunk_size,
+            chunk_overlap,
+            token_budget,
+            candidate_k,
+            retrieval,
+            model,
+            embedder_model,
+            embedder_tokenizer,
+            embedder_dim,
+            embedder_pooling,
+            embedder_query_prefix,
+            embedder_passage_prefix,
+            candidate_pool,
+        )?;
+        Ok(Self { inner })
+    }
+
+    /// Build from in-memory **bytes** you already fetched — RedHop parses, chunks,
+    /// and indexes them. `source` is the document's name/key (e.g. `"contract.pdf"`):
+    /// its extension selects the parser, and it becomes each chunk's citation source.
+    ///
+    /// This is the on-ramp for **cloud object storage** (S3, Cloudflare R2, Azure
+    /// Blob, GCS), HTTP downloads, or database blobs — fetch the bytes with your own
+    /// client, hand them here. RedHop never touches your cloud credentials. Same
+    /// formats as `from_file` (PDF/DOCX/PPTX/XLSX + text/code).
+    #[staticmethod]
+    #[pyo3(signature = (data, source, strategy=None, chunk_size=128, chunk_overlap=1,
+                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
+                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
+                        embedder_pooling=None, embedder_query_prefix=None,
+                        embedder_passage_prefix=None, candidate_pool=50))]
+    #[allow(clippy::too_many_arguments)]
+    fn from_bytes(
+        data: Vec<u8>,
+        source: &str,
+        strategy: Option<String>,
+        chunk_size: usize,
+        chunk_overlap: usize,
+        token_budget: usize,
+        candidate_k: usize,
+        retrieval: Option<String>,
+        model: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: usize,
+        embedder_pooling: Option<String>,
+        embedder_query_prefix: Option<String>,
+        embedder_passage_prefix: Option<String>,
+        candidate_pool: usize,
+    ) -> PyResult<Self> {
+        let (source, sections) = extract_bytes_sections(&data, source)?;
         let inner = build_text_doc(
             vec![(source, sections)],
             strategy,

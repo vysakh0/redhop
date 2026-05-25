@@ -12,7 +12,11 @@ use crate::{ExtractError, ExtractedDoc, Section};
 
 pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
     let buf = std::fs::read(path).map_err(ExtractError::Io)?;
-    let docx = docx_rs::read_docx(&buf).map_err(|e| ExtractError::Parse(format!("docx: {e:?}")))?;
+    extract_bytes(&buf, source)
+}
+
+pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
+    let docx = docx_rs::read_docx(data).map_err(|e| ExtractError::Parse(format!("docx: {e:?}")))?;
 
     let mut sections = Vec::new();
     let mut heading: Option<String> = None;

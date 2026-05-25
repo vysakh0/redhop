@@ -3,13 +3,25 @@
 
 use std::path::Path;
 
-use calamine::{open_workbook_auto, Reader};
+use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Reader};
 
 use crate::{ExtractError, ExtractedDoc, Section};
 
 pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let mut wb =
-        open_workbook_auto(path).map_err(|e| ExtractError::Parse(format!("xlsx: {e}")))?;
+    let wb = open_workbook_auto(path).map_err(|e| ExtractError::Parse(format!("xlsx: {e}")))?;
+    sheets_to_sections(wb, source)
+}
+
+pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
+    let wb = open_workbook_auto_from_rs(std::io::Cursor::new(data.to_vec()))
+        .map_err(|e| ExtractError::Parse(format!("xlsx: {e}")))?;
+    sheets_to_sections(wb, source)
+}
+
+fn sheets_to_sections<RS: std::io::Read + std::io::Seek>(
+    mut wb: calamine::Sheets<RS>,
+    source: String,
+) -> Result<ExtractedDoc, ExtractError> {
     let mut sections = Vec::new();
     for name in wb.sheet_names().to_owned() {
         let Ok(range) = wb.worksheet_range(&name) else {

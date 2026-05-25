@@ -7,7 +7,12 @@ use std::path::Path;
 use crate::{ExtractError, ExtractedDoc, Section};
 
 pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let pages = pdf_extract::extract_text_by_pages(path)
+    let data = std::fs::read(path).map_err(ExtractError::Io)?;
+    extract_bytes(&data, source)
+}
+
+pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
+    let pages = pdf_extract::extract_text_from_mem_by_pages(data)
         .map_err(|e| ExtractError::Parse(format!("pdf: {e}")))?;
     let sections: Vec<Section> = pages
         .into_iter()
@@ -24,7 +29,7 @@ pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, Extra
     // (e.g. an unusual PDF) rather than producing an empty document.
     let sections = if sections.is_empty() {
         vec![Section::text(
-            pdf_extract::extract_text(path)
+            pdf_extract::extract_text_from_mem(data)
                 .map_err(|e| ExtractError::Parse(format!("pdf: {e}")))?,
         )]
     } else {

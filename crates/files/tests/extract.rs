@@ -1,4 +1,29 @@
-use redhop_files::extract;
+use redhop_files::{extract, extract_bytes};
+
+#[test]
+fn extract_bytes_matches_path_for_pdf() {
+    let data = std::fs::read("tests/fixtures/sample.pdf").unwrap();
+    let doc = extract_bytes(&data, "contract.pdf").expect("extract pdf bytes");
+    assert_eq!(doc.source, "contract.pdf");
+    assert!(doc.plain_text().contains("Delaware"));
+    assert!(doc.sections.iter().any(|s| s.page == Some(2)));
+}
+
+#[test]
+fn extract_bytes_docx_and_markdown() {
+    let docx = std::fs::read("tests/fixtures/sample.docx").unwrap();
+    let d = extract_bytes(&docx, "policy.docx").expect("docx bytes");
+    assert!(d.sections.iter().any(|s| s.heading.as_deref() == Some("Refund Policy")));
+
+    let md = b"# Title\nintro\n\n## Refunds\nrefund within 30 days\n";
+    let m = extract_bytes(md, "policy.md").expect("md bytes");
+    assert!(m.sections.iter().any(|s| s.heading.as_deref() == Some("Refunds")));
+}
+
+#[test]
+fn extract_bytes_unsupported_extension_errors() {
+    assert!(extract_bytes(b"\x89PNG", "image.png").is_err());
+}
 
 #[test]
 fn docx_text_and_heading() {

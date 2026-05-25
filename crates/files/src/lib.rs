@@ -122,3 +122,33 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
         other => Err(ExtractError::Unsupported(other.to_string())),
     }
 }
+
+/// Extract **in-memory bytes** (already-downloaded content) to text + metadata,
+/// dispatching on `name`'s extension. `name` is the document's name/key (e.g.
+/// `"contract.pdf"`) — it both selects the parser and becomes the chunk source
+/// for citations. Use this for cloud object storage (S3 / R2 / Azure Blob / GCS),
+/// HTTP downloads, or DB blobs — fetch with your own client, parse here.
+pub fn extract_bytes(data: &[u8], name: &str) -> Result<ExtractedDoc, ExtractError> {
+    let source = name.to_string();
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "docx" => docx::extract_bytes(data, source),
+        "pptx" => pptx::extract_bytes(data, source),
+        "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract_bytes(data, source),
+        "pdf" => pdf::extract_bytes(data, source),
+        "md" | "markdown" | "mdx" => {
+            let raw = String::from_utf8_lossy(data);
+            Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
+        }
+        e if is_text_ext(e) || e.is_empty() => {
+            let raw = String::from_utf8_lossy(data);
+            Ok(ExtractedDoc { source, sections: text::line_blocks(&raw) })
+        }
+        other => Err(ExtractError::Unsupported(other.to_string())),
+    }
+}
