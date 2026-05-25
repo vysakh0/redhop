@@ -38,7 +38,7 @@ pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, Extra
             .map_err(ExtractError::Io)?;
         let text = slide_text(&xml);
         if !text.trim().is_empty() {
-            sections.push(Section { text, page: Some(idx + 1), heading: None });
+            sections.push(Section { text, page: Some(idx + 1), heading: None, line: None });
         }
     }
     Ok(ExtractedDoc { source, sections })

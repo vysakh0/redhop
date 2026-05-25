@@ -27,12 +27,12 @@ pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, Extra
                 if is_heading(p) {
                     heading = Some(text.clone());
                 }
-                sections.push(Section { text, page: None, heading: heading.clone() });
+                sections.push(Section { text, page: None, heading: heading.clone(), line: None });
             }
             DocumentChild::Table(t) => {
                 let text = table_text(t);
                 if !text.trim().is_empty() {
-                    sections.push(Section { text, page: None, heading: heading.clone() });
+                    sections.push(Section { text, page: None, heading: heading.clone(), line: None });
                 }
             }
             _ => {}

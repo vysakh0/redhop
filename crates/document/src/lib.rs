@@ -135,6 +135,8 @@ pub struct Section {
     pub page: Option<usize>,
     /// Nearest heading/title/sheet name, when known.
     pub heading: Option<String>,
+    /// 1-based line the section starts at (text & code files).
+    pub line: Option<usize>,
 }
 
 /// A document you reason over. Holds its chunks and a lazily-built internal
@@ -214,6 +216,10 @@ impl Document {
                 if let Some(h) = &sec.heading {
                     c.metadata
                         .insert("heading".to_string(), serde_json::Value::String(h.clone()));
+                }
+                if let Some(l) = sec.line {
+                    c.metadata
+                        .insert("line".to_string(), serde_json::Value::from(l as u64));
                 }
             }
             all.extend(chunks);
@@ -450,11 +456,13 @@ mod tests {
                 text: "Customers may request a refund within 30 days of purchase.".into(),
                 page: Some(3),
                 heading: Some("Refund Policy".into()),
+                line: Some(10),
             },
             Section {
                 text: "Orders ship within two business days.".into(),
                 page: Some(4),
                 heading: Some("Shipping".into()),
+                line: Some(20),
             },
         ];
         let mut doc =
@@ -473,6 +481,7 @@ mod tests {
             cited.metadata.get("heading").and_then(|v| v.as_str()),
             Some("Refund Policy")
         );
+        assert_eq!(cited.metadata.get("line").and_then(|v| v.as_u64()), Some(10));
     }
 
     #[test]

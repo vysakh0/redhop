@@ -49,3 +49,27 @@ fn plain_text_file() {
     assert_eq!(doc.plain_text(), "hello world");
     assert_eq!(doc.source, p.to_string_lossy());
 }
+
+#[test]
+fn markdown_sections_by_heading() {
+    let p = std::env::temp_dir().join("redhop_files_doc.md");
+    std::fs::write(&p, "# Intro\nwelcome\n\n## Refunds\nrefund within 30 days\n").unwrap();
+    let doc = extract(&p).expect("extract md");
+    let refunds = doc
+        .sections
+        .iter()
+        .find(|s| s.heading.as_deref() == Some("Refunds"))
+        .expect("Refunds heading section");
+    assert!(refunds.text.contains("30 days"));
+    assert_eq!(refunds.line, Some(4)); // "## Refunds" is line 4
+}
+
+#[test]
+fn code_file_blocks_track_lines() {
+    let p = std::env::temp_dir().join("redhop_files_mod.py");
+    std::fs::write(&p, "def a():\n    return 1\n\n\ndef b():\n    return 2\n").unwrap();
+    let doc = extract(&p).expect("extract py");
+    assert_eq!(doc.sections.len(), 2);
+    assert_eq!(doc.sections[0].line, Some(1));
+    assert_eq!(doc.sections[1].line, Some(5));
+}

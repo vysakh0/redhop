@@ -24,7 +24,7 @@ pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, Extra
             }
         }
         if !lines.is_empty() {
-            sections.push(Section { text: lines.join("\n"), page: None, heading: Some(name) });
+            sections.push(Section { text: lines.join("\n"), page: None, heading: Some(name), line: None });
         }
     }
     Ok(ExtractedDoc { source, sections })

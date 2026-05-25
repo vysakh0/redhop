@@ -258,9 +258,10 @@ struct CiteData {
     source: String,
     page: Option<u64>,
     heading: Option<String>,
+    line: Option<u64>,
 }
 
-/// Provenance for each selected chunk (source + page/heading metadata).
+/// Provenance for each selected chunk (source + page/heading/line metadata).
 fn cites_of(chunks: &[Chunk]) -> Vec<CiteData> {
     chunks
         .iter()
@@ -269,6 +270,7 @@ fn cites_of(chunks: &[Chunk]) -> Vec<CiteData> {
             source: c.source.clone(),
             page: c.metadata.get("page").and_then(|v| v.as_u64()),
             heading: c.metadata.get("heading").and_then(|v| v.as_str().map(String::from)),
+            line: c.metadata.get("line").and_then(|v| v.as_u64()),
         })
         .collect()
 }
@@ -292,8 +294,9 @@ impl BuiltContext {
         self.chunks.clone()
     }
     /// Provenance of each selected chunk, in order — a list of dicts with
-    /// `source`, `page` (or None), `heading` (or None), and `text`. Use these to
-    /// cite where the answer's context came from (e.g. "contract.pdf, p.3").
+    /// `source`, `page` (or None), `heading` (or None), `line` (or None), and
+    /// `text`. Use these to cite where the answer's context came from
+    /// (e.g. "contract.pdf, p.3" or "notes.md → Setup" or "main.py:42").
     #[getter]
     fn citations<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.cites
@@ -303,6 +306,7 @@ impl BuiltContext {
                 d.set_item("source", &c.source)?;
                 d.set_item("page", c.page)?;
                 d.set_item("heading", &c.heading)?;
+                d.set_item("line", c.line)?;
                 d.set_item("text", &c.text)?;
                 Ok(d)
             })
@@ -635,7 +639,7 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     let sections = doc
         .sections
         .into_iter()
-        .map(|s| RhSection { text: s.text, page: s.page, heading: s.heading })
+        .map(|s| RhSection { text: s.text, page: s.page, heading: s.heading, line: s.line })
         .collect();
     Ok((doc.source, sections))
 }
@@ -659,7 +663,7 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
              for PDF/DOCX/PPTX install redhop[files]."
         ))
     })?;
-    Ok((path.to_string(), vec![RhSection { text, page: None, heading: None }]))
+    Ok((path.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
 }
 
 /// Shared construction for text-backed documents (used by `from_text` and
@@ -756,6 +760,7 @@ impl Document {
             text: text.to_string(),
             page: None,
             heading: None,
+            line: None,
         }];
         let inner = build_text_doc(
             source,

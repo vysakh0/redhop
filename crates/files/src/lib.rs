@@ -15,6 +15,7 @@ use std::path::Path;
 mod docx;
 mod pdf;
 mod pptx;
+mod text;
 mod xlsx;
 
 /// One extracted unit of a document — a paragraph/section/slide/page of text,
@@ -27,12 +28,14 @@ pub struct Section {
     pub page: Option<usize>,
     /// Nearest heading/title this section sits under, when known.
     pub heading: Option<String>,
+    /// 1-based line number this section starts at, for text & code files.
+    pub line: Option<usize>,
 }
 
 impl Section {
-    /// A bare text section (no page/heading).
+    /// A bare text section (no page/heading/line).
     pub fn text(text: impl Into<String>) -> Self {
-        Self { text: text.into(), page: None, heading: None }
+        Self { text: text.into(), page: None, heading: None, line: None }
     }
 }
 
@@ -108,9 +111,13 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
         "pptx" => pptx::extract(path, source),
         "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract(path, source),
         "pdf" => pdf::extract(path, source),
+        "md" | "markdown" | "mdx" => {
+            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
+            Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
+        }
         e if is_text_ext(e) || e.is_empty() => {
-            let text = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
-            Ok(ExtractedDoc { source, sections: vec![Section::text(text)] })
+            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
+            Ok(ExtractedDoc { source, sections: text::line_blocks(&raw) })
         }
         other => Err(ExtractError::Unsupported(other.to_string())),
     }
