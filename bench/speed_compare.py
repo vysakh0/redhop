@@ -61,7 +61,7 @@ import redhop
 def rh_bm25_index(text): return redhop.Document.from_text(text)
 def rh_rerank_index(text):
     return redhop.Document.from_text(
-        text, retrieval="rerank",
+        text, retrieval="hybrid",
         embedder_model=f"{ONNX_DIR}/model.onnx",
         embedder_tokenizer=f"{ONNX_DIR}/tokenizer.json",
         embedder_dim=384, embedder_pooling="mean",
