@@ -125,6 +125,18 @@ impl Default for DocumentConfig {
     }
 }
 
+/// A unit of an ingested document (e.g. a parsed file): text plus optional
+/// provenance. Provenance becomes per-chunk citation metadata (`page`/`heading`).
+#[derive(Debug, Clone, Default)]
+pub struct Section {
+    /// The section's text.
+    pub text: String,
+    /// 1-based page or slide number, when the source has them.
+    pub page: Option<usize>,
+    /// Nearest heading/title/sheet name, when known.
+    pub heading: Option<String>,
+}
+
 /// A document you reason over. Holds its chunks and a lazily-built internal
 /// index; `context()` and `analyze()` retrieve candidates and hand them to the
 /// context runtime. Retrieval is an internal detail — never surfaced.
@@ -166,6 +178,47 @@ impl Document {
         )?;
         let chunks = chunker.chunk(&SourceDoc::new(source, text))?;
         Self::from_chunks_with(chunks, cfg)
+    }
+
+    /// Build from sections (e.g. a parsed file). Each section is chunked with the
+    /// configured policy, and **every resulting chunk carries `source` plus the
+    /// section's `page`/`heading` as metadata** — so retrieved chunks can be cited
+    /// ("from contract.pdf, p.3"). Chunk ids are made unique across sections.
+    pub fn from_sections_with(
+        source: impl Into<String>,
+        sections: Vec<Section>,
+        cfg: DocumentConfig,
+    ) -> Result<Self> {
+        let source = source.into();
+        let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
+        let chunker = SentenceChunker::new(
+            tok,
+            cfg.target_tokens,
+            cfg.max_tokens,
+            cfg.overlap_sentences,
+        )?;
+        let mut all: Vec<Chunk> = Vec::new();
+        let mut next_id = 0usize;
+        for sec in &sections {
+            if sec.text.trim().is_empty() {
+                continue;
+            }
+            let mut chunks = chunker.chunk(&SourceDoc::new(source.clone(), sec.text.clone()))?;
+            for c in &mut chunks {
+                c.id = redhop_core::ChunkId::new(format!("{next_id}"));
+                next_id += 1;
+                if let Some(p) = sec.page {
+                    c.metadata
+                        .insert("page".to_string(), serde_json::Value::from(p as u64));
+                }
+                if let Some(h) = &sec.heading {
+                    c.metadata
+                        .insert("heading".to_string(), serde_json::Value::String(h.clone()));
+                }
+            }
+            all.extend(chunks);
+        }
+        Self::from_chunks_with(all, cfg)
     }
 
     /// Build from chunks you already produced (your own chunker/parser).
@@ -326,7 +379,18 @@ impl Document {
         self.ensure_indexed()?;
         let q = Query::new(query);
         let retriever = self.retriever.as_ref().expect("indexed above");
-        self.rt.block_on(retriever.retrieve(&q, k))
+        let mut results = self.rt.block_on(retriever.retrieve(&q, k))?;
+        // Retrievers (e.g. the Tantivy-backed BM25 index) only round-trip
+        // id/text/source, so per-chunk `metadata` (page/heading for citations) is
+        // lost. Re-attach it from the source chunks, keyed by id.
+        if self.chunks.iter().any(|c| !c.metadata.is_empty()) {
+            for r in &mut results {
+                if let Some(orig) = self.chunks.iter().find(|c| c.id == r.chunk.id) {
+                    r.chunk.metadata = orig.metadata.clone();
+                }
+            }
+        }
+        Ok(results)
     }
 }
 
@@ -377,6 +441,38 @@ mod tests {
         assert!(report.n_input_chunks > 0);
         // Auto on a small retrieval → passthrough (no pruning).
         assert_eq!(report.strategy, ContextStrategy::RawTopK);
+    }
+
+    #[test]
+    fn sections_carry_citation_metadata_through_retrieval() {
+        let sections = vec![
+            Section {
+                text: "Customers may request a refund within 30 days of purchase.".into(),
+                page: Some(3),
+                heading: Some("Refund Policy".into()),
+            },
+            Section {
+                text: "Orders ship within two business days.".into(),
+                page: Some(4),
+                heading: Some("Shipping".into()),
+            },
+        ];
+        let mut doc =
+            Document::from_sections_with("contract.pdf", sections, DocumentConfig::default())
+                .unwrap();
+        let ctx = doc.context("refund window").unwrap();
+        let cited = ctx
+            .chunks
+            .iter()
+            .find(|c| c.text.contains("refund"))
+            .expect("refund chunk retrieved");
+        // Metadata survives the Tantivy round-trip (re-attached by id).
+        assert_eq!(cited.source, "contract.pdf");
+        assert_eq!(cited.metadata.get("page").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(
+            cited.metadata.get("heading").and_then(|v| v.as_str()),
+            Some("Refund Policy")
+        );
     }
 
     #[test]

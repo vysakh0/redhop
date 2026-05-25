@@ -18,7 +18,9 @@ use redhop_core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
-use redhop_document::{Document as RhDocument, DocumentConfig, RetrievalMode};
+use redhop_document::{
+    Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
+};
 
 fn strategy_from_str(s: &str) -> PyResult<ContextStrategy> {
     Ok(match s {
@@ -250,10 +252,32 @@ impl ContextReport {
 
 /// The assembled context: `.text()` is the prompt string; `.report` is the
 /// telemetry; `.chunks` are the selected chunk texts in order.
+/// One selected chunk's provenance, for citations.
+struct CiteData {
+    text: String,
+    source: String,
+    page: Option<u64>,
+    heading: Option<String>,
+}
+
+/// Provenance for each selected chunk (source + page/heading metadata).
+fn cites_of(chunks: &[Chunk]) -> Vec<CiteData> {
+    chunks
+        .iter()
+        .map(|c| CiteData {
+            text: c.text.clone(),
+            source: c.source.clone(),
+            page: c.metadata.get("page").and_then(|v| v.as_u64()),
+            heading: c.metadata.get("heading").and_then(|v| v.as_str().map(String::from)),
+        })
+        .collect()
+}
+
 #[pyclass]
 struct BuiltContext {
     text: String,
     chunks: Vec<String>,
+    cites: Vec<CiteData>,
     report: ContextReport,
 }
 
@@ -266,6 +290,23 @@ impl BuiltContext {
     #[getter]
     fn chunks(&self) -> Vec<String> {
         self.chunks.clone()
+    }
+    /// Provenance of each selected chunk, in order — a list of dicts with
+    /// `source`, `page` (or None), `heading` (or None), and `text`. Use these to
+    /// cite where the answer's context came from (e.g. "contract.pdf, p.3").
+    #[getter]
+    fn citations<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.cites
+            .iter()
+            .map(|c| {
+                let d = PyDict::new(py);
+                d.set_item("source", &c.source)?;
+                d.set_item("page", c.page)?;
+                d.set_item("heading", &c.heading)?;
+                d.set_item("text", &c.text)?;
+                Ok(d)
+            })
+            .collect()
     }
     #[getter]
     fn report(&self) -> ContextReport {
@@ -306,6 +347,7 @@ fn build_context(
     Ok(BuiltContext {
         text: ctx.text(),
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
+        cites: cites_of(&ctx.chunks),
         report: ContextReport {
             inner: ctx.report,
             rendered,
@@ -343,6 +385,7 @@ fn filter_context(
     Ok(BuiltContext {
         text: ctx.text(),
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
+        cites: cites_of(&ctx.chunks),
         report: ContextReport {
             inner: ctx.report,
             rendered,
@@ -421,10 +464,12 @@ fn link_strength(a: &str, b: &str) -> f32 {
 fn py_built(ctx: redhop_context::BuiltContext) -> BuiltContext {
     let text = ctx.text();
     let chunks = ctx.chunks.iter().map(|c| c.text.clone()).collect();
+    let cites = cites_of(&ctx.chunks);
     let rendered = ctx.report.render(None);
     BuiltContext {
         text,
         chunks,
+        cites,
         report: ContextReport {
             inner: ctx.report,
             rendered,
@@ -585,14 +630,18 @@ fn apply_dense_embedder(
 /// PDF coming). Without it, only UTF-8 text files are read; binary formats return
 /// a clear "install redhop[files]" error.
 #[cfg(feature = "files")]
-fn extract_file_text(path: &str) -> PyResult<(String, String)> {
+fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     let doc = redhop_files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let text = doc.plain_text();
-    Ok((doc.source, text))
+    let sections = doc
+        .sections
+        .into_iter()
+        .map(|s| RhSection { text: s.text, page: s.page, heading: s.heading })
+        .collect();
+    Ok((doc.source, sections))
 }
 
 #[cfg(not(feature = "files"))]
-fn extract_file_text(path: &str) -> PyResult<(String, String)> {
+fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     let lower = path.to_lowercase();
     const NEEDS_PARSER: &[&str] = &[
         ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp", ".ods", ".rtf",
@@ -610,7 +659,7 @@ fn extract_file_text(path: &str) -> PyResult<(String, String)> {
              for PDF/DOCX/PPTX install redhop[files]."
         ))
     })?;
-    Ok((path.to_string(), text))
+    Ok((path.to_string(), vec![RhSection { text, page: None, heading: None }]))
 }
 
 /// Shared construction for text-backed documents (used by `from_text` and
@@ -619,7 +668,7 @@ fn extract_file_text(path: &str) -> PyResult<(String, String)> {
 #[allow(clippy::too_many_arguments)]
 fn build_text_doc(
     source: &str,
-    text: &str,
+    sections: Vec<RhSection>,
     strategy: Option<String>,
     chunk_size: usize,
     chunk_overlap: usize,
@@ -645,7 +694,7 @@ fn build_text_doc(
         chunk_overlap,
         mode,
     )?;
-    let mut inner = to_py(RhDocument::from_text_with(source, text, cfg))?;
+    let mut inner = to_py(RhDocument::from_sections_with(source, sections, cfg))?;
     if needs_embedder {
         inner = apply_dense_embedder(
             inner,
@@ -703,9 +752,14 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
+        let sections = vec![RhSection {
+            text: text.to_string(),
+            page: None,
+            heading: None,
+        }];
         let inner = build_text_doc(
             source,
-            text,
+            sections,
             strategy,
             chunk_size,
             chunk_overlap,
@@ -754,10 +808,10 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
-        let (source, text) = extract_file_text(path)?;
+        let (source, sections) = extract_file_text(path)?;
         let inner = build_text_doc(
             &source,
-            &text,
+            sections,
             strategy,
             chunk_size,
             chunk_overlap,

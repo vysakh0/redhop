@@ -19,6 +19,7 @@ redhop-chunking  = { workspace = true }
 redhop-retrieval = { workspace = true }
 redhop-context   = { workspace = true }
 tokio            = { workspace = true }
+serde_json       = { workspace = true }
 
 [dev-dependencies]
 redhop-core = { workspace = true }
