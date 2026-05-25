@@ -5,8 +5,7 @@
 //! or position extraction (that's a rendering concern, not retrieval). Each
 //! format is added behind the same [`extract`] entry point.
 //!
-//! Supported today: UTF-8 text & markdown/code, and **DOCX**. PPTX / XLSX / PDF
-//! are next.
+//! Supported: UTF-8 text & markdown/code, **DOCX**, **PPTX**, **XLSX**, **PDF**.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -14,6 +13,9 @@
 use std::path::Path;
 
 mod docx;
+mod pdf;
+mod pptx;
+mod xlsx;
 
 /// One extracted unit of a document — a paragraph/section/slide/page of text,
 /// with optional provenance used for citations.
@@ -71,8 +73,8 @@ impl std::fmt::Display for ExtractError {
             ExtractError::Io(e) => write!(f, "could not read file: {e}"),
             ExtractError::Unsupported(ext) => write!(
                 f,
-                "extracting '{ext}' files isn't supported yet (text/markdown/code and DOCX are; \
-                 PPTX/XLSX/PDF are coming) — extract the text yourself and use from_text()"
+                "extracting '{ext}' files isn't supported (supported: text/markdown/code, DOCX, \
+                 PPTX, XLSX, PDF) — extract the text yourself and use from_text()"
             ),
             ExtractError::Parse(m) => write!(f, "could not parse file: {m}"),
         }
@@ -103,6 +105,9 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
 
     match ext.as_str() {
         "docx" => docx::extract(path, source),
+        "pptx" => pptx::extract(path, source),
+        "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract(path, source),
+        "pdf" => pdf::extract(path, source),
         e if is_text_ext(e) || e.is_empty() => {
             let text = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
             Ok(ExtractedDoc { source, sections: vec![Section::text(text)] })

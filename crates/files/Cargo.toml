@@ -11,8 +11,11 @@ description = "Lean text extraction (text/markdown/DOCX/…) for RedHop's from_f
 path = "src/lib.rs"
 
 [dependencies]
-# Office/PDF parsers are added per-format. DOCX first.
-docx-rs = "0.4"
+docx-rs    = "0.4"                                              # DOCX
+calamine   = "0.32"                                             # XLSX / spreadsheets
+zip        = { version = "2", default-features = false, features = ["deflate"] }  # PPTX (OOXML)
+quick-xml  = "0.37"                                             # PPTX slide XML
+pdf-extract = "0.7"                                             # PDF text (pure-Rust, via lopdf)
 
 [lints]
 workspace = true
