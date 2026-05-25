@@ -46,7 +46,8 @@ use std::sync::Arc;
 
 use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop_context::{
-    analyze_context, build_context, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
+    analyze_context, build_context, build_context_expanded, BuiltContext, ContextConfig,
+    ContextReport, ContextStrategy, ExpansionPlan,
 };
 use redhop_core::{
     Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Result, RetrievalResult,
@@ -384,6 +385,99 @@ impl Document {
             cfg.token_budget = b;
         }
         Ok(build_context(&Query::new(query), &results, &cfg))
+    }
+
+    /// [`Document::context_with`] plus **structural context expansion**: after the
+    /// normal relevance-and-budget selection, attach to each selected chunk its
+    /// `neighbors` adjacent chunks (i±1, i±2, … in the same file) and — when
+    /// `include_heading` — its section's heading chunk. Companions are
+    /// deterministic (from document order and headings, no model), exempt from the
+    /// distractor filter, bounded by the token budget, and emitted in document
+    /// order so each hit reads as a contiguous window. `neighbors=0` +
+    /// `include_heading=false` is exactly [`Document::context_with`].
+    pub fn context_expanded(
+        &mut self,
+        query: &str,
+        budget: Option<usize>,
+        candidate_k: Option<usize>,
+        neighbors: usize,
+        include_heading: bool,
+    ) -> Result<BuiltContext> {
+        let k = candidate_k.unwrap_or(self.cfg.candidate_k);
+        let results = self.retrieve(query, k)?;
+        let mut cfg = self.cfg.context.clone();
+        if let Some(b) = budget {
+            cfg.token_budget = b;
+        }
+        let q = Query::new(query);
+        if neighbors == 0 && !include_heading {
+            return Ok(build_context(&q, &results, &cfg));
+        }
+        let plan = self.expansion_plan(&results, neighbors, include_heading);
+        Ok(build_context_expanded(&q, &results, &cfg, &plan))
+    }
+
+    /// Build the deterministic [`ExpansionPlan`] for a retrieved set: each seed's
+    /// adjacent same-file neighbors (nearest first) and section-heading chunk,
+    /// plus the document position of every chunk involved (for reading order).
+    fn expansion_plan(
+        &self,
+        results: &[RetrievalResult],
+        neighbors: usize,
+        include_heading: bool,
+    ) -> ExpansionPlan {
+        use std::collections::HashMap;
+        let pos: HashMap<&str, usize> = self
+            .chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.id.as_str(), i))
+            .collect();
+        let heading_of = |c: &Chunk| -> Option<String> {
+            c.metadata
+                .get("heading")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        };
+
+        let mut plan = ExpansionPlan::default();
+        for r in results {
+            let id = r.chunk.id.as_str();
+            let Some(&idx) = pos.get(id) else { continue };
+            plan.position.insert(id.to_string(), idx);
+            let seed = &self.chunks[idx];
+            let mut comps: Vec<Chunk> = Vec::new();
+
+            // Adjacent neighbors in the SAME file, nearest first: i-1, i+1, i-2, …
+            for d in 1..=neighbors {
+                for cand in [idx.checked_sub(d), idx.checked_add(d)].into_iter().flatten() {
+                    if cand < self.chunks.len() && self.chunks[cand].source == seed.source {
+                        comps.push(self.chunks[cand].clone());
+                    }
+                }
+            }
+
+            // The section heading: earliest chunk in the same (source, heading).
+            if include_heading {
+                if let Some(h) = heading_of(seed) {
+                    if let Some(hc) = self.chunks.iter().find(|c| {
+                        c.source == seed.source && heading_of(c).as_deref() == Some(h.as_str())
+                    }) {
+                        if hc.id != seed.id {
+                            comps.push(hc.clone());
+                        }
+                    }
+                }
+            }
+
+            for c in &comps {
+                if let Some(&j) = pos.get(c.id.as_str()) {
+                    plan.position.insert(c.id.as_str().to_string(), j);
+                }
+            }
+            plan.companions.insert(id.to_string(), comps);
+        }
+        plan
     }
 
     /// Diagnose the retrieval for a query **without** modifying anything:

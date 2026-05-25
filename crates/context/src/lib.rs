@@ -311,6 +311,11 @@ pub struct ContextReport {
     pub reasoning_preservation_delta: usize,
     /// Per-reason removal breakdown.
     pub removed: RemovedBreakdown,
+    /// Structural chunks added by context expansion (adjacent neighbors and
+    /// section headings attached to selected seeds). These are justified by
+    /// document structure, not query relevance, so they are not counted as
+    /// distractors. `0` when expansion is off.
+    pub n_expanded: usize,
     /// Token/evidence economics of the assembled context.
     pub economics: ContextEconomics,
 }
@@ -410,6 +415,12 @@ impl ContextReport {
             "  Second-hop rescues: {}\n",
             self.second_hop_rescue_count
         ));
+        if self.n_expanded > 0 {
+            s.push_str(&format!(
+                "  Structural expand:  +{} (neighbors / headings, for continuity)\n",
+                self.n_expanded
+            ));
+        }
         s.push_str(&format!(
             "  Estimated waste:    {} tokens on distractors\n",
             self.economics.estimated_waste_tokens
@@ -696,6 +707,78 @@ pub fn build_context(
     }
 }
 
+/// Deterministic structural companions for context expansion. For each seed
+/// chunk, the adjacent neighbors and section heading to attach **if** that seed
+/// is selected. Derived from document structure (chunk order, headings) — not
+/// query relevance — so the companions sidestep the distractor gate.
+#[derive(Debug, Clone, Default)]
+pub struct ExpansionPlan {
+    /// Seed chunk id → its ordered companion chunks (neighbors + heading).
+    pub companions: std::collections::HashMap<String, Vec<Chunk>>,
+    /// Document position of any chunk id (seed or companion), used to emit the
+    /// final context in reading order.
+    pub position: std::collections::HashMap<String, usize>,
+}
+
+/// [`build_context`] plus deterministic structural expansion: run the normal
+/// relevance-and-budget selection, then attach each selected seed's adjacent
+/// neighbors and section heading (from `plan`) — fit to the remaining budget,
+/// deduplicated, and emitted in document order so each seed reads as a
+/// contiguous window. Companions are justified by structure, so they are exempt
+/// from the distractor filter but still bounded by `token_budget`.
+pub fn build_context_expanded(
+    query: &Query,
+    retrieved: &[RetrievalResult],
+    cfg: &ContextConfig,
+    plan: &ExpansionPlan,
+) -> BuiltContext {
+    let mut built = build_context(query, retrieved, cfg);
+
+    let mut present: HashSet<String> =
+        built.chunks.iter().map(|c| c.id.as_str().to_string()).collect();
+    let mut used = built.report.total_tokens;
+    let mut added: Vec<Chunk> = Vec::new();
+
+    // Attach companions for each selected seed (in selection order). Neighbors
+    // are pre-ordered by the planner; we keep them while the budget allows.
+    for seed in &built.chunks {
+        let Some(comps) = plan.companions.get(seed.id.as_str()) else {
+            continue;
+        };
+        for c in comps {
+            let id = c.id.as_str().to_string();
+            if present.contains(&id) {
+                continue;
+            }
+            let t = c.token_count.value().max(1);
+            if used + t > cfg.token_budget {
+                continue;
+            }
+            used += t;
+            present.insert(id);
+            added.push(c.clone());
+        }
+    }
+
+    if added.is_empty() {
+        return built;
+    }
+
+    let n_expanded = added.len();
+    let mut all = built.chunks;
+    all.append(&mut added);
+    // Reading order: emit seeds and their companions by document position, so a
+    // seed and its neighbors form one contiguous window.
+    all.sort_by_key(|c| plan.position.get(c.id.as_str()).copied().unwrap_or(usize::MAX));
+
+    built.report.total_tokens = used;
+    built.report.token_utilization = used as f32 / cfg.token_budget.max(1) as f32;
+    built.report.n_selected = all.len();
+    built.report.n_expanded = n_expanded;
+    built.chunks = all;
+    built
+}
+
 /// Assemble the [`ContextReport`] from the selection result.
 #[allow(clippy::too_many_arguments)]
 fn make_report(
@@ -738,6 +821,7 @@ fn make_report(
         second_hop_rescue_count: rescued,
         reasoning_preservation_delta: rescued,
         removed,
+        n_expanded: 0,
         economics,
     }
 }
@@ -810,6 +894,7 @@ pub fn analyze_context(
         second_hop_rescue_count: candidates,
         reasoning_preservation_delta: candidates,
         removed: RemovedBreakdown::default(),
+        n_expanded: 0,
         economics,
     }
 }
@@ -1061,6 +1146,55 @@ mod tests {
             },
             breakdown: ScoreBreakdown::default(),
         }
+    }
+
+    #[test]
+    fn expansion_attaches_neighbors_in_document_order() {
+        // The hit is chunk 2; its neighbors (1 and 3) carry no query terms, so a
+        // relevance filter would drop them — expansion keeps them by structure.
+        let hit = rr("2", "the governing law is delaware", None);
+        let mut plan = ExpansionPlan::default();
+        plan.position.insert("1".into(), 1);
+        plan.position.insert("2".into(), 2);
+        plan.position.insert("3".into(), 3);
+        plan.companions.insert(
+            "2".into(),
+            vec![
+                Chunk::new(ChunkId::new("1"), "preceding clause text", "doc", TokenCount(3)),
+                Chunk::new(ChunkId::new("3"), "following clause text", "doc", TokenCount(3)),
+            ],
+        );
+        let cfg = ContextConfig {
+            token_budget: 100,
+            strategy: ContextStrategy::ReasoningPreserving,
+            ..Default::default()
+        };
+        let ctx = build_context_expanded(&Query::new("governing law"), &[hit], &cfg, &plan);
+        let ids: Vec<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
+        // Seed + both neighbors, emitted in document order 1,2,3 (a window).
+        assert_eq!(ids, vec!["1", "2", "3"]);
+        assert_eq!(ctx.report.n_expanded, 2);
+    }
+
+    #[test]
+    fn expansion_respects_token_budget() {
+        let hit = rr("2", "alpha beta gamma", None); // 3 tokens
+        let mut plan = ExpansionPlan::default();
+        plan.position.insert("2".into(), 2);
+        plan.position.insert("3".into(), 3);
+        plan.companions.insert(
+            "2".into(),
+            vec![Chunk::new(ChunkId::new("3"), "x ".repeat(50).trim(), "doc", TokenCount(50))],
+        );
+        // Budget only fits the seed; the 50-token neighbor must be skipped.
+        let cfg = ContextConfig {
+            token_budget: 10,
+            strategy: ContextStrategy::RawTopK,
+            ..Default::default()
+        };
+        let ctx = build_context_expanded(&Query::new("alpha"), &[hit], &cfg, &plan);
+        assert_eq!(ctx.report.n_expanded, 0);
+        assert_eq!(ctx.chunks.len(), 1);
     }
 
     #[test]

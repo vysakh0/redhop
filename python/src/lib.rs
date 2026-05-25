@@ -213,6 +213,10 @@ impl ContextReport {
         self.inner.reasoning_preservation_delta
     }
     #[getter]
+    fn n_expanded(&self) -> usize {
+        self.inner.n_expanded
+    }
+    #[getter]
     fn distractors_pruned(&self) -> usize {
         self.inner.removed.distractor
     }
@@ -1334,12 +1338,30 @@ impl Document {
 
     /// Assemble the reasoning context for a query (retrieve → allocate).
     /// `budget` overrides the document's default token budget for this call
-    /// only (query-time; no re-indexing). Returns a `BuiltContext`.
-    #[pyo3(signature = (query, budget=None))]
-    fn context(&mut self, query: &str, budget: Option<usize>) -> PyResult<BuiltContext> {
-        Ok(py_built(to_py(
-            self.inner.context_with(query, budget, None),
-        )?))
+    /// only (query-time; no re-indexing).
+    ///
+    /// **Structural expansion** (optional): `neighbors=N` also includes the N
+    /// adjacent chunks on each side of every selected chunk (i±1, … in the same
+    /// file); `include_heading=True` adds the section's heading. Companions are
+    /// deterministic (document order + headings, no model), added only within the
+    /// token budget, and emitted in reading order so each hit is a contiguous
+    /// window. They show up in `ctx.citations` and as `report.n_expanded`.
+    /// Returns a `BuiltContext`.
+    #[pyo3(signature = (query, budget=None, neighbors=0, include_heading=false))]
+    fn context(
+        &mut self,
+        query: &str,
+        budget: Option<usize>,
+        neighbors: usize,
+        include_heading: bool,
+    ) -> PyResult<BuiltContext> {
+        let built = if neighbors == 0 && !include_heading {
+            self.inner.context_with(query, budget, None)
+        } else {
+            self.inner
+                .context_expanded(query, budget, None, neighbors, include_heading)
+        };
+        Ok(py_built(to_py(built)?))
     }
 
     /// Diagnose retrieval for a query **without** modifying anything (pure
