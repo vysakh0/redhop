@@ -191,7 +191,18 @@ impl Document {
         sections: Vec<Section>,
         cfg: DocumentConfig,
     ) -> Result<Self> {
-        let source = source.into();
+        Self::from_sources_with(vec![(source.into(), sections)], cfg)
+    }
+
+    /// Build one document from **many sources** (e.g. every file in a folder).
+    /// Each `(source, sections)` pair is chunked with the configured policy; every
+    /// chunk keeps **its own** `source` plus the section's `page`/`heading`/`line`
+    /// metadata, so retrieval over the combined index still cites the right file.
+    /// Chunk ids are made unique across all sources.
+    pub fn from_sources_with(
+        files: Vec<(String, Vec<Section>)>,
+        cfg: DocumentConfig,
+    ) -> Result<Self> {
         let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
         let chunker = SentenceChunker::new(
             tok,
@@ -201,28 +212,31 @@ impl Document {
         )?;
         let mut all: Vec<Chunk> = Vec::new();
         let mut next_id = 0usize;
-        for sec in &sections {
-            if sec.text.trim().is_empty() {
-                continue;
+        for (source, sections) in &files {
+            for sec in sections {
+                if sec.text.trim().is_empty() {
+                    continue;
+                }
+                let mut chunks =
+                    chunker.chunk(&SourceDoc::new(source.clone(), sec.text.clone()))?;
+                for c in &mut chunks {
+                    c.id = redhop_core::ChunkId::new(format!("{next_id}"));
+                    next_id += 1;
+                    if let Some(p) = sec.page {
+                        c.metadata
+                            .insert("page".to_string(), serde_json::Value::from(p as u64));
+                    }
+                    if let Some(h) = &sec.heading {
+                        c.metadata
+                            .insert("heading".to_string(), serde_json::Value::String(h.clone()));
+                    }
+                    if let Some(l) = sec.line {
+                        c.metadata
+                            .insert("line".to_string(), serde_json::Value::from(l as u64));
+                    }
+                }
+                all.extend(chunks);
             }
-            let mut chunks = chunker.chunk(&SourceDoc::new(source.clone(), sec.text.clone()))?;
-            for c in &mut chunks {
-                c.id = redhop_core::ChunkId::new(format!("{next_id}"));
-                next_id += 1;
-                if let Some(p) = sec.page {
-                    c.metadata
-                        .insert("page".to_string(), serde_json::Value::from(p as u64));
-                }
-                if let Some(h) = &sec.heading {
-                    c.metadata
-                        .insert("heading".to_string(), serde_json::Value::String(h.clone()));
-                }
-                if let Some(l) = sec.line {
-                    c.metadata
-                        .insert("line".to_string(), serde_json::Value::from(l as u64));
-                }
-            }
-            all.extend(chunks);
         }
         Self::from_chunks_with(all, cfg)
     }
@@ -482,6 +496,45 @@ mod tests {
             Some("Refund Policy")
         );
         assert_eq!(cited.metadata.get("line").and_then(|v| v.as_u64()), Some(10));
+    }
+
+    #[test]
+    fn from_sources_keeps_per_file_source_and_metadata() {
+        let files = vec![
+            (
+                "refunds.md".to_string(),
+                vec![Section {
+                    text: "Customers may request a refund within 30 days.".into(),
+                    page: None,
+                    heading: Some("Refund Policy".into()),
+                    line: Some(5),
+                }],
+            ),
+            (
+                "shipping.txt".to_string(),
+                vec![Section {
+                    text: "Orders ship within two business days.".into(),
+                    page: None,
+                    heading: None,
+                    line: Some(1),
+                }],
+            ),
+        ];
+        let mut doc = Document::from_sources_with(files, DocumentConfig::default()).unwrap();
+        assert_eq!(doc.len(), 2, "one chunk per file");
+        let ctx = doc.context("refund within days").unwrap();
+        let cited = ctx
+            .chunks
+            .iter()
+            .find(|c| c.text.contains("refund"))
+            .expect("refund chunk retrieved");
+        // The retrieved chunk carries ITS file's source + metadata, not the other's.
+        assert_eq!(cited.source, "refunds.md");
+        assert_eq!(
+            cited.metadata.get("heading").and_then(|v| v.as_str()),
+            Some("Refund Policy")
+        );
+        assert_eq!(cited.metadata.get("line").and_then(|v| v.as_u64()), Some(5));
     }
 
     #[test]

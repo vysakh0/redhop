@@ -5,6 +5,8 @@
 //! Pythonic inputs (dicts/lists/strings) to the Rust types and wraps the
 //! results in small Python classes.
 
+use std::path::{Path, PathBuf};
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -666,13 +668,47 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     Ok((path.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
 }
 
+/// Directory names we never descend into when walking a folder — build/cache/VCS
+/// dirs that would only add noise (hidden dirs are skipped separately).
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    "__pycache__",
+    "venv",
+    "dist",
+    "build",
+];
+
+/// Collect the files under `dir` (sorted for deterministic ids), skipping hidden
+/// entries and well-known build/cache directories. Recurses when `recursive`.
+fn collect_files(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue; // skip hidden files/dirs (.git, .venv, dotfiles)
+        }
+        if path.is_dir() {
+            if recursive && !SKIP_DIRS.contains(&name) {
+                collect_files(&path, recursive, out)?;
+            }
+        } else if path.is_file() {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
 /// Shared construction for text-backed documents (used by `from_text` and
 /// `from_file`): resolve the tier, build the config, chunk+index, attach the
 /// embedder if the tier needs one.
 #[allow(clippy::too_many_arguments)]
 fn build_text_doc(
-    source: &str,
-    sections: Vec<RhSection>,
+    files: Vec<(String, Vec<RhSection>)>,
     strategy: Option<String>,
     chunk_size: usize,
     chunk_overlap: usize,
@@ -698,7 +734,7 @@ fn build_text_doc(
         chunk_overlap,
         mode,
     )?;
-    let mut inner = to_py(RhDocument::from_sections_with(source, sections, cfg))?;
+    let mut inner = to_py(RhDocument::from_sources_with(files, cfg))?;
     if needs_embedder {
         inner = apply_dense_embedder(
             inner,
@@ -763,8 +799,7 @@ impl Document {
             line: None,
         }];
         let inner = build_text_doc(
-            source,
-            sections,
+            vec![(source.to_string(), sections)],
             strategy,
             chunk_size,
             chunk_overlap,
@@ -784,11 +819,12 @@ impl Document {
     }
 
     /// Build straight from a file on disk — RedHop reads it, chunks, and indexes;
-    /// the file path becomes each chunk's source (toward citations).
+    /// the file path becomes each chunk's source, with page/heading/line tracked
+    /// for citations.
     ///
-    /// Today this supports **UTF-8 text files** (`.txt`, `.md`, `.rst`, source code,
-    /// `.json`, `.csv`, logs, …). PDF / DOCX / PPTX parsing is the `redhop[files]`
-    /// tier (coming) — until then, extract text yourself and use `from_text`.
+    /// The base install reads **UTF-8 text & code** (`.txt`, `.md`, `.rst`, source,
+    /// `.json`, `.csv`, logs, …). Install `redhop[files]` to also parse PDF, DOCX,
+    /// PPTX, and XLSX.
     #[staticmethod]
     #[pyo3(signature = (path, strategy=None, chunk_size=128, chunk_overlap=1,
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
@@ -815,8 +851,84 @@ impl Document {
     ) -> PyResult<Self> {
         let (source, sections) = extract_file_text(path)?;
         let inner = build_text_doc(
-            &source,
-            sections,
+            vec![(source, sections)],
+            strategy,
+            chunk_size,
+            chunk_overlap,
+            token_budget,
+            candidate_k,
+            retrieval,
+            model,
+            embedder_model,
+            embedder_tokenizer,
+            embedder_dim,
+            embedder_pooling,
+            embedder_query_prefix,
+            embedder_passage_prefix,
+            candidate_pool,
+        )?;
+        Ok(Self { inner })
+    }
+
+    /// Build one document from **every readable file in a folder** — RedHop walks
+    /// the directory, reads/chunks/indexes each file it can, and keeps each chunk's
+    /// own file path as its `source` (so citations point at the right file).
+    ///
+    /// Files it can't parse (unsupported formats, unreadable bytes) are skipped;
+    /// hidden entries and build/cache dirs (`node_modules`, `target`, `__pycache__`,
+    /// …) are ignored. With the base install only text/code files are read; install
+    /// `redhop[files]` to also ingest PDF/DOCX/PPTX/XLSX. `recursive=False` stays in
+    /// the top level. The index is in-memory (rebuilt each run) for now — on-disk
+    /// persistence is on the roadmap.
+    #[staticmethod]
+    #[pyo3(signature = (path, recursive=true, strategy=None, chunk_size=128, chunk_overlap=1,
+                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
+                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
+                        embedder_pooling=None, embedder_query_prefix=None,
+                        embedder_passage_prefix=None, candidate_pool=50))]
+    #[allow(clippy::too_many_arguments)]
+    fn from_folder(
+        path: &str,
+        recursive: bool,
+        strategy: Option<String>,
+        chunk_size: usize,
+        chunk_overlap: usize,
+        token_budget: usize,
+        candidate_k: usize,
+        retrieval: Option<String>,
+        model: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: usize,
+        embedder_pooling: Option<String>,
+        embedder_query_prefix: Option<String>,
+        embedder_passage_prefix: Option<String>,
+        candidate_pool: usize,
+    ) -> PyResult<Self> {
+        let root = Path::new(path);
+        if !root.is_dir() {
+            return Err(PyValueError::new_err(format!(
+                "from_folder: '{path}' is not a directory"
+            )));
+        }
+        let mut paths = Vec::new();
+        collect_files(root, recursive, &mut paths)
+            .map_err(|e| PyValueError::new_err(format!("from_folder: walking '{path}': {e}")))?;
+        let mut files: Vec<(String, Vec<RhSection>)> = Vec::new();
+        for p in &paths {
+            // Skip anything we can't read/parse (unsupported format, bad bytes).
+            if let Ok((source, sections)) = extract_file_text(&p.to_string_lossy()) {
+                files.push((source, sections));
+            }
+        }
+        if files.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "from_folder: no readable files found under '{path}'. The base install reads \
+                 text/code files; install `redhop[files]` to also ingest PDF/DOCX/PPTX/XLSX."
+            )));
+        }
+        let inner = build_text_doc(
+            files,
             strategy,
             chunk_size,
             chunk_overlap,

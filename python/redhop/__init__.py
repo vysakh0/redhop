@@ -3,7 +3,8 @@
 A **reasoning-aware context runtime for document reasoning**. You have
 documents and need reasoning; you should not have to wire up retrievers, vector
 DBs, or query engines. It is *not* a retriever, vector DB, agent framework, or
-workflow engine — and it does not parse PDFs (bring your own text).
+workflow engine. The core takes text (bring your own parser); the optional
+``redhop[files]`` tier reads PDF/DOCX/PPTX/XLSX for you.
 
 High-level surface — reason over a document:
 
@@ -13,6 +14,14 @@ High-level surface — reason over a document:
     ctx = doc.context("Why did the proposed method fail?")
     response = llm.generate(ctx.text())            # any provider; no lock-in
     print(ctx.report)                              # what was retrieved/pruned, and why
+
+Or load straight from disk (a file, or a whole folder — no vector DB to run):
+
+    doc = redhop.Document.from_file("contract.pdf")    # pip install "redhop[files]"
+    doc = redhop.Document.from_folder("./docs")        # every readable file, one index
+    ctx = doc.context("what's our deprecation policy?")
+    for c in ctx.citations:                            # cite where it came from
+        print(c["source"], c["page"], c["heading"], c["line"])
 
 Low-level surface — you already have chunks (still first-class):
 
