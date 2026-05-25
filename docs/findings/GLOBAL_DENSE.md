@@ -81,9 +81,14 @@ Setup = time to first answer (embed-all); warm = median per-query after indexing
   cosine over all cached chunk embeddings, no BM25 prune, no ANN. Implemented in
   `LocalRerankRetriever::global()` (`crates/retrieval/src/local_rerank.rs`), wired
   through `redhop-document` and the Python binding.
-- **Guidance / defaults unchanged:** `lexical` (BM25) is the default; `rerank` for
-  semantic recall on normal data; **`dense` for paraphrase/synonym-heavy bounded
-  corpora** where BM25 misses the answer entirely. The default stays lexical because
-  most corpora overlap lexically and global is O(N) per query.
+- **Collapsed the semantic tiers to lexical + dense (dropped rerank).** Since global
+  dense ≥ local rerank on recall *and* costs ~the same on bounded corpora (setup
+  identical, warm ~equal — see Performance), the BM25-prune `rerank` tier was
+  redundant. Removed `RetrievalMode::DenseRerank` / `retrieval="rerank"`; the two
+  tiers are now **`lexical`** (default, BM25) and **`dense`** (global). The
+  `LocalRerankRetriever` engine is retained — its `.global()` path powers `dense`.
+  Local rerank's only theoretical edge (flat per-query cost) is irrelevant until the
+  large-N regime, which is the vector-store boundary anyway. See [LOCAL_RERANK](LOCAL_RERANK.md)
+  (preserved as the evidence that motivated, and then was superseded by, this).
 - **Open:** measure global vs local on a *natural* (non-adversarial) corpus to size
-  the everyday gap; pick a recall/latency budget where `dense` auto-escalates.
+  the everyday gap; if a large-bounded regime emerges, reconsider a flat-cost option.

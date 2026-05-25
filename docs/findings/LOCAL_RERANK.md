@@ -1,5 +1,11 @@
 # Local Rerank — semantic recall without a vector index
 
+> **⚠ Superseded as a product tier (preserved as evidence).** This justified
+> "local-first" semantic retrieval. It was later **dropped as a `retrieval` tier** in
+> favor of global `dense`: [GLOBAL_DENSE](GLOBAL_DENSE.md) showed global dense ≥ local
+> rerank on recall at ~equal cost on bounded corpora, so the BM25-prune tier was
+> redundant. The findings below stand as measured; the *tier* no longer ships.
+
 > **The result:** BM25 prunes the corpus to a candidate pool; dense reranks
 > **only that pool** (local), never the whole corpus (global). On natural
 > HotpotQA this **matches global dense on both retrieval recall and downstream

@@ -55,7 +55,7 @@ call also prunes and produces a Decision Report, so it's doing more per query.
 
 ## Scenario 2 — SEMANTIC (embeddings on all three, e5-small)
 
-| size | RedHop (dense rerank) | LangChain (vector) | LlamaIndex (vector) |
+| size | RedHop (dense) | LangChain (vector) | LlamaIndex (vector) |
 | ---- | --------------------- | ------------------ | ------------------- |
 | ~14k tok  | 1.9s / 5.4ms  | 0.44s / 14.1ms | 0.29s / 5.5ms |
 | ~38k tok  | 8.2s / 4.2ms  | 1.50s / 7.1ms  | 1.01s / 7.3ms |
