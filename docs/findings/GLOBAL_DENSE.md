@@ -50,6 +50,31 @@
   **bounded** corpora — at scale you'd want a real ANN/vector store, which RedHop
   deliberately isn't.
 
+## Performance (vs local rerank, CUAD contracts)
+
+Setup = time to first answer (embed-all); warm = median per-query after indexing.
+
+| corpus | mode | setup | warm/query |
+| ------ | ---- | ----- | ---------- |
+| ~100 chunks  | rerank | 1.7s | 8.1ms |
+|              | dense  | 1.7s | 6.7ms |
+| ~300 chunks  | rerank | 9.0s | 7.4ms |
+|              | dense  | 8.5s | 6.7ms |
+| ~1584 chunks | rerank | 60.1s | 11.8ms |
+|              | dense  | 57.8s | 7.7ms |
+
+- **Setup is identical** — both tiers embed every chunk once (that's the cost; int8
+  ~halves it). Global dense adds nothing at index time.
+- **Per-query, dense ≈ rerank** (~7ms, ~flat in corpus size) — counter-intuitive for
+  an O(N) scan, but the query embedding (~one ONNX forward) dominates and brute-force
+  cosine over a few thousand 384-d vectors is sub-ms; dense also skips rerank's BM25
+  lookup, netting out a touch cheaper.
+- **The O(N) cosine only bites at scale:** warm grew just 6.7→7.7ms from 100→1584
+  chunks (~16×). Extrapolated, it stays sub-100ms into the ~100k-chunk range and only
+  dominates in the hundreds-of-thousands/millions regime — exactly where you'd switch
+  to a real ANN/vector store. So for **bounded** corpora dense is effectively free
+  relative to rerank.
+
 ## What changed afterward
 
 - **Shipped `RetrievalMode::Dense` / `retrieval="dense"`** — global, exact brute-force

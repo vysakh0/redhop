@@ -1,0 +1,7 @@
+size      chunks~      mode   setup_s   warm_ms
+1             100    rerank      1.7s     8.1ms
+1             100     dense      1.7s     6.7ms
+5             300    rerank      9.0s     7.4ms
+5             300     dense      8.5s     6.7ms
+15           1584    rerank     60.1s    11.8ms
+15           1584     dense     57.8s     7.7ms
