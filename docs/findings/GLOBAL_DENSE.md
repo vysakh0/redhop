@@ -81,14 +81,15 @@ Setup = time to first answer (embed-all); warm = median per-query after indexing
   cosine over all cached chunk embeddings, no BM25 prune, no ANN. Implemented in
   `LocalRerankRetriever::global()` (`crates/retrieval/src/local_rerank.rs`), wired
   through `redhop-document` and the Python binding.
-- **Collapsed the semantic tiers to lexical + dense (dropped rerank).** Since global
-  dense ≥ local rerank on recall *and* costs ~the same on bounded corpora (setup
-  identical, warm ~equal — see Performance), the BM25-prune `rerank` tier was
-  redundant. Removed `RetrievalMode::DenseRerank` / `retrieval="rerank"`; the two
-  tiers are now **`lexical`** (default, BM25) and **`dense`** (global). The
-  `LocalRerankRetriever` engine is retained — its `.global()` path powers `dense`.
-  Local rerank's only theoretical edge (flat per-query cost) is irrelevant until the
-  large-N regime, which is the vector-store boundary anyway. See [LOCAL_RERANK](LOCAL_RERANK.md)
-  (preserved as the evidence that motivated, and then was superseded by, this).
-- **Open:** measure global vs local on a *natural* (non-adversarial) corpus to size
-  the everyday gap; if a large-bounded regime emerges, reconsider a flat-cost option.
+- **Tier story — a round-trip to *three* tiers.** This finding briefly collapsed the
+  semantic tiers to lexical + dense (global dense ≥ local rerank on recall at ~equal
+  cost *on bounded corpora*). That was then **reversed**: on a **large corpus without a
+  vector DB** (a folder of files), global dense's embed-everything is impractical,
+  while BM25-prune→rerank embeds only the pool per query and scales. So the shipped
+  tiers are **`lexical`** (default) · **`hybrid`** (BM25 prune → rerank — large/no-DB,
+  see [LOCAL_RERANK](LOCAL_RERANK.md)) · **`semantic`** (this, global dense —
+  small/best-recall). `semantic` is the right choice when you want every paraphrase
+  caught on a small set; `hybrid` when the corpus is too big to embed whole. See
+  [RUNTIME_RETRIEVAL_DIRECTION](../RUNTIME_RETRIEVAL_DIRECTION.md).
+- **Open:** measure `hybrid` vs `semantic` on a *natural* (non-adversarial) corpus to
+  size the everyday gap; consider an adaptive `semantic` that auto-picks by corpus size.

@@ -1,10 +1,12 @@
 # Local Rerank — semantic recall without a vector index
 
-> **⚠ Superseded as a product tier (preserved as evidence).** This justified
-> "local-first" semantic retrieval. It was later **dropped as a `retrieval` tier** in
-> favor of global `dense`: [GLOBAL_DENSE](GLOBAL_DENSE.md) showed global dense ≥ local
-> rerank on recall at ~equal cost on bounded corpora, so the BM25-prune tier was
-> redundant. The findings below stand as measured; the *tier* no longer ships.
+> **Status: this is the `retrieval="hybrid"` tier** (it took a round-trip). It was
+> briefly dropped when [GLOBAL_DENSE](GLOBAL_DENSE.md) showed global dense ≥ local
+> rerank on recall at ~equal cost *on bounded corpora* — then **restored**, because on
+> a **large corpus without a vector DB** (a folder of files), global dense's
+> embed-everything doesn't scale, while this approach embeds only the BM25 pool per
+> query. So the tiers split by corpus size: `hybrid` (this, large/no-DB) vs `semantic`
+> (global dense, small/best-recall). The findings below are the evidence for `hybrid`.
 
 > **The result:** BM25 prunes the corpus to a candidate pool; dense reranks
 > **only that pool** (local), never the whole corpus (global). On natural
