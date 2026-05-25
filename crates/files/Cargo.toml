@@ -1,0 +1,18 @@
+[package]
+name = "redhop-files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lean text extraction (text/markdown/DOCX/…) for RedHop's from_file / from_folder ingestion"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Office/PDF parsers are added per-format. DOCX first.
+docx-rs = "0.4"
+
+[lints]
+workspace = true

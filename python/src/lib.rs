@@ -579,6 +579,40 @@ fn apply_dense_embedder(
     ))
 }
 
+/// Read a file to `(source, text)` for `from_file`.
+///
+/// With the `files` feature, `redhop-files` parses text/markdown/DOCX (PPTX/XLSX/
+/// PDF coming). Without it, only UTF-8 text files are read; binary formats return
+/// a clear "install redhop[files]" error.
+#[cfg(feature = "files")]
+fn extract_file_text(path: &str) -> PyResult<(String, String)> {
+    let doc = redhop_files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let text = doc.plain_text();
+    Ok((doc.source, text))
+}
+
+#[cfg(not(feature = "files"))]
+fn extract_file_text(path: &str) -> PyResult<(String, String)> {
+    let lower = path.to_lowercase();
+    const NEEDS_PARSER: &[&str] = &[
+        ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp", ".ods", ".rtf",
+    ];
+    if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
+        return Err(PyValueError::new_err(format!(
+            "from_file can't parse {} on this build — install the parsing tier \
+             (`pip install \"redhop[files]\"`), or extract the text yourself and use from_text().",
+            ext.trim_start_matches('.')
+        )));
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        PyValueError::new_err(format!(
+            "could not read '{path}' as text ({e}). This build supports UTF-8 text files; \
+             for PDF/DOCX/PPTX install redhop[files]."
+        ))
+    })?;
+    Ok((path.to_string(), text))
+}
+
 /// Shared construction for text-backed documents (used by `from_text` and
 /// `from_file`): resolve the tier, build the config, chunk+index, attach the
 /// embedder if the tier needs one.
@@ -720,29 +754,9 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
     ) -> PyResult<Self> {
-        // Binary office/PDF formats need the (forthcoming) redhop[files] parsers.
-        let lower = path.to_lowercase();
-        const NEEDS_PARSER: &[&str] = &[
-            ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp",
-            ".ods", ".rtf",
-        ];
-        if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
-            return Err(PyValueError::new_err(format!(
-                "from_file can't parse {} yet — that's the redhop[files] tier (PDF/DOCX/PPTX \
-                 via native parsers), coming soon. For now, extract the text yourself and use \
-                 from_text(), or pass a text file (.txt/.md/code/…).",
-                ext.trim_start_matches('.')
-            )));
-        }
-        let text = std::fs::read_to_string(path).map_err(|e| {
-            PyValueError::new_err(format!(
-                "could not read '{path}' as text ({e}). from_file currently supports UTF-8 text \
-                 files; PDF/DOCX/PPTX support (redhop[files]) is coming — until then parse to \
-                 text yourself and use from_text()."
-            ))
-        })?;
+        let (source, text) = extract_file_text(path)?;
         let inner = build_text_doc(
-            path,
+            &source,
             &text,
             strategy,
             chunk_size,

@@ -27,12 +27,16 @@ path = "src/lib.rs"
 # Off by default: the standard wheel is lexical-only (no native ONNX runtime).
 # Build with `--features onnx` for the dense-rerank retrieval tier.
 onnx = ["redhop-embeddings/onnx"]
+# Build with `--features files` for Document.from_file parsing
+# (text/markdown/DOCX today; PPTX/XLSX/PDF coming).
+files = ["dep:redhop-files"]
 
 [dependencies]
 redhop-core       = { path = "../crates/core" }
 redhop-context    = { path = "../crates/context" }
 redhop-document   = { path = "../crates/document" }
 redhop-embeddings = { path = "../crates/embeddings", default-features = false }
+redhop-files      = { path = "../crates/files", optional = true }
 serde_json      = "1"
 pyo3           = { version = "0.23", features = ["extension-module", "abi3-py39"] }
 
