@@ -25,8 +25,6 @@ use redhop_core::{
 
 use crate::bm25::Bm25Retriever;
 
-const EMBED_BATCH: usize = 64;
-
 /// BM25 candidate generation + local dense rerank. The dense model only ever
 /// scores the BM25 candidate pool, never the whole corpus.
 pub struct LocalRerankRetriever {
@@ -154,11 +152,12 @@ impl Retriever for LocalRerankRetriever {
                 None => true,
             })
             .collect();
-        // Precompute the rest (batched) so retrieval only embeds the query.
-        for batch in to_embed.chunks(EMBED_BATCH) {
-            let texts: Vec<String> = batch.iter().map(|c| c.text.clone()).collect();
+        // Precompute the rest in a single call so the embedder can batch them
+        // globally (it length-sorts internally to minimize padding waste).
+        if !to_embed.is_empty() {
+            let texts: Vec<String> = to_embed.iter().map(|c| c.text.clone()).collect();
             let embs = self.embedder.embed(&texts).await?;
-            for (c, e) in batch.iter().zip(embs) {
+            for (c, e) in to_embed.iter().zip(embs) {
                 self.embeddings.insert(c.id.as_str().to_string(), e);
             }
         }
