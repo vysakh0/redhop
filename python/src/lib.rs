@@ -705,39 +705,57 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     Ok((path.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
 }
 
-/// Directory names we never descend into when walking a folder — build/cache/VCS
-/// dirs that would only add noise (hidden dirs are skipped separately).
-const SKIP_DIRS: &[&str] = &[
-    "node_modules",
-    "target",
-    "__pycache__",
-    "venv",
-    "dist",
-    "build",
-];
+/// Build/cache dirs excluded by default even without a `.gitignore`.
+const DEFAULT_IGNORES: &[&str] = &["node_modules", "target", "__pycache__", "venv", "dist", "build"];
 
-/// Collect the files under `dir` (sorted for deterministic ids), skipping hidden
-/// entries and well-known build/cache directories. Recurses when `recursive`.
-fn collect_files(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
-    entries.sort();
-    for path in entries {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.starts_with('.') {
-            continue; // skip hidden files/dirs (.git, .venv, dotfiles)
-        }
-        if path.is_dir() {
-            if recursive && !SKIP_DIRS.contains(&name) {
-                collect_files(&path, recursive, out)?;
-            }
-        } else if path.is_file() {
-            out.push(path);
+/// Collect the files to index under `root`, using the same walker ripgrep does:
+/// skips hidden entries, honors `.gitignore`/`.ignore` (when `gitignore`), excludes
+/// build/cache dirs and any caller `ignore` globs (gitignore-style). Sorted for
+/// deterministic chunk ids. `recursive=false` stays in the top level.
+fn collect_files(
+    root: &Path,
+    recursive: bool,
+    gitignore: bool,
+    ignore_globs: &[String],
+) -> PyResult<Vec<PathBuf>> {
+    // Override globs: a `!glob` excludes. All-exclude → everything else included.
+    let mut ob = ignore::overrides::OverrideBuilder::new(root);
+    for d in DEFAULT_IGNORES {
+        let _ = ob.add(&format!("!{d}"));
+    }
+    for g in ignore_globs {
+        ob.add(&format!("!{g}")).map_err(|e| {
+            PyValueError::new_err(format!("from_folder: invalid ignore pattern '{g}': {e}"))
+        })?;
+    }
+    let overrides = ob
+        .build()
+        .map_err(|e| PyValueError::new_err(format!("from_folder: ignore patterns: {e}")))?;
+
+    let mut wb = ignore::WalkBuilder::new(root);
+    wb.hidden(true) // skip dotfiles (.git, .venv, .redhop)
+        .git_ignore(gitignore)
+        .git_global(gitignore)
+        .git_exclude(gitignore)
+        .ignore(gitignore)
+        .parents(gitignore)
+        // Honor a .gitignore even when the folder isn't itself a git repo.
+        .require_git(false)
+        .overrides(overrides);
+    if !recursive {
+        wb.max_depth(Some(1));
+    }
+
+    let mut out = Vec::new();
+    for entry in wb.build() {
+        // Skip unreadable entries rather than failing the whole walk.
+        let Ok(entry) = entry else { continue };
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            out.push(entry.into_path());
         }
     }
-    Ok(())
+    out.sort();
+    Ok(out)
 }
 
 // ---- Persistent folder index (opt-in via `from_folder(persist=True)`) --------
@@ -873,6 +891,8 @@ fn build_chunks_doc(
 fn build_folder_persisted(
     folder: &Path,
     recursive: bool,
+    gitignore: bool,
+    ignore_globs: &[String],
     index_dir: &Option<String>,
     strategy: Option<String>,
     chunk_size: usize,
@@ -914,10 +934,7 @@ fn build_folder_persisted(
     };
 
     // Walk the folder. Config for re-chunking new/changed files.
-    let mut paths = Vec::new();
-    collect_files(folder, recursive, &mut paths).map_err(|e| {
-        PyValueError::new_err(format!("from_folder: walking '{}': {e}", folder.display()))
-    })?;
+    let paths = collect_files(folder, recursive, gitignore, ignore_globs)?;
     let dir_abs = dir.canonicalize().ok();
     let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
     let cfg = doc_config(
@@ -1281,13 +1298,19 @@ impl Document {
     /// processed, and removed files are dropped. The index defaults to
     /// `<folder>/.redhop`; pass `index_dir=` to put it elsewhere. Without `persist`
     /// (the default) the index is in-memory and rebuilt each run.
+    ///
+    /// Hidden entries (`.git`, dotfiles) and build/cache dirs (`node_modules`,
+    /// `target`, …) are always skipped. By default it also honors **`.gitignore`**
+    /// (set `gitignore=False` to index ignored files too), and you can pass extra
+    /// **`ignore=[...]`** gitignore-style globs (e.g. `["*.lock", "tests/**"]`).
     #[staticmethod]
     #[pyo3(signature = (path, recursive=true, persist=false, index_dir=None,
                         strategy=None, chunk_size=128, chunk_overlap=1,
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50))]
+                        embedder_passage_prefix=None, candidate_pool=50,
+                        ignore=None, gitignore=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_folder(
         path: &str,
@@ -1308,6 +1331,8 @@ impl Document {
         embedder_query_prefix: Option<String>,
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
+        ignore: Option<Vec<String>>,
+        gitignore: bool,
     ) -> PyResult<Self> {
         let root = Path::new(path);
         if !root.is_dir() {
@@ -1315,12 +1340,15 @@ impl Document {
                 "from_folder: '{path}' is not a directory"
             )));
         }
+        let ignore_globs = ignore.unwrap_or_default();
 
         // Persisted path: incremental on-disk index.
         if persist || index_dir.is_some() {
             let inner = build_folder_persisted(
                 root,
                 recursive,
+                gitignore,
+                &ignore_globs,
                 &index_dir,
                 strategy,
                 chunk_size,
@@ -1341,9 +1369,7 @@ impl Document {
         }
 
         // In-memory path: walk, extract, build one index (rebuilt each run).
-        let mut paths = Vec::new();
-        collect_files(root, recursive, &mut paths)
-            .map_err(|e| PyValueError::new_err(format!("from_folder: walking '{path}': {e}")))?;
+        let paths = collect_files(root, recursive, gitignore, &ignore_globs)?;
         let mut files: Vec<(String, Vec<RhSection>)> = Vec::new();
         for p in &paths {
             // Skip anything we can't read/parse (unsupported format, bad bytes).

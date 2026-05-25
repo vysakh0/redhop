@@ -197,6 +197,31 @@ def test_from_folder_skips_junk_dirs(tmp_path):
         assert "node_modules" not in c["source"] and ".git" not in c["source"]
 
 
+def test_from_folder_respects_gitignore(tmp_path):
+    (tmp_path / "keep.txt").write_text("the refund window is thirty days\n")
+    (tmp_path / "build_out.txt").write_text("generated build artifact noise\n")
+    (tmp_path / ".gitignore").write_text("build_out.txt\n")
+    # default: .gitignore honored even though tmp_path isn't a git repo
+    assert len(redhop.Document.from_folder(str(tmp_path))) == 1
+    # opt out: the ignored file comes back
+    assert len(redhop.Document.from_folder(str(tmp_path), gitignore=False)) == 2
+
+
+def test_from_folder_custom_ignore_patterns(tmp_path):
+    (tmp_path / "keep.txt").write_text("the refund window is thirty days\n")
+    (tmp_path / "noise.log").write_text("verbose log line noise\n")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.txt").write_text("subdir doc\n")
+    assert len(redhop.Document.from_folder(str(tmp_path), ignore=["*.log"])) == 2  # log excluded
+    assert len(redhop.Document.from_folder(str(tmp_path), ignore=["sub/**"])) == 2  # subdir excluded
+
+
+def test_from_folder_invalid_ignore_pattern_raises(tmp_path):
+    _mkfolder(tmp_path)
+    with pytest.raises(Exception):
+        redhop.Document.from_folder(str(tmp_path), ignore=["["])  # malformed glob
+
+
 def test_from_folder_empty_raises(tmp_path):
     with pytest.raises(Exception):
         redhop.Document.from_folder(str(tmp_path))
