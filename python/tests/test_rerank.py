@@ -35,20 +35,25 @@ QUERY = "why did the employee leave the company?"
 
 BGE_MODEL = os.environ.get("REDHOP_BGE_MODEL")
 BGE_TOK = os.environ.get("REDHOP_BGE_TOKENIZER")
-E5_MODEL = os.environ.get("REDHOP_E5_MODEL")
-E5_TOK = os.environ.get("REDHOP_E5_TOKENIZER")
+
+# E5 (asymmetric) — fall back to the repo's local bench export if present, so the
+# dense path actually runs here without any env setup.
+_BENCH_E5 = os.path.join(os.path.dirname(__file__), "..", "..", "bench", "models", "e5-small-onnx")
+E5_MODEL = os.environ.get("REDHOP_E5_MODEL") or os.path.join(_BENCH_E5, "model.onnx")
+E5_TOK = os.environ.get("REDHOP_E5_TOKENIZER") or os.path.join(_BENCH_E5, "tokenizer.json")
 
 _have_bge = bool(BGE_MODEL and BGE_TOK and os.path.exists(BGE_MODEL))
 _have_e5 = bool(E5_MODEL and E5_TOK and os.path.exists(E5_MODEL))
 
 
-def test_rerank_without_embedder_errors_clearly():
-    """retrieval='rerank' with no model path errors with a helpful message,
-    on any build (lexical wheel: 'onnx build'; onnx wheel: 'embedder_model')."""
-    with pytest.raises(Exception) as e:
-        redhop.Document.from_text(TEXT, retrieval="rerank")
-    msg = str(e.value).lower()
-    assert "onnx" in msg or "embedder" in msg
+def test_invalid_retrieval_mode_errors_clearly():
+    """The retrieval tier was renamed: 'rerank'/'dense' are gone, and a bogus
+    mode must error listing the valid options."""
+    for bad in ("rerank", "dense", "bogus"):
+        with pytest.raises(Exception) as e:
+            redhop.Document.from_text(TEXT, retrieval=bad)
+        msg = str(e.value).lower()
+        assert "lexical" in msg and "hybrid" in msg and "semantic" in msg
 
 
 def test_lexical_default_still_works():
@@ -57,11 +62,11 @@ def test_lexical_default_still_works():
 
 
 @pytest.mark.skipif(not _have_bge, reason="REDHOP_BGE_MODEL not set")
-def test_dense_rerank_bge_symmetric():
+def test_hybrid_bge_symmetric():
     doc = redhop.Document.from_text(
         TEXT,
         chunk_size=16,
-        retrieval="rerank",
+        retrieval="hybrid",
         embedder_model=BGE_MODEL,
         embedder_tokenizer=BGE_TOK,
         embedder_dim=384,
@@ -72,12 +77,13 @@ def test_dense_rerank_bge_symmetric():
     assert "terminated" in text  # the paraphrase-matched chunk surfaced
 
 
-@pytest.mark.skipif(not _have_e5, reason="REDHOP_E5_MODEL not set")
-def test_dense_rerank_e5_asymmetric_prefixes():
+@pytest.mark.skipif(not _have_e5, reason="no E5 model (set REDHOP_E5_MODEL or build bench/models/e5-small-onnx)")
+@pytest.mark.parametrize("mode", ["hybrid", "semantic"])
+def test_dense_e5_asymmetric_prefixes(mode):
     doc = redhop.Document.from_text(
         TEXT,
         chunk_size=16,
-        retrieval="rerank",
+        retrieval=mode,
         embedder_model=E5_MODEL,
         embedder_tokenizer=E5_TOK,
         embedder_dim=384,
@@ -90,13 +96,13 @@ def test_dense_rerank_e5_asymmetric_prefixes():
     assert "terminated" in text
 
 
+@pytest.mark.skipif(not _have_e5, reason="no E5 model available")
 def test_unknown_pooling_rejected():
-    """Only meaningful on an onnx build; lexical build errors earlier (also fine)."""
     with pytest.raises(Exception):
         redhop.Document.from_text(
             TEXT,
-            retrieval="rerank",
-            embedder_model=BGE_MODEL or "x.onnx",
-            embedder_tokenizer=BGE_TOK or "x.json",
+            retrieval="hybrid",
+            embedder_model=E5_MODEL,
+            embedder_tokenizer=E5_TOK,
             embedder_pooling="bogus",
         )
