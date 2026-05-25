@@ -24,6 +24,13 @@ use redhop_core::{
 };
 
 use crate::bm25::Bm25Retriever;
+use crate::fusion::reciprocal_rank_fusion;
+
+/// A chunk routed to lexical-only retrieval (code): under the hybrid tier it's
+/// ranked by BM25 and never embedded, since general embedders are weak on code.
+fn is_code(c: &Chunk) -> bool {
+    c.metadata.get("kind").and_then(|v| v.as_str()) == Some("code")
+}
 
 /// BM25 candidate generation + local dense rerank. The dense model only ever
 /// scores the BM25 candidate pool, never the whole corpus.
@@ -144,12 +151,17 @@ impl Retriever for LocalRerankRetriever {
         // embedding cost only for new/changed chunks.
         let to_embed: Vec<&Chunk> = chunks
             .iter()
-            .filter(|c| match &c.embedding {
-                Some(e) => {
+            .filter(|c| {
+                if let Some(e) = &c.embedding {
                     self.embeddings.insert(c.id.as_str().to_string(), e.clone());
-                    false
+                    return false;
                 }
-                None => true,
+                // Hybrid (pool path): code is retrieved lexically, so skip embedding
+                // it. The global/semantic path still embeds everything.
+                if !self.global && is_code(c) {
+                    return false;
+                }
+                true
             })
             .collect();
         // Precompute the rest in a single call so the embedder can batch them
@@ -209,37 +221,58 @@ impl Retriever for LocalRerankRetriever {
             return Ok(scored);
         }
 
-        // Lexical prune: fetch the candidate pool (at least as deep as top_k).
+        // Lexical prune: fetch the candidate pool (already ranked by BM25).
         let pool = self.candidate_pool.max(top_k.max(1));
         let cand = self.bm25.retrieve(query, pool).await?;
         if cand.is_empty() {
             return Ok(cand);
         }
-        // Local refinement: reorder only the pool by cosine.
-        let mut scored: Vec<RetrievalResult> = cand
-            .into_iter()
-            .filter_map(|mut r| {
+
+        // Any pool chunk without an embedding is lexical-only (code) — it must
+        // survive on its BM25 rank rather than being dropped.
+        let has_lexical_only = cand
+            .iter()
+            .any(|r| !self.embeddings.contains_key(r.chunk.id.as_str()));
+
+        // Dense reranking of the embeddable (prose/data) subset of the pool.
+        let mut dense: Vec<RetrievalResult> = cand
+            .iter()
+            .filter_map(|r| {
                 let emb = self.embeddings.get(r.chunk.id.as_str())?;
                 let s = cosine(qe.as_slice(), emb.as_slice());
-                r.score = Score {
+                let mut d = r.clone();
+                d.score = Score {
                     value: s,
                     method: RetrievalMethod::Rerank,
                 };
-                r.breakdown = ScoreBreakdown {
+                d.breakdown = ScoreBreakdown {
                     dense: Some(s),
                     ..Default::default()
                 };
-                Some(r)
+                Some(d)
             })
             .collect();
-        scored.sort_by(|a, b| {
+        dense.sort_by(|a, b| {
             b.score
                 .value
                 .partial_cmp(&a.score.value)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        scored.truncate(top_k.max(1));
-        Ok(scored)
+
+        if !has_lexical_only {
+            // Pure prose pool: dense reranking, as before.
+            dense.truncate(top_k.max(1));
+            return Ok(dense);
+        }
+        if dense.is_empty() {
+            // Pure lexical pool (all code): BM25 ranking stands.
+            let mut out = cand;
+            out.truncate(top_k.max(1));
+            return Ok(out);
+        }
+        // Mixed: fuse the BM25 ranking (keeps code chunks) with the dense
+        // reranking (prose/data) via reciprocal rank fusion.
+        Ok(reciprocal_rank_fusion(&[cand, dense], 60.0, top_k.max(1)))
     }
 
     fn name(&self) -> &'static str {
@@ -304,6 +337,34 @@ mod tests {
             let res = r.retrieve(&q, 3).await.unwrap();
             assert_eq!(res[0].chunk.id.as_str(), "c");
             assert_eq!(res[0].score.method, RetrievalMethod::Rerank);
+        });
+    }
+
+    #[test]
+    fn code_chunks_stay_lexical_and_survive_in_hybrid() {
+        rt().block_on(async {
+            let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
+            let mut code = Chunk::new("code", "alpha gamma", "main.py", TokenCount(2));
+            code.metadata
+                .insert("kind".into(), serde_json::Value::String("code".into()));
+            let mut prose = Chunk::new("prose", "beta beta", "notes.md", TokenCount(2));
+            prose
+                .metadata
+                .insert("kind".into(), serde_json::Value::String("prose".into()));
+            r.index(&[code, prose]).await.unwrap();
+
+            // Code was never embedded; prose was.
+            let embs = r.embeddings().unwrap();
+            assert!(embs.get("code").is_none(), "code should not be embedded");
+            assert!(embs.get("prose").is_some(), "prose should be embedded");
+
+            // A query matching the code chunk's terms still returns it (BM25 → RRF),
+            // even though it has no embedding.
+            let res = r.retrieve(&Query::new("alpha gamma"), 5).await.unwrap();
+            assert!(
+                res.iter().any(|x| x.chunk.id.as_str() == "code"),
+                "lexical-only code chunk must survive hybrid retrieval"
+            );
         });
     }
 

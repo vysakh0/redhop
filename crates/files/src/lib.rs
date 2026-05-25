@@ -96,6 +96,16 @@ fn is_text_ext(ext: &str) -> bool {
     )
 }
 
+/// Source-code extensions — sectioned by definition (symbol-aware), unlike prose.
+fn is_code_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "go" | "java" | "kt"
+            | "c" | "h" | "cpp" | "hpp" | "cc" | "hh" | "cs" | "rb" | "php" | "sh" | "bash"
+            | "swift" | "scala" | "lua" | "pl" | "ml" | "ex" | "exs"
+    )
+}
+
 /// Extract a file to text + metadata, dispatching on its extension.
 pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
     let path = path.as_ref();
@@ -114,6 +124,10 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
         "md" | "markdown" | "mdx" => {
             let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
             Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
+        }
+        e if is_code_ext(e) => {
+            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
+            Ok(ExtractedDoc { source, sections: text::code_sections(&raw) })
         }
         e if is_text_ext(e) || e.is_empty() => {
             let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
@@ -144,6 +158,10 @@ pub fn extract_bytes(data: &[u8], name: &str) -> Result<ExtractedDoc, ExtractErr
         "md" | "markdown" | "mdx" => {
             let raw = String::from_utf8_lossy(data);
             Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
+        }
+        e if is_code_ext(e) => {
+            let raw = String::from_utf8_lossy(data);
+            Ok(ExtractedDoc { source, sections: text::code_sections(&raw) })
         }
         e if is_text_ext(e) || e.is_empty() => {
             let raw = String::from_utf8_lossy(data);

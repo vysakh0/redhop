@@ -118,6 +118,94 @@ pub fn line_blocks(raw: &str) -> Vec<Section> {
     sections
 }
 
+/// Split source code into blank-line blocks, each labeled with the **nearest
+/// preceding definition** (function/class/…) as its heading — so citations read
+/// `auth.py → def login`, not just a line number. Heuristic and language-agnostic
+/// (no parser); falls back to plain line-blocks when no definitions are found.
+pub fn code_sections(raw: &str) -> Vec<Section> {
+    let mut sections: Vec<Section> = Vec::new();
+    let mut block = String::new();
+    let mut block_start = 1usize;
+    let mut in_block = false;
+    let mut current_symbol: Option<String> = None;
+    let mut block_symbol: Option<String> = None;
+
+    for (i, line) in raw.lines().enumerate() {
+        if let Some(sym) = symbol_signature(line) {
+            current_symbol = Some(sym);
+        }
+        if line.trim().is_empty() {
+            if in_block {
+                sections.push(Section {
+                    text: block.trim_end().to_string(),
+                    page: None,
+                    heading: block_symbol.clone(),
+                    line: Some(block_start),
+                });
+                block.clear();
+                in_block = false;
+            }
+            continue;
+        }
+        if !in_block {
+            block_start = i + 1;
+            in_block = true;
+            block_symbol = current_symbol.clone();
+        }
+        block.push_str(line);
+        block.push('\n');
+    }
+    if in_block && !block.trim().is_empty() {
+        sections.push(Section {
+            text: block.trim_end().to_string(),
+            page: None,
+            heading: block_symbol,
+            line: Some(block_start),
+        });
+    }
+    if sections.is_empty() {
+        sections.push(Section::text(raw.trim_end().to_string()));
+    }
+    sections
+}
+
+/// If `line` declares a function/class/etc., return a readable signature for it
+/// (used as a citation heading). Strips leading visibility/async modifiers and
+/// matches a small set of cross-language keywords.
+fn symbol_signature(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let mut rest = trimmed;
+    const MODIFIERS: &[&str] = &[
+        "pub ", "export ", "default ", "public ", "private ", "protected ", "static ", "final ",
+        "async ", "open ", "override ", "abstract ",
+    ];
+    loop {
+        let mut stripped = false;
+        for m in MODIFIERS {
+            if let Some(s) = rest.strip_prefix(m) {
+                rest = s.trim_start();
+                stripped = true;
+                break;
+            }
+        }
+        if !stripped {
+            break;
+        }
+    }
+    const KW: &[&str] = &[
+        "def ", "class ", "fn ", "func ", "function ", "impl ", "struct ", "enum ", "trait ",
+        "interface ", "module ", "package ", "sub ",
+    ];
+    if KW.iter().any(|k| rest.starts_with(k)) {
+        let sig = trimmed.trim_end_matches('{').trim_end();
+        let sig = sig.trim_end_matches(':').trim_end();
+        let sig: String = sig.chars().take(80).collect();
+        Some(sig)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +230,17 @@ mod tests {
         assert_eq!(secs[0].line, Some(1));
         assert_eq!(secs[1].line, Some(4));
         assert!(secs.iter().all(|s| s.heading.is_none()));
+    }
+
+    #[test]
+    fn code_sections_label_blocks_by_symbol() {
+        let code = "import os\n\ndef login(user):\n    return user.token\n\nclass Account:\n    def close(self):\n        pass\n";
+        let secs = code_sections(code);
+        // import preamble has no symbol; the def/class blocks are labeled.
+        let login = secs.iter().find(|s| s.text.contains("return user.token")).unwrap();
+        assert_eq!(login.heading.as_deref(), Some("def login(user)"));
+        let acct = secs.iter().find(|s| s.text.contains("class Account")).unwrap();
+        assert_eq!(acct.heading.as_deref(), Some("class Account"));
     }
 
     #[test]

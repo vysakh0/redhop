@@ -167,6 +167,68 @@ fn reassign_ids(chunks: &mut [Chunk]) {
     }
 }
 
+/// Classify a source by extension. `"code"` and `"data"` are chunked **verbatim**
+/// (formatting preserved) rather than sentence-reflowed, and `"code"` is routed to
+/// lexical retrieval (BM25) under the hybrid tier. Stamped as each chunk's `kind`.
+fn chunk_kind(source: &str) -> &'static str {
+    let ext = std::path::Path::new(source)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    const CODE: &[&str] = &[
+        "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "rs", "go", "java", "kt", "kts", "c", "h",
+        "cpp", "hpp", "cc", "hh", "cs", "rb", "php", "sh", "bash", "zsh", "sql", "swift", "scala",
+        "lua", "r", "pl", "ml", "ex", "exs",
+    ];
+    const DATA: &[&str] = &[
+        "json", "jsonl", "ndjson", "yaml", "yml", "toml", "csv", "tsv", "xml",
+    ];
+    let e = ext.as_str();
+    if CODE.contains(&e) {
+        "code"
+    } else if DATA.contains(&e) {
+        "data"
+    } else {
+        "prose"
+    }
+}
+
+/// Split text into chunks **verbatim** — preserving lines/formatting — packing
+/// whole lines up to `max_tokens` (whitespace-token count). Used for code/data,
+/// where sentence reflow would mangle the content. Ids are placeholders (callers
+/// re-id); metadata is attached by [`Document::chunk_sections`].
+fn verbatim_chunks(source: &str, text: &str, max_tokens: usize) -> Vec<Chunk> {
+    let max = max_tokens.max(1);
+    let mut chunks: Vec<Chunk> = Vec::new();
+    let mut buf: Vec<&str> = Vec::new();
+    let mut buf_tok = 0usize;
+    let mut push = |buf: &mut Vec<&str>, buf_tok: &mut usize, chunks: &mut Vec<Chunk>| {
+        if buf.is_empty() {
+            return;
+        }
+        let id = redhop_core::ChunkId::new(chunks.len().to_string());
+        chunks.push(Chunk::new(
+            id,
+            buf.join("\n"),
+            source,
+            redhop_core::TokenCount(*buf_tok),
+        ));
+        buf.clear();
+        *buf_tok = 0;
+    };
+    for line in text.lines() {
+        let lt = line.split_whitespace().count().max(1);
+        if buf_tok + lt > max && !buf.is_empty() {
+            push(&mut buf, &mut buf_tok, &mut chunks);
+        }
+        buf.push(line);
+        buf_tok += lt;
+    }
+    push(&mut buf, &mut buf_tok, &mut chunks);
+    chunks
+}
+
 impl Document {
     /// Build a document from raw text, chunking it with the default policy.
     /// Bring your own parser/OCR — this layer takes text, not PDFs.
@@ -230,19 +292,30 @@ impl Document {
         sections: &[Section],
         cfg: &DocumentConfig,
     ) -> Result<Vec<Chunk>> {
-        let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
-        let chunker = SentenceChunker::new(
-            tok,
-            cfg.target_tokens,
-            cfg.max_tokens,
-            cfg.overlap_sentences,
-        )?;
+        // Code & structured data are chunked verbatim (formatting preserved);
+        // prose is sentence-packed. The kind also routes retrieval (code → lexical).
+        let kind = chunk_kind(source);
+        let sentence_chunker = if kind == "prose" {
+            let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
+            Some(SentenceChunker::new(
+                tok,
+                cfg.target_tokens,
+                cfg.max_tokens,
+                cfg.overlap_sentences,
+            )?)
+        } else {
+            None
+        };
+
         let mut out: Vec<Chunk> = Vec::new();
         for sec in sections {
             if sec.text.trim().is_empty() {
                 continue;
             }
-            let mut chunks = chunker.chunk(&SourceDoc::new(source.to_string(), sec.text.clone()))?;
+            let mut chunks = match &sentence_chunker {
+                Some(ch) => ch.chunk(&SourceDoc::new(source.to_string(), sec.text.clone()))?,
+                None => verbatim_chunks(source, &sec.text, cfg.max_tokens),
+            };
             for c in &mut chunks {
                 if let Some(p) = sec.page {
                     c.metadata
@@ -256,6 +329,8 @@ impl Document {
                     c.metadata
                         .insert("line".to_string(), serde_json::Value::from(l as u64));
                 }
+                c.metadata
+                    .insert("kind".to_string(), serde_json::Value::String(kind.to_string()));
             }
             out.extend(chunks);
         }

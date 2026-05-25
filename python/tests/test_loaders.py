@@ -98,6 +98,17 @@ def test_from_file_markdown_heading_and_line(tmp_path):
 
 
 @files_only
+def test_from_file_code_is_verbatim_with_symbol_citation(tmp_path):
+    p = tmp_path / "auth.py"
+    p.write_text("import os\n\ndef login(user):\n    token = make_token(user)\n    return token\n")
+    ctx = redhop.Document.from_file(str(p)).context("make token login")
+    hit = next((c for c in ctx.citations if "make_token" in c["text"]), None)
+    assert hit is not None
+    assert hit["heading"] == "def login(user)"  # symbol-named citation
+    assert "\n" in hit["text"]  # verbatim — code formatting preserved, not reflowed
+
+
+@files_only
 @pytest.mark.skipif(not os.path.isdir(FIXTURES), reason="rust fixtures not found")
 @pytest.mark.parametrize(
     "fname,query,want_key",
