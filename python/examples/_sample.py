@@ -9,14 +9,35 @@ aggressive relevance filtering throws away. The rest are distractors.
 QUERY = "what nationality was the inventor of the miners' safety lamp"
 
 RETRIEVED = [
-    {"id": "hop1", "text": "The miners' safety lamp was invented by Humphry Davy in 1815 to prevent explosions in coal mines."},
-    {"id": "hop2", "text": "Humphry Davy was a British chemist, born in Penzance, Cornwall, England, in 1778."},
-    {"id": "d1", "text": "Coal mining expanded rapidly during the Industrial Revolution across northern England."},
-    {"id": "d2", "text": "Photosynthesis converts sunlight, water, and carbon dioxide into glucose and oxygen in plants."},
+    {
+        "id": "hop1",
+        "text": "The miners' safety lamp was invented by Humphry Davy in 1815 to prevent explosions in coal mines.",
+    },
+    {
+        "id": "hop2",
+        "text": "Humphry Davy was a British chemist, born in Penzance, Cornwall, England, in 1778.",
+    },
+    {
+        "id": "d1",
+        "text": "Coal mining expanded rapidly during the Industrial Revolution across northern England.",
+    },
+    {
+        "id": "d2",
+        "text": "Photosynthesis converts sunlight, water, and carbon dioxide into glucose and oxygen in plants.",
+    },
     {"id": "d3", "text": "The Eiffel Tower in Paris was completed in 1889 for the World's Fair."},
-    {"id": "d4", "text": "Modern LED lighting is far more energy efficient than incandescent bulbs."},
-    {"id": "d5", "text": "Cornwall is known for its dramatic coastline, pasties, and historic tin mining."},
-    {"id": "d6", "text": "A balanced diet includes proteins, carbohydrates, fats, vitamins, and minerals."},
+    {
+        "id": "d4",
+        "text": "Modern LED lighting is far more energy efficient than incandescent bulbs.",
+    },
+    {
+        "id": "d5",
+        "text": "Cornwall is known for its dramatic coastline, pasties, and historic tin mining.",
+    },
+    {
+        "id": "d6",
+        "text": "A balanced diet includes proteins, carbohydrates, fats, vitamins, and minerals.",
+    },
 ]
 
 GOLD_ANSWER = "British"

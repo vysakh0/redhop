@@ -50,8 +50,10 @@ def main() -> None:
     print(ctx.report)
 
     # 5. The same decision is available programmatically.
-    print(f"\nauto_decision = {ctx.report.auto_decision!r}   "
-          f"(requested={ctx.report.requested_strategy!r}, ran={ctx.report.strategy!r})")
+    print(
+        f"\nauto_decision = {ctx.report.auto_decision!r}   "
+        f"(requested={ctx.report.requested_strategy!r}, ran={ctx.report.strategy!r})"
+    )
 
     # 6. analyze() answers "should I prune?" WITHOUT modifying anything
     #    (the document carries the Auto policy from construction).

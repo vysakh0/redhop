@@ -1,0 +1,46 @@
+# cargo-deny configuration — supply-chain / license gate for CI.
+#   cargo install cargo-deny
+#   cargo deny check
+# Sections: advisories (RUSTSEC), licenses (SPDX allow-list), bans (dup/banned
+# crates), sources (where crates may come from).
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# Add RUSTSEC IDs here only with a written justification when a fix isn't yet available.
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licenses compatible with RedHop's Apache-2.0. Add to this list
+# deliberately — a new license type should be a conscious decision.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Warn on duplicate versions of the same crate; deny truly unwanted crates here.
+multiple-versions = "warn"
+wildcards = "warn"
+allow = []
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

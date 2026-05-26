@@ -49,9 +49,18 @@ CONDITIONS = ["ctx_gold_only", "ctx_polluted", "ctx_filtered", "ctx_reasoning"]
 
 STOP = {"the", "a", "an", "of", "in", "to", "and", "or", "is", "was", "were", "are", "be"}
 REFUSAL_MARKERS = [
-    "insufficient", "cannot determine", "not enough information", "no information",
-    "does not contain", "doesn't contain", "unable to", "i don't know", "cannot answer",
-    "not provide", "not mention", "not specify",
+    "insufficient",
+    "cannot determine",
+    "not enough information",
+    "no information",
+    "does not contain",
+    "doesn't contain",
+    "unable to",
+    "i don't know",
+    "cannot answer",
+    "not provide",
+    "not mention",
+    "not specify",
 ]
 
 
@@ -86,7 +95,9 @@ def ask_llm(question: str, context: str, model: str) -> str:
     try:
         out = subprocess.run(
             ["claude", "-p", prompt, "--model", model],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         return out.stdout.strip()
     except Exception as e:  # noqa: BLE001
@@ -101,11 +112,13 @@ def _ask_openrouter(prompt: str, model: str) -> str:
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         return "[ERROR no OPENROUTER_API_KEY]"
-    body = _json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0,
-    }).encode()
+    body = _json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }
+    ).encode()
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
         data=body,
@@ -143,8 +156,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--model", type=str, default="haiku")
-    ap.add_argument("--input", type=str, default=str(CONTEXTS),
-                    help="contexts JSONL (default: exports/reasoning_qa_contexts.jsonl)")
+    ap.add_argument(
+        "--input",
+        type=str,
+        default=str(CONTEXTS),
+        help="contexts JSONL (default: exports/reasoning_qa_contexts.jsonl)",
+    )
     args = ap.parse_args()
 
     contexts = Path(args.input)
@@ -157,17 +174,18 @@ def main() -> None:
     cache: dict[str, str] = json.loads(cache_file.read_text()) if cache_file.exists() else {}
 
     total = len(rows) * len(CONDITIONS)
-    cached_n = sum(1 for r in rows for c in CONDITIONS
-                   if f"{r['id']}|{c}|{args.model}" in cache)
-    print(f"scoring {len(rows)} queries × {len(CONDITIONS)} conditions = {total} LLM calls "
-          f"(model={args.model}, already cached={cached_n})\n")
+    cached_n = sum(1 for r in rows for c in CONDITIONS if f"{r['id']}|{c}|{args.model}" in cache)
+    print(
+        f"scoring {len(rows)} queries × {len(CONDITIONS)} conditions = {total} LLM calls "
+        f"(model={args.model}, already cached={cached_n})\n"
+    )
 
     # Per-query, per-condition kw_recall + refusal.
     kw = {c: [] for c in CONDITIONS}
-    ref = {c: 0 for c in CONDITIONS}
+    ref = dict.fromkeys(CONDITIONS, 0)
     # Per-query deltas for the decisive paired comparisons.
-    d_reason_filt: list[float] = []   # reasoning − filtered
-    d_gold_poll: list[float] = []     # gold_only − polluted
+    d_reason_filt: list[float] = []  # reasoning − filtered
+    d_gold_poll: list[float] = []  # gold_only − polluted
     # Rescued subset: reasoning kept the second hop, filtered dropped it.
     rescued_delta: list[float] = []
     both_kept_delta: list[float] = []
@@ -180,7 +198,8 @@ def main() -> None:
 
     pending = [
         (f"{r['id']}|{cond}|{args.model}", r["question"], r[cond])
-        for r in rows for cond in CONDITIONS
+        for r in rows
+        for cond in CONDITIONS
         if f"{r['id']}|{cond}|{args.model}" not in cache
     ]
     if pending:
@@ -221,11 +240,11 @@ def main() -> None:
 
     cache_file.write_text(json.dumps(cache))
 
-    print("\n──── downstream QA by condition (n={}, {}) ────".format(len(rows), args.model))
+    print(f"\n──── downstream QA by condition (n={len(rows)}, {args.model}) ────")
     print(f"  {'condition':<16} {'kw_recall':>10} {'refusal%':>10}")
     print("  " + "─" * 40)
     for c in CONDITIONS:
-        print(f"  {c:<16} {mean(kw[c]):>10.3f} {ref[c]/max(len(rows),1)*100:>9.0f}%")
+        print(f"  {c:<16} {mean(kw[c]):>10.3f} {ref[c] / max(len(rows), 1) * 100:>9.0f}%")
 
     print("\n──── decisive paired comparisons (95% bootstrap CI) ────")
     m, lo, hi = boot_ci(d_gold_poll)
@@ -233,9 +252,11 @@ def main() -> None:
     m, lo, hi = boot_ci(d_reason_filt)
     print(f"  REASONING vs FILTER (reasoning − filtered):  {m:+.3f}  [{lo:+.3f}, {hi:+.3f}]")
     sig = lo > 0
-    verdict = ("✓ ReasoningPreserving SIGNIFICANTLY beats aggressive filtering (CI excludes 0)"
-               if sig else
-               "~ reasoning vs filter within noise at this n (CI includes 0) — report honestly")
+    verdict = (
+        "✓ ReasoningPreserving SIGNIFICANTLY beats aggressive filtering (CI excludes 0)"
+        if sig
+        else "~ reasoning vs filter within noise at this n (CI includes 0) — report honestly"
+    )
     print(f"      → {verdict}")
 
     print("\n──── mechanism: reachability → reasoning success (full-gold split) ────")

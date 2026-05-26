@@ -14,8 +14,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sample import (  # noqa: E402
+    DISTRACTOR_MIN_GROUNDING,
+    GOLD_ANSWER,
+    LINK_MIN_JACCARD,
+    QUERY,
+    RETRIEVED,
+)
+
 import redhop  # noqa: E402
-from _sample import QUERY, RETRIEVED, GOLD_ANSWER, DISTRACTOR_MIN_GROUNDING, LINK_MIN_JACCARD  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "dashboard.html"
 STRATEGIES = ["raw_topk", "distractor_filtered", "max_density", "reasoning_preserving"]
@@ -37,7 +44,10 @@ def bar(value: float, max_value: float, color: str, width: int = 220) -> str:
 
 def main() -> None:
     kw = dict(distractor_min_grounding=DISTRACTOR_MIN_GROUNDING, link_min_jaccard=LINK_MIN_JACCARD)
-    runs = {s: redhop.build_context(QUERY, RETRIEVED, strategy=s, token_budget=12000, **kw) for s in STRATEGIES}
+    runs = {
+        s: redhop.build_context(QUERY, RETRIEVED, strategy=s, token_budget=12000, **kw)
+        for s in STRATEGIES
+    }
 
     rp, raw = runs["reasoning_preserving"], runs["raw_topk"]
     input_tokens = raw.report.total_tokens
@@ -57,7 +67,11 @@ def main() -> None:
             f"<td>{efficiency_score(r)}</td><td>{kept}</td></tr>"
         )
 
-    saved_pct = 0 if input_tokens == 0 else round(100 * (input_tokens - rp.report.total_tokens) / input_tokens)
+    saved_pct = (
+        0
+        if input_tokens == 0
+        else round(100 * (input_tokens - rp.report.total_tokens) / input_tokens)
+    )
 
     html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>RedHop — Context Economics</title>
@@ -96,9 +110,11 @@ def main() -> None:
 """
     OUT.write_text(html)
     print(f"wrote {OUT}")
-    print(f"  default strategy saved {saved_pct}% of tokens, pruned "
-          f"{rp.report.distractors_pruned} distractors, rescued "
-          f"{rp.report.second_hop_rescue_count} reasoning chunk(s)")
+    print(
+        f"  default strategy saved {saved_pct}% of tokens, pruned "
+        f"{rp.report.distractors_pruned} distractors, rescued "
+        f"{rp.report.second_hop_rescue_count} reasoning chunk(s)"
+    )
 
 
 if __name__ == "__main__":

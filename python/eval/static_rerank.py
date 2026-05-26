@@ -127,7 +127,9 @@ def main():
     print("  " + "-" * 56)
     for name, agg in results.items():
         print(f"  {name:<28}{agg['lexical']:>10.3f}{agg['semantic']:>10.3f}{agg['ALL']:>8.3f}")
-    print(f"  {'BGE-small (ONNX) reference':<28}{BGE_REF['lexical']:>10.3f}{BGE_REF['semantic']:>10.3f}{BGE_REF['ALL']:>8.3f}")
+    print(
+        f"  {'BGE-small (ONNX) reference':<28}{BGE_REF['lexical']:>10.3f}{BGE_REF['semantic']:>10.3f}{BGE_REF['ALL']:>8.3f}"
+    )
 
     # Headline deltas vs BGE on the semantic slice
     print("\nvs BGE on semantic-heavy slice (the slice that matters):")

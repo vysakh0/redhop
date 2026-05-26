@@ -8,6 +8,30 @@ minor releases may break; breaking changes are noted here).
 ## [Unreleased]
 
 ### Added
+- **Retrieval tiers** on `Document` (`retrieval=`): `"lexical"` (BM25, default,
+  zero-dependency), `"hybrid"` (BM25 prunes to a candidate pool → dense rerank of
+  that pool only — no ANN, no vector DB), and `"semantic"` (global exact-cosine
+  dense over every chunk, for small/bounded synonym-heavy corpora). Rust:
+  `RetrievalMode::{Lexical, Hybrid { candidate_pool }, Dense}`,
+  `Document::with_embedder` / `with_query_embedder`, and a reusable
+  `LocalRerankRetriever` in `redhop-retrieval`. Evidence:
+  `docs/findings/LOCAL_RERANK.md`, `SEMANTIC_MISMATCH.md`, `DENSE_RERANK_CEILING.md`.
+- **Bring-your-own embedder** for the semantic tiers: `embedder_model` /
+  `embedder_tokenizer` / `embedder_dim` / `embedder_pooling` (`"cls"` | `"mean"`),
+  plus `embedder_query_prefix` / `embedder_passage_prefix` for asymmetric models
+  (E5). Any ONNX bi-encoder works; RedHop ships none and never bundles a default.
+- **File & folder loaders** — `Document.from_file` and `from_folder`
+  (`redhop-files`): read + chunk text-based files (txt/markdown/source/…) and
+  whole directories, each chunk tagged with its source path.
+- **Self-contained wheel** — the ONNX engine and file parsers compile into the
+  single `pip install redhop` wheel (no Python deps, no `[onnx]` extra).
+- **Findings layer extended** — `SEMANTIC_ZERO_DEP` (the non-contextual ceiling;
+  MaxSim/RM3/static-embeddings falsified), `DENSE_RERANK_CEILING` (0.80 plateau is
+  the second-hop tax; no cheap escalation trigger), `SPEED_VS_FRAMEWORKS` (the
+  "speed moat" claim largely falsified — honest correction).
+- **Open-source tooling** — `ruff` (Python lint + format), `cargo-deny`
+  (license/advisory gate, `deny.toml`), coverage (`cargo-llvm-cov` + `pytest-cov`)
+  wired into CI; `SECURITY.md`.
 - **`Document` runtime** (`redhop-document`, exposed in Python as
   `redhop.Document`): the high-level "reason over a document" surface —
   `from_text` / `from_chunks` → lazy chunk + in-memory BM25 index →

@@ -40,19 +40,28 @@ truth; no logic is duplicated here.
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from ._redhop import (
     BuiltContext,
     ContextReport,
     Document,
-    analyze_context as _analyze_context,
-    build_context as _build_context,
-    context_economics as _context_economics,
-    filter_context as _filter_context,
+    __version__,
     grounding_score,
     link_strength,
-    __version__,
+)
+from ._redhop import (
+    analyze_context as _analyze_context,
+)
+from ._redhop import (
+    build_context as _build_context,
+)
+from ._redhop import (
+    context_economics as _context_economics,
+)
+from ._redhop import (
+    filter_context as _filter_context,
 )
 
 Chunk = Mapping[str, Any] | str
@@ -80,9 +89,14 @@ def build_context(
     large-context dilution regime, where pruning recovers accuracy). See
     ``docs/findings/CONTEXT_DILUTION.md``."""
     return _build_context(
-        query, list(retrieved_chunks), strategy, token_budget,
-        distractor_min_grounding, link_min_jaccard,
-        auto_passthrough_max_tokens, redundancy_max_cosine,
+        query,
+        list(retrieved_chunks),
+        strategy,
+        token_budget,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
+        redundancy_max_cosine,
     )
 
 
@@ -99,9 +113,13 @@ def filter_context(
     """Filter junk without budget truncation ("clean it up, I'll manage the
     budget"). Returns a :class:`BuiltContext`."""
     return _filter_context(
-        query, list(retrieved_chunks), strategy,
-        distractor_min_grounding, link_min_jaccard,
-        auto_passthrough_max_tokens, redundancy_max_cosine,
+        query,
+        list(retrieved_chunks),
+        strategy,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
+        redundancy_max_cosine,
     )
 
 
@@ -121,8 +139,12 @@ def analyze_context(
     returned ``report.strategy`` is the decision (``"raw_topk"`` = pass through,
     ``"reasoning_preserving"`` = prune) without modifying the context."""
     return _analyze_context(
-        query, list(retrieved_chunks), strategy,
-        distractor_min_grounding, link_min_jaccard, auto_passthrough_max_tokens,
+        query,
+        list(retrieved_chunks),
+        strategy,
+        distractor_min_grounding,
+        link_min_jaccard,
+        auto_passthrough_max_tokens,
     )
 
 
@@ -136,7 +158,9 @@ def context_economics(
     """Economics of a chunk set as-is (no filtering, no budget): evidence
     density, distractor ratio, redundancy, estimated wasted tokens."""
     return json.loads(
-        _context_economics(query, list(retrieved_chunks), distractor_min_grounding, link_min_jaccard)
+        _context_economics(
+            query, list(retrieved_chunks), distractor_min_grounding, link_min_jaccard
+        )
     )
 
 

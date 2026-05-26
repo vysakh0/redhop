@@ -9,6 +9,10 @@ best contributions sharpen what exists rather than expand scope.
 cargo build --workspace        # pure-Rust workspace (no Python needed)
 cargo test --workspace
 
+# Optional features: `onnx` (the semantic tier — ONNX embeddings) and `files`
+# (Document.from_file / from_folder parsing).
+cargo build --workspace --features onnx
+
 # Python bindings (needs maturin in a virtualenv)
 cd python && maturin develop --release && python -m pytest tests/
 
@@ -21,6 +25,26 @@ The hermetic benchmark and examples run offline:
 ```bash
 cargo run -p redhop-examples --example bench_context_strategies --release
 python python/examples/compare_strategies.py
+```
+
+## Checks (what CI enforces)
+
+Run these before opening a PR — CI runs the same set:
+
+```bash
+# Rust
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo deny check                  # licenses + advisories  (cargo install cargo-deny)
+
+# Python (in the venv, with the extension built)
+cd python
+ruff check . && ruff format --check .      # pip install ruff
+python -m pytest tests/ -q
+
+# Coverage (optional, local)
+cargo llvm-cov --workspace                 # cargo install cargo-llvm-cov
 ```
 
 ## What we welcome

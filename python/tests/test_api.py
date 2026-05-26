@@ -8,7 +8,10 @@ import redhop
 QUERY = "what nationality was the inventor of the miners' safety lamp"
 CHUNKS = [
     {"id": "hop1", "text": "The miners' safety lamp was invented by Humphry Davy in 1815."},
-    {"id": "hop2", "text": "Humphry Davy was a British chemist, born in Penzance, Cornwall, England."},
+    {
+        "id": "hop2",
+        "text": "Humphry Davy was a British chemist, born in Penzance, Cornwall, England.",
+    },
     {"id": "d1", "text": "Photosynthesis converts sunlight into glucose and oxygen in plants."},
 ]
 KW = dict(distractor_min_grounding=0.30, link_min_jaccard=0.15)
@@ -23,10 +26,14 @@ def test_build_context_basic():
 
 
 def test_reasoning_preserving_keeps_second_hop_filter_drops_it():
-    rp = redhop.build_context(QUERY, CHUNKS, strategy="reasoning_preserving", token_budget=12000, **KW)
-    df = redhop.build_context(QUERY, CHUNKS, strategy="distractor_filtered", token_budget=12000, **KW)
-    assert "British" in rp.text()          # second hop rescued
-    assert "British" not in df.text()      # second hop taxed away
+    rp = redhop.build_context(
+        QUERY, CHUNKS, strategy="reasoning_preserving", token_budget=12000, **KW
+    )
+    df = redhop.build_context(
+        QUERY, CHUNKS, strategy="distractor_filtered", token_budget=12000, **KW
+    )
+    assert "British" in rp.text()  # second hop rescued
+    assert "British" not in df.text()  # second hop taxed away
     assert rp.report.second_hop_rescue_count >= 1
     assert df.report.second_hop_rescue_count == 0
 

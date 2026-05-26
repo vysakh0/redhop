@@ -77,7 +77,9 @@ def test_hybrid_bge_symmetric():
     assert "terminated" in text  # the paraphrase-matched chunk surfaced
 
 
-@pytest.mark.skipif(not _have_e5, reason="no E5 model (set REDHOP_E5_MODEL or build bench/models/e5-small-onnx)")
+@pytest.mark.skipif(
+    not _have_e5, reason="no E5 model (set REDHOP_E5_MODEL or build bench/models/e5-small-onnx)"
+)
 @pytest.mark.parametrize("mode", ["hybrid", "semantic"])
 def test_dense_e5_asymmetric_prefixes(mode):
     doc = redhop.Document.from_text(

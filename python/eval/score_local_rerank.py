@@ -85,7 +85,9 @@ def main() -> None:
     cache: dict[str, str] = json.loads(CACHE.read_text()) if CACHE.exists() else {}
     key = lambda r: f"{r['id']}|{r['arm']}"
 
-    pending = [(key(r), prompt_for(r["context"], r["question"])) for r in rows if key(r) not in cache]
+    pending = [
+        (key(r), prompt_for(r["context"], r["question"])) for r in rows if key(r) not in cache
+    ]
     print(f"{len(rows)} rows; {len(pending)} LLM calls ({MODEL})")
     if pending:
         done = 0
@@ -118,7 +120,7 @@ def main() -> None:
         for arm in ARMS:
             a = agg[(subset, arm)]
             n = max(a["n"], 1)
-            cells.append(f"{a['f1']/n:.2f}/{a['em']/n:.2f}")
+            cells.append(f"{a['f1'] / n:.2f}/{a['em'] / n:.2f}")
         n = agg[(subset, "bm25")]["n"]
         print(f"  {subset:<6}(n={n:>4}) " + " ".join(f"{c:>14}" for c in cells))
 

@@ -12,8 +12,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sample import (  # noqa: E402
+    DISTRACTOR_MIN_GROUNDING,
+    GOLD_ANSWER,
+    LINK_MIN_JACCARD,
+    QUERY,
+    RETRIEVED,
+)
+
 import redhop  # noqa: E402
-from _sample import QUERY, RETRIEVED, GOLD_ANSWER, DISTRACTOR_MIN_GROUNDING, LINK_MIN_JACCARD  # noqa: E402
 
 STRATEGIES = ["raw_topk", "distractor_filtered", "max_density", "reasoning_preserving"]
 
@@ -30,13 +37,23 @@ def main() -> None:
 
     for strat in STRATEGIES:
         ctx = redhop.build_context(
-            query=QUERY, retrieved_chunks=RETRIEVED, strategy=strat, token_budget=12000,
-            distractor_min_grounding=DISTRACTOR_MIN_GROUNDING, link_min_jaccard=LINK_MIN_JACCARD,
+            query=QUERY,
+            retrieved_chunks=RETRIEVED,
+            strategy=strat,
+            token_budget=12000,
+            distractor_min_grounding=DISTRACTOR_MIN_GROUNDING,
+            link_min_jaccard=LINK_MIN_JACCARD,
         )
         contexts[strat] = ctx
         r = ctx.report
-        row = (strat, f"{r.n_input_chunks}→{r.n_selected}", str(r.total_tokens),
-               f"{r.distractor_ratio:.2f}", str(r.second_hop_rescue_count), f"{r.evidence_density:.2f}")
+        row = (
+            strat,
+            f"{r.n_input_chunks}→{r.n_selected}",
+            str(r.total_tokens),
+            f"{r.distractor_ratio:.2f}",
+            str(r.second_hop_rescue_count),
+            f"{r.evidence_density:.2f}",
+        )
         print("  ".join(v.ljust(w) for v, w in zip(row, widths)))
 
     print("\n* distr = TRUE distractor ratio; rescued second hops are reasoning")

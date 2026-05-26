@@ -44,7 +44,9 @@ files_only = pytest.mark.skipif(not HAS_FILES, reason="needs redhop[files] parsi
 # from_chunks
 # --------------------------------------------------------------------------- #
 def test_from_chunks_strings():
-    doc = redhop.Document.from_chunks(["the refund window is thirty days", "shipping takes two days"])
+    doc = redhop.Document.from_chunks(
+        ["the refund window is thirty days", "shipping takes two days"]
+    )
     assert len(doc) == 2
     ctx = doc.context("refund window")
     assert "refund" in ctx.text().lower()
@@ -89,7 +91,9 @@ def test_from_file_missing_raises():
 @files_only
 def test_from_file_markdown_heading_and_line(tmp_path):
     p = tmp_path / "policy.md"
-    p.write_text("# Overview\nintro line here\n\n## Refund Policy\ncustomers may request a refund within thirty days\n")
+    p.write_text(
+        "# Overview\nintro line here\n\n## Refund Policy\ncustomers may request a refund within thirty days\n"
+    )
     cites = redhop.Document.from_file(str(p)).context("refund within thirty days").citations
     hit = next((c for c in cites if "refund" in c["text"].lower()), None)
     assert hit is not None
@@ -193,7 +197,8 @@ def test_from_folder_recursive_false_skips_subdirs(tmp_path):
     doc = redhop.Document.from_folder(str(tmp_path), recursive=False)
     # the subdir file's distinctive content should not be retrievable
     assert not doc.context("orders ship business days").citations or all(
-        not c["source"].endswith("shipping.txt") for c in doc.context("orders ship business days").citations
+        not c["source"].endswith("shipping.txt")
+        for c in doc.context("orders ship business days").citations
     )
 
 
@@ -224,7 +229,9 @@ def test_from_folder_custom_ignore_patterns(tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "b.txt").write_text("subdir doc\n")
     assert len(redhop.Document.from_folder(str(tmp_path), ignore=["*.log"])) == 2  # log excluded
-    assert len(redhop.Document.from_folder(str(tmp_path), ignore=["sub/**"])) == 2  # subdir excluded
+    assert (
+        len(redhop.Document.from_folder(str(tmp_path), ignore=["sub/**"])) == 2
+    )  # subdir excluded
 
 
 def test_from_folder_invalid_ignore_pattern_raises(tmp_path):

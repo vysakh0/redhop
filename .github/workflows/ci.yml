@@ -49,13 +49,55 @@ jobs:
         working-directory: python
         run: cargo clippy --all-targets -- -D warnings
       - name: Install build tooling
-        run: pip install maturin pytest
+        run: pip install maturin pytest pytest-cov
       - name: Build + install the extension
         working-directory: python
         run: maturin develop --release
-      - name: Unit tests
+      - name: Unit tests (with coverage)
         working-directory: python
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --cov=redhop --cov-report=term-missing
       - name: Quickstart smoke (Document path, no network/LLM)
         working-directory: python
         run: python examples/quickstart.py
+
+  ruff:
+    name: Python lint + format (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        working-directory: python
+        run: ruff check .
+      - name: Format check
+        working-directory: python
+        run: ruff format --check .
+
+  deny:
+    name: cargo-deny (licenses + advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  coverage:
+    name: Coverage (Rust, lcov artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - name: Coverage (workspace → lcov)
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Upload lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info

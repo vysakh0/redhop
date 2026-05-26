@@ -14,8 +14,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sample import (  # noqa: E402
+    DISTRACTOR_MIN_GROUNDING,
+    GOLD_ANSWER,
+    LINK_MIN_JACCARD,
+    QUERY,
+    RETRIEVED,
+)
+
 import redhop  # noqa: E402
-from _sample import QUERY, RETRIEVED, GOLD_ANSWER, DISTRACTOR_MIN_GROUNDING, LINK_MIN_JACCARD  # noqa: E402
 
 
 def fake_retriever(query: str):

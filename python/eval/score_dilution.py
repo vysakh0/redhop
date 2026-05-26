@@ -40,9 +40,18 @@ CONDITIONS = ["ctx_gold_only", "ctx_polluted", "ctx_pruned", "ctx_topk"]
 
 STOP = {"the", "a", "an", "of", "in", "to", "and", "or", "is", "was", "were", "are", "be"}
 REFUSAL_MARKERS = [
-    "insufficient", "cannot determine", "not enough information", "no information",
-    "does not contain", "doesn't contain", "unable to", "i don't know", "cannot answer",
-    "not provide", "not mention", "not specify",
+    "insufficient",
+    "cannot determine",
+    "not enough information",
+    "no information",
+    "does not contain",
+    "doesn't contain",
+    "unable to",
+    "i don't know",
+    "cannot answer",
+    "not provide",
+    "not mention",
+    "not specify",
 ]
 
 
@@ -73,10 +82,13 @@ def ask_llm(question: str, context: str, model: str) -> str:
     if "/" in model:
         return _ask_openrouter(prompt, model)
     import subprocess
+
     try:
         out = subprocess.run(
             ["claude", "-p", prompt, "--model", model],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         return out.stdout.strip()
     except Exception as e:  # noqa: BLE001
@@ -91,11 +103,13 @@ def _ask_openrouter(prompt: str, model: str) -> str:
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         return "[ERROR no OPENROUTER_API_KEY]"
-    body = _json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0,
-    }).encode()
+    body = _json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }
+    ).encode()
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
         data=body,
@@ -141,11 +155,14 @@ def main() -> None:
 
     pending = [
         (f"{r['id']}|{cond}", r["question"], r[cond])
-        for r in rows for cond in CONDITIONS
+        for r in rows
+        for cond in CONDITIONS
         if f"{r['id']}|{cond}" not in cache
     ]
-    print(f"scoring {len(rows)} queries × {len(CONDITIONS)} conds (model={args.model}); "
-          f"{len(pending)} uncached")
+    print(
+        f"scoring {len(rows)} queries × {len(CONDITIONS)} conds (model={args.model}); "
+        f"{len(pending)} uncached"
+    )
     if pending:
         done = 0
         with ThreadPoolExecutor(max_workers=16) as ex:
@@ -162,10 +179,10 @@ def main() -> None:
         cache_file.write_text(json.dumps(cache))
 
     kw = {c: [] for c in CONDITIONS}
-    ref = {c: 0 for c in CONDITIONS}
-    d_prune_poll: list[float] = []   # pruned − polluted (dilution recovery)
-    d_prune_topk: list[float] = []   # pruned − topk (bridge-aware vs naive)
-    d_gold_poll: list[float] = []    # gold − polluted (dilution ceiling gap)
+    ref = dict.fromkeys(CONDITIONS, 0)
+    d_prune_poll: list[float] = []  # pruned − polluted (dilution recovery)
+    d_prune_topk: list[float] = []  # pruned − topk (bridge-aware vs naive)
+    d_gold_poll: list[float] = []  # gold − polluted (dilution ceiling gap)
     # Subset where pruned kept the second hop but topk dropped it.
     rescued_delta: list[float] = []
     for r in rows:
@@ -182,11 +199,11 @@ def main() -> None:
         if r["second_hop_in_pruned"] and not r["second_hop_in_topk"]:
             rescued_delta.append(per["ctx_pruned"] - per["ctx_topk"])
 
-    print("\n──── downstream QA by condition (n={}, {}) ────".format(len(rows), args.model))
+    print(f"\n──── downstream QA by condition (n={len(rows)}, {args.model}) ────")
     print(f"  {'condition':<16} {'kw_recall':>10} {'refusal%':>10}")
     print("  " + "─" * 40)
     for c in CONDITIONS:
-        print(f"  {c:<16} {mean(kw[c]):>10.3f} {ref[c]/max(len(rows),1)*100:>9.0f}%")
+        print(f"  {c:<16} {mean(kw[c]):>10.3f} {ref[c] / max(len(rows), 1) * 100:>9.0f}%")
 
     print("\n──── decisive paired comparisons (95% bootstrap CI) ────")
     for label, d in [

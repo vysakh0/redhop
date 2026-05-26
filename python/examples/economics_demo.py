@@ -13,8 +13,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sample import DISTRACTOR_MIN_GROUNDING, LINK_MIN_JACCARD, QUERY, RETRIEVED  # noqa: E402
+
 import redhop  # noqa: E402
-from _sample import QUERY, RETRIEVED, DISTRACTOR_MIN_GROUNDING, LINK_MIN_JACCARD  # noqa: E402
 
 
 def main() -> None:
@@ -30,12 +31,20 @@ def main() -> None:
     print("\n── build_context (optimized) report as a dict ──")
     ctx = redhop.build_context(QUERY, RETRIEVED, token_budget=12000, **kw)
     report = redhop.report_to_dict(ctx.report)
-    for k in ("strategy", "n_input_chunks", "n_selected", "total_tokens",
-              "second_hop_rescue_count", "retained_evidence_ratio"):
+    for k in (
+        "strategy",
+        "n_input_chunks",
+        "n_selected",
+        "total_tokens",
+        "second_hop_rescue_count",
+        "retained_evidence_ratio",
+    ):
         print(f"  {k}: {report[k]}")
     waste_before = econ["estimated_waste_tokens"]
-    print(f"\n  wasted tokens on distractors: {waste_before} (raw) → "
-          f"{report['economics']['estimated_waste_tokens']} (optimized)")
+    print(
+        f"\n  wasted tokens on distractors: {waste_before} (raw) → "
+        f"{report['economics']['estimated_waste_tokens']} (optimized)"
+    )
 
 
 if __name__ == "__main__":

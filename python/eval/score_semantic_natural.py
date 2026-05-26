@@ -88,7 +88,9 @@ def main() -> None:
     def key(r):
         return f"{r['id']}|{r['mode']}"
 
-    pending = [(key(r), prompt_for(r["context"], r["question"])) for r in rows if key(r) not in cache]
+    pending = [
+        (key(r), prompt_for(r["context"], r["question"])) for r in rows if key(r) not in cache
+    ]
     print(f"{len(rows)} rows; {len(pending)} LLM calls (model={MODEL})")
     if pending:
         done = 0
@@ -121,14 +123,17 @@ def main() -> None:
         for mode in ("bm25", "dense", "hybrid"):
             a = agg[(subset, mode)]
             n = max(a["n"], 1)
-            cells.append(f"{a['f1']/n:.2f}/{a['em']/n:.2f}")
+            cells.append(f"{a['f1'] / n:.2f}/{a['em'] / n:.2f}")
         n = agg[(subset, "bm25")]["n"]
         print(f"  {subset:<8} (n={n:>4}) {cells[0]:>13} {cells[1]:>13} {cells[2]:>13}")
 
     # Conditional escalation downstream (reuses cached answers — no new calls).
     if not SIGNALS.exists():
         return
-    margin = {r["id"]: r["margin"] for r in (json.loads(l) for l in SIGNALS.read_text().splitlines() if l.strip())}
+    margin = {
+        r["id"]: r["margin"]
+        for r in (json.loads(l) for l in SIGNALS.read_text().splitlines() if l.strip())
+    }
     gold = {r["id"]: r["gold_answer"] for r in rows}
     ids = sorted(gold)
 
@@ -153,7 +158,7 @@ def main() -> None:
         print(f"  {label:<22} {a:>6.2f} {b:>6.2f} {e:>10.0f}%")
     for tau in (0.20, 0.30, 0.50):
         a, b, e = policy_f1(lambda i, t=tau: "dense" if margin.get(i, 1.0) < t else "bm25")
-        print(f"  {'margin<'+format(tau,'.2f'):<22} {a:>6.2f} {b:>6.2f} {e:>10.0f}%")
+        print(f"  {'margin<' + format(tau, '.2f'):<22} {a:>6.2f} {b:>6.2f} {e:>10.0f}%")
 
 
 if __name__ == "__main__":

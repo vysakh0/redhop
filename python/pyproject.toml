@@ -34,3 +34,26 @@ Repository = "https://github.com/redhop/redhop"
 module-name = "redhop._redhop"
 python-source = "."
 features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+# The compiled extension lives in redhop/_redhop; nothing to lint there.
+extend-exclude = ["redhop/_redhop*", "target"]
+
+[tool.ruff.lint]
+# pyflakes (F), pycodestyle (E/W), isort (I), bugbear (B), pyupgrade (UP),
+# comprehensions (C4) — a sensible, non-fussy default.
+select = ["E", "F", "W", "I", "B", "UP", "C4"]
+ignore = ["E501"]  # line length is handled by the formatter, not the linter
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately assert that *some* error is raised, and use dict() kwargs.
+"tests/*" = ["B017", "C408"]
+# examples/ and eval/ are demonstration + research scripts, not shipped library
+# code — script-level conveniences (single-letter vars, lambdas, %-format) are fine.
+"examples/*" = ["E741", "E731", "UP031", "C408"]
+"eval/*" = ["E741", "E731", "UP031", "C408"]
