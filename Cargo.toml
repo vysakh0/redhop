@@ -18,6 +18,7 @@ members = [
     "crates/benchmarks",
     "crates/examples",
     "crates/cli",
+    "crates/redhop",
 ]
 
 [workspace.lints.rust]

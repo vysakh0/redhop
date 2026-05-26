@@ -1,0 +1,33 @@
+[package]
+name = "redhop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report. No vector DB, in-process. The high-level Rust API."
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+# Built-in document parsers (PDF/DOCX/PPTX/XLSX + text/code/markdown) and the
+# read_file / read_bytes loaders.
+files = ["dep:redhop-files"]
+# The semantic retrieval tier: the bundled ONNX embedding backend + model registry.
+semantic = ["dep:redhop-embeddings", "redhop-embeddings/onnx"]
+
+[dependencies]
+redhop-core       = { workspace = true }
+redhop-context    = { workspace = true }
+redhop-document   = { workspace = true }
+redhop-files      = { path = "../files", optional = true }
+redhop-embeddings = { workspace = true, optional = true }
+
+[lints]
+workspace = true

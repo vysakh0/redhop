@@ -203,7 +203,7 @@ fn verbatim_chunks(source: &str, text: &str, max_tokens: usize) -> Vec<Chunk> {
     let mut chunks: Vec<Chunk> = Vec::new();
     let mut buf: Vec<&str> = Vec::new();
     let mut buf_tok = 0usize;
-    let mut push = |buf: &mut Vec<&str>, buf_tok: &mut usize, chunks: &mut Vec<Chunk>| {
+    let push = |buf: &mut Vec<&str>, buf_tok: &mut usize, chunks: &mut Vec<Chunk>| {
         if buf.is_empty() {
             return;
         }
