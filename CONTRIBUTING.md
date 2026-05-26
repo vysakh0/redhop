@@ -37,7 +37,7 @@ python python/examples/compare_strategies.py
 
 RedHop is not a framework. We will decline additions that introduce agents,
 planners, workflow/orchestration DAGs, graph traversal, query decomposition, an
-embedded LLM/vector DB, or RL controllers. See [ROADMAP.md](ROADMAP.md).
+embedded LLM/vector DB, or RL controllers.
 
 ## Discipline (the part that matters)
 

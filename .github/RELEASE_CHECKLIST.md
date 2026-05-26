@@ -17,7 +17,7 @@ Pre-release sanity for a tagged RedHop version.
 
 - [ ] Workspace `version` in root `Cargo.toml`.
 - [ ] `python/pyproject.toml` version (and `python/Cargo.toml`).
-- [ ] Note changes in `ROADMAP.md` / changelog.
+- [ ] Note changes in the changelog.
 
 ## Publish (when ready)
 

@@ -184,8 +184,8 @@ Add the ONNX arm on a real box by extending the bench behind
 4. **Selective escalation makes the cross-encoder affordable.** With the
    controller firing the ONNX cross-encoder on only ~44% of queries
    (per `docs/findings/REAL_WORKLOAD.md`), the cross-encoder's high per-call
-   latency is paid only where it earns recall — the economics in
-   `docs/PRODUCTION_ROADMAP.md §10` become real latency numbers.
+   latency is paid only where it earns recall — the economics
+   become real latency numbers.
 
 These are deployment-machine experiments. The runtime is built; the
 numbers are a data run away.

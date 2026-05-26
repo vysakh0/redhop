@@ -89,7 +89,6 @@ Setup = time to first answer (embed-all); warm = median per-query after indexing
   tiers are **`lexical`** (default) · **`hybrid`** (BM25 prune → rerank — large/no-DB,
   see [LOCAL_RERANK](LOCAL_RERANK.md)) · **`semantic`** (this, global dense —
   small/best-recall). `semantic` is the right choice when you want every paraphrase
-  caught on a small set; `hybrid` when the corpus is too big to embed whole. See
-  [RUNTIME_RETRIEVAL_DIRECTION](../RUNTIME_RETRIEVAL_DIRECTION.md).
+  caught on a small set; `hybrid` when the corpus is too big to embed whole.
 - **Open:** measure `hybrid` vs `semantic` on a *natural* (non-adversarial) corpus to
   size the everyday gap; consider an adaptive `semantic` that auto-picks by corpus size.

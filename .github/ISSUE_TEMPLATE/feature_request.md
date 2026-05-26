@@ -9,7 +9,7 @@ What are you trying to do that RedHop makes hard today?
 
 **Proposal**
 What you'd like. Keep in mind RedHop's bounded scope (context optimization +
-observability — not a framework; see ROADMAP.md). Signal/usability
+observability — not a framework). Signal/usability
 improvements land more easily than new subsystems.
 
 **Evidence (if it changes a default or strategy)**

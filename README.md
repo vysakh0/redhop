@@ -1,58 +1,82 @@
 <h1 align="center">RedHop</h1>
 
-<p align="center"><b>Reasoning-preserving context optimization and retrieval observability for RAG systems.</b></p>
+<p align="center"><b>A reasoning-aware context runtime for RAG.</b></p>
 
-RedHop sits **between retrieval and generation**. You hand it the chunks your
-retriever returned and a token budget; it assembles the prompt context —
-pruning distractors, **preserving reasoning-critical "second-hop" evidence**,
-and reporting exactly what it did. It is *not* a retriever, vector database,
-agent framework, or workflow engine.
+<p align="center">
+Hand it a document and a question. It chunks, retrieves, and allocates the
+context your model should actually see — then tells you what it kept, what it
+dropped, and why, with citations back to the source. No vector database, no LLM,
+all in-process.
+</p>
 
-## Why RedHop exists
+---
 
-RAG stacks routinely "improve" context with relevance operations — aggressive
-distractor filtering, cross-encoder reranking, max-density pruning. We measured
-what those do to **multi-hop** questions and found a consistent failure:
+RedHop is the layer between your documents and the LLM. It is **not** a vector
+database, an agent framework, or a workflow engine — it does one thing: turn a
+document and a query into the right prompt context, and explain the decision.
 
-> Transformers tolerate irrelevant context far better than they tolerate
-> **missing reasoning links**. Premature removal of low-relevance reasoning
-> evidence hurts more than the distractors do.
+The core idea it's built on: **retrieval quality is not the same as reasoning
+quality.** Transformers tolerate irrelevant context far better than they tolerate
+*missing reasoning links* — so the chunk a multi-hop answer depends on is often
+low-relevance to the query and gets silently pruned. RedHop's default keeps it and
+makes the trade-off visible. The reasoning behind every default — including the
+hypotheses that failed — lives in the [evidence layer](docs/findings/README.md).
 
-On a multi-hop question, the *second hop* (the evidence that bridges to the
-answer) is **low-relevance-to-the-query by construction** — it connects through
-a bridge entity, not the query terms. So relevance-based pruning silently drops
-exactly the chunk the answer depends on. RedHop's default strategy keeps it, and
-its reports make the tradeoff **visible and measurable** instead of silent.
+## Install
 
-This isn't a claim — it's measured, with confidence intervals and preserved
-falsified hypotheses, in the [evidence layer](docs/findings/README.md).
+> **Alpha.** Published packages are on the way. For now, build from source — see
+> [CONTRIBUTING.md](CONTRIBUTING.md). The intended install, one line per ecosystem:
 
-## Quick example (Python)
+```bash
+pip install redhop                            # Python
+npm install redhop                            # Node.js
+cargo add redhop --features files,semantic    # Rust
+```
 
-Reason over a document — chunking, indexing, and retrieval are internal; you
-think in documents and queries, not retrieval infrastructure:
+The same surface is available in all three. The embedding/reranking models
+auto-download on first use; the default lexical tier needs no model at all.
+
+## The basic approach
+
+Point it at a file and ask. Parsing, chunking, retrieval, and token-budgeting all
+happen inside — you think in documents and queries, not retrieval infrastructure.
 
 ```python
 import redhop
 
-doc = redhop.Document.from_text(text)         # bring your own parser/OCR
-ctx = doc.context("Why did the proposed method fail?")
-response = llm.generate(ctx.text())           # any provider; no lock-in
-print(ctx.report)                             # what was retrieved/pruned, and why
+doc = redhop.Document.from_file("contract.pdf")
+ctx = doc.context("What is the governing law?")
+
+answer = llm.generate(ctx.text())   # any LLM provider — no lock-in
 ```
 
-Already have chunks? The low-level surface is still first-class:
+`ctx` carries everything you need to prompt the model *and* show your work:
+`ctx.text()` (the assembled prompt), `ctx.report` (the decision), and
+`ctx.citations` (where it came from).
+
+Same call in Node and Rust:
+
+```js
+const doc = Document.fromFile("contract.pdf");
+const ctx = doc.context("What is the governing law?");
+```
+
+```rust
+let mut doc = redhop::read_file("contract.pdf")?;
+let ctx = doc.context("What is the governing law?")?;
+```
+
+Already have chunks from your own retriever? Hand them straight in with
+`Document.from_chunks([...])` (or the lower-level `redhop.build_context(...)`),
+and everything below still applies.
+
+## It explains every decision
+
+Every call returns a **Decision Report** — what it kept, what it dropped, and *why*,
+including when it deliberately leaves a small context untouched.
 
 ```python
-chunks = retriever.retrieve(query)            # your stack
-ctx = redhop.build_context(
-    query=query,
-    retrieved_chunks=chunks,                  # list of dicts or strings
-    strategy="auto",                          # size-gated: pass under headroom, prune under dilution
-    token_budget=12000,
-)
-response = llm.generate(ctx.text())           # your stack
-print(ctx.report)                             # observability ↓
+print(ctx.report)
 ```
 
 ```text
@@ -62,142 +86,102 @@ RedHop Decision Report
 Decision: Auto → pruning (intervened on a diluted context)
 
   Why:
-    - input is large: 31480 tokens > 1500 gate
     - large/diluted contexts dilute attention; pruning recovers signal density
   Result:
-    - 31480 → 1980 tokens (-94%), 22 distractor chunk(s) removed
-    - retained 100% of query-relevant evidence
-    - preserved 1 second-hop link(s) a plain filter would drop
-
-Economics
-─────────
-  Retrieved tokens:   31480
-  Final tokens:       1980  (-94%)
-  Token budget:       8192 (24% used)
-  Evidence density:   0.10 → 0.31
-  Retained evidence:  100%
+    - removed distractor chunks, kept all query-relevant evidence
+    - preserved a second-hop link a plain relevance filter would drop
 
 Diagnostics
 ───────────
   Chunks:             24 → 3
-  Input distractors:  92% of retrieved chunks
-  Distractors pruned: 22
   Second-hop rescues: 1
-  Estimated waste:    0 tokens on distractors
 ```
 
-The report is the explanation layer: every Auto decision says **what it did,
-why, and the result** — including when it deliberately does *nothing*
-(`Decision: Auto → passthrough`), so a no-op reads as an intentional, trustworthy
-choice rather than a silent skip.
+You can also read the fields directly — `ctx.report.auto_decision`,
+`total_tokens`, `retained_evidence_ratio` — or call `doc.analyze(query)` to get the
+report **without** assembling a context (pure diagnostics).
 
-## Context strategies, side by side
+## Cite the evidence
 
-The same multi-hop retrieval, run through each strategy (`redhop compare`).
-The answer needs the "British" second hop — aggressive filtering drops it:
+Every selected chunk remembers where it came from, so you can show the evidence
+trail instead of just pasting text:
 
-```text
-strategy                chunks   tokens   removed  rescued  distr  density  gold_ret  2nd_hop
-raw_topk                8→8      100      0        0        0.88   0.10     1.00      ✓
-distractor_filtered     8→1      17       7        0        0.00   0.29     0.50      ✗   ← dropped it
-max_density             8→8      100      0        0        0.88   0.10     1.00      ✓
-reasoning_preserving    8→2      30       6        1        0.50   0.20     1.00      ✓   ← kept + pruned
+```python
+for c in ctx.citations:
+    print(c["source"], c["page"], c["heading"])
+    # contract.pdf  3     None      →  "contract.pdf, p.3"
+    # notes.md      None  "Refunds" →  "notes.md → Refunds"
 ```
 
-`distractor_filtered` removes all distractors but **taxes away the second hop**
-(gold_ret 0.50). `reasoning_preserving` prunes 6 distractors *and* keeps the
-reasoning-critical hop (it rescues low-relevance chunks linked to a kept seed).
+`source` plus whichever of `page` / `heading` / `line` the format provides — no
+separate store, no second lookup.
 
-| strategy | what it does | when |
-| -------- | ------------ | ---- |
+## Loaders
+
+Several on-ramps, all returning a `Document` with the same options:
+
+| On-ramp | For |
+| --- | --- |
+| `from_text` | text you already have (your own parser/OCR, a DB field) |
+| `from_chunks` | content you already chunked |
+| `from_file` | a file on disk — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
+| `from_bytes` | bytes you fetched yourself — S3 / Azure Blob / GCS / HTTP / DB blobs |
+| `from_folder` | a whole directory in one index, with an optional incremental on-disk cache |
+
+Code files are chunked verbatim and labeled with their nearest definition; prose is
+sentence-packed; each format carries the structural location it has (page, heading,
+line) for citations.
+
+## Retrieval tiers — no vector database
+
+Retrieval is a ladder; start at the cheapest rung that works and climb only when
+your queries demand it. All tiers run in-process, with no ANN and no index server.
+
+| `retrieval=` | What it does | Reach for it when |
+| --- | --- | --- |
+| `"lexical"` *(default)* | BM25 — zero dependencies, fully offline | the answer shares words with the query (most document QA) |
+| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | semantic search over many files / a folder |
+| `"semantic"` | dense over every chunk, exact cosine | highest recall when question and answer share no words |
+
+Set `rerank="cross-encoder"` on any tier to add an optional second stage that
+jointly scores each `(query, passage)` pair — more precise, at a model call per
+candidate. Off by default.
+
+## Assembly strategies
+
+How the context is built from the retrieved candidates. The default is reasoning-aware;
+the others are there when you want a different trade-off.
+
+| `strategy=` | What it does | When |
+| --- | --- | --- |
 | `reasoning_preserving` *(default)* | keep query-relevant seeds **and** rescue low-relevance chunks linked to a seed; drop only unlinked junk | multi-hop / general |
-| `distractor_filtered` | drop everything below a query-grounding bar | single-hop, or a *low* threshold only |
-| `max_density` | greedily pack the densest chunks into the budget | single-hop / brutal budgets |
+| `distractor_filtered` | drop everything below a query-grounding bar | single-hop |
+| `max_density` | greedily pack the densest chunks into the budget | tight budgets |
 | `raw_topk` | keep retrieval order until the budget fills | baseline / no optimization |
+| `auto` | size-gated: pass small contexts through untouched, prune large/diluted ones | when you don't want to choose |
 
-## Findings (the evidence layer)
+## What it is — and isn't
 
-Every default exists because a specific failure was measured. Falsified
-hypotheses are kept, not deleted — several of the strongest defaults came from
-one. Full index: [docs/findings/](docs/findings/README.md).
+RedHop optimizes **reasoning-completeness under a finite token budget**, and reports
+what it did. It is deliberately narrow:
 
-| Finding | Status | Headline |
-| ------- | ------ | -------- |
-| [Second-hop tax](docs/findings/SECOND_HOP_TAX.md) | Confirmed (n=1327, CIs) | every relevance-based selection taxes the multi-hop second hop; a 0.30 filter keeps only 44% |
-| [Reasoning preservation](docs/findings/REASONING_PRESERVATION.md) | Confirmed (n=300, CIs) | reasoning-preserving beats aggressive filtering end-to-end; gain causally localized to gold reachability |
-| [Reranking limits](docs/findings/RERANKING_LIMITS.md) | **Falsified** | "a stronger reranker recovers missed recall" — uniform cross-encoder made recall *worse* |
-| [Distractor robustness](docs/findings/DISTRACTOR_ROBUSTNESS.md) | Partially falsified | "distractor filtering is a free win" — net benefit is sign-unstable on multi-hop |
-| [Context economics](docs/findings/CONTEXT_ECONOMICS.md) | Confirmed | distractors hurt & density helps on real LLM outputs (pooled −0.375 / +0.539) |
-
-## Philosophy — bounded by design
-
-RedHop optimizes **reasoning-completeness under finite attention**, not generic
-retrieval scores. It is deliberately *not* a framework:
-
-- **No** agents, planners, workflows, or orchestration DAGs.
+- **No** vector database, ANN index, or embedding server — retrieval is in-process.
+- **No** embedded LLM, agents, planners, or workflow DAGs — you bring the model.
 - **No** graph traversal or query decomposition.
-- **No** embedded LLM or vector DB — you bring those.
-- **Observability-first**: every strategy emits a `ContextReport`.
-- **Evidence-first**: APIs and defaults are grounded in measured failure
-  geometry, with caveats and confidence intervals kept honest.
-
-The library does one thing — allocate the context budget to the densest *and
-most reasoning-complete* evidence — and reports what it did.
-
-## Installation
-
-**Python** (native wheel, no Rust toolchain needed to use it):
-
-```bash
-pip install redhop
-```
-
-**Rust**:
-
-```toml
-[dependencies]
-redhop-context = "0.1"   # the core context API
-```
-
-## CLI
-
-A thin, Unix-like eval/observability CLI (`cargo build -p redhop-cli`):
-
-```bash
-redhop compare --input retrieval.json \
-  --strategies raw_topk,distractor_filtered,reasoning_preserving \
-  --gold-ids c3,c7 --second-hop-id c7      # optional retention columns
-
-redhop analyze-context context.json --query "..."   # Context Optimization Report
-redhop benchmark --input labeled.json --budgets 250,800,12000   # JSON + CIs
-redhop report results.json --html report.html       # render artifacts
-```
-
-See [crates/cli/README.md](crates/cli/README.md).
+- **Observability-first**: every call emits a `ContextReport`.
+- **Evidence-first**: defaults are grounded in measured findings, with caveats and
+  confidence intervals kept honest.
 
 ## Documentation
 
 - **Docs site** (mdBook): `docs/book/` — `mdbook serve docs/book`
-- **Retrieval & context tips** (start here): [docs/retrievaltips.md](docs/retrievaltips.md) — the operational laws and which API applies each
-- **Comparison** (vs LangChain / LlamaIndex): [docs/COMPARISON.md](docs/COMPARISON.md) — fair, reproducible, including where we don't win
+- **Retrieval & context tips**: [docs/retrievaltips.md](docs/retrievaltips.md)
+- **Comparison** (vs LangChain / LlamaIndex): [docs/COMPARISON.md](docs/COMPARISON.md)
 - **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Evidence layer**: [docs/findings/](docs/findings/README.md) ·
-  **Benchmarks**: [benchmarks/](benchmarks/README.md) ·
-  **Reports**: [reports/](reports/README.md)
-- **Python**: [python/README.md](python/README.md) ·
-  **Quickstart**: [python/examples/quickstart.py](python/examples/quickstart.py)
+- **Evidence layer** (every finding, including the falsified ones): [docs/findings/](docs/findings/README.md)
+- **Python**: [python/README.md](python/README.md) · **Node**: [nodejs/README.md](nodejs/README.md)
 - **API stability**: [docs/API_STABILITY.md](docs/API_STABILITY.md) ·
-  **Changelog**: [CHANGELOG.md](CHANGELOG.md) ·
-  **Roadmap**: [ROADMAP.md](ROADMAP.md) · **FAQ**: [FAQ.md](FAQ.md)
-
-## Install (alpha)
-
-```bash
-# Python (built from source via maturin; PyPI wheels coming):
-pip install maturin
-cd python && maturin develop --release
-python examples/quickstart.py
-```
+  **FAQ**: [FAQ.md](FAQ.md) · **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
