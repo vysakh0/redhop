@@ -10,7 +10,7 @@ Pre-release sanity for a tagged RedHop version.
 - [ ] Hermetic benchmark regenerates: `cargo run -p redhop-examples --example bench_context_strategies --release`.
 - [ ] CLI smoke: `redhop compare`, `analyze-context`, `benchmark`, `report`.
 - [ ] No stale `NeoRAG`/`neorag` branding (except the preserved `neotrace` wire format and lab-repo paths).
-- [ ] Docs build: `mdbook build docs/book`; internal links resolve.
+- [ ] README and in-repo doc links resolve.
 - [ ] `README` / `python/README` examples are accurate against the current API.
 
 ## Version bump
@@ -23,4 +23,4 @@ Pre-release sanity for a tagged RedHop version.
 
 - [ ] `cargo publish` core crates in dependency order (`redhop-core` → `redhop-context` → …).
 - [ ] Build wheels for the target platforms (cibuildwheel / maturin-action) and `maturin publish` to PyPI.
-- [ ] Tag the release; attach the mdBook build or publish the docs site.
+- [ ] Tag the release; update the docs website.

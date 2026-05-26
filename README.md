@@ -174,7 +174,6 @@ what it did. It is deliberately narrow:
 
 ## Documentation
 
-- **Docs site** (mdBook): `docs/book/` — `mdbook serve docs/book`
 - **Retrieval & context tips**: [docs/retrievaltips.md](docs/retrievaltips.md)
 - **Comparison** (vs LangChain / LlamaIndex): [docs/COMPARISON.md](docs/COMPARISON.md)
 - **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
