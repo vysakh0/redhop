@@ -160,18 +160,6 @@ the others are there when you want a different trade-off.
 | `raw_topk` | keep retrieval order until the budget fills | baseline / no optimization |
 | `auto` | size-gated: pass small contexts through untouched, prune large/diluted ones | when you don't want to choose |
 
-## What it is — and isn't
-
-RedHop optimizes **reasoning-completeness under a finite token budget**, and reports
-what it did. It is deliberately narrow:
-
-- **No** vector database, ANN index, or embedding server — retrieval is in-process.
-- **No** embedded LLM, agents, planners, or workflow DAGs — you bring the model.
-- **No** graph traversal or query decomposition.
-- **Observability-first**: every call emits a `ContextReport`.
-- **Evidence-first**: defaults are grounded in measured findings, with caveats and
-  confidence intervals kept honest.
-
 ## Documentation
 
 - **Retrieval & context tips**: [docs/retrievaltips.md](docs/retrievaltips.md)

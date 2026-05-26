@@ -1,6 +1,6 @@
 # redhop-core
 
-Shared traits and data types for [RedHop](https://github.com/redhop/redhop) —
+Shared traits and data types for [RedHop](https://github.com/vysakh0/redhop) —
 the common vocabulary every other crate builds on. No logic, just the types.
 
 - **Types**: `Chunk`, `ChunkId`, `Query`, `Document`, `RetrievalResult`,

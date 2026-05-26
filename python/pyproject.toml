@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
 keywords = ["rag", "retrieval", "llm", "context", "nlp"]
-authors = [{ name = "RedHop Contributors" }]
+authors = [{ name = "Vysakh Sreenivasan" }, { name = "RedHop Contributors" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -27,8 +27,8 @@ classifiers = [
 # can't gate native code anyway.
 
 [project.urls]
-Homepage = "https://github.com/redhop/redhop"
-Repository = "https://github.com/redhop/redhop"
+Homepage = "https://github.com/vysakh0/redhop"
+Repository = "https://github.com/vysakh0/redhop"
 
 [tool.maturin]
 module-name = "redhop._redhop"

@@ -1,6 +1,6 @@
 # redhop-context
 
-The core of [RedHop](https://github.com/redhop/redhop): reasoning-preserving
+The core of [RedHop](https://github.com/vysakh0/redhop): reasoning-preserving
 context assembly under a finite token budget, with first-class observability.
 
 Given a query and the chunks a retriever returned, it builds the prompt context
@@ -37,7 +37,7 @@ On multi-hop questions the second hop is low-relevance-to-query by construction,
 so relevance-based pruning drops it (the "second-hop tax"). This crate's default
 keeps query-relevant seeds *and* rescues low-relevance chunks linked to a seed,
 dropping only unlinked junk. Measured, with CIs, in the
-[evidence layer](https://github.com/redhop/redhop/tree/main/docs/findings).
+[evidence layer](https://github.com/vysakh0/redhop/tree/main/docs/findings).
 
 `#![forbid(unsafe_code)]`, no async; the default build pulls only `serde` and
 `unicode-segmentation`. Apache-2.0.

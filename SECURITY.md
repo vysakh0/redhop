@@ -16,7 +16,7 @@ is no long-term support for older `0.x` lines. Pin a version and upgrade forward
 
 Use GitHub's private vulnerability reporting:
 **Security → Report a vulnerability** on the repository
-(<https://github.com/redhop/redhop/security/advisories/new>). This opens a private
+(<https://github.com/vysakh0/redhop/security/advisories/new>). This opens a private
 advisory visible only to you and the maintainers.
 
 Please include:
