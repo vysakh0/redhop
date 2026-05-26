@@ -50,7 +50,7 @@ pub use redhop_document::{Document, DocumentConfig, RetrievalMode, Section};
 // The built context + its telemetry, and the lower-level context entry points.
 pub use redhop_context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
-    link_strength, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
+    link_strength, AutoDecision, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
 };
 
 // Core types you handle directly.

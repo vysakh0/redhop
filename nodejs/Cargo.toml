@@ -1,0 +1,27 @@
+# Standalone workspace: keeps the napi cdylib out of the pure-Rust workspace
+# build (so `cargo build --workspace` at the repo root never needs Node).
+[workspace]
+
+[package]
+name = "redhop-node"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "Apache-2.0"
+description = "Node.js bindings for RedHop context optimization"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi6"] }
+napi-derive = "2"
+redhop = { path = "../crates/redhop", features = ["files", "semantic"] }
+ignore = "0.4"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = "symbols"

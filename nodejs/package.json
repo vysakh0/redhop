@@ -1,0 +1,33 @@
+{
+  "name": "redhop",
+  "version": "0.1.0-alpha.0",
+  "description": "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate document context, with citations and a Decision Report. No vector DB, in-process.",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "redhop",
+    "triples": {}
+  },
+  "keywords": [
+    "rag",
+    "retrieval",
+    "llm",
+    "context",
+    "nlp",
+    "embeddings"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node test/smoke.cjs"
+  }
+}
