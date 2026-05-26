@@ -27,7 +27,7 @@ path = "src/lib.rs"
 # Semantic retrieval tier: the local embedding model behind retrieval="hybrid"
 # and retrieval="semantic". Off by default so the base wheel stays lean; the
 # published `redhop[semantic]` wheel is built with it.
-semantic = ["redhop-embeddings/onnx"]
+semantic = ["redhop-embeddings/onnx", "dep:redhop-reranking", "redhop-reranking/onnx"]
 # Deprecated alias for `semantic` — kept so existing build commands still work.
 onnx = ["semantic"]
 # `redhop[files]` parsing tier: Document.from_file/from_folder for
@@ -39,6 +39,7 @@ redhop-core       = { path = "../crates/core" }
 redhop-context    = { path = "../crates/context" }
 redhop-document   = { path = "../crates/document" }
 redhop-embeddings = { path = "../crates/embeddings", default-features = false }
+redhop-reranking  = { path = "../crates/reranking", optional = true }
 redhop-files      = { path = "../crates/files", optional = true }
 ignore          = "0.4"
 serde           = { version = "1", features = ["derive"] }

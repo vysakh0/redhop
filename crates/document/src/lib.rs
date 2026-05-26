@@ -50,8 +50,8 @@ use redhop_context::{
     ContextReport, ContextStrategy, ExpansionPlan,
 };
 use redhop_core::{
-    Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Result, RetrievalResult,
-    Retriever, TokenizerBackend,
+    Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Reranker, Result,
+    RetrievalResult, Retriever, TokenizerBackend,
 };
 use redhop_retrieval::{Bm25Retriever, LocalRerankRetriever};
 use tokio::runtime::{Builder, Runtime};
@@ -101,6 +101,11 @@ pub struct DocumentConfig {
     pub candidate_k: usize,
     /// Retrieval mode. Defaults to [`RetrievalMode::Lexical`] (BM25).
     pub retrieval_mode: RetrievalMode,
+    /// When a reranker is supplied (see [`Document::with_reranker`]), how many
+    /// first-stage candidates it reorders before truncating to the requested
+    /// `k`. Larger gives the reranker more to work with, at more model calls.
+    /// Ignored when no reranker is set.
+    pub rerank_pool: usize,
     /// Context-assembly policy. Defaults to [`ContextStrategy::Auto`].
     pub context: ContextConfig,
 }
@@ -117,6 +122,7 @@ impl Default for DocumentConfig {
             overlap_sentences: 1,
             candidate_k: 20,
             retrieval_mode: RetrievalMode::Lexical,
+            rerank_pool: 50,
             // The runtime's philosophy: size-gated, conservative, observable.
             context: ContextConfig {
                 strategy: ContextStrategy::Auto,
@@ -157,6 +163,10 @@ pub struct Document {
     // Lazily built on first query so construction is cheap (goal: lazy
     // chunk/index init).
     retriever: Option<Box<dyn Retriever>>,
+    // Optional second-stage reranker (e.g. a cross-encoder). When set, the
+    // first stage fetches `cfg.rerank_pool` candidates and the reranker reorders
+    // them down to the requested `k`. None ⇒ the first-stage ranking stands.
+    reranker: Option<Arc<dyn Reranker>>,
 }
 
 /// Renumber chunk ids to `0..n` so a merged set (e.g. from several files) has
@@ -362,6 +372,7 @@ impl Document {
             embedder: None,
             query_embedder: None,
             retriever: None,
+            reranker: None,
         })
     }
 
@@ -386,6 +397,18 @@ impl Document {
     pub fn with_query_embedder(mut self, query_embedder: Arc<dyn EmbeddingProvider>) -> Self {
         self.query_embedder = Some(query_embedder);
         self.retriever = None;
+        self
+    }
+
+    /// Supply a second-stage [`Reranker`] (e.g. a cross-encoder). The first stage
+    /// retrieves `cfg.rerank_pool` candidates and the reranker reorders them down
+    /// to the requested `k` — jointly scoring each `(query, passage)` pair, which
+    /// is more accurate than the first-stage ranking but costs a model call per
+    /// candidate. The library stays model-neutral: build any [`Reranker`] and
+    /// inject it here. Works under any retrieval mode (it reorders whatever the
+    /// first stage surfaced). No-op until the next `context`/`analyze` query.
+    pub fn with_reranker(mut self, reranker: Arc<dyn Reranker>) -> Self {
+        self.reranker = Some(reranker);
         self
     }
 
@@ -616,7 +639,16 @@ impl Document {
         self.ensure_indexed()?;
         let q = Query::new(query);
         let retriever = self.retriever.as_ref().expect("indexed above");
-        let mut results = self.rt.block_on(retriever.retrieve(&q, k))?;
+        // With a reranker, pull a deeper first-stage pool for it to reorder, then
+        // truncate to `k`; without one, fetch exactly `k`.
+        let mut results = match self.reranker.as_ref() {
+            Some(reranker) => {
+                let pool = self.cfg.rerank_pool.max(k);
+                let cand = self.rt.block_on(retriever.retrieve(&q, pool))?;
+                self.rt.block_on(reranker.rerank(&q, cand, k))?
+            }
+            None => self.rt.block_on(retriever.retrieve(&q, k))?,
+        };
         // Retrievers (e.g. the Tantivy-backed BM25 index) only round-trip
         // id/text/source, so per-chunk `metadata` (page/heading for citations) is
         // lost. Re-attach it from the source chunks, keyed by id.
@@ -660,6 +692,60 @@ mod tests {
         assert!(!ctx.text().is_empty());
         // The retrieved+assembled context should reach the answer evidence.
         assert!(ctx.text().to_lowercase().contains("penzance"));
+    }
+
+    #[test]
+    fn reranker_controls_final_selection() {
+        use async_trait::async_trait;
+        use redhop_core::{RetrievalMethod, Score};
+
+        // A model-free stand-in for a cross-encoder: keep only candidates whose
+        // text mentions "photosynthesis". This proves the reranker, not the BM25
+        // first stage, decides what reaches the assembled context.
+        struct KeepPhotosynthesis;
+        #[async_trait]
+        impl Reranker for KeepPhotosynthesis {
+            async fn rerank(
+                &self,
+                _q: &Query,
+                cands: Vec<RetrievalResult>,
+                top_k: usize,
+            ) -> Result<Vec<RetrievalResult>> {
+                let mut kept: Vec<RetrievalResult> = cands
+                    .into_iter()
+                    .filter(|r| r.chunk.text.to_lowercase().contains("photosynthesis"))
+                    .map(|mut r| {
+                        r.score = Score { value: 1.0, method: RetrievalMethod::Rerank };
+                        r
+                    })
+                    .collect();
+                kept.truncate(top_k);
+                Ok(kept)
+            }
+            fn name(&self) -> &'static str {
+                "keep_photosynthesis"
+            }
+        }
+
+        // A query whose terms span several chunks (incl. "photosynthesis", so the
+        // BM25 pool surfaces that chunk for the reranker to act on).
+        let query = "Davy photosynthesis Eiffel Rust";
+        let mut doc = Document::from_text_with(
+            "doc",
+            TEXT,
+            DocumentConfig { target_tokens: 8, max_tokens: 16, ..Default::default() },
+        )
+        .unwrap();
+        let baseline = doc.context(query).unwrap().text().to_lowercase();
+
+        let mut doc = doc.with_reranker(Arc::new(KeepPhotosynthesis));
+        let reranked = doc.context(query).unwrap().text().to_lowercase();
+
+        // The reranker dictates the final set: only the photosynthesis chunk
+        // survives, the others are gone, and the output differs from the baseline.
+        assert!(reranked.contains("photosynthesis"), "reranker should keep it");
+        assert!(!reranked.contains("eiffel"), "reranker should drop the rest");
+        assert_ne!(baseline, reranked, "reranker should change the selection");
     }
 
     #[test]

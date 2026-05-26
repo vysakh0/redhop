@@ -55,4 +55,7 @@ pub use pooling::{l2_normalize, pool, Pooling};
 pub use onnx::OnnxEmbedder;
 
 #[cfg(feature = "onnx")]
-pub use registry::{available_models, resolve_model, ResolvedModel, DEFAULT_MODEL};
+pub use registry::{
+    available_models, available_rerankers, resolve_model, resolve_reranker, ResolvedModel,
+    ResolvedReranker, DEFAULT_MODEL, DEFAULT_RERANKER,
+};

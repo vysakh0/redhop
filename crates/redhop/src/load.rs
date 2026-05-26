@@ -43,6 +43,13 @@ pub struct LoadOptions {
     pub embedder_passage_prefix: Option<String>,
     /// Hybrid BM25 prune depth. Default 50.
     pub candidate_pool: Option<usize>,
+    /// Optional second-stage cross-encoder reranker, by name (`"cross-encoder"`,
+    /// the MS-MARCO MiniLM model, auto-downloaded). Reorders the first-stage
+    /// candidate pool by jointly scoring each `(query, passage)` pair — more
+    /// accurate, at a model call per candidate. `None` (default) leaves the
+    /// first-stage ranking as-is. Works under any `retrieval` tier and needs the
+    /// `semantic` feature.
+    pub rerank: Option<String>,
 }
 
 /// Options for [`read_folder_with`] (plus the chunking/retrieval [`LoadOptions`]).
@@ -134,6 +141,7 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         overlap_sentences: o.chunk_overlap.unwrap_or(1),
         candidate_k: o.candidate_k.unwrap_or(20),
         retrieval_mode: mode,
+        rerank_pool: base.rerank_pool,
         context,
     })
 }
@@ -186,19 +194,42 @@ fn apply_embedder(_doc: Document, _o: &LoadOptions) -> Result<Document> {
     ))
 }
 
+/// Attach a second-stage cross-encoder reranker named by `o.rerank`.
+#[cfg(feature = "semantic")]
+fn apply_reranker(doc: Document, name: &str) -> Result<Document> {
+    use redhop_reranking::OnnxCrossEncoder;
+    use std::sync::Arc;
+    let r = crate::embeddings::resolve_reranker(name)?;
+    let ce = OnnxCrossEncoder::load(&r.model_path, &r.tokenizer_path, r.max_seq_len)?;
+    Ok(doc.with_reranker(Arc::new(ce)))
+}
+
+#[cfg(not(feature = "semantic"))]
+fn apply_reranker(_doc: Document, _name: &str) -> Result<Document> {
+    Err(Error::Other(
+        "rerank='cross-encoder' needs the `semantic` feature (the model engine)".into(),
+    ))
+}
+
 fn needs_embedder(mode: RetrievalMode) -> bool {
     matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense)
+}
+
+/// Attach the optional dense embedder (for hybrid/semantic) and cross-encoder
+/// reranker (`o.rerank`) a built [`Document`] needs. Shared by every loader.
+fn finish_models(doc: Document, o: &LoadOptions, mode: RetrievalMode) -> Result<Document> {
+    let doc = if needs_embedder(mode) { apply_embedder(doc, o)? } else { doc };
+    match o.rerank.as_deref() {
+        Some(name) => apply_reranker(doc, name),
+        None => Ok(doc),
+    }
 }
 
 fn build(files: Vec<(String, Vec<Section>)>, o: &LoadOptions) -> Result<Document> {
     let mode = retrieval_from_str(o.retrieval.as_deref(), o.candidate_pool.unwrap_or(50))?;
     let cfg = doc_config(o, mode)?;
     let doc = Document::from_sources_with(files, cfg)?;
-    if needs_embedder(mode) {
-        apply_embedder(doc, o)
-    } else {
-        Ok(doc)
-    }
+    finish_models(doc, o, mode)
 }
 
 /// Build a [`Document`] from raw text with options (retrieval, chunking, …).
@@ -402,9 +433,7 @@ mod files_loaders {
             c.id = ChunkId::new(i.to_string());
         }
         let mut doc = Document::from_chunks_with(all, cfg)?;
-        if needs_embedder(mode) {
-            doc = apply_embedder(doc, &fo.load)?;
-        }
+        doc = finish_models(doc, &fo.load, mode)?;
         if changed {
             let embedded = doc.embedded_chunks()?;
             let mut by_source: HashMap<String, Vec<Chunk>> = HashMap::new();

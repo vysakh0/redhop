@@ -77,6 +77,98 @@ pub fn available_models() -> Vec<&'static str> {
     REGISTRY.iter().map(|(n, _)| *n).collect()
 }
 
+// ── Cross-encoder rerankers ───────────────────────────────────────────────────
+
+/// A known cross-encoder reranker: where to fetch its ONNX export + tokenizer.
+struct RerankerSpec {
+    repo: &'static str,
+    revision: &'static str,
+    files: &'static [&'static str],
+    onnx_file: &'static str,
+    tokenizer_file: &'static str,
+    /// Token cap per `(query, passage)` pair.
+    max_seq_len: usize,
+}
+
+/// The default cross-encoder: the MS-MARCO MiniLM reranker, the robust
+/// second-stage winner in our method comparison.
+pub const DEFAULT_RERANKER: &str = "cross-encoder";
+
+const RERANKER_REGISTRY: &[(&str, RerankerSpec)] = &[(
+    "cross-encoder",
+    RerankerSpec {
+        // Pre-built ONNX export of cross-encoder/ms-marco-MiniLM-L-6-v2.
+        repo: "Xenova/ms-marco-MiniLM-L-6-v2",
+        revision: "main",
+        files: &["onnx/model.onnx", "tokenizer.json"],
+        onnx_file: "onnx/model.onnx",
+        tokenizer_file: "tokenizer.json",
+        max_seq_len: 512,
+    },
+)];
+
+/// Names of the cross-encoder rerankers RedHop can fetch by name.
+pub fn available_rerankers() -> Vec<&'static str> {
+    RERANKER_REGISTRY.iter().map(|(n, _)| *n).collect()
+}
+
+/// A resolved, on-disk cross-encoder ready for `OnnxCrossEncoder::load`.
+pub struct ResolvedReranker {
+    /// Local path to the ONNX graph file.
+    pub model_path: PathBuf,
+    /// Local path to the tokenizer JSON.
+    pub tokenizer_path: PathBuf,
+    /// Token cap per `(query, passage)` pair.
+    pub max_seq_len: usize,
+}
+
+/// Resolve a cross-encoder name to local files, downloading from HuggingFace if
+/// absent. Honors the standard HF cache, like [`resolve_model`].
+pub fn resolve_reranker(name: &str) -> Result<ResolvedReranker> {
+    let spec = RERANKER_REGISTRY
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, s)| s)
+        .ok_or_else(|| {
+            Error::Reranking(format!(
+                "unknown reranker '{name}'. Known: {}.",
+                available_rerankers().join(", ")
+            ))
+        })?;
+
+    let api = hf_hub::api::sync::ApiBuilder::new()
+        .with_progress(false)
+        .build()
+        .map_err(|e| Error::Reranking(format!("hf-hub init failed: {e}")))?;
+    let repo = api.repo(hf_hub::Repo::with_revision(
+        spec.repo.to_string(),
+        hf_hub::RepoType::Model,
+        spec.revision.to_string(),
+    ));
+
+    let mut model_path = None;
+    let mut tokenizer_path = None;
+    for f in spec.files {
+        let p = repo.get(f).map_err(|e| {
+            Error::Reranking(format!(
+                "failed to fetch {}/{f} ({e}). For offline use, pre-download the model.",
+                spec.repo
+            ))
+        })?;
+        if *f == spec.onnx_file {
+            model_path = Some(p);
+        } else if *f == spec.tokenizer_file {
+            tokenizer_path = Some(p);
+        }
+    }
+
+    Ok(ResolvedReranker {
+        model_path: model_path.expect("onnx_file is in files"),
+        tokenizer_path: tokenizer_path.expect("tokenizer_file is in files"),
+        max_seq_len: spec.max_seq_len,
+    })
+}
+
 /// A resolved, on-disk model ready to hand to [`crate::OnnxEmbedder::load`].
 pub struct ResolvedModel {
     /// Local path to the ONNX graph file.

@@ -50,6 +50,10 @@ pub struct Options {
     pub embedder_passage_prefix: Option<String>,
     /// Hybrid BM25 prune depth. Default 50.
     pub candidate_pool: Option<u32>,
+    /// Optional second-stage cross-encoder reranker by name (`"cross-encoder"`,
+    /// auto-downloaded). Reorders the candidate pool by jointly scoring each
+    /// `(query, passage)` pair. Works under any retrieval tier.
+    pub rerank: Option<String>,
 }
 
 impl Options {
@@ -71,6 +75,7 @@ impl Options {
             embedder_query_prefix: self.embedder_query_prefix,
             embedder_passage_prefix: self.embedder_passage_prefix,
             candidate_pool: u(self.candidate_pool),
+            rerank: self.rerank,
         }
     }
 }
