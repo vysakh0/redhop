@@ -46,4 +46,13 @@ ctx = Document.fromText("Alpha clause here. The xyzzy term governs payment. Gamm
 assert.ok(ctx.report.nExpanded >= 1);
 
 fs.rmSync(dir, { recursive: true, force: true });
+// from_folder persist: writes an incremental on-disk index, reload reuses it
+const pdir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-persist-"));
+fs.writeFileSync(path.join(pdir, "x.txt"), "the refund window is thirty days");
+Document.fromFolder(pdir, { persist: true });
+assert.ok(fs.existsSync(path.join(pdir, ".redhop", "index.json")), "persist index written");
+let pctx = Document.fromFolder(pdir, { persist: true }).context("refund window");
+assert.ok(pctx.citations.some((c) => c.source.endsWith("x.txt")));
+fs.rmSync(pdir, { recursive: true, force: true });
+
 console.log("✓ node smoke tests passed");

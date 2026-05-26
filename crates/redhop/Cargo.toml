@@ -17,8 +17,8 @@ path = "src/lib.rs"
 [features]
 default = []
 # Built-in document parsers (PDF/DOCX/PPTX/XLSX + text/code/markdown) and the
-# read_file / read_bytes loaders.
-files = ["dep:redhop-files"]
+# read_file / read_bytes / read_folder loaders.
+files = ["dep:redhop-files", "dep:ignore", "dep:serde", "dep:serde_json"]
 # The semantic retrieval tier: the bundled ONNX embedding backend + model registry.
 semantic = ["dep:redhop-embeddings", "redhop-embeddings/onnx"]
 
@@ -28,6 +28,9 @@ redhop-context    = { workspace = true }
 redhop-document   = { workspace = true }
 redhop-files      = { path = "../files", optional = true }
 redhop-embeddings = { workspace = true, optional = true }
+ignore            = { version = "0.4", optional = true }
+serde             = { version = "1", features = ["derive"], optional = true }
+serde_json        = { version = "1", optional = true }
 
 [lints]
 workspace = true

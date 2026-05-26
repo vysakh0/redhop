@@ -17,7 +17,6 @@ crate-type = ["cdylib"]
 napi = { version = "2", default-features = false, features = ["napi6"] }
 napi-derive = "2"
 redhop = { path = "../crates/redhop", features = ["files", "semantic"] }
-ignore = "0.4"
 
 [build-dependencies]
 napi-build = "2"

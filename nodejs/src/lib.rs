@@ -1,17 +1,12 @@
 //! napi bindings for RedHop — the Node.js surface over the `redhop` Rust crate.
 //!
-//! Mirrors the Python API: `Document.fromText/fromChunks/fromFile/fromBytes/
-//! fromFolder` → `doc.context(query)` → `{ text, chunks, citations, report }`.
+//! Thin wrapper: the loader orchestration (config, embedder, folder persistence,
+//! citations) lives in the `redhop` facade; this maps JS options to it and back.
 
 #![deny(clippy::all)]
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-
-use redhop::{ContextConfig, Document as RhDocument, DocumentConfig, RetrievalMode, Section};
 
 fn err(e: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(e.to_string())
@@ -57,8 +52,30 @@ pub struct Options {
     pub candidate_pool: Option<u32>,
 }
 
-/// Extra options for `Document.fromFolder` (in addition to the chunking/retrieval
-/// `Options`, which are read from the same object).
+impl Options {
+    fn into_load(self) -> redhop::LoadOptions {
+        let u = |n: Option<u32>| n.map(|x| x as usize);
+        redhop::LoadOptions {
+            source: self.source,
+            chunk_size: u(self.chunk_size),
+            chunk_overlap: u(self.chunk_overlap),
+            token_budget: u(self.token_budget),
+            candidate_k: u(self.candidate_k),
+            strategy: self.strategy,
+            retrieval: self.retrieval,
+            model: self.model,
+            embedder_model: self.embedder_model,
+            embedder_tokenizer: self.embedder_tokenizer,
+            embedder_dim: u(self.embedder_dim),
+            embedder_pooling: self.embedder_pooling,
+            embedder_query_prefix: self.embedder_query_prefix,
+            embedder_passage_prefix: self.embedder_passage_prefix,
+            candidate_pool: u(self.candidate_pool),
+        }
+    }
+}
+
+/// Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`).
 #[napi(object)]
 #[derive(Default)]
 pub struct FolderOptions {
@@ -68,185 +85,25 @@ pub struct FolderOptions {
     pub gitignore: Option<bool>,
     /// Extra gitignore-style globs to exclude, e.g. `["*.lock", "tests/**"]`.
     pub ignore: Option<Vec<String>>,
-    /// Chunking/retrieval options (same fields as the other constructors).
+    /// Persist the index to disk and reload it incrementally on the next run.
+    pub persist: Option<bool>,
+    /// Where the persisted index lives (default `<folder>/.redhop`).
+    pub index_dir: Option<String>,
+    /// Chunking / retrieval options (same fields as the other constructors).
     pub options: Option<Options>,
 }
 
-fn strategy_from_str(s: &str) -> napi::Result<redhop::ContextStrategy> {
-    use redhop::ContextStrategy as S;
-    Ok(match s {
-        "raw_topk" => S::RawTopK,
-        "distractor_filtered" => S::DistractorFiltered,
-        "redundancy_pruned" => S::RedundancyPruned,
-        "max_density" => S::MaxDensity,
-        "reasoning_preserving" => S::ReasoningPreserving,
-        "auto" => S::Auto,
-        other => return Err(err(format!(
-            "unknown strategy '{other}' (expected: raw_topk, distractor_filtered, \
-             redundancy_pruned, max_density, reasoning_preserving, auto)"
-        ))),
-    })
-}
-
-fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> napi::Result<RetrievalMode> {
-    Ok(match retrieval {
-        None | Some("lexical") => RetrievalMode::Lexical,
-        Some("hybrid") => RetrievalMode::Hybrid {
-            candidate_pool: candidate_pool.max(1),
-        },
-        Some("semantic") => RetrievalMode::Dense,
-        Some(other) => return Err(err(format!(
-            "unknown retrieval mode '{other}'; use 'lexical', 'hybrid', or 'semantic'"
-        ))),
-    })
-}
-
-fn doc_config(o: &Options, mode: RetrievalMode) -> napi::Result<DocumentConfig> {
-    let base = DocumentConfig::default();
-    let strategy = match &o.strategy {
-        Some(s) => strategy_from_str(s)?,
-        None => base.context.strategy,
-    };
-    let chunk_size = o.chunk_size.unwrap_or(128) as usize;
-    let context = ContextConfig {
-        token_budget: o.token_budget.unwrap_or(8192) as usize,
-        strategy,
-        ..base.context
-    };
-    Ok(DocumentConfig {
-        target_tokens: chunk_size,
-        max_tokens: chunk_size * 2,
-        overlap_sentences: o.chunk_overlap.unwrap_or(1) as usize,
-        candidate_k: o.candidate_k.unwrap_or(20) as usize,
-        retrieval_mode: mode,
-        context,
-    })
-}
-
-fn apply_dense_embedder(doc: RhDocument, o: &Options) -> napi::Result<RhDocument> {
-    use redhop::embeddings::{EmbedderConfig, OnnxEmbedder, Pooling};
-
-    // Path A — explicit local model files (advanced); `model` is ignored.
-    if let (Some(m), Some(t)) = (o.embedder_model.as_ref(), o.embedder_tokenizer.as_ref()) {
-        let pooling = match o.embedder_pooling.as_deref() {
-            None | Some("cls") => Pooling::Cls,
-            Some("mean") => Pooling::Mean,
-            Some(other) => return Err(err(format!(
-                "unknown embedderPooling '{other}'; use 'cls' or 'mean'"
-            ))),
-        };
-        let dim = o.embedder_dim.unwrap_or(384) as usize;
-        let load = |prefix: &str| -> napi::Result<OnnxEmbedder> {
-            let mut config = EmbedderConfig::bge(dim);
-            config.pooling = pooling;
-            config.prefix = prefix.to_string();
-            OnnxEmbedder::load(m, t, config).map_err(err)
-        };
-        return match (&o.embedder_query_prefix, &o.embedder_passage_prefix) {
-            (q, p) if q.is_some() || p.is_some() => {
-                let passage = load(p.as_deref().unwrap_or(""))?;
-                let query = load(q.as_deref().unwrap_or(""))?;
-                Ok(doc
-                    .with_embedder(Arc::new(passage))
-                    .with_query_embedder(Arc::new(query)))
-            }
-            _ => Ok(doc.with_embedder(Arc::new(load("")?))),
-        };
-    }
-
-    // Path B — model-by-name (auto-downloaded, cached), or the default.
-    let name = o.model.as_deref().unwrap_or(redhop::embeddings::DEFAULT_MODEL);
-    let resolved = redhop::embeddings::resolve_model(name).map_err(err)?;
-    let load = |prefix: &str| -> napi::Result<OnnxEmbedder> {
-        OnnxEmbedder::load(&resolved.model_path, &resolved.tokenizer_path, resolved.config(prefix))
-            .map_err(err)
-    };
-    if resolved.is_asymmetric() {
-        let passage = load(&resolved.passage_prefix)?;
-        let query = load(&resolved.query_prefix)?;
-        Ok(doc
-            .with_embedder(Arc::new(passage))
-            .with_query_embedder(Arc::new(query)))
-    } else {
-        Ok(doc.with_embedder(Arc::new(load(&resolved.passage_prefix)?)))
-    }
-}
-
-/// Build a document from `(source, sections)` files, applying the embedder if the
-/// chosen tier needs one.
-fn build(files: Vec<(String, Vec<Section>)>, o: &Options) -> napi::Result<RhDocument> {
-    let mode = retrieval_from_str(o.retrieval.as_deref(), o.candidate_pool.unwrap_or(50) as usize)?;
-    let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-    let cfg = doc_config(o, mode)?;
-    let mut doc = RhDocument::from_sources_with(files, cfg).map_err(err)?;
-    if needs_embedder {
-        doc = apply_dense_embedder(doc, o)?;
-    }
-    Ok(doc)
-}
-
-/// Parse a file/bytes into `(source, sections)` via the built-in parsers.
-fn extract_path(path: &str) -> napi::Result<(String, Vec<Section>)> {
-    let d = redhop::files::extract(path).map_err(err)?;
-    Ok((d.source, to_sections(d.sections)))
-}
-
-fn extract_data(data: &[u8], name: &str) -> napi::Result<(String, Vec<Section>)> {
-    let d = redhop::files::extract_bytes(data, name).map_err(err)?;
-    Ok((d.source, to_sections(d.sections)))
-}
-
-fn to_sections(sections: Vec<redhop::files::Section>) -> Vec<Section> {
-    sections
-        .into_iter()
-        .map(|s| Section {
-            text: s.text,
-            page: s.page,
-            heading: s.heading,
-            line: s.line,
-        })
-        .collect()
-}
-
-const DEFAULT_IGNORES: &[&str] = &["node_modules", "target", "__pycache__", "venv", "dist", "build"];
-
-/// Walk a folder honoring .gitignore + custom globs (ripgrep's walker).
-fn collect_files(
-    root: &Path,
-    recursive: bool,
-    gitignore: bool,
-    ignore_globs: &[String],
-) -> napi::Result<Vec<PathBuf>> {
-    let mut ob = ignore::overrides::OverrideBuilder::new(root);
-    for d in DEFAULT_IGNORES {
-        let _ = ob.add(&format!("!{d}"));
-    }
-    for g in ignore_globs {
-        ob.add(&format!("!{g}"))
-            .map_err(|e| err(format!("invalid ignore pattern '{g}': {e}")))?;
-    }
-    let overrides = ob.build().map_err(err)?;
-    let mut wb = ignore::WalkBuilder::new(root);
-    wb.hidden(true)
-        .git_ignore(gitignore)
-        .git_global(gitignore)
-        .git_exclude(gitignore)
-        .ignore(gitignore)
-        .parents(gitignore)
-        .require_git(false)
-        .overrides(overrides);
-    if !recursive {
-        wb.max_depth(Some(1));
-    }
-    let mut out = Vec::new();
-    for entry in wb.build() {
-        let Ok(entry) = entry else { continue };
-        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            out.push(entry.into_path());
+impl FolderOptions {
+    fn into_folder(self) -> redhop::FolderOptions {
+        redhop::FolderOptions {
+            recursive: self.recursive,
+            gitignore: self.gitignore,
+            ignore: self.ignore.unwrap_or_default(),
+            persist: self.persist.unwrap_or(false),
+            index_dir: self.index_dir,
+            load: self.options.unwrap_or_default().into_load(),
         }
     }
-    out.sort();
-    Ok(out)
 }
 
 // ── Result types ─────────────────────────────────────────────────────────────
@@ -285,15 +142,14 @@ pub struct BuiltContext {
 }
 
 fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
-    let citations = ctx
-        .chunks
-        .iter()
+    let citations = redhop::citations(&ctx)
+        .into_iter()
         .map(|c| Citation {
-            source: c.source.clone(),
-            page: c.metadata.get("page").and_then(|v| v.as_u64()).map(|n| n as u32),
-            heading: c.metadata.get("heading").and_then(|v| v.as_str()).map(String::from),
-            line: c.metadata.get("line").and_then(|v| v.as_u64()).map(|n| n as u32),
-            text: c.text.clone(),
+            source: c.source,
+            page: c.page.map(|n| n as u32),
+            heading: c.heading,
+            line: c.line.map(|n| n as u32),
+            text: c.text,
         })
         .collect();
     let r = &ctx.report;
@@ -325,7 +181,7 @@ fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
 /// reasoning-aware context allocation; you think in documents and queries.
 #[napi]
 pub struct Document {
-    inner: RhDocument,
+    inner: redhop::Document,
 }
 
 #[napi]
@@ -333,70 +189,44 @@ impl Document {
     /// Build from raw text you already have.
     #[napi(factory)]
     pub fn from_text(text: String, options: Option<Options>) -> napi::Result<Document> {
-        let o = options.unwrap_or_default();
-        let source = o.source.clone().unwrap_or_else(|| "document".to_string());
-        let inner = build(vec![(source, vec![Section { text, ..Default::default() }])], &o)?;
+        let inner = redhop::text(text, &options.unwrap_or_default().into_load()).map_err(err)?;
         Ok(Document { inner })
     }
 
     /// Build from chunks you already produced (array of strings).
     #[napi(factory)]
     pub fn from_chunks(chunks: Vec<String>, options: Option<Options>) -> napi::Result<Document> {
-        let o = options.unwrap_or_default();
-        // Each chunk is one section under a shared source.
-        let sections = chunks
-            .into_iter()
-            .map(|text| Section { text, ..Default::default() })
-            .collect();
-        let inner = build(vec![("chunks".to_string(), sections)], &o)?;
+        let inner = redhop::chunks(chunks, &options.unwrap_or_default().into_load()).map_err(err)?;
         Ok(Document { inner })
     }
 
     /// Build straight from a file on disk — PDF, DOCX, PPTX, XLSX, or text/code.
     #[napi(factory)]
     pub fn from_file(path: String, options: Option<Options>) -> napi::Result<Document> {
-        let o = options.unwrap_or_default();
-        let file = extract_path(&path)?;
-        let inner = build(vec![file], &o)?;
+        let inner =
+            redhop::read_file_with(&path, &options.unwrap_or_default().into_load()).map_err(err)?;
         Ok(Document { inner })
     }
 
     /// Build from in-memory bytes you fetched (S3 / GCS / Azure Blob / HTTP / DB).
     /// `source` (e.g. `"contract.pdf"`) picks the parser and is the citation source.
     #[napi(factory)]
-    pub fn from_bytes(data: Buffer, source: String, options: Option<Options>) -> napi::Result<Document> {
-        let o = options.unwrap_or_default();
-        let file = extract_data(&data[..], &source)?;
-        let inner = build(vec![file], &o)?;
+    pub fn from_bytes(
+        data: Buffer,
+        source: String,
+        options: Option<Options>,
+    ) -> napi::Result<Document> {
+        let inner = redhop::read_bytes_with(&data[..], &source, &options.unwrap_or_default().into_load())
+            .map_err(err)?;
         Ok(Document { inner })
     }
 
-    /// Build one index from every readable file in a folder. Honors .gitignore and
-    /// `ignore` globs; skips hidden + build/cache dirs. In-memory (rebuilt each run).
+    /// Build one index from every readable file in a folder. Honors `.gitignore` +
+    /// `ignore` globs; `persist: true` saves an incremental on-disk index.
     #[napi(factory)]
     pub fn from_folder(path: String, options: Option<FolderOptions>) -> napi::Result<Document> {
-        let fo = options.unwrap_or_default();
-        let o = fo.options.unwrap_or_default();
-        let root = Path::new(&path);
-        if !root.is_dir() {
-            return Err(err(format!("from_folder: '{path}' is not a directory")));
-        }
-        let paths = collect_files(
-            root,
-            fo.recursive.unwrap_or(true),
-            fo.gitignore.unwrap_or(true),
-            &fo.ignore.unwrap_or_default(),
-        )?;
-        let mut files: Vec<(String, Vec<Section>)> = Vec::new();
-        for p in &paths {
-            if let Ok(file) = extract_path(&p.to_string_lossy()) {
-                files.push(file);
-            }
-        }
-        if files.is_empty() {
-            return Err(err(format!("from_folder: no readable files under '{path}'")));
-        }
-        let inner = build(files, &o)?;
+        let inner =
+            redhop::read_folder_with(&path, &options.unwrap_or_default().into_folder()).map_err(err)?;
         Ok(Document { inner })
     }
 

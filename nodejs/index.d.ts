@@ -42,10 +42,7 @@ export interface Options {
   /** Hybrid BM25 prune depth. Default 50. */
   candidatePool?: number
 }
-/**
- * Extra options for `Document.fromFolder` (in addition to the chunking/retrieval
- * `Options`, which are read from the same object).
- */
+/** Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`). */
 export interface FolderOptions {
   /** Recurse into subdirectories. Default true. */
   recursive?: boolean
@@ -53,7 +50,11 @@ export interface FolderOptions {
   gitignore?: boolean
   /** Extra gitignore-style globs to exclude, e.g. `["*.lock", "tests/**"]`. */
   ignore?: Array<string>
-  /** Chunking/retrieval options (same fields as the other constructors). */
+  /** Persist the index to disk and reload it incrementally on the next run. */
+  persist?: boolean
+  /** Where the persisted index lives (default `<folder>/.redhop`). */
+  indexDir?: string
+  /** Chunking / retrieval options (same fields as the other constructors). */
   options?: Options
 }
 /** Where one selected chunk came from — for citing the evidence. */
@@ -100,8 +101,8 @@ export declare class Document {
    */
   static fromBytes(data: Buffer, source: string, options?: Options | undefined | null): Document
   /**
-   * Build one index from every readable file in a folder. Honors .gitignore and
-   * `ignore` globs; skips hidden + build/cache dirs. In-memory (rebuilt each run).
+   * Build one index from every readable file in a folder. Honors `.gitignore` +
+   * `ignore` globs; `persist: true` saves an incremental on-disk index.
    */
   static fromFolder(path: string, options?: FolderOptions | undefined | null): Document
   /** Number of chunks the document holds. */

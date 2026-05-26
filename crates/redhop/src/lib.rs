@@ -80,38 +80,9 @@ pub mod embeddings {
     pub use redhop_embeddings::*;
 }
 
-/// Parse a file on disk into a ready-to-query [`Document`] (default config):
-/// text/code, Markdown, PDF, DOCX, PPTX, XLSX. The file path is tracked as each
-/// chunk's source, with page/heading/line for citations. Requires the `files`
-/// feature. For custom chunking/retrieval config, use [`files::extract`] +
-/// [`Document::from_sources_with`].
+mod load;
+pub use load::{chunks, citations, text, Citation, FolderOptions, LoadOptions};
 #[cfg(feature = "files")]
-pub fn read_file(path: impl AsRef<std::path::Path>) -> Result<Document> {
-    let doc = redhop_files::extract(path).map_err(|e| Error::Other(e.to_string()))?;
-    build_from_extracted(doc)
-}
-
-/// Parse already-in-memory bytes into a [`Document`] — the on-ramp for cloud
-/// object storage (S3 / GCS / Azure Blob), HTTP downloads, or DB blobs. `name`
-/// (e.g. `"contract.pdf"`) selects the parser by extension and becomes the
-/// citation source. Requires the `files` feature.
-#[cfg(feature = "files")]
-pub fn read_bytes(data: &[u8], name: &str) -> Result<Document> {
-    let doc = redhop_files::extract_bytes(data, name).map_err(|e| Error::Other(e.to_string()))?;
-    build_from_extracted(doc)
-}
-
-#[cfg(feature = "files")]
-fn build_from_extracted(doc: redhop_files::ExtractedDoc) -> Result<Document> {
-    let sections: Vec<Section> = doc
-        .sections
-        .into_iter()
-        .map(|s| Section {
-            text: s.text,
-            page: s.page,
-            heading: s.heading,
-            line: s.line,
-        })
-        .collect();
-    Document::from_sources_with(vec![(doc.source, sections)], DocumentConfig::default())
-}
+pub use load::{
+    read_bytes, read_bytes_with, read_file, read_file_with, read_folder, read_folder_with,
+};
