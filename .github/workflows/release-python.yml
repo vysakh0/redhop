@@ -28,18 +28,12 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # manylinux_2_28 (AlmaLinux 8) ships OpenSSL 1.1.1, which openssl-sys needs
-          # (manylinux2014/CentOS 7 has 1.0.2, which it rejects).
-          - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
-          # aarch64-linux on a NATIVE ARM runner — no QEMU, so `ring` compiles natively
-          # (the cross-compile assembler error doesn't apply). Needs ubuntu-*-arm to be
-          # available to this repo; if it queues forever, that's why.
+          # ── TEMP: ARM-only test run. Restore the full matrix below before releasing. ──
           - { runner: ubuntu-24.04-arm, target: aarch64, manylinux: '2_28' }
-          # Both macOS targets on the arm64 runner: aarch64 native, x86_64 cross
-          # (Apple's toolchain cross-compiles cleanly) — avoids the scarce macos-13 queue.
-          - { runner: macos-14,         target: x86_64 }
-          - { runner: macos-14,         target: aarch64 }
-          - { runner: windows-latest,   target: x64 }
+          # - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
+          # - { runner: macos-14,         target: x86_64 }
+          # - { runner: macos-14,         target: aarch64 }
+          # - { runner: windows-latest,   target: x64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -68,6 +62,7 @@ jobs:
 
   sdist:
     name: sdist
+    if: false   # TEMP: disabled for the ARM-only test run. Re-enable before releasing.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
