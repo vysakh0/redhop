@@ -11,11 +11,6 @@ name: release-python
 
 on:
   workflow_dispatch:   # manual only — run from the Actions tab
-    inputs:
-      publish:
-        description: 'Publish to PyPI (leave off for a build-only test run)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -28,12 +23,16 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # ── TEMP: ARM-only test run. Restore the full matrix below before releasing. ──
+          # manylinux_2_28 (AlmaLinux 8) ships OpenSSL 1.1.1, which openssl-sys needs
+          # (manylinux2014/CentOS 7 has 1.0.2, which it rejects).
+          - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
+          # aarch64-Linux on a native ARM runner (no QEMU → ring compiles natively).
           - { runner: ubuntu-24.04-arm, target: aarch64, manylinux: '2_28' }
-          # - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
-          # - { runner: macos-14,         target: x86_64 }
-          # - { runner: macos-14,         target: aarch64 }
-          # - { runner: windows-latest,   target: x64 }
+          # Both macOS targets on the arm64 runner: aarch64 native, x86_64 cross
+          # (Apple's toolchain cross-compiles cleanly) — avoids the scarce macos-13 queue.
+          - { runner: macos-14,         target: x86_64 }
+          - { runner: macos-14,         target: aarch64 }
+          - { runner: windows-latest,   target: x64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,7 +61,6 @@ jobs:
 
   sdist:
     name: sdist
-    if: false   # TEMP: disabled for the ARM-only test run. Re-enable before releasing.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +77,6 @@ jobs:
   publish:
     name: publish to PyPI
     needs: [wheels, sdist]
-    if: ${{ inputs.publish }}   # only when the run was dispatched with publish=true
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

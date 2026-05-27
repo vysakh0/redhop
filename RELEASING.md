@@ -27,14 +27,13 @@ record if you like (the tag doesn't trigger anything).
 
 Actions tab → **release-python** → **Run workflow**. Builds the **one self-contained
 wheel** (semantic engine + file parsers compiled in; no Python deps) for Linux
-x86_64 (manylinux_2_28), macOS x86_64/aarch64, and Windows x64, plus an sdist, then
-publishes via PyPI Trusted Publishing. `pip install redhop` then gives the user
-everything.
+x86_64 + aarch64 (manylinux_2_28), macOS x86_64/aarch64, and Windows x64, plus an
+sdist, then publishes via PyPI Trusted Publishing. `pip install redhop` then gives
+the user everything.
 
-> **aarch64-Linux is not yet shipped.** Cross-building `ring` under QEMU/manylinux
-> fails its ARM assembler; add it later with a *native* ARM runner
-> (`runner: ubuntu-24.04-arm`) rather than QEMU cross-compilation. Until then,
-> aarch64-Linux users fall back to the sdist (needs a Rust toolchain).
+> **Note on runners:** aarch64-Linux builds on a *native* `ubuntu-24.04-arm` runner
+> (QEMU cross-compilation fails `ring`'s ARM assembler). Both macOS wheels build on
+> `macos-14` (arm64 native, x86_64 cross) to avoid the scarce/queued macos-13 runners.
 
 ## npm (Node binding)
 
