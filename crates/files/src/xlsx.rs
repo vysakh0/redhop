@@ -29,7 +29,12 @@ fn sheets_to_sections<RS: std::io::Read + std::io::Seek>(
             }
         }
         if !lines.is_empty() {
-            sections.push(Section { text: lines.join("\n"), page: None, heading: Some(name), line: None });
+            sections.push(Section {
+                text: lines.join("\n"),
+                page: None,
+                heading: Some(name),
+                line: None,
+            });
         }
     }
     Ok(ExtractedDoc { source, sections })

@@ -2,7 +2,7 @@
 //! flattened table cells. Text only; styling/images are ignored.
 
 use docx_rs::{
-    DocumentChild, Paragraph, ParagraphChild, RunChild, Table, TableChild, TableCellContent,
+    DocumentChild, Paragraph, ParagraphChild, RunChild, Table, TableCellContent, TableChild,
     TableRowChild,
 };
 
@@ -24,12 +24,22 @@ pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc,
                 if is_heading(p) {
                     heading = Some(text.clone());
                 }
-                sections.push(Section { text, page: None, heading: heading.clone(), line: None });
+                sections.push(Section {
+                    text,
+                    page: None,
+                    heading: heading.clone(),
+                    line: None,
+                });
             }
             DocumentChild::Table(t) => {
                 let text = table_text(t);
                 if !text.trim().is_empty() {
-                    sections.push(Section { text, page: None, heading: heading.clone(), line: None });
+                    sections.push(Section {
+                        text,
+                        page: None,
+                        heading: heading.clone(),
+                        line: None,
+                    });
                 }
             }
             _ => {}

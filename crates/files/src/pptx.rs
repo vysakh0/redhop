@@ -49,7 +49,12 @@ pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc,
         entry.read_to_string(&mut xml).map_err(ExtractError::Io)?;
         let text = slide_text(&xml);
         if !text.trim().is_empty() {
-            sections.push(Section { text, page: Some(idx + 1), heading: None, line: None });
+            sections.push(Section {
+                text,
+                page: Some(idx + 1),
+                heading: None,
+                line: None,
+            });
         }
     }
     Ok(ExtractedDoc { source, sections })

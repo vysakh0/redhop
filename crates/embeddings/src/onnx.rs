@@ -146,7 +146,10 @@ impl OnnxEmbedder {
                 out[orig] = Some(e);
             }
         }
-        Ok(out.into_iter().map(|e| e.expect("every index filled")).collect())
+        Ok(out
+            .into_iter()
+            .map(|e| e.expect("every index filled"))
+            .collect())
     }
 
     /// Run the model over one sub-batch — the indices `idxs` into `encodings` —

@@ -35,7 +35,12 @@ pub struct Section {
 impl Section {
     /// A bare text section (no page/heading/line).
     pub fn text(text: impl Into<String>) -> Self {
-        Self { text: text.into(), page: None, heading: None, line: None }
+        Self {
+            text: text.into(),
+            page: None,
+            heading: None,
+            line: None,
+        }
     }
 }
 
@@ -126,10 +131,40 @@ fn decode_text(data: &[u8]) -> Result<String, ExtractError> {
 fn is_text_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "txt" | "md" | "markdown" | "mdx" | "rst" | "text" | "log" | "csv" | "tsv"
-            | "json" | "jsonl" | "yaml" | "yml" | "toml" | "xml" | "html" | "htm"
-            | "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "go" | "java" | "c" | "h"
-            | "cpp" | "hpp" | "rb" | "php" | "sh" | "sql" | "tex"
+        "txt"
+            | "md"
+            | "markdown"
+            | "mdx"
+            | "rst"
+            | "text"
+            | "log"
+            | "csv"
+            | "tsv"
+            | "json"
+            | "jsonl"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "xml"
+            | "html"
+            | "htm"
+            | "rs"
+            | "py"
+            | "js"
+            | "ts"
+            | "tsx"
+            | "jsx"
+            | "go"
+            | "java"
+            | "c"
+            | "h"
+            | "cpp"
+            | "hpp"
+            | "rb"
+            | "php"
+            | "sh"
+            | "sql"
+            | "tex"
     )
 }
 
@@ -137,9 +172,34 @@ fn is_text_ext(ext: &str) -> bool {
 fn is_code_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "go" | "java" | "kt"
-            | "c" | "h" | "cpp" | "hpp" | "cc" | "hh" | "cs" | "rb" | "php" | "sh" | "bash"
-            | "swift" | "scala" | "lua" | "pl" | "ml" | "ex" | "exs"
+        "rs" | "py"
+            | "js"
+            | "ts"
+            | "tsx"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "go"
+            | "java"
+            | "kt"
+            | "c"
+            | "h"
+            | "cpp"
+            | "hpp"
+            | "cc"
+            | "hh"
+            | "cs"
+            | "rb"
+            | "php"
+            | "sh"
+            | "bash"
+            | "swift"
+            | "scala"
+            | "lua"
+            | "pl"
+            | "ml"
+            | "ex"
+            | "exs"
     )
 }
 
@@ -151,7 +211,10 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
     let source = path.to_string_lossy().into_owned();
     let meta = std::fs::metadata(path).map_err(ExtractError::Io)?;
     if meta.len() > MAX_FILE_BYTES {
-        return Err(ExtractError::TooLarge { source, bytes: meta.len() });
+        return Err(ExtractError::TooLarge {
+            source,
+            bytes: meta.len(),
+        });
     }
     let data = std::fs::read(path).map_err(ExtractError::Io)?;
     extract_bytes(&data, &source)
@@ -165,7 +228,10 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
 pub fn extract_bytes(data: &[u8], name: &str) -> Result<ExtractedDoc, ExtractError> {
     let source = name.to_string();
     if data.len() as u64 > MAX_FILE_BYTES {
-        return Err(ExtractError::TooLarge { source, bytes: data.len() as u64 });
+        return Err(ExtractError::TooLarge {
+            source,
+            bytes: data.len() as u64,
+        });
     }
     let ext = Path::new(name)
         .extension()
@@ -178,15 +244,18 @@ pub fn extract_bytes(data: &[u8], name: &str) -> Result<ExtractedDoc, ExtractErr
         "pptx" => pptx::extract_bytes(data, source)?,
         "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract_bytes(data, source)?,
         "pdf" => pdf::extract_bytes(data, source)?,
-        "md" | "markdown" | "mdx" => {
-            ExtractedDoc { source, sections: text::markdown_sections(&decode_text(data)?) }
-        }
-        e if is_code_ext(e) => {
-            ExtractedDoc { source, sections: text::code_sections(&decode_text(data)?) }
-        }
-        e if is_text_ext(e) || e.is_empty() => {
-            ExtractedDoc { source, sections: text::line_blocks(&decode_text(data)?) }
-        }
+        "md" | "markdown" | "mdx" => ExtractedDoc {
+            source,
+            sections: text::markdown_sections(&decode_text(data)?),
+        },
+        e if is_code_ext(e) => ExtractedDoc {
+            source,
+            sections: text::code_sections(&decode_text(data)?),
+        },
+        e if is_text_ext(e) || e.is_empty() => ExtractedDoc {
+            source,
+            sections: text::line_blocks(&decode_text(data)?),
+        },
         other => return Err(ExtractError::Unsupported(other.to_string())),
     };
 

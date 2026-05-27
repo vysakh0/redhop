@@ -15,10 +15,7 @@ pub fn markdown_sections(raw: &str) -> Vec<Section> {
     let mut cur_heading: Option<String> = None;
     let mut cur_line = 1usize;
 
-    let flush = |sections: &mut Vec<Section>,
-                 text: &str,
-                 heading: &Option<String>,
-                 line: usize| {
+    let flush = |sections: &mut Vec<Section>, text: &str, heading: &Option<String>, line: usize| {
         if !text.trim().is_empty() {
             sections.push(Section {
                 text: text.trim_end().to_string(),
@@ -176,8 +173,18 @@ fn symbol_signature(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let mut rest = trimmed;
     const MODIFIERS: &[&str] = &[
-        "pub ", "export ", "default ", "public ", "private ", "protected ", "static ", "final ",
-        "async ", "open ", "override ", "abstract ",
+        "pub ",
+        "export ",
+        "default ",
+        "public ",
+        "private ",
+        "protected ",
+        "static ",
+        "final ",
+        "async ",
+        "open ",
+        "override ",
+        "abstract ",
     ];
     loop {
         let mut stripped = false;
@@ -193,8 +200,19 @@ fn symbol_signature(line: &str) -> Option<String> {
         }
     }
     const KW: &[&str] = &[
-        "def ", "class ", "fn ", "func ", "function ", "impl ", "struct ", "enum ", "trait ",
-        "interface ", "module ", "package ", "sub ",
+        "def ",
+        "class ",
+        "fn ",
+        "func ",
+        "function ",
+        "impl ",
+        "struct ",
+        "enum ",
+        "trait ",
+        "interface ",
+        "module ",
+        "package ",
+        "sub ",
     ];
     if KW.iter().any(|k| rest.starts_with(k)) {
         let sig = trimmed.trim_end_matches('{').trim_end();
@@ -217,7 +235,10 @@ mod tests {
         let headings: Vec<_> = secs.iter().map(|s| s.heading.as_deref()).collect();
         assert_eq!(headings, vec![Some("Title"), Some("Setup"), Some("Usage")]);
         // "## Setup" is on line 4.
-        let setup = secs.iter().find(|s| s.heading.as_deref() == Some("Setup")).unwrap();
+        let setup = secs
+            .iter()
+            .find(|s| s.heading.as_deref() == Some("Setup"))
+            .unwrap();
         assert_eq!(setup.line, Some(4));
         assert!(setup.text.contains("install it"));
     }
@@ -237,9 +258,15 @@ mod tests {
         let code = "import os\n\ndef login(user):\n    return user.token\n\nclass Account:\n    def close(self):\n        pass\n";
         let secs = code_sections(code);
         // import preamble has no symbol; the def/class blocks are labeled.
-        let login = secs.iter().find(|s| s.text.contains("return user.token")).unwrap();
+        let login = secs
+            .iter()
+            .find(|s| s.text.contains("return user.token"))
+            .unwrap();
         assert_eq!(login.heading.as_deref(), Some("def login(user)"));
-        let acct = secs.iter().find(|s| s.text.contains("class Account")).unwrap();
+        let acct = secs
+            .iter()
+            .find(|s| s.text.contains("class Account"))
+            .unwrap();
         assert_eq!(acct.heading.as_deref(), Some("class Account"));
     }
 

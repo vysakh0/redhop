@@ -734,8 +734,11 @@ pub fn build_context_expanded(
 ) -> BuiltContext {
     let mut built = build_context(query, retrieved, cfg);
 
-    let mut present: HashSet<String> =
-        built.chunks.iter().map(|c| c.id.as_str().to_string()).collect();
+    let mut present: HashSet<String> = built
+        .chunks
+        .iter()
+        .map(|c| c.id.as_str().to_string())
+        .collect();
     let mut used = built.report.total_tokens;
     let mut added: Vec<Chunk> = Vec::new();
 
@@ -769,7 +772,12 @@ pub fn build_context_expanded(
     all.append(&mut added);
     // Reading order: emit seeds and their companions by document position, so a
     // seed and its neighbors form one contiguous window.
-    all.sort_by_key(|c| plan.position.get(c.id.as_str()).copied().unwrap_or(usize::MAX));
+    all.sort_by_key(|c| {
+        plan.position
+            .get(c.id.as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
 
     built.report.total_tokens = used;
     built.report.token_utilization = used as f32 / cfg.token_budget.max(1) as f32;
@@ -1160,8 +1168,18 @@ mod tests {
         plan.companions.insert(
             "2".into(),
             vec![
-                Chunk::new(ChunkId::new("1"), "preceding clause text", "doc", TokenCount(3)),
-                Chunk::new(ChunkId::new("3"), "following clause text", "doc", TokenCount(3)),
+                Chunk::new(
+                    ChunkId::new("1"),
+                    "preceding clause text",
+                    "doc",
+                    TokenCount(3),
+                ),
+                Chunk::new(
+                    ChunkId::new("3"),
+                    "following clause text",
+                    "doc",
+                    TokenCount(3),
+                ),
             ],
         );
         let cfg = ContextConfig {
@@ -1184,7 +1202,12 @@ mod tests {
         plan.position.insert("3".into(), 3);
         plan.companions.insert(
             "2".into(),
-            vec![Chunk::new(ChunkId::new("3"), "x ".repeat(50).trim(), "doc", TokenCount(50))],
+            vec![Chunk::new(
+                ChunkId::new("3"),
+                "x ".repeat(50).trim(),
+                "doc",
+                TokenCount(50),
+            )],
         );
         // Budget only fits the seed; the 50-token neighbor must be skipped.
         let cfg = ContextConfig {

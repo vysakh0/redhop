@@ -4,8 +4,8 @@
 //! same surface the Python and Node bindings expose, in Rust.
 
 use crate::{
-    BuiltContext, ContextConfig, ContextStrategy, Document, DocumentConfig, Error, RetrievalMode,
-    Result, Section,
+    BuiltContext, ContextConfig, ContextStrategy, Document, DocumentConfig, Error, Result,
+    RetrievalMode, Section,
 };
 
 /// Chunking / assembly / retrieval options for the loaders. Every field is
@@ -92,7 +92,11 @@ pub fn citations(ctx: &BuiltContext) -> Vec<Citation> {
         .map(|c| Citation {
             source: c.source.clone(),
             page: c.metadata.get("page").and_then(|v| v.as_u64()),
-            heading: c.metadata.get("heading").and_then(|v| v.as_str()).map(String::from),
+            heading: c
+                .metadata
+                .get("heading")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             line: c.metadata.get("line").and_then(|v| v.as_u64()),
             text: c.text.clone(),
         })
@@ -115,11 +119,15 @@ fn strategy_from_str(s: &str) -> Result<ContextStrategy> {
 fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Result<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
-        Some("hybrid") => RetrievalMode::Hybrid { candidate_pool: candidate_pool.max(1) },
+        Some("hybrid") => RetrievalMode::Hybrid {
+            candidate_pool: candidate_pool.max(1),
+        },
         Some("semantic") => RetrievalMode::Dense,
-        Some(other) => return Err(Error::Other(format!(
-            "unknown retrieval mode '{other}'; use 'lexical', 'hybrid', or 'semantic'"
-        ))),
+        Some(other) => {
+            return Err(Error::Other(format!(
+                "unknown retrieval mode '{other}'; use 'lexical', 'hybrid', or 'semantic'"
+            )))
+        }
     })
 }
 
@@ -173,10 +181,17 @@ fn apply_embedder(doc: Document, o: &LoadOptions) -> Result<Document> {
         };
     }
     // Path B — model-by-name (auto-downloaded, cached), or the default.
-    let name = o.model.as_deref().unwrap_or(crate::embeddings::DEFAULT_MODEL);
+    let name = o
+        .model
+        .as_deref()
+        .unwrap_or(crate::embeddings::DEFAULT_MODEL);
     let resolved = crate::embeddings::resolve_model(name)?;
     let load = |prefix: &str| -> Result<OnnxEmbedder> {
-        OnnxEmbedder::load(&resolved.model_path, &resolved.tokenizer_path, resolved.config(prefix))
+        OnnxEmbedder::load(
+            &resolved.model_path,
+            &resolved.tokenizer_path,
+            resolved.config(prefix),
+        )
     };
     if resolved.is_asymmetric() {
         Ok(doc
@@ -218,7 +233,11 @@ fn needs_embedder(mode: RetrievalMode) -> bool {
 /// Attach the optional dense embedder (for hybrid/semantic) and cross-encoder
 /// reranker (`o.rerank`) a built [`Document`] needs. Shared by every loader.
 fn finish_models(doc: Document, o: &LoadOptions, mode: RetrievalMode) -> Result<Document> {
-    let doc = if needs_embedder(mode) { apply_embedder(doc, o)? } else { doc };
+    let doc = if needs_embedder(mode) {
+        apply_embedder(doc, o)?
+    } else {
+        doc
+    };
     match o.rerank.as_deref() {
         Some(name) => apply_reranker(doc, name),
         None => Ok(doc),
@@ -235,12 +254,27 @@ fn build(files: Vec<(String, Vec<Section>)>, o: &LoadOptions) -> Result<Document
 /// Build a [`Document`] from raw text with options (retrieval, chunking, …).
 pub fn text(text: impl Into<String>, o: &LoadOptions) -> Result<Document> {
     let source = o.source.clone().unwrap_or_else(|| "document".to_string());
-    build(vec![(source, vec![Section { text: text.into(), ..Default::default() }])], o)
+    build(
+        vec![(
+            source,
+            vec![Section {
+                text: text.into(),
+                ..Default::default()
+            }],
+        )],
+        o,
+    )
 }
 
 /// Build a [`Document`] from chunks you already produced (strings).
 pub fn chunks(chunks: Vec<String>, o: &LoadOptions) -> Result<Document> {
-    let sections = chunks.into_iter().map(|t| Section { text: t, ..Default::default() }).collect();
+    let sections = chunks
+        .into_iter()
+        .map(|t| Section {
+            text: t,
+            ..Default::default()
+        })
+        .collect();
     build(vec![("chunks".to_string(), sections)], o)
 }
 
@@ -254,7 +288,12 @@ mod files_loaders {
     fn convert(sections: Vec<redhop_files::Section>) -> Vec<Section> {
         sections
             .into_iter()
-            .map(|s| Section { text: s.text, page: s.page, heading: s.heading, line: s.line })
+            .map(|s| Section {
+                text: s.text,
+                page: s.page,
+                heading: s.heading,
+                line: s.line,
+            })
             .collect()
     }
 
@@ -286,7 +325,14 @@ mod files_loaders {
         build(vec![(d.source, convert(d.sections))], o)
     }
 
-    const SKIP: &[&str] = &["node_modules", "target", "__pycache__", "venv", "dist", "build"];
+    const SKIP: &[&str] = &[
+        "node_modules",
+        "target",
+        "__pycache__",
+        "venv",
+        "dist",
+        "build",
+    ];
 
     fn collect_files(root: &Path, fo: &FolderOptions) -> Result<Vec<PathBuf>> {
         let mut ob = ignore::overrides::OverrideBuilder::new(root);
@@ -294,7 +340,8 @@ mod files_loaders {
             let _ = ob.add(&format!("!{d}"));
         }
         for g in &fo.ignore {
-            ob.add(&format!("!{g}")).map_err(|e| Error::Other(format!("bad ignore '{g}': {e}")))?;
+            ob.add(&format!("!{g}"))
+                .map_err(|e| Error::Other(format!("bad ignore '{g}': {e}")))?;
         }
         let overrides = ob.build().map_err(|e| Error::Other(e.to_string()))?;
         let gi = fo.gitignore.unwrap_or(true);
@@ -332,7 +379,10 @@ mod files_loaders {
     pub fn read_folder_with(path: impl AsRef<Path>, fo: &FolderOptions) -> Result<Document> {
         let root = path.as_ref();
         if !root.is_dir() {
-            return Err(Error::Other(format!("read_folder: '{}' is not a directory", root.display())));
+            return Err(Error::Other(format!(
+                "read_folder: '{}' is not a directory",
+                root.display()
+            )));
         }
         if fo.persist || fo.index_dir.is_some() {
             return persisted(root, fo);
@@ -344,7 +394,10 @@ mod files_loaders {
             }
         }
         if files.is_empty() {
-            return Err(Error::Other(format!("read_folder: no readable files under '{}'", root.display())));
+            return Err(Error::Other(format!(
+                "read_folder: no readable files under '{}'",
+                root.display()
+            )));
         }
         build(files, &fo.load)
     }
@@ -379,11 +432,19 @@ mod files_loaders {
     }
     fn file_stat(p: &Path) -> Option<(u64, u64)> {
         let m = std::fs::metadata(p).ok()?;
-        let mtime = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos() as u64;
+        let mtime = m
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos() as u64;
         Some((mtime, m.len()))
     }
     fn index_dir(root: &Path, fo: &FolderOptions) -> PathBuf {
-        fo.index_dir.as_ref().map(PathBuf::from).unwrap_or_else(|| root.join(".redhop"))
+        fo.index_dir
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.join(".redhop"))
     }
 
     fn persisted(root: &Path, fo: &FolderOptions) -> Result<Document> {
@@ -402,32 +463,55 @@ mod files_loaders {
             })
             .is_some();
 
-        let mode = retrieval_from_str(fo.load.retrieval.as_deref(), fo.load.candidate_pool.unwrap_or(50))?;
+        let mode = retrieval_from_str(
+            fo.load.retrieval.as_deref(),
+            fo.load.candidate_pool.unwrap_or(50),
+        )?;
         let cfg = doc_config(&fo.load, mode)?;
         let mut entries: Vec<CachedFile> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         let mut changed = !had_cache;
         for p in collect_files(root, fo)? {
             let source = p.to_string_lossy().to_string();
-            let Some((mtime, size)) = file_stat(&p) else { continue };
+            let Some((mtime, size)) = file_stat(&p) else {
+                continue;
+            };
             seen.insert(source.clone());
             if let Some(prev) = cache.get(&source) {
                 if prev.mtime == mtime && prev.size == size {
-                    entries.push(CachedFile { source, mtime, size, chunks: prev.chunks.clone() });
+                    entries.push(CachedFile {
+                        source,
+                        mtime,
+                        size,
+                        chunks: prev.chunks.clone(),
+                    });
                     continue;
                 }
             }
-            let Ok((_, sections)) = extract_path(&p) else { continue };
+            let Ok((_, sections)) = extract_path(&p) else {
+                continue;
+            };
             let chunks = Document::chunk_sections(&source, &sections, &cfg)?;
-            entries.push(CachedFile { source, mtime, size, chunks });
+            entries.push(CachedFile {
+                source,
+                mtime,
+                size,
+                chunks,
+            });
             changed = true;
         }
         if cache.keys().any(|s| !seen.contains(s)) {
             changed = true;
         }
-        let mut all: Vec<Chunk> = entries.iter().flat_map(|f| f.chunks.iter().cloned()).collect();
+        let mut all: Vec<Chunk> = entries
+            .iter()
+            .flat_map(|f| f.chunks.iter().cloned())
+            .collect();
         if all.is_empty() {
-            return Err(Error::Other(format!("read_folder: no readable files under '{}'", root.display())));
+            return Err(Error::Other(format!(
+                "read_folder: no readable files under '{}'",
+                root.display()
+            )));
         }
         for (i, c) in all.iter_mut().enumerate() {
             c.id = ChunkId::new(i.to_string());
@@ -449,7 +533,11 @@ mod files_loaders {
                     size: f.size,
                 })
                 .collect();
-            let idx = PersistedIndex { version: INDEX_VERSION, fingerprint: fp, files };
+            let idx = PersistedIndex {
+                version: INDEX_VERSION,
+                fingerprint: fp,
+                files,
+            };
             std::fs::create_dir_all(&dir).map_err(Error::from)?;
             let json = serde_json::to_string(&idx).map_err(|e| Error::Other(e.to_string()))?;
             std::fs::write(dir.join("index.json"), json).map_err(Error::from)?;
@@ -459,4 +547,6 @@ mod files_loaders {
 }
 
 #[cfg(feature = "files")]
-pub use files_loaders::{read_bytes, read_bytes_with, read_file, read_file_with, read_folder, read_folder_with};
+pub use files_loaders::{
+    read_bytes, read_bytes_with, read_file, read_file_with, read_folder, read_folder_with,
+};

@@ -22,12 +22,17 @@ fn citations_accessor() {
 #[test]
 fn read_bytes_parses_and_cites() {
     // Markdown bytes → parsed, chunked, with a heading citation.
-    let mut doc =
-        redhop::read_bytes(b"# Policy\n\n## Refunds\nrefund within thirty days\n", "policy.md")
-            .unwrap();
+    let mut doc = redhop::read_bytes(
+        b"# Policy\n\n## Refunds\nrefund within thirty days\n",
+        "policy.md",
+    )
+    .unwrap();
     let ctx = doc.context("refund within thirty days").unwrap();
     let cites = redhop::citations(&ctx);
-    let hit = cites.iter().find(|c| c.text.to_lowercase().contains("refund")).unwrap();
+    let hit = cites
+        .iter()
+        .find(|c| c.text.to_lowercase().contains("refund"))
+        .unwrap();
     assert_eq!(hit.source, "policy.md");
     assert_eq!(hit.heading.as_deref(), Some("Refunds"));
 }
@@ -49,19 +54,27 @@ fn read_folder_and_persist() {
     // ignore globs
     let doc = redhop::read_folder_with(
         &dir,
-        &FolderOptions { ignore: vec!["**/*.md".into()], ..Default::default() },
+        &FolderOptions {
+            ignore: vec!["**/*.md".into()],
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(doc.len(), 1); // the .md is excluded
 
     // persist: writes an index, reload reuses it
-    let opts = FolderOptions { persist: true, ..Default::default() };
+    let opts = FolderOptions {
+        persist: true,
+        ..Default::default()
+    };
     let _ = redhop::read_folder_with(&dir, &opts).unwrap();
     assert!(dir.join(".redhop/index.json").exists());
     let mut doc = redhop::read_folder_with(&dir, &opts).unwrap();
-    assert!(redhop::citations(&doc.context("refund thirty days").unwrap())
-        .iter()
-        .any(|c| c.source.ends_with("a.txt")));
+    assert!(
+        redhop::citations(&doc.context("refund thirty days").unwrap())
+            .iter()
+            .any(|c| c.source.ends_with("a.txt"))
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

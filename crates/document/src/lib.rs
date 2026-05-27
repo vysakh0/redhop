@@ -339,8 +339,10 @@ impl Document {
                     c.metadata
                         .insert("line".to_string(), serde_json::Value::from(l as u64));
                 }
-                c.metadata
-                    .insert("kind".to_string(), serde_json::Value::String(kind.to_string()));
+                c.metadata.insert(
+                    "kind".to_string(),
+                    serde_json::Value::String(kind.to_string()),
+                );
             }
             out.extend(chunks);
         }
@@ -548,7 +550,10 @@ impl Document {
 
             // Adjacent neighbors in the SAME file, nearest first: i-1, i+1, i-2, …
             for d in 1..=neighbors {
-                for cand in [idx.checked_sub(d), idx.checked_add(d)].into_iter().flatten() {
+                for cand in [idx.checked_sub(d), idx.checked_add(d)]
+                    .into_iter()
+                    .flatten()
+                {
                     if cand < self.chunks.len() && self.chunks[cand].source == seed.source {
                         comps.push(self.chunks[cand].clone());
                     }
@@ -715,7 +720,10 @@ mod tests {
                     .into_iter()
                     .filter(|r| r.chunk.text.to_lowercase().contains("photosynthesis"))
                     .map(|mut r| {
-                        r.score = Score { value: 1.0, method: RetrievalMethod::Rerank };
+                        r.score = Score {
+                            value: 1.0,
+                            method: RetrievalMethod::Rerank,
+                        };
                         r
                     })
                     .collect();
@@ -733,7 +741,11 @@ mod tests {
         let mut doc = Document::from_text_with(
             "doc",
             TEXT,
-            DocumentConfig { target_tokens: 8, max_tokens: 16, ..Default::default() },
+            DocumentConfig {
+                target_tokens: 8,
+                max_tokens: 16,
+                ..Default::default()
+            },
         )
         .unwrap();
         let baseline = doc.context(query).unwrap().text().to_lowercase();
@@ -743,8 +755,14 @@ mod tests {
 
         // The reranker dictates the final set: only the photosynthesis chunk
         // survives, the others are gone, and the output differs from the baseline.
-        assert!(reranked.contains("photosynthesis"), "reranker should keep it");
-        assert!(!reranked.contains("eiffel"), "reranker should drop the rest");
+        assert!(
+            reranked.contains("photosynthesis"),
+            "reranker should keep it"
+        );
+        assert!(
+            !reranked.contains("eiffel"),
+            "reranker should drop the rest"
+        );
         assert_ne!(baseline, reranked, "reranker should change the selection");
     }
 
@@ -798,7 +816,10 @@ mod tests {
             cited.metadata.get("heading").and_then(|v| v.as_str()),
             Some("Refund Policy")
         );
-        assert_eq!(cited.metadata.get("line").and_then(|v| v.as_u64()), Some(10));
+        assert_eq!(
+            cited.metadata.get("line").and_then(|v| v.as_u64()),
+            Some(10)
+        );
     }
 
     #[test]
