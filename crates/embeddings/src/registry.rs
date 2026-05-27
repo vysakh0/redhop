@@ -46,7 +46,8 @@ const REGISTRY: &[(&str, ModelSpec)] = &[
         "bge-small",
         ModelSpec {
             repo: "Qdrant/bge-small-en-v1.5-onnx-Q",
-            revision: "main",
+            // Pinned for reproducibility (was "main"). Bump deliberately.
+            revision: "52398278842ec682c6f32300af41344b1c0b0bb2",
             files: &["model_optimized.onnx", "tokenizer.json"],
             onnx_file: "model_optimized.onnx",
             tokenizer_file: "tokenizer.json",
@@ -60,7 +61,7 @@ const REGISTRY: &[(&str, ModelSpec)] = &[
         "bge-base",
         ModelSpec {
             repo: "Qdrant/bge-base-en-v1.5-onnx-Q",
-            revision: "main",
+            revision: "738cad1c108e2f23649db9e44b2eab988626493b",
             files: &["model_optimized.onnx", "tokenizer.json"],
             onnx_file: "model_optimized.onnx",
             tokenizer_file: "tokenizer.json",
@@ -99,7 +100,7 @@ const RERANKER_REGISTRY: &[(&str, RerankerSpec)] = &[(
     RerankerSpec {
         // Pre-built ONNX export of cross-encoder/ms-marco-MiniLM-L-6-v2.
         repo: "Xenova/ms-marco-MiniLM-L-6-v2",
-        revision: "main",
+        revision: "a09144355adeed5f58c8ed011d209bf8ee5a1fec",
         files: &["onnx/model.onnx", "tokenizer.json"],
         onnx_file: "onnx/model.onnx",
         tokenizer_file: "tokenizer.json",

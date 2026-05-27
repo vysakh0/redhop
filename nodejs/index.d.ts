@@ -41,6 +41,12 @@ export interface Options {
   embedderPassagePrefix?: string
   /** Hybrid BM25 prune depth. Default 50. */
   candidatePool?: number
+  /**
+   * Optional second-stage cross-encoder reranker by name (`"cross-encoder"`,
+   * auto-downloaded). Reorders the candidate pool by jointly scoring each
+   * `(query, passage)` pair. Works under any retrieval tier.
+   */
+  rerank?: string
 }
 /** Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`). */
 export interface FolderOptions {

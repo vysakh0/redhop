@@ -43,25 +43,27 @@ license = "Apache-2.0"
 authors = ["Vysakh Sreenivasan", "RedHop Contributors"]
 repository = "https://github.com/vysakh0/redhop"
 homepage = "https://github.com/vysakh0/redhop"
-description = "Reasoning-preserving context optimization and retrieval observability for RAG systems"
+description = "RedHop — a reasoning-aware retrieval & context runtime for RAG: chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report."
 keywords = ["rag", "retrieval", "llm", "context", "nlp"]
 categories = ["text-processing", "science"]
 
 [workspace.dependencies]
-# Workspace-internal crates
-redhop-core        = { path = "crates/core" }
-redhop-chunking    = { path = "crates/chunking" }
-redhop-retrieval   = { path = "crates/retrieval" }
-redhop-reranking   = { path = "crates/reranking" }
-redhop-calibration    = { path = "crates/calibration" }
-redhop-context        = { path = "crates/context" }
-redhop-document       = { path = "crates/document" }
-redhop-diagnostics    = { path = "crates/diagnostics" }
-redhop-embeddings     = { path = "crates/embeddings" }
-redhop-observability  = { path = "crates/observability" }
-redhop-orchestration  = { path = "crates/orchestration" }
-redhop-storage        = { path = "crates/storage" }
-redhop-pipeline       = { path = "crates/pipeline" }
+# Workspace-internal crates. The `version` is required for crates.io: on publish,
+# cargo strips the path and depends on the registry version, so these must track
+# `[workspace.package] version` above.
+redhop-core        = { path = "crates/core", version = "0.1.0" }
+redhop-chunking    = { path = "crates/chunking", version = "0.1.0" }
+redhop-retrieval   = { path = "crates/retrieval", version = "0.1.0" }
+redhop-reranking   = { path = "crates/reranking", version = "0.1.0" }
+redhop-calibration    = { path = "crates/calibration", version = "0.1.0" }
+redhop-context        = { path = "crates/context", version = "0.1.0" }
+redhop-document       = { path = "crates/document", version = "0.1.0" }
+redhop-diagnostics    = { path = "crates/diagnostics", version = "0.1.0" }
+redhop-embeddings     = { path = "crates/embeddings", version = "0.1.0" }
+redhop-observability  = { path = "crates/observability", version = "0.1.0" }
+redhop-orchestration  = { path = "crates/orchestration", version = "0.1.0" }
+redhop-storage        = { path = "crates/storage", version = "0.1.0" }
+redhop-pipeline       = { path = "crates/pipeline", version = "0.1.0" }
 
 # Core runtime / concurrency
 tokio    = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }

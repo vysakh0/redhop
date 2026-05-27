@@ -1,0 +1,81 @@
+# Build the `redhop` Node binding (.node) for each platform in package.json's
+# `napi.triples`, then publish the main package + per-platform optional packages
+# to npm on a `v*` tag.
+#
+# IMPORTANT: the matrix targets below must match `napi.triples` in nodejs/package.json,
+# or `napi prepublish` will reference platform packages that were never built. To add a
+# target (e.g. aarch64-unknown-linux-gnu), add it in BOTH places — the arm-linux/musl
+# targets need a cross toolchain and an ORT build for that target, so tune them with a
+# real run before relying on them.
+#
+# Secrets: NPM_TOKEN (an npm automation token with publish rights).
+name: release-node
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: nodejs
+
+jobs:
+  build:
+    name: build · ${{ matrix.settings.target }}
+    runs-on: ${{ matrix.settings.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - { host: macos-13,       target: x86_64-apple-darwin }
+          - { host: macos-14,       target: aarch64-apple-darwin }
+          - { host: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
+          - { host: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: nodejs
+      - run: npm install
+      - name: Build
+        run: npx napi build --platform --release --target ${{ matrix.settings.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: nodejs/*.node
+          if-no-files-found: error
+
+  publish:
+    name: publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with:
+          path: nodejs/artifacts
+      - name: Assemble per-platform npm packages
+        run: |
+          npx napi create-npm-dirs
+          npx napi artifacts --dir artifacts
+          npx napi prepublish -t npm --skip-gh-release
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
