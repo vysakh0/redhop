@@ -10,7 +10,12 @@
 name: release-python
 
 on:
-  workflow_dispatch:   # manual release only — run from the Actions tab
+  workflow_dispatch:   # manual only — run from the Actions tab
+    inputs:
+      publish:
+        description: 'Publish to PyPI (leave off for a build-only test run)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,12 +30,16 @@ jobs:
         platform:
           # manylinux_2_28 (AlmaLinux 8) ships OpenSSL 1.1.1, which openssl-sys needs
           # (manylinux2014/CentOS 7 has 1.0.2, which it rejects).
-          - { runner: ubuntu-latest,  target: x86_64,  manylinux: '2_28' }
-          # aarch64-linux is deferred: cross-building `ring` under QEMU/manylinux fails
-          # its ARM assembler. Add later via a native ARM runner (ubuntu-24.04-arm).
-          - { runner: macos-13,       target: x86_64 }
-          - { runner: macos-14,       target: aarch64 }
-          - { runner: windows-latest, target: x64 }
+          - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
+          # aarch64-linux on a NATIVE ARM runner — no QEMU, so `ring` compiles natively
+          # (the cross-compile assembler error doesn't apply). Needs ubuntu-*-arm to be
+          # available to this repo; if it queues forever, that's why.
+          - { runner: ubuntu-24.04-arm, target: aarch64, manylinux: '2_28' }
+          # Both macOS targets on the arm64 runner: aarch64 native, x86_64 cross
+          # (Apple's toolchain cross-compiles cleanly) — avoids the scarce macos-13 queue.
+          - { runner: macos-14,         target: x86_64 }
+          - { runner: macos-14,         target: aarch64 }
+          - { runner: windows-latest,   target: x64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,6 +84,7 @@ jobs:
   publish:
     name: publish to PyPI
     needs: [wheels, sdist]
+    if: ${{ inputs.publish }}   # only when the run was dispatched with publish=true
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
