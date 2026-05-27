@@ -59,6 +59,10 @@ impl ExtractedDoc {
     }
 }
 
+/// Largest input we'll read into memory for in-process extraction (100 MiB).
+/// A bound on raw input also limits the blast radius of decompression bombs.
+pub const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
+
 /// What can go wrong extracting a file.
 #[derive(Debug)]
 pub enum ExtractError {
@@ -68,6 +72,16 @@ pub enum ExtractError {
     Unsupported(String),
     /// The file's bytes couldn't be parsed.
     Parse(String),
+    /// The file parsed but yielded no usable text — empty, or an image-only /
+    /// scanned document (carries the source path).
+    NoText(String),
+    /// The input is larger than [`MAX_FILE_BYTES`].
+    TooLarge {
+        /// Source path / name.
+        source: String,
+        /// Actual size in bytes.
+        bytes: u64,
+    },
 }
 
 impl std::fmt::Display for ExtractError {
@@ -80,10 +94,33 @@ impl std::fmt::Display for ExtractError {
                  PPTX, XLSX, PDF) — extract the text yourself and use from_text()"
             ),
             ExtractError::Parse(m) => write!(f, "could not parse file: {m}"),
+            ExtractError::NoText(src) => write!(
+                f,
+                "no text could be extracted from '{src}'. The file may be empty, or an image-only \
+                 / scanned document (e.g. a scanned PDF) — run OCR to produce a text layer, then \
+                 index the result"
+            ),
+            ExtractError::TooLarge { source, bytes } => write!(
+                f,
+                "'{source}' is {bytes} bytes, over the {MAX_FILE_BYTES}-byte in-process extraction \
+                 limit — split it, or extract the text yourself and use from_text()"
+            ),
         }
     }
 }
 impl std::error::Error for ExtractError {}
+
+/// Decode raw bytes as UTF-8 text, leniently — but reject binary data (a NUL byte
+/// in the head is a reliable "this isn't text" signal) with a clear message rather
+/// than indexing replacement-character garbage.
+fn decode_text(data: &[u8]) -> Result<String, ExtractError> {
+    if data.iter().take(8192).any(|&b| b == 0) {
+        return Err(ExtractError::Parse(
+            "appears to be binary data, not UTF-8 text".into(),
+        ));
+    }
+    Ok(String::from_utf8_lossy(data).into_owned())
+}
 
 /// Extensions we treat as plain UTF-8 text (read directly).
 fn is_text_ext(ext: &str) -> bool {
@@ -106,35 +143,18 @@ fn is_code_ext(ext: &str) -> bool {
     )
 }
 
-/// Extract a file to text + metadata, dispatching on its extension.
+/// Extract a file to text + metadata, dispatching on its extension. Enforces the
+/// size limit up front (via the file's metadata, before reading it), then routes
+/// through [`extract_bytes`] so path and in-memory ingestion behave identically.
 pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
     let path = path.as_ref();
     let source = path.to_string_lossy().into_owned();
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-
-    match ext.as_str() {
-        "docx" => docx::extract(path, source),
-        "pptx" => pptx::extract(path, source),
-        "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract(path, source),
-        "pdf" => pdf::extract(path, source),
-        "md" | "markdown" | "mdx" => {
-            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
-            Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
-        }
-        e if is_code_ext(e) => {
-            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
-            Ok(ExtractedDoc { source, sections: text::code_sections(&raw) })
-        }
-        e if is_text_ext(e) || e.is_empty() => {
-            let raw = std::fs::read_to_string(path).map_err(ExtractError::Io)?;
-            Ok(ExtractedDoc { source, sections: text::line_blocks(&raw) })
-        }
-        other => Err(ExtractError::Unsupported(other.to_string())),
+    let meta = std::fs::metadata(path).map_err(ExtractError::Io)?;
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(ExtractError::TooLarge { source, bytes: meta.len() });
     }
+    let data = std::fs::read(path).map_err(ExtractError::Io)?;
+    extract_bytes(&data, &source)
 }
 
 /// Extract **in-memory bytes** (already-downloaded content) to text + metadata,
@@ -144,29 +164,37 @@ pub fn extract(path: impl AsRef<Path>) -> Result<ExtractedDoc, ExtractError> {
 /// HTTP downloads, or DB blobs — fetch with your own client, parse here.
 pub fn extract_bytes(data: &[u8], name: &str) -> Result<ExtractedDoc, ExtractError> {
     let source = name.to_string();
+    if data.len() as u64 > MAX_FILE_BYTES {
+        return Err(ExtractError::TooLarge { source, bytes: data.len() as u64 });
+    }
     let ext = Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    match ext.as_str() {
-        "docx" => docx::extract_bytes(data, source),
-        "pptx" => pptx::extract_bytes(data, source),
-        "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract_bytes(data, source),
-        "pdf" => pdf::extract_bytes(data, source),
+    let doc = match ext.as_str() {
+        "docx" => docx::extract_bytes(data, source)?,
+        "pptx" => pptx::extract_bytes(data, source)?,
+        "xlsx" | "xlsm" | "xls" | "ods" => xlsx::extract_bytes(data, source)?,
+        "pdf" => pdf::extract_bytes(data, source)?,
         "md" | "markdown" | "mdx" => {
-            let raw = String::from_utf8_lossy(data);
-            Ok(ExtractedDoc { source, sections: text::markdown_sections(&raw) })
+            ExtractedDoc { source, sections: text::markdown_sections(&decode_text(data)?) }
         }
         e if is_code_ext(e) => {
-            let raw = String::from_utf8_lossy(data);
-            Ok(ExtractedDoc { source, sections: text::code_sections(&raw) })
+            ExtractedDoc { source, sections: text::code_sections(&decode_text(data)?) }
         }
         e if is_text_ext(e) || e.is_empty() => {
-            let raw = String::from_utf8_lossy(data);
-            Ok(ExtractedDoc { source, sections: text::line_blocks(&raw) })
+            ExtractedDoc { source, sections: text::line_blocks(&decode_text(data)?) }
         }
-        other => Err(ExtractError::Unsupported(other.to_string())),
+        other => return Err(ExtractError::Unsupported(other.to_string())),
+    };
+
+    // Central empty guard: a parse that "succeeded" but produced no usable text
+    // (scanned/image PDF, blank doc) becomes an actionable NoText error here,
+    // rather than an empty document that fails later as a generic "no chunks".
+    if doc.plain_text().trim().is_empty() {
+        return Err(ExtractError::NoText(doc.source));
     }
+    Ok(doc)
 }

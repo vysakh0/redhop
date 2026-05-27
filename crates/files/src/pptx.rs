@@ -3,7 +3,6 @@
 //! (page = slide number).
 
 use std::io::Read;
-use std::path::Path;
 
 use quick_xml::events::Event;
 use quick_xml::Reader as XmlReader;
@@ -11,10 +10,9 @@ use zip::ZipArchive;
 
 use crate::{ExtractError, ExtractedDoc, Section};
 
-pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let data = std::fs::read(path).map_err(ExtractError::Io)?;
-    extract_bytes(&data, source)
-}
+/// Cap total uncompressed slide XML we'll read, to bound decompression ("zip
+/// bomb") amplification from a small malicious .pptx.
+const MAX_SLIDE_XML_BYTES: u64 = 256 * 1024 * 1024;
 
 pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
     let mut zip = ZipArchive::new(std::io::Cursor::new(data))
@@ -34,12 +32,21 @@ pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc,
     slides.sort_by_key(|n| slide_num(n));
 
     let mut sections = Vec::new();
+    let mut budget = MAX_SLIDE_XML_BYTES;
     for (idx, name) in slides.iter().enumerate() {
+        let mut entry = zip
+            .by_name(name)
+            .map_err(|e| ExtractError::Parse(format!("pptx slide: {e}")))?;
+        // Reject before allocating: a single entry larger than what's left of the
+        // uncompressed budget is treated as a bomb.
+        if entry.size() > budget {
+            return Err(ExtractError::Parse(
+                "pptx: uncompressed size exceeds limit (possible zip bomb)".into(),
+            ));
+        }
+        budget -= entry.size();
         let mut xml = String::new();
-        zip.by_name(name)
-            .map_err(|e| ExtractError::Parse(format!("pptx slide: {e}")))?
-            .read_to_string(&mut xml)
-            .map_err(ExtractError::Io)?;
+        entry.read_to_string(&mut xml).map_err(ExtractError::Io)?;
         let text = slide_text(&xml);
         if !text.trim().is_empty() {
             sections.push(Section { text, page: Some(idx + 1), heading: None, line: None });

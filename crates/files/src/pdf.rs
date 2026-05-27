@@ -2,14 +2,7 @@
 //! per page, each tagged with its 1-based page number, so retrieved chunks can
 //! be cited ("contract.pdf, p.3").
 
-use std::path::Path;
-
 use crate::{ExtractError, ExtractedDoc, Section};
-
-pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let data = std::fs::read(path).map_err(ExtractError::Io)?;
-    extract_bytes(&data, source)
-}
 
 pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
     let pages = pdf_extract::extract_text_from_mem_by_pages(data)

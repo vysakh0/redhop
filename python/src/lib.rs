@@ -275,7 +275,10 @@ fn cites_of(chunks: &[Chunk]) -> Vec<CiteData> {
             text: c.text.clone(),
             source: c.source.clone(),
             page: c.metadata.get("page").and_then(|v| v.as_u64()),
-            heading: c.metadata.get("heading").and_then(|v| v.as_str().map(String::from)),
+            heading: c
+                .metadata
+                .get("heading")
+                .and_then(|v| v.as_str().map(String::from)),
             line: c.metadata.get("line").and_then(|v| v.as_u64()),
         })
         .collect()
@@ -591,9 +594,7 @@ fn apply_dense_embedder(
 
     // Path B — model-by-name, auto-downloaded from HuggingFace (cached). With
     // neither `model` nor explicit paths, fall back to the recommended default.
-    let name = model
-        .as_deref()
-        .unwrap_or(redhop_embeddings::DEFAULT_MODEL);
+    let name = model.as_deref().unwrap_or(redhop_embeddings::DEFAULT_MODEL);
     let resolved =
         redhop_embeddings::resolve_model(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
@@ -675,7 +676,12 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
 fn to_rh_sections(sections: Vec<redhop_files::Section>) -> Vec<RhSection> {
     sections
         .into_iter()
-        .map(|s| RhSection { text: s.text, page: s.page, heading: s.heading, line: s.line })
+        .map(|s| RhSection {
+            text: s.text,
+            page: s.page,
+            heading: s.heading,
+            line: s.line,
+        })
         .collect()
 }
 
@@ -684,8 +690,8 @@ fn to_rh_sections(sections: Vec<redhop_files::Section>) -> Vec<RhSection> {
 /// citation source.
 #[cfg(feature = "files")]
 fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let doc =
-        redhop_files::extract_bytes(data, name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let doc = redhop_files::extract_bytes(data, name)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok((doc.source, to_rh_sections(doc.sections)))
 }
 
@@ -704,7 +710,15 @@ fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSe
         )));
     }
     let text = String::from_utf8_lossy(data).into_owned();
-    Ok((name.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
+    Ok((
+        name.to_string(),
+        vec![RhSection {
+            text,
+            page: None,
+            heading: None,
+            line: None,
+        }],
+    ))
 }
 
 #[cfg(not(feature = "files"))]
@@ -727,11 +741,26 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
              PDF/DOCX/PPTX/XLSX parsing is in the standard `pip install redhop`."
         ))
     })?;
-    Ok((path.to_string(), vec![RhSection { text, page: None, heading: None, line: None }]))
+    Ok((
+        path.to_string(),
+        vec![RhSection {
+            text,
+            page: None,
+            heading: None,
+            line: None,
+        }],
+    ))
 }
 
 /// Build/cache dirs excluded by default even without a `.gitignore`.
-const DEFAULT_IGNORES: &[&str] = &["node_modules", "target", "__pycache__", "venv", "dist", "build"];
+const DEFAULT_IGNORES: &[&str] = &[
+    "node_modules",
+    "target",
+    "__pycache__",
+    "venv",
+    "dist",
+    "build",
+];
 
 /// Collect the files to index under `root`, using the same walker ripgrep does:
 /// skips hidden entries, honors `.gitignore`/`.ignore` (when `gitignore`), excludes
@@ -914,6 +943,11 @@ fn build_chunks_doc(
 /// unchanged, re-chunks new/changed files, drops removed ones, and rewrites the
 /// index only when something changed.
 #[allow(clippy::too_many_arguments)]
+/// `(document, skipped (path, reason), files indexed)` — the result of building a
+/// folder index.
+type FolderBuild = (RhDocument, Vec<(String, String)>, usize);
+
+#[allow(clippy::too_many_arguments)]
 fn build_folder_persisted(
     folder: &Path,
     recursive: bool,
@@ -935,7 +969,7 @@ fn build_folder_persisted(
     embedder_passage_prefix: Option<String>,
     candidate_pool: usize,
     rerank: Option<String>,
-) -> PyResult<RhDocument> {
+) -> PyResult<FolderBuild> {
     use std::collections::{HashMap, HashSet};
 
     let dir = resolve_index_dir(folder, index_dir);
@@ -975,6 +1009,7 @@ fn build_folder_persisted(
 
     let mut entries: Vec<CachedFile> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut skipped: Vec<(String, String)> = Vec::new();
     let mut changed = !had_cache;
 
     for p in &paths {
@@ -1002,13 +1037,21 @@ fn build_folder_persisted(
                 continue;
             }
         }
-        // New or changed → extract + chunk fresh (skip unreadable/unsupported).
+        // New or changed → extract + chunk fresh; record skips (path, reason).
         let sections = match extract_file_text(&source) {
             Ok((_, s)) => s,
-            Err(_) => continue,
+            Err(e) => {
+                skipped.push((source.clone(), e.to_string()));
+                continue;
+            }
         };
         let chunks = to_py(RhDocument::chunk_sections(&source, &sections, &cfg))?;
-        entries.push(CachedFile { source, mtime, size, chunks });
+        entries.push(CachedFile {
+            source,
+            mtime,
+            size,
+            chunks,
+        });
         changed = true;
     }
     // Files present in the cache but gone from disk count as a change.
@@ -1032,6 +1075,7 @@ fn build_folder_persisted(
         c.id = ChunkId::new(format!("{i}"));
     }
 
+    let n_files = entries.len();
     let mut doc = build_chunks_doc(
         all,
         strategy,
@@ -1082,11 +1126,14 @@ fn build_folder_persisted(
         let json = serde_json::to_string(&idx)
             .map_err(|e| PyValueError::new_err(format!("from_folder: serializing index: {e}")))?;
         std::fs::write(dir.join(INDEX_FILE), json).map_err(|e| {
-            PyValueError::new_err(format!("from_folder: writing index to '{}': {e}", dir.display()))
+            PyValueError::new_err(format!(
+                "from_folder: writing index to '{}': {e}",
+                dir.display()
+            ))
         })?;
     }
 
-    Ok(doc)
+    Ok((doc, skipped, n_files))
 }
 
 /// Shared construction for text-backed documents (used by `from_text` and
@@ -1143,6 +1190,22 @@ fn build_text_doc(
 #[pyclass]
 struct Document {
     inner: RhDocument,
+    // Files skipped during `from_folder` (path, reason). Empty for single-doc
+    // constructors. Surfaced via the `skipped_files` getter.
+    skipped: Vec<(String, String)>,
+    // Number of files actually indexed (1 for single-doc constructors).
+    n_files: usize,
+}
+
+impl Document {
+    /// Wrap an inner document from a single-source constructor (no skips).
+    fn single(inner: RhDocument) -> Self {
+        Self {
+            inner,
+            skipped: Vec::new(),
+            n_files: 1,
+        }
+    }
 }
 
 #[pymethods]
@@ -1204,7 +1267,7 @@ impl Document {
             candidate_pool,
             rerank,
         )?;
-        Ok(Self { inner })
+        Ok(Self::single(inner))
     }
 
     /// Build straight from a file on disk — RedHop reads it, chunks, and indexes;
@@ -1258,7 +1321,7 @@ impl Document {
             candidate_pool,
             rerank,
         )?;
-        Ok(Self { inner })
+        Ok(Self::single(inner))
     }
 
     /// Build from in-memory **bytes** you already fetched — RedHop parses, chunks,
@@ -1314,7 +1377,7 @@ impl Document {
             candidate_pool,
             rerank,
         )?;
-        Ok(Self { inner })
+        Ok(Self::single(inner))
     }
 
     /// Build one document from **every readable file in a folder** — RedHop walks
@@ -1380,7 +1443,7 @@ impl Document {
 
         // Persisted path: incremental on-disk index.
         if persist || index_dir.is_some() {
-            let inner = build_folder_persisted(
+            let (inner, skipped, n_files) = build_folder_persisted(
                 root,
                 recursive,
                 gitignore,
@@ -1402,16 +1465,24 @@ impl Document {
                 candidate_pool,
                 rerank,
             )?;
-            return Ok(Self { inner });
+            return Ok(Self {
+                inner,
+                skipped,
+                n_files,
+            });
         }
 
         // In-memory path: walk, extract, build one index (rebuilt each run).
+        // Files we can't read/parse are skipped but recorded (path, reason) so the
+        // caller can see what was dropped via `skipped_files`.
         let paths = collect_files(root, recursive, gitignore, &ignore_globs)?;
         let mut files: Vec<(String, Vec<RhSection>)> = Vec::new();
+        let mut skipped: Vec<(String, String)> = Vec::new();
         for p in &paths {
-            // Skip anything we can't read/parse (unsupported format, bad bytes).
-            if let Ok((source, sections)) = extract_file_text(&p.to_string_lossy()) {
-                files.push((source, sections));
+            let sp = p.to_string_lossy();
+            match extract_file_text(&sp) {
+                Ok((source, sections)) => files.push((source, sections)),
+                Err(e) => skipped.push((sp.into_owned(), e.to_string())),
             }
         }
         if files.is_empty() {
@@ -1420,6 +1491,7 @@ impl Document {
                  text/code files; the standard `pip install redhop` also parses PDF/DOCX/PPTX/XLSX."
             )));
         }
+        let n_files = files.len();
         let inner = build_text_doc(
             files,
             strategy,
@@ -1438,7 +1510,11 @@ impl Document {
             candidate_pool,
             rerank,
         )?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            skipped,
+            n_files,
+        })
     }
 
     /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
@@ -1486,7 +1562,7 @@ impl Document {
             )?;
         }
         let inner = apply_reranker(inner, rerank)?;
-        Ok(Self { inner })
+        Ok(Self::single(inner))
     }
 
     /// Assemble the reasoning context for a query (retrieve → allocate).
@@ -1531,6 +1607,19 @@ impl Document {
     #[getter]
     fn n_chunks(&self) -> usize {
         self.inner.len()
+    }
+    /// Number of files actually indexed (1 for from_text/from_file/from_bytes;
+    /// the readable count for from_folder).
+    #[getter]
+    fn n_files(&self) -> usize {
+        self.n_files
+    }
+    /// Files `from_folder` skipped, as `(path, reason)` pairs — unsupported
+    /// formats, unreadable bytes, or no extractable text (e.g. scanned PDFs).
+    /// Empty for single-document constructors.
+    #[getter]
+    fn skipped_files(&self) -> Vec<(String, String)> {
+        self.skipped.clone()
     }
     fn __len__(&self) -> usize {
         self.inner.len()

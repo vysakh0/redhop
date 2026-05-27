@@ -1,16 +1,9 @@
 //! XLSX / spreadsheet text extraction via `calamine`. Each sheet becomes a
 //! section (heading = sheet name); rows are pipe-joined cells.
 
-use std::path::Path;
-
-use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Reader};
+use calamine::{open_workbook_auto_from_rs, Reader};
 
 use crate::{ExtractError, ExtractedDoc, Section};
-
-pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let wb = open_workbook_auto(path).map_err(|e| ExtractError::Parse(format!("xlsx: {e}")))?;
-    sheets_to_sections(wb, source)
-}
 
 pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
     let wb = open_workbook_auto_from_rs(std::io::Cursor::new(data.to_vec()))

@@ -1,19 +1,12 @@
 //! DOCX text extraction via `docx-rs` — paragraphs (with heading tracking) and
 //! flattened table cells. Text only; styling/images are ignored.
 
-use std::path::Path;
-
 use docx_rs::{
     DocumentChild, Paragraph, ParagraphChild, RunChild, Table, TableChild, TableCellContent,
     TableRowChild,
 };
 
 use crate::{ExtractError, ExtractedDoc, Section};
-
-pub(crate) fn extract(path: &Path, source: String) -> Result<ExtractedDoc, ExtractError> {
-    let buf = std::fs::read(path).map_err(ExtractError::Io)?;
-    extract_bytes(&buf, source)
-}
 
 pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc, ExtractError> {
     let docx = docx_rs::read_docx(data).map_err(|e| ExtractError::Parse(format!("docx: {e:?}")))?;

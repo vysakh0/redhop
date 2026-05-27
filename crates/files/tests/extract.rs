@@ -1,4 +1,4 @@
-use redhop_files::{extract, extract_bytes};
+use redhop_files::{extract, extract_bytes, ExtractError, MAX_FILE_BYTES};
 
 #[test]
 fn extract_bytes_matches_path_for_pdf() {
@@ -103,4 +103,54 @@ fn code_file_blocks_track_lines() {
     assert_eq!(doc.sections.len(), 2);
     assert_eq!(doc.sections[0].line, Some(1));
     assert_eq!(doc.sections[1].line, Some(5));
+}
+
+// ---- failure scenarios -------------------------------------------------------
+
+#[test]
+fn empty_extraction_is_no_text() {
+    // An empty file — and, by the same central guard, a scanned/image-only PDF
+    // whose pages carry no text layer — becomes an actionable NoText error rather
+    // than a silent empty document.
+    let err = extract_bytes(b"", "blank.txt").unwrap_err();
+    assert!(matches!(err, ExtractError::NoText(_)), "empty → NoText, got {err:?}");
+    let err = extract_bytes(b"   \n\t  \n", "ws.txt").unwrap_err();
+    assert!(matches!(err, ExtractError::NoText(_)), "whitespace → NoText");
+    // The message names OCR so the user knows what to do with a scan.
+    assert!(err.to_string().to_lowercase().contains("ocr"));
+}
+
+#[test]
+fn binary_as_text_is_rejected() {
+    // A binary file masquerading as text (NUL byte in the head) is rejected
+    // rather than indexed as replacement-character garbage.
+    let err = extract_bytes(b"PK\x03\x04\x00\x00binary\x00stuff", "data.txt").unwrap_err();
+    assert!(matches!(err, ExtractError::Parse(_)), "binary → Parse, got {err:?}");
+    assert!(err.to_string().to_lowercase().contains("binary"));
+}
+
+#[test]
+fn oversize_input_is_rejected() {
+    let big = vec![b'a'; (MAX_FILE_BYTES + 1) as usize];
+    let err = extract_bytes(&big, "huge.txt").unwrap_err();
+    assert!(matches!(err, ExtractError::TooLarge { .. }), "oversize → TooLarge, got {err:?}");
+}
+
+#[test]
+fn unsupported_extension_is_reported() {
+    let err = extract_bytes(b"whatever", "archive.zip").unwrap_err();
+    assert!(matches!(err, ExtractError::Unsupported(_)), "got {err:?}");
+}
+
+#[test]
+fn corrupt_office_file_is_parse_error() {
+    // A .docx (zip-based) that isn't actually a zip → a clean Parse error, not a panic.
+    let err = extract_bytes(b"this is not a zip archive", "broken.docx").unwrap_err();
+    assert!(matches!(err, ExtractError::Parse(_)), "corrupt docx → Parse, got {err:?}");
+}
+
+#[test]
+fn missing_file_is_io_error() {
+    let err = extract("tests/fixtures/does_not_exist.pdf").unwrap_err();
+    assert!(matches!(err, ExtractError::Io(_)), "missing → Io, got {err:?}");
 }
