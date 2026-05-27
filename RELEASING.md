@@ -17,23 +17,24 @@ update those `version = "…"` too).
 | **npm** | An automation token as the `NPM_TOKEN` repo secret. |
 | **crates.io** | `cargo login` locally (first publish is manual — see below). |
 
+Both release workflows are **manual** (`workflow_dispatch`) — they do **not** fire on a
+tag. Release each from the GitHub **Actions** tab → pick the workflow → **Run
+workflow** (on `main`). The version comes from the package files (`pyproject.toml` /
+`package.json`), so bump those before releasing; tag the commit afterward for the
+record if you like (the tag doesn't trigger anything).
+
 ## PyPI (Python wheels)
 
-Tag-triggered via `.github/workflows/release-python.yml`:
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-Builds the **one self-contained wheel** (semantic engine + file parsers compiled in;
-no Python deps) for Linux x86_64/aarch64, macOS x86_64/aarch64, and Windows x64, plus
-an sdist, then publishes. `pip install redhop` then gives the user everything.
+Actions tab → **release-python** → **Run workflow**. Builds the **one self-contained
+wheel** (semantic engine + file parsers compiled in; no Python deps) for Linux
+x86_64/aarch64, macOS x86_64/aarch64, and Windows x64, plus an sdist, then publishes
+via PyPI Trusted Publishing. `pip install redhop` then gives the user everything.
 
 ## npm (Node binding)
 
-Tag-triggered via `.github/workflows/release-node.yml`. Builds a `.node` per platform
-in `napi.triples` (package.json) and publishes the main package + per-platform optional
-packages.
+Actions tab → **release-node** → **Run workflow**. Builds a `.node` per platform in
+`napi.triples` (package.json) and publishes the main package + per-platform optional
+packages (auth via the `NPM_TOKEN` secret).
 
 **Before publishing, regenerate the committed typings** if the API changed:
 

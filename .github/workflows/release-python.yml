@@ -10,9 +10,7 @@
 name: release-python
 
 on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
+  workflow_dispatch:   # manual release only — run from the Actions tab
 
 permissions:
   contents: read
@@ -67,7 +65,6 @@ jobs:
     name: publish to PyPI
     needs: [wheels, sdist]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     environment: pypi
     permissions:
       id-token: write   # PyPI Trusted Publishing (OIDC)
