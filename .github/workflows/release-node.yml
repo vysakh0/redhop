@@ -59,6 +59,11 @@ jobs:
     name: publish to npm
     needs: build
     runs-on: ubuntu-latest
+    env:
+      # Available to BOTH `napi prepublish` (publishes the per-platform packages) and
+      # the final `npm publish` (the main package). Scoping it to only the last step
+      # would 401 the platform-package uploads.
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -76,5 +81,3 @@ jobs:
           npx napi prepublish -t npm --skip-gh-release
       - name: Publish
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
