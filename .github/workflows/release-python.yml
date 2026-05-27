@@ -23,8 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - { runner: ubuntu-latest,  target: x86_64,  manylinux: auto }
-          - { runner: ubuntu-latest,  target: aarch64, manylinux: auto }
+          # manylinux_2_28 (AlmaLinux 8) ships OpenSSL 1.1.1, which openssl-sys needs
+          # (manylinux2014/CentOS 7 has 1.0.2, which it rejects).
+          - { runner: ubuntu-latest,  target: x86_64,  manylinux: '2_28' }
+          # aarch64-linux is deferred: cross-building `ring` under QEMU/manylinux fails
+          # its ARM assembler. Add later via a native ARM runner (ubuntu-24.04-arm).
           - { runner: macos-13,       target: x86_64 }
           - { runner: macos-14,       target: aarch64 }
           - { runner: windows-latest, target: x64 }
