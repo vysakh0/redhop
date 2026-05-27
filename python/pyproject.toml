@@ -34,6 +34,9 @@ Repository = "https://github.com/vysakh0/redhop"
 module-name = "redhop._redhop"
 python-source = "."
 features = ["pyo3/extension-module"]
+# Ship the LICENSE inside the sdist too (the metadata declares License-File: LICENSE;
+# PyPI rejects the sdist if the file isn't in the tarball).
+include = ["LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
