@@ -18,7 +18,7 @@ let ctx = build_context(
     &ContextConfig { token_budget: 12_000, ..Default::default() },  // default = ReasoningPreserving
 );
 let prompt = ctx.text();
-println!("{}", ctx.report.render(None));   // Context Optimization Report
+println!("{}", ctx.report.render(None));   // RedHop Decision Report
 ```
 
 ## API

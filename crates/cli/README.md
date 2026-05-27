@@ -31,7 +31,7 @@ writes a structured artifact.
 ```bash
 redhop analyze-context context.json --query "..."
 ```
-Renders the `Context Optimization Report` (density, distractors, rescues,
+Renders the `RedHop Decision Report` (density, distractors, rescues,
 estimated waste, warnings). `--json` for the raw report.
 
 ### `benchmark` — reproducible strategy sweep

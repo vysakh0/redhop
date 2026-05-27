@@ -7,6 +7,10 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-27
+
+First public release — `pip install redhop` (PyPI); npm and crates.io to follow.
+
 ### Added
 - **Retrieval tiers** on `Document` (`retrieval=`): `"lexical"` (BM25, default,
   zero-dependency), `"hybrid"` (BM25 prunes to a candidate pool → dense rerank of
