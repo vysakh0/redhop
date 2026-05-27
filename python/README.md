@@ -1,139 +1,119 @@
-# RedHop (Python)
+# RedHop
 
-**Reasoning-preserving context optimization and retrieval observability for RAG systems.**
+**A reasoning-aware context runtime for RAG.**
 
-RedHop sits **between retrieval and generation**. You hand it the chunks your
-retriever returned and a token budget; it assembles the prompt context —
-pruning distractors, **preserving reasoning-critical "second-hop" evidence**,
-and reporting exactly what it did. It is *not* a retriever, vector DB, agent
-framework, or workflow engine.
+Hand it a document and a question. RedHop chunks, retrieves, and allocates the
+context your model should actually see — then tells you what it kept, what it dropped,
+and why, with citations back to the source. No vector database, no LLM, all in-process.
 
 ```python
 import redhop
 
-chunks = retriever.retrieve(query)          # your stack
-ctx = redhop.build_context(
-    query=query,
-    retrieved_chunks=chunks,                # list of dicts or strings
-    strategy="reasoning_preserving",        # the safe default
-    token_budget=12000,
-)
-response = llm.generate(ctx.text())         # your stack
-print(ctx.report)                           # observability ↓
+doc = redhop.Document.from_file("contract.pdf")
+ctx = doc.context("What is the governing law?")
+
+answer = llm.generate(ctx.text())   # any LLM provider — no lock-in
+```
+
+```bash
+pip install redhop
+```
+
+One self-contained wheel — no Python dependencies. The default lexical tier needs no
+model at all; the semantic/rerank tiers download a small model on first use (cached).
+
+## The idea
+
+**Retrieval quality is not the same as reasoning quality.** Transformers tolerate
+irrelevant context far better than they tolerate *missing reasoning links* — so the
+chunk a multi-hop answer depends on is often low-relevance to the query and gets
+silently pruned. RedHop's default keeps it, and makes the trade-off visible. It is
+**not** a retriever, vector database, agent framework, or workflow engine — it does one
+thing: turn a document and a query into the right prompt context, and explain the
+decision.
+
+## It explains every decision
+
+Every call returns a **Decision Report** — what it kept, what it dropped, and *why*,
+including when it deliberately leaves a small context untouched.
+
+```python
+print(ctx.report)
 ```
 
 ```text
-Context Optimization Report
-───────────────────────────
-Strategy: ReasoningPreserving
+RedHop Decision Report
+══════════════════════
 
-Input chunks:        8
-Output chunks:       2
-Tokens:              100 → 30  (-70%)
-Distractors pruned:  6
-Reasoning rescues:   1
+Decision: Auto → pruning (intervened on a diluted context)
 
-Evidence density:    0.10 → 0.20
-Retained evidence:   100%
-...
+  Why:
+    - large/diluted contexts dilute attention; pruning recovers signal density
+  Result:
+    - removed distractor chunks, kept all query-relevant evidence
+    - preserved a second-hop link a plain relevance filter would drop
+
+Diagnostics
+───────────
+  Chunks:             24 → 3
+  Second-hop rescues: 1
 ```
 
-## Installation
+Read the fields directly via `ctx.report.auto_decision`, `total_tokens`,
+`retained_evidence_ratio`, or call `doc.analyze(query)` for the report **without**
+assembling a context.
 
-```bash
-pip install redhop          # alpha wheels (PyPI)
-```
+## Cite the evidence
 
-The wheel bundles the compiled Rust engine — no Rust toolchain needed to use it.
-
-## Quickstart
-
-`retrieved_chunks` accepts plain Python — a list of dicts (only `text` is
-required) or strings:
+Every selected chunk remembers where it came from:
 
 ```python
-chunks = [
-    {"id": "c1", "text": "...", "score": 0.82},
-    {"id": "c2", "text": "..."},
-    "a bare string also works",
-]
-ctx = redhop.build_context(query="...", retrieved_chunks=chunks)
-print(ctx.text())              # the assembled prompt context
-r = ctx.report
-print(r.total_tokens, r.distractors_pruned, r.second_hop_rescue_count)
-print(redhop.report_to_dict(r))   # full telemetry as a dict
+for c in ctx.citations:
+    print(c["source"], c["page"], c["heading"])
+    # contract.pdf  3     None      ->  "contract.pdf, p.3"
+    # notes.md      None  "Refunds" ->  "notes.md -> Refunds"
 ```
 
-## API surface
+## Loading documents
 
-| Function | Purpose |
-| -------- | ------- |
-| `build_context(query, chunks, strategy, token_budget, ...)` | budget-aware assembly → `BuiltContext` |
-| `filter_context(query, chunks, strategy, ...)` | filter junk, **no** budget truncation → `BuiltContext` |
-| `analyze_context(query, chunks, ...)` | non-destructive diagnostics → `ContextReport` |
-| `context_economics(query, chunks, ...)` | economics of a set as-is → `dict` |
+| On-ramp | For |
+| --- | --- |
+| `Document.from_text(text)` | text you already have |
+| `Document.from_chunks([...])` | content you already chunked |
+| `Document.from_file("x.pdf")` | a file — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
+| `Document.from_bytes(data, source="x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) |
+| `Document.from_folder("./docs", persist=True)` | a whole directory, with an optional incremental on-disk index |
 
-`BuiltContext`: `.text()`, `.chunks`, `.report`.
-`ContextReport`: `.strategy`, `.total_tokens`, `.distractors_pruned`,
-`.second_hop_rescue_count`, `.evidence_density`, … ; `str(report)` is the
-rendered report; `redhop.report_to_dict(report)` is the full telemetry.
+## Retrieval tiers — no vector database
 
-## Strategies
+A ladder; start cheap, climb only when a query needs it. All in-process, no ANN, no
+index server.
 
-| strategy | what it does | when |
-| -------- | ------------ | ---- |
-| `reasoning_preserving` *(default)* | keep query-relevant seeds **and** rescue low-relevance chunks linked to a seed; drop only unlinked junk | multi-hop / general; safe default |
-| `distractor_filtered` | drop everything below a query-grounding bar | single-hop, or a *low* threshold only |
-| `max_density` | greedily pack the densest chunks into the budget | single-hop / brutal budgets |
-| `raw_topk` | keep retrieval order until the budget fills | baseline / no optimization |
-
-### Why `reasoning_preserving` is the default — the second-hop tax
-
-On multi-hop questions, the second hop (the evidence that *bridges* to the
-answer) is **low-relevance-to-the-query by construction** — it connects through
-a bridge entity, not the query terms. So every relevance-based operation
-(aggressive distractor filtering, cross-encoder reranking, max-density pruning)
-**drops it**. We measured this directly: a relevance filter keeps 96.8% of
-second hops at threshold 0.05 but only **43.9% at 0.30**.
-
-`reasoning_preserving` resists this: it keeps the query-relevant seeds, then
-*rescues* low-relevance chunks that are linked to a seed (sharing the bridge
-entity), dropping only true junk. End-to-end (n=300, generator = haiku) it
-beat aggressive filtering with a CI-significant margin, and the gain was
-causally localized to the rescued evidence.
-
-> Transformers tolerate irrelevant context far better than they tolerate
-> missing reasoning links. Premature removal of low-relevance reasoning
-> evidence hurts more than the distractors do.
-
-## Examples
-
-```bash
-python examples/basic_rag.py            # retrieval → build_context → generation
-python examples/compare_strategies.py   # every strategy side-by-side
-python examples/economics_demo.py       # context economics + analyze_context
+```python
+doc = redhop.Document.from_text(text, retrieval="lexical")   # BM25 (default)
+doc = redhop.Document.from_text(text, retrieval="hybrid",   model="bge-small")  # BM25 -> dense rerank
+doc = redhop.Document.from_text(text, retrieval="semantic", model="bge-small")  # exact cosine over all chunks
 ```
 
-## Evidence
+Add `rerank="cross-encoder"` on any tier for a precise (slower) second stage.
 
-Every default is grounded in a measured finding (with a falsified-hypotheses
-registry) in the repo's evidence layer:
+## Assembly strategies
 
-- Second-hop tax: `docs/findings/SECOND_HOP_TAX.md`
-- Reasoning preservation (end-to-end QA): `docs/findings/REASONING_PRESERVATION.md`
-- Context economics: `docs/findings/CONTEXT_ECONOMICS.md`
-- Index: `docs/findings/README.md`
+| `strategy=` | What it does |
+| --- | --- |
+| `reasoning_preserving` *(default)* | keep query-relevant seeds **and** rescue low-relevance chunks linked to one; drop only unlinked junk |
+| `distractor_filtered` | drop everything below a query-grounding bar |
+| `max_density` | greedily pack the densest chunks into the budget |
+| `raw_topk` | keep retrieval order until the budget fills |
+| `auto` | size-gated: pass small contexts through, prune large/diluted ones |
 
-## Local development
+Already have chunks from your own retriever? Use `redhop.build_context(query,
+retrieved_chunks=chunks, ...)` for the low-level surface.
 
-```bash
-# from python/, inside a virtualenv with maturin installed
-pip install maturin
-maturin develop --release      # builds the Rust engine + installs `redhop` editable
-python -c "import redhop; print(redhop.__version__)"
+## Documentation
 
-maturin build --release        # produce a wheel in target/wheels/
-```
+Full docs, the comparison vs LangChain / LlamaIndex, and the evidence behind every
+default: **https://redhop.dev**
 
-Rust is the source of truth: this package is a thin pyo3 binding over the
-`redhop-context` crate — no logic is duplicated in Python.
+Apache-2.0. Also available for **Node.js** (`npm install redhop`) and **Rust**
+(`cargo add redhop`).
