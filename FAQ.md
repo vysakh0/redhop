@@ -55,7 +55,7 @@ the workload is single-hop. `raw_topk` is the no-op baseline. Or `auto` to size-
 
 `lexical` (BM25, the default — no model, great for keyword-dense docs). `hybrid` for
 semantic search that scales across many files. `semantic` for highest recall when the
-question and answer share no words. See [Retrieval options](https://redhop.dev).
+question and answer share no words. See [Retrieval options](https://redhopai.com).
 
 ### Is it production-ready?
 
