@@ -1,0 +1,45 @@
+# Publish the `redhop` crate to crates.io.
+#
+# Unlike PyPI/npm there is no platform matrix — `cargo publish` uploads a single
+# source tarball and consumers build it on their machine. We do still verify
+# that the heavy features (`files,semantic`) compile end-to-end before upload,
+# so a broken release can't slip through.
+#
+# Secret: CARGO_REGISTRY_TOKEN (a crates.io API token with `publish-update` on
+# the `redhop` crate — generated at https://crates.io/me).
+name: release-crates
+
+on:
+  workflow_dispatch:   # manual only — run from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # ort-sys's build script downloads the ONNX Runtime via ureq+native-tls during
+      # the verify-compile step (the same dance the PyPI workflow does). Build-time
+      # only — nothing here ends up in the published tarball.
+      - name: Install OpenSSL headers for the verify compile
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      # Dry-run with the heavy features so a broken release is caught before upload.
+      # crates.io will publish the source tarball regardless of features (the consumer
+      # picks them at build), but verifying these here means `cargo add redhop
+      # --features files,semantic` is known-good for this exact tag.
+      - name: Verify package + features compile
+        run: cargo publish --dry-run -p redhop --features files,semantic
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        # `--no-verify` because the previous step already did the verify compile —
+        # repeating it adds ~minutes for no extra signal.
+        run: cargo publish --no-verify -p redhop

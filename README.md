@@ -24,13 +24,12 @@ hypotheses that failed — lives in the [evidence layer](docs/findings/README.md
 
 ## Install
 
-> **Alpha.** Published packages are on the way. For now, build from source — see
-> [CONTRIBUTING.md](CONTRIBUTING.md). The intended install, one line per ecosystem:
+> **Alpha — 0.1.x.** Python and Rust are published; the npm package is in review.
 
 ```bash
-pip install redhop                            # Python
-npm install redhop                            # Node.js
-cargo add redhop --features files,semantic    # Rust
+pip install redhop                            # Python  — on PyPI
+cargo add redhop --features files,semantic    # Rust    — on crates.io
+npm install redhop                            # Node.js — pending
 ```
 
 The same surface is available in all three. The embedding/reranking models

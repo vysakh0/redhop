@@ -10,6 +10,9 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report. No vector DB, in-process."
+# Shipped to crates.io so the package page isn't blank. Relative path from the
+# crate; cargo bundles the file into the published tarball.
+readme = "../../README.md"
 
 [lib]
 path = "src/lib.rs"
