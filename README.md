@@ -133,18 +133,27 @@ line) for citations.
 
 ## Retrieval tiers — no vector database
 
-Retrieval is a ladder; start at the cheapest rung that works and climb only when
-your queries demand it. All tiers run in-process, with no ANN and no index server.
+The lexical default (BM25) is the right pick more often than you'd expect. We
+measured 121 labeled queries across 6 real document shapes (legal MSA, API ref,
+financial report, incident runbook, 101-page handbook, multi-file folder) and
+**lexical won or tied on 5 of 6** — *including the handbook and the financial
+report.* Don't reach for a model unless you have a measured reason. Full data:
+[docs/findings/CORPUS_CONFIG_MATRIX.md](docs/findings/CORPUS_CONFIG_MATRIX.md).
 
 | `retrieval=` | What it does | Reach for it when |
 | --- | --- | --- |
-| `"lexical"` *(default)* | BM25 — zero dependencies, fully offline | the answer shares words with the query (most document QA) |
-| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | semantic search over many files / a folder |
-| `"semantic"` | dense over every chunk, exact cosine | highest recall when question and answer share no words |
+| `"lexical"` *(default)* | BM25 — zero dependencies, fully offline, ~50ms warm | the answer shares vocabulary with the query (most document QA — code, API refs, runbooks, financials, handbooks, folders) |
+| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | the doc has near-duplicate clauses (regional overrides, parallel sub-sections) — pair with `context(include_heading=True, neighbors=1)` |
+| `"semantic"` | dense over every chunk, exact cosine | queries and answers share no vocabulary, *and* hybrid isn't enough (rare in practice) |
 
-Set `rerank="cross-encoder"` on any tier to add an optional second stage that
-jointly scores each `(query, passage)` pair — more precise, at a model call per
-candidate. Off by default.
+Set `rerank="cross-encoder"` to add a second-stage scorer that reads each
+`(query, passage)` pair jointly — useful for true synonym corpora (HR/support
+KBs where users phrase things very differently from the docs). It adds 5–10×
+query latency and added **0 measured accuracy** on the 6 corpora above —
+**verify on your own corpus before enabling.**
+
+→ Not sure which to pick? See [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md)
+  — the 60-second decision guide with code recipes.
 
 ## Assembly strategies
 
@@ -161,6 +170,7 @@ the others are there when you want a different trade-off.
 
 ## Documentation
 
+- **Choosing a configuration**: [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md) — 60-second decision guide
 - **Retrieval & context tips**: [docs/retrievaltips.md](docs/retrievaltips.md)
 - **Comparison** (vs LangChain / LlamaIndex): [docs/COMPARISON.md](docs/COMPARISON.md)
 - **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

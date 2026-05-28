@@ -86,16 +86,30 @@ for c in ctx.citations:
 
 ## Retrieval tiers — no vector database
 
-A ladder; start cheap, climb only when a query needs it. All in-process, no ANN, no
-index server.
+The lexical default wins more often than you'd expect. We measured 121 labeled
+queries across 6 real document shapes (legal MSA, API reference, financial
+report, incident runbook, 101-page handbook, multi-file folder) and **lexical
+won or tied on 5 of 6.** Don't reach for a model unless you have a measured
+reason. Full data:
+[CORPUS_CONFIG_MATRIX](https://github.com/vysakh0/redhop/blob/main/docs/findings/CORPUS_CONFIG_MATRIX.md).
 
 ```python
-doc = redhop.Document.from_text(text, retrieval="lexical")   # BM25 (default)
-doc = redhop.Document.from_text(text, retrieval="hybrid",   model="bge-small")  # BM25 -> dense rerank
-doc = redhop.Document.from_text(text, retrieval="semantic", model="bge-small")  # exact cosine over all chunks
+# Default — works for most docs (code, API refs, runbooks, financials, handbooks)
+doc = redhop.Document.from_file("contract.pdf")
+ctx = doc.context("What is the governing law?")
+
+# Structured docs with parallel clauses (regional overrides, sub-policies):
+doc = redhop.Document.from_file("msa.pdf", retrieval="hybrid", model="bge-small")
+ctx = doc.context("What law applies in the UK?", include_heading=True, neighbors=1)
+
+# Synonym-heavy corpora (HR FAQs, support tickets) — verify on your corpus first;
+# rerank adds 5–10× latency and added 0 measured accuracy on the 6 we tested.
+doc = redhop.Document.from_file("support.md",
+    retrieval="hybrid", model="bge-small", rerank="cross-encoder")
 ```
 
-Add `rerank="cross-encoder"` on any tier for a precise (slower) second stage.
+Three recipes cover the measured space. The full decision guide with trade-offs:
+[CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).
 
 ## Assembly strategies
 

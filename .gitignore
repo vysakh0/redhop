@@ -5,3 +5,7 @@ Cargo.lock
 
 # Experiment outputs (regenerable); curated results live in reports/
 /exports/
+
+# Local research / colleague-shared eval corpora — not for the public repo.
+# Anything published from here lives in docs/findings/.
+/research/

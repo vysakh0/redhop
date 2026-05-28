@@ -37,12 +37,33 @@ Document.fromFolder("./repo", { recursive: true, gitignore: true,
   ignore: ["*.lock", "tests/**"], options: { retrieval: "hybrid", model: "bge-small" } });
 ```
 
-## Retrieval
+## Retrieval — start with the default
 
-`options.retrieval` is `"lexical"` (default, BM25, no model), `"hybrid"` (BM25 →
-dense rerank; code is auto-routed to lexical), or `"semantic"` (dense over every
-chunk). The dense tiers download a small model named by `options.model`
-(`"bge-small"` / `"bge-base"`).
+We measured 121 labeled queries across 6 real document shapes (legal MSA, API
+ref, financial report, incident runbook, 101-page handbook, multi-file folder)
+and **lexical won or tied on 5 of 6.** Don't reach for a model unless you have
+a measured reason. Full data:
+[CORPUS_CONFIG_MATRIX](https://github.com/vysakh0/redhop/blob/main/docs/findings/CORPUS_CONFIG_MATRIX.md).
+
+```js
+// Default — works for most docs (code, API refs, runbooks, financials, handbooks)
+Document.fromFile("contract.pdf").context("What is the governing law?");
+
+// Structured docs with parallel clauses (regional overrides, sub-policies):
+Document.fromFile("msa.pdf", { retrieval: "hybrid", model: "bge-small" })
+  .context("What law applies in the UK?", undefined, 1, true);  // neighbors=1, includeHeading=true
+
+// Synonym-heavy corpora — verify on your corpus first; rerank adds 5–10× latency
+// and added 0 measured accuracy on the 6 we tested.
+Document.fromFile("support.md",
+  { retrieval: "hybrid", model: "bge-small", rerank: "cross-encoder" });
+```
+
+`options.retrieval` is `"lexical"` (default), `"hybrid"` (BM25 → dense rerank),
+or `"semantic"` (dense over every chunk). Dense tiers download a small model
+named by `options.model` (`"bge-small"` / `"bge-base"`). The 60-second
+decision guide:
+[CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).
 
 ## The result
 
