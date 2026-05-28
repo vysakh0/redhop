@@ -183,7 +183,7 @@ fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
 // ── Document ───────────────────────────────────────────────────────────────
 
 /// A document you reason over. RedHop owns chunking, internal retrieval, and
-/// reasoning-aware context allocation; you think in documents and queries.
+/// reasoning-preserving context allocation; you think in documents and queries.
 #[napi]
 pub struct Document {
     inner: redhop::Document,

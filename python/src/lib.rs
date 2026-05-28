@@ -1185,7 +1185,7 @@ fn build_text_doc(
 }
 
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
-/// internal retrieval, and reasoning-aware context allocation. Retrieval is an
+/// internal retrieval, and reasoning-preserving context allocation. Retrieval is an
 /// internal detail — you think in documents and queries, not retrievers.
 #[pyclass]
 struct Document {

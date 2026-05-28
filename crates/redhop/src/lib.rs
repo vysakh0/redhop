@@ -1,6 +1,6 @@
 //! # RedHop
 //!
-//! A **reasoning-aware context runtime** for RAG. Hand it a document and a
+//! A **reasoning-preserving context runtime** for RAG. Hand it a document and a
 //! question; it chunks, retrieves, and allocates the context the model should
 //! actually see — and returns a **Decision Report** explaining what it kept,
 //! what it dropped, and why. Plus citations back to the source. No vector

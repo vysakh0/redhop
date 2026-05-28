@@ -5,7 +5,7 @@ change, and the boundary the project intentionally keeps.
 
 ## What RedHop is (and is not)
 
-RedHop is a **reasoning-aware context runtime** that sits between your documents
+RedHop is a **reasoning-preserving context runtime** that sits between your documents
 and an LLM. It owns chunking, internal retrieval, context allocation,
 reasoning-safe optimization, observability, and token economics.
 

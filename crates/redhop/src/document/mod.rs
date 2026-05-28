@@ -1,6 +1,6 @@
 //! # redhop-document
 //!
-//! The **reasoning-aware document context runtime** — RedHop's high-level
+//! The **reasoning-preserving document context runtime** — RedHop's high-level
 //! surface. You have documents and need reasoning; you should not have to
 //! think about retrievers, vector stores, query engines, or ANN infrastructure.
 //!

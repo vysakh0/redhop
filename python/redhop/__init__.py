@@ -1,6 +1,6 @@
 """RedHop — reasoning-preserving context optimization for RAG systems.
 
-A **reasoning-aware context runtime for document reasoning**. You have
+A **reasoning-preserving context runtime for document reasoning**. You have
 documents and need reasoning; you should not have to wire up retrievers, vector
 DBs, or query engines. It is *not* a retriever, vector DB, agent framework, or
 workflow engine. The core takes text (bring your own parser); the optional

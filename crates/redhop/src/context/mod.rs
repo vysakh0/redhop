@@ -55,7 +55,7 @@
 //! to a seed (the bridge entity), drop only unlinked junk. Measured to
 //! recover much of the tax (+23 pts of second-hop retention at threshold
 //! 0.30) at a modest junk-suppression cost. This is the project's
-//! frontier in one function: *reasoning-aware evidence allocation, not
+//! frontier in one function: *reasoning-preserving evidence allocation, not
 //! relevance optimization.* The economics readout stays honest about
 //! what was dropped regardless of strategy.
 

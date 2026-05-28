@@ -108,7 +108,7 @@ average.
 
 This is the cleanest possible vindication of the project's direction:
 *do not aggressively optimize for query relevance.* The relevance filter
-didn't just fail to help — it hurt — and the reasoning-aware strategy is
+didn't just fail to help — it hurt — and the reasoning-preserving strategy is
 what makes aggressive filtering safer.
 
 ## Mechanism: does reachability cause the answer gain?

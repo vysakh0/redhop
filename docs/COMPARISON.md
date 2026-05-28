@@ -14,7 +14,7 @@ rather you trust the numbers than the marketing.
   default. LangChain and LlamaIndex are broad orchestration/integration
   frameworks; RedHop is a focused layer that sits between your documents and the
   LLM.
-- Pick RedHop when you want a small, observable, reasoning-aware context step you
+- Pick RedHop when you want a small, observable, reasoning-preserving context step you
   can reason about. Pick the big frameworks when you want a large connector/agent
   ecosystem.
 

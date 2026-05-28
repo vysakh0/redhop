@@ -97,7 +97,7 @@ proxy; for finer control, gate on the distractor ratio yourself.
 
 ### 4. The win is *deciding when* to optimize — not a magic algorithm
 Naive density-truncation captured essentially the same downstream gain as the
-reasoning-aware pruner in the dilution regime (tie on every model tested). No
+reasoning-preserving pruner in the dilution regime (tie on every model tested). No
 universally dominant pruning algorithm emerged.
 → **What to do:** don't shop for a clever compressor. Get the *decision* right
 (prune iff diluted) and use any sensible pruning underneath.
@@ -225,7 +225,7 @@ Useful fields on the report: `strategy`, `total_tokens`, `n_input_chunks` →
 - The dilution recovery is **large on dilution-sensitive (frontier) models and
   ~neutral on dilution-robust ones** — it's a "help where possible, harmless
   elsewhere" default, not a guaranteed universal lift.
-- The win is **generic pruning** under dilution; the reasoning-aware strategy
+- The win is **generic pruning** under dilution; the reasoning-preserving strategy
   does not beat naive density-truncation downstream, it just keeps you safe on
   multi-hop where naive relevance filtering would tax the bridge.
 - Measured on HotpotQA-style multi-hop with lexical grounding; thresholds may

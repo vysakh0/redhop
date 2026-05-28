@@ -2,7 +2,7 @@
 //! we have (no bigger model, no agentic multi-hop)? Hypothesis: the residual miss
 //! is the **second hop** — the bridge passage dense demotes because it is not
 //! query-relevant (the documented second-hop tax). The on-thesis fix is
-//! reasoning-aware rescue: keep dense's reliable top hit as the seed, then promote
+//! reasoning-preserving rescue: keep dense's reliable top hit as the seed, then promote
 //! pool candidates *linked* to that seed (the same `link_strength` Jaccard the
 //! ReasoningPreserving strategy uses) so the bridge can land in the top-3.
 //!

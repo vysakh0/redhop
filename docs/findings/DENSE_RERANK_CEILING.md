@@ -1,6 +1,6 @@
 # The Dense-Rerank Ceiling — 0.80 is the second-hop tax, and no fixed knob breaks it
 
-> **Hypothesis:** dense local rerank plateaus at recall@3 ≈ 0.80 because of the **second-hop tax** (the bridge passage is non-relevant to the query, so a bi-encoder ranks it below the top-3); a reasoning-aware *linkage rescue* — keep dense's reliable top hit, then promote pool candidates linked to it (the `link_strength` Jaccard ReasoningPreserving uses) — should recover the missed second hop without a model upgrade or agentic loop.
+> **Hypothesis:** dense local rerank plateaus at recall@3 ≈ 0.80 because of the **second-hop tax** (the bridge passage is non-relevant to the query, so a bi-encoder ranks it below the top-3); a reasoning-preserving *linkage rescue* — keep dense's reliable top hit, then promote pool candidates linked to it (the `link_strength` Jaccard ReasoningPreserving uses) — should recover the missed second hop without a model upgrade or agentic loop.
 > **Status:** Confirmed (the ceiling *is* the second-hop tax) / **Falsified** (no *fixed-knob* rescue beats dense). The recoverable headroom is real but only reachable per-query — the "no cheap escalation trigger" law reappears on the dense substrate.
 > **Setup:** global HotpotQA pool (3,957 deduped paragraphs), 400 queries — **100% multi-hop** (≥2 gold supporting facts) — BM25 top-50 → BGE-small dense rerank, recall@3, lexical/semantic split at overlap median 0.857. Rescue arm: slot-1 = dense top-1; rank the rest by `dense_cos + β·link_strength(seed, candidate)`; β=0 ≡ dense.
 > **Headline:** dense = 0.801; best *fixed* β = 0.802 (noise), then monotone harm. 148 queries have a gold **in the pool** but missed by dense@3; an **oracle per-query β recovers 26 (18%)** of them with zero hurt — but no single global β extracts that without equal collateral demotion.
@@ -22,7 +22,7 @@ supporting facts in the top-3. The first hop is query-relevant (dense nails it);
 the **second hop is the bridge passage that connects only through the first hop**
 — low query relevance by construction — so a relevance-scoring bi-encoder ranks
 it low. This is the [SECOND_HOP_TAX](SECOND_HOP_TAX.md) on a dense substrate. If so, the
-on-thesis fix is **reasoning-aware rescue** (the ReasoningPreserving mechanism):
+on-thesis fix is **reasoning-preserving rescue** (the ReasoningPreserving mechanism):
 seed on dense's reliable hit, then promote candidates *linked to the seed* rather
 than to the query.
 

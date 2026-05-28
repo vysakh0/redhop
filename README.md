@@ -1,6 +1,6 @@
 <h1 align="center">RedHop</h1>
 
-<p align="center"><b>A reasoning-aware context runtime for RAG.</b></p>
+<p align="center"><b>A reasoning-preserving context runtime for RAG.</b></p>
 
 <p align="center">
 Hand it a document and a question. It chunks, retrieves, and allocates the
@@ -155,7 +155,7 @@ enabling.**
 
 ## Assembly strategies
 
-How the context is built from the retrieved candidates. The default is reasoning-aware;
+How the context is built from the retrieved candidates. The default is reasoning-preserving;
 the others are there when you want a different trade-off.
 
 | `strategy=` | What it does | When |

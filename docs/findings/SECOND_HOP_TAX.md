@@ -151,7 +151,7 @@ query-relevant seeds, then rescue low-relevance chunks that are lexically
 linked to a seed via the bridge entity, drop only unlinked junk)
 recovers a large fraction of the taxed second hops, at a measured and
 modest junk-suppression cost. This is the concrete realization of the
-project's frontier: *reasoning-aware evidence allocation, not relevance
+project's frontier: *reasoning-preserving evidence allocation, not relevance
 optimization.*
 
 ## Honest limits

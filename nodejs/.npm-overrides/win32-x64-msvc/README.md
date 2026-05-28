@@ -1,6 +1,6 @@
 # redhop-win32-x64-msvc
 
-This is the **Windows x64 (MSVC)** native binary for [**redhop**](https://www.npmjs.com/package/redhop) — a reasoning-aware context runtime for RAG (chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report).
+This is the **Windows x64 (MSVC)** native binary for [**redhop**](https://www.npmjs.com/package/redhop) — a reasoning-preserving context runtime for RAG (chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report).
 
 ## You probably don't want to install this directly
 

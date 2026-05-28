@@ -34,7 +34,7 @@ license = "Apache-2.0"
 authors = ["Vysakh Sreenivasan", "RedHop Contributors"]
 repository = "https://github.com/vysakh0/redhop"
 homepage = "https://github.com/vysakh0/redhop"
-description = "RedHop — a reasoning-aware retrieval & context runtime for RAG: chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report."
+description = "RedHop — a reasoning-preserving retrieval & context runtime for RAG: chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report."
 keywords = ["rag", "retrieval", "llm", "context", "nlp"]
 categories = ["text-processing", "science"]
 

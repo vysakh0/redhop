@@ -1,4 +1,4 @@
-# RedHop -- reasoning-aware context runtime for RAG
+# RedHop -- reasoning-preserving context runtime for RAG
 
 > A retrieval & context library for RAG. Hand it a document and a question;
 > it chunks, retrieves, and allocates the context the model should see -- and

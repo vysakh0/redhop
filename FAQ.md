@@ -2,7 +2,7 @@
 
 ### What is RedHop, in one sentence?
 
-A reasoning-aware context runtime for RAG: hand it a document and a question, and it
+A reasoning-preserving context runtime for RAG: hand it a document and a question, and it
 chunks, retrieves, and allocates the context your model should actually see — pruning
 distractors while preserving reasoning-critical evidence — with citations and a
 Decision Report explaining what it did.

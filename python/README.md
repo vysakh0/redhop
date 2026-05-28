@@ -1,6 +1,6 @@
 # RedHop
 
-**A reasoning-aware context runtime for RAG.**
+**A reasoning-preserving context runtime for RAG.**
 
 Hand it a document and a question. RedHop chunks, retrieves, and allocates the
 context your model should actually see — then tells you what it kept, what it dropped,
