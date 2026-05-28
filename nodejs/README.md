@@ -39,22 +39,21 @@ Document.fromFolder("./repo", { recursive: true, gitignore: true,
 
 ## Retrieval — start with the default
 
-We measured 121 labeled queries across 6 real document shapes (legal MSA, API
-ref, financial report, incident runbook, 101-page handbook, multi-file folder)
-and **lexical won or tied on 5 of 6.** Don't reach for a model unless you have
-a measured reason. Full data:
-[CORPUS_CONFIG_MATRIX](https://github.com/vysakh0/redhop/blob/main/docs/findings/CORPUS_CONFIG_MATRIX.md).
+Start at the lexical default — it handles most document QA because the words
+in the question are usually the words in the answer — and climb only when the
+failure shape calls for it.
 
 ```js
-// Default — works for most docs (code, API refs, runbooks, financials, handbooks)
+// Default — most docs (code, API refs, runbooks, financial reports, handbooks)
 Document.fromFile("contract.pdf").context("What is the governing law?");
 
-// Structured docs with parallel clauses (regional overrides, sub-policies):
+// Structured docs with parallel clauses (regional overrides, per-region sub-sections):
 Document.fromFile("msa.pdf", { retrieval: "hybrid", model: "bge-small" })
   .context("What law applies in the UK?", undefined, 1, true);  // neighbors=1, includeHeading=true
 
-// Synonym-heavy corpora — verify on your corpus first; rerank adds 5–10× latency
-// and added 0 measured accuracy on the 6 we tested.
+// Synonym-mismatch corpora (HR FAQs, support tickets where users phrase
+// things very differently from the docs). Cross-encoder adds 5–10× latency
+// — verify it helps on your corpus before enabling.
 Document.fromFile("support.md",
   { retrieval: "hybrid", model: "bge-small", rerank: "cross-encoder" });
 ```

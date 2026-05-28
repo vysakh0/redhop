@@ -133,24 +133,22 @@ line) for citations.
 
 ## Retrieval tiers — no vector database
 
-The lexical default (BM25) is the right pick more often than you'd expect. We
-measured 121 labeled queries across 6 real document shapes (legal MSA, API ref,
-financial report, incident runbook, 101-page handbook, multi-file folder) and
-**lexical won or tied on 5 of 6** — *including the handbook and the financial
-report.* Don't reach for a model unless you have a measured reason. Full data:
-[docs/findings/CORPUS_CONFIG_MATRIX.md](docs/findings/CORPUS_CONFIG_MATRIX.md).
+Retrieval is a ladder. Start at the lexical default — it handles most document
+QA because the words in the question are usually the words in the answer —
+and climb only when the failure shape calls for it. All tiers run in-process,
+with no ANN and no index server.
 
 | `retrieval=` | What it does | Reach for it when |
 | --- | --- | --- |
-| `"lexical"` *(default)* | BM25 — zero dependencies, fully offline, ~50ms warm | the answer shares vocabulary with the query (most document QA — code, API refs, runbooks, financials, handbooks, folders) |
-| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | the doc has near-duplicate clauses (regional overrides, parallel sub-sections) — pair with `context(include_heading=True, neighbors=1)` |
-| `"semantic"` | dense over every chunk, exact cosine | queries and answers share no vocabulary, *and* hybrid isn't enough (rare in practice) |
+| `"lexical"` *(default)* | BM25 — zero dependencies, fully offline, ~50ms warm | most document QA: code, API refs, runbooks, financial reports, handbooks, mixed folders |
+| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | the doc has parallel near-duplicate clauses (regional overrides, per-region sub-sections) — pair with `context(include_heading=True, neighbors=1)` |
+| `"semantic"` | dense over every chunk, exact cosine | queries and answers share no vocabulary at all (rare in practice for document QA) |
 
 Set `rerank="cross-encoder"` to add a second-stage scorer that reads each
-`(query, passage)` pair jointly — useful for true synonym corpora (HR/support
-KBs where users phrase things very differently from the docs). It adds 5–10×
-query latency and added **0 measured accuracy** on the 6 corpora above —
-**verify on your own corpus before enabling.**
+`(query, passage)` pair jointly — useful for true synonym-mismatch corpora
+(HR/support KBs where users phrase things very differently from the docs).
+Adds 5–10× query latency, so **verify it helps on your own corpus before
+enabling.**
 
 → Not sure which to pick? See [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md)
   — the 60-second decision guide with code recipes.

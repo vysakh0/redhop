@@ -86,29 +86,27 @@ for c in ctx.citations:
 
 ## Retrieval tiers — no vector database
 
-The lexical default wins more often than you'd expect. We measured 121 labeled
-queries across 6 real document shapes (legal MSA, API reference, financial
-report, incident runbook, 101-page handbook, multi-file folder) and **lexical
-won or tied on 5 of 6.** Don't reach for a model unless you have a measured
-reason. Full data:
-[CORPUS_CONFIG_MATRIX](https://github.com/vysakh0/redhop/blob/main/docs/findings/CORPUS_CONFIG_MATRIX.md).
+Start at the lexical default — it handles most document QA because the words
+in the question are usually the words in the answer — and climb only when the
+failure shape calls for it. All in-process, no ANN, no index server.
 
 ```python
-# Default — works for most docs (code, API refs, runbooks, financials, handbooks)
+# Default — most docs (code, API refs, runbooks, financial reports, handbooks)
 doc = redhop.Document.from_file("contract.pdf")
 ctx = doc.context("What is the governing law?")
 
-# Structured docs with parallel clauses (regional overrides, sub-policies):
+# Structured docs with parallel clauses (regional overrides, per-region sub-sections):
 doc = redhop.Document.from_file("msa.pdf", retrieval="hybrid", model="bge-small")
 ctx = doc.context("What law applies in the UK?", include_heading=True, neighbors=1)
 
-# Synonym-heavy corpora (HR FAQs, support tickets) — verify on your corpus first;
-# rerank adds 5–10× latency and added 0 measured accuracy on the 6 we tested.
+# Synonym-mismatch corpora (HR FAQs, support tickets where users phrase
+# things very differently from the docs). Cross-encoder adds 5–10× latency
+# — verify it helps on your corpus before enabling.
 doc = redhop.Document.from_file("support.md",
     retrieval="hybrid", model="bge-small", rerank="cross-encoder")
 ```
 
-Three recipes cover the measured space. The full decision guide with trade-offs:
+The 60-second decision guide with trade-offs and query-writing tips:
 [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).
 
 ## Assembly strategies

@@ -4,11 +4,11 @@ If you're not sure which `Document` settings to use, this page tells you in
 60 seconds, based on what the docs you're loading actually look like.
 
 > **The one rule.** **Start with the lexical default. Add knobs only when you
-> have a reason.** We measured this across 121 labeled queries on 6 real
-> document shapes (legal MSA, API ref, financial report, incident runbook,
-> 101-page handbook, and a 5-file folder). The plain default
-> (`Document.from_file(path)`) won or tied on 5 of 6.
-> Full data: [docs/findings/CORPUS_CONFIG_MATRIX.md](findings/CORPUS_CONFIG_MATRIX.md).
+> have a reason.** The plain default — `Document.from_file(path).context(q)` —
+> handles most document QA workloads (code, API refs, runbooks, financial
+> reports, handbooks, mixed folders) because the words in the question are
+> usually the words in the answer. The other configurations exist for
+> specific failure shapes — described below — not as a default progression.
 
 ---
 
@@ -109,31 +109,6 @@ cost. **Verify on your corpus before adopting.**
 
 ---
 
-## What we measured (the matrix)
-
-Pass rates per config × corpus. Best per row in **bold**. Full setup:
-[CORPUS_CONFIG_MATRIX.md](findings/CORPUS_CONFIG_MATRIX.md).
-
-| Corpus | lexical (default) | hybrid+bge | +heading+neighbors | +rerank |
-|---|---|---|---|---|
-| Legal MSA (50p, 8 regional override clauses)  | 26/29 (90%) | 26/29 (90%) | **27/29 (93%)** | 27/29 (93%) |
-| API reference (10p)                            | **17/18 (94%)** | 17/18 (94%) | 17/18 (94%) | 17/18 (94%) |
-| Financial report (41p)                         | **18/18 (100%)** | 18/18 (100%) | 18/18 (100%) | 18/18 (100%) |
-| Incident runbook (44p)                         | **18/18 (100%)** | 18/18 (100%) | 18/18 (100%) | 18/18 (100%) |
-| Engineering handbook (101p)                    | **30/31 (97%)** | 30/31 (97%) | 29/31 (94%) ⬇ | 29/31 (94%) ⬇ |
-| Cross-PDF routing (5-file folder)              | **8/8 (100%)** | 8/8 (100%) | 8/8 (100%) | 8/8 (100%) |
-
-Reading the matrix:
-- **Lexical default is the right pick 5/6 times.**
-- **Hybrid + heading + neighbors wins +1 on the MSA only** (the one shape
-  where regional overrides make heading awareness pay off).
-- **Cross-encoder rerank added 0 pass-rate** anywhere in this battery.
-  It's not free — verify on your own corpus.
-- **Structural expansion can hurt** when the doc is already well-structured
-  (handbook went 97% → 94% with neighbors=1).
-
----
-
 ## Query writing — the part the user controls
 
 The library can only retrieve what your query gives it. Two patterns we
@@ -169,19 +144,19 @@ where hybrid sometimes returns fewer candidates than lexical alone.
 
 ## Trade-offs at a glance
 
-| | Lexical default | Hybrid + bge | + rerank |
+| | Lexical default | Hybrid + bge | + cross-encoder rerank |
 |---|---|---|---|
-| First-run model download | none | ~80MB (bge-small) | +~300MB (cross-encoder) |
+| First-run model download | none | ~80MB (bge-small) | + ~300MB (cross-encoder) |
 | Warm query latency | **~50ms** | ~150ms | ~1000ms |
 | Compile-time deps | none | ONNX runtime | ONNX runtime |
-| Accuracy lift over default (measured) | — | **0 of 6 corpora** | **0 of 6 corpora** |
-| Where it helps | everything in our battery | synonym-only failure mode | synonym-only failure mode |
+| Where it helps | most document QA | regional overrides / parallel sub-sections | synonym-mismatch retrieval |
+| Where it hurts | — | adds latency on docs lexical already handles | adds latency without recovering anything *unless* the failure mode is synonym mismatch |
 
 ---
 
 ## See also
 
-- **The data:** [docs/findings/CORPUS_CONFIG_MATRIX.md](findings/CORPUS_CONFIG_MATRIX.md) — full eval, including the failure analysis.
-- **Context optimization strategy** (different question, when to prune what
+- **Context optimization strategy** (different question — when to prune what
   was retrieved): [docs/retrievaltips.md](retrievaltips.md).
+- **Real-dataset evaluations** (CUAD legal, HotpotQA multi-hop): [docs/findings/](findings/).
 - **API reference:** the `Document.from_file()` and `context()` kwargs.
