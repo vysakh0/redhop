@@ -1,0 +1,363 @@
+# RedHop — reasoning-aware context runtime for RAG
+
+> A retrieval & context library for RAG. Hand it a document and a question;
+> it chunks, retrieves, and allocates the context the model should see — and
+> returns a Decision Report explaining what it kept, what it dropped, and why,
+> with citations back to the source. In-process (Python / Node / Rust over a
+> Rust core), no vector database, no LLM bundled.
+
+This file is for AI coding agents — a single self-contained reference for
+writing correct RedHop code. Canonical docs: https://redhop.dev. Source:
+https://github.com/vysakh0/redhop.
+
+---
+
+## Install
+
+```bash
+pip install redhop                            # Python  — on PyPI
+cargo add redhop --features files,semantic    # Rust    — on crates.io
+npm install redhop                            # Node.js — in review (use pip/cargo for now)
+```
+
+One self-contained install per ecosystem. The default lexical tier needs no
+model; semantic / rerank tiers auto-download a small ONNX model on first use
+(cached locally). The same surface is available in all three languages.
+
+---
+
+## The whole surface — three calls
+
+Load a doc (or folder). Ask. Read the citations and the Decision Report off
+the returned context.
+
+### Python
+
+```python
+import redhop
+
+# 1 · Load — a single file or a whole directory in one index.
+doc = redhop.Document.from_file("contract.pdf")
+# doc = redhop.Document.from_folder("./policies")   # multi-file → same Document
+
+# 2 · Ask — chunking, retrieval, token-budgeting happen in-process.
+ctx = doc.context("What is the governing law?")
+prompt = ctx.text()              # hand to any LLM — no lock-in
+
+# 3 · Show your work.
+for c in ctx.citations:
+    print(c["source"], c["page"], c["heading"])
+    # contract.pdf  12  "9.1 Governing Law"
+
+print(ctx.report)                # Decision Report — see below
+```
+
+### Node.js
+
+```js
+const { Document } = require("redhop");
+
+const doc = Document.fromFile("contract.pdf");
+// const doc = Document.fromFolder("./policies");
+
+const ctx = doc.context("What is the governing law?");
+const prompt = ctx.text;          // (a property, not a method, in JS)
+
+for (const c of ctx.citations) {
+  console.log(c.source, c.page, c.heading);
+}
+
+console.log(ctx.report.rendered); // Decision Report (rendered string)
+```
+
+### Rust
+
+```rust
+use redhop::read_file;
+
+let mut doc = read_file("contract.pdf")?;
+let ctx = doc.context("What is the governing law?")?;
+let prompt = ctx.text();
+
+for c in &ctx.citations {
+    println!("{} {:?} {:?}", c.source, c.page, c.heading);
+}
+```
+
+---
+
+## Loaders
+
+| Method | What it loads |
+|---|---|
+| `Document.from_text(text)` | Text you already have (your own parser/OCR/DB field). |
+| `Document.from_chunks([...])` | Content you already chunked (strings or `{text, id, source}` dicts). |
+| `Document.from_file(path)` | A file on disk — PDF, DOCX, PPTX, XLSX, Markdown, plain text, source code. |
+| `Document.from_bytes(buf, source="x.pdf")` | Bytes you fetched (S3 / GCS / Azure / HTTP / DB blobs). The `source` arg tells the extension-dispatcher how to parse. |
+| `Document.from_folder(path, persist=True)` | A whole directory in one index, with optional incremental on-disk cache at `<path>/.redhop/`. Honors `.gitignore`. Accepts `ignore=[...]` glob patterns. |
+
+Code files are chunked verbatim and labeled with their nearest definition
+(`def foo` / `fn foo` / `class Bar`); prose is sentence-packed. Each format
+carries the structural location it has (page, heading, line) for citations.
+
+---
+
+## The Decision Report — what makes RedHop distinctive
+
+Every call returns a `ctx.report` describing what was kept, what was dropped,
+and *why it chose not to intervene*. This is the thing you don't get from
+other RAG libraries.
+
+```text
+RedHop Decision Report
+══════════════════════
+
+Decision: Auto → passthrough (small context, no intervention needed)
+
+  Why:
+    - 1,240 tokens — below the dilution gate (1,500 tokens)
+    - pruning a small clean context risks dropping reasoning evidence
+  Result:
+    - kept all 8 retrieved chunks
+    - evidence retained 100%, second-hop links preserved
+```
+
+### Fields on `ctx.report` (Python — snake_case)
+
+| Field | Type | Meaning |
+|---|---|---|
+| `auto_decision` | `"passthrough"` \| `"intervene"` | What the size-gated `auto` strategy did |
+| `requested_strategy` | str | What strategy was asked for (default: `"auto"`) |
+| `total_tokens` | int | Tokens in the assembled context |
+| `n_input_chunks` | int | How many chunks retrieval returned |
+| `n_selected` | int | How many chunks made it into the context |
+| `removed_total` | int | `n_input_chunks - n_selected` |
+| `retained_evidence_ratio` | float | Of query-relevant evidence: how much survived |
+| `second_hop_rescue_count` | int | Low-relevance chunks rescued via linkage (multi-hop) |
+| `evidence_density` | float | Query-relevant token fraction of the final context |
+
+In Node these are camelCase: `autoDecision`, `totalTokens`,
+`retainedEvidenceRatio`, `secondHopRescues`, `nExpanded`, `rendered`.
+The Node binding's report surface is narrower than Python's.
+
+### Non-destructive diagnostics
+
+`doc.analyze(query)` returns the same report shape **without** assembling a
+context — use it to decide before acting:
+
+```python
+report = doc.analyze("What is the governing law?")
+print(report.n_input_chunks, report.evidence_density)
+```
+
+---
+
+## Citations
+
+`ctx.citations` is a list of dicts, one per surviving chunk, in reading
+order. Always present; provenance is per-chunk, no separate store.
+
+```python
+{
+  "source":  "contract.pdf",          # file path or label
+  "page":    12,                      # 1-indexed; None if format has no pages
+  "heading": "9.1 Governing Law",     # nearest section/heading title; None if none
+  "line":    312,                     # 1-indexed; for code/text files
+  "text":    "9.1 Governing Law. ..."  # the chunk's verbatim text
+}
+```
+
+In Node, the same shape but `null` instead of `None`:
+`{ source, page, heading, line, text }`.
+
+---
+
+## Choosing a configuration (the actual prescription)
+
+Three configurations cover the practical space. Pick by what your docs look
+like, not by what feels sophisticated.
+
+### Default — most docs
+
+Code, API refs, internal docs, runbooks, financial reports, handbooks, mixed
+folders: the words in the question are usually the words in the answer.
+BM25 lexical retrieval, no model download, ~50ms warm queries.
+
+```python
+doc = redhop.Document.from_file("contract.pdf")
+ctx = doc.context("What is the governing law?")
+```
+
+### Structured docs with parallel clauses
+
+Contracts / policies with parallel sub-sections (an "EU override" of §X, a
+"UK override" of §X, etc.). Heading awareness disambiguates them; a small
+embedding model handles the semantic mapping. ~80MB model download on first
+run; warm queries ~150ms.
+
+```python
+doc = redhop.Document.from_file("msa.pdf", retrieval="hybrid", model="bge-small")
+ctx = doc.context("What law applies in the UK?",
+                  include_heading=True, neighbors=1)
+```
+
+### Synonym-mismatch corpora
+
+HR FAQs, support tickets — where users phrase things very differently from
+the docs ("the worker left" vs "employee terminated"). Cross-encoder reads
+each `(query, passage)` pair jointly. Adds ~300MB model + 5–10× query
+latency. **Verify it helps on your corpus before adopting.**
+
+```python
+doc = redhop.Document.from_file("support.md",
+    retrieval="hybrid", model="bge-small", rerank="cross-encoder")
+```
+
+### Recipe cheatsheet
+
+| If your corpus is… | Use… |
+|---|---|
+| Code, API refs, runbooks, handbooks, financials, folders | `Document.from_file(path).context(q)` |
+| A contract with regional overrides / near-duplicate parallel clauses | `... retrieval="hybrid", model="bge-small"` + `context(q, include_heading=True, neighbors=1)` |
+| HR / support corpora where queries use very different words than the docs | `... rerank="cross-encoder"` (verify; adds 5–10× latency) |
+
+---
+
+## Full parameter surface
+
+### `Document.from_text(text, ...)` / `from_file(path, ...)` / `from_bytes(buf, source=..., ...)`
+
+**Chunking** (index-time — fixed at construction):
+
+| param | default | what it does |
+|---|---|---|
+| `source` | `"document"` | label for the document (used in citations) |
+| `chunk_size` | `128` | target tokens per chunk |
+| `chunk_overlap` | `1` | sentences of overlap between adjacent chunks |
+
+**Retrieval** (index-time):
+
+| param | default | what it does |
+|---|---|---|
+| `retrieval` | `"lexical"` | one of `"lexical"`, `"hybrid"`, `"semantic"` |
+| `model` | `None` | for hybrid/semantic: `"bge-small"` (default), `"bge-base"`, or a path to a local ONNX model |
+| `rerank` | `None` | `"cross-encoder"` to add a second-stage reranker (slow, narrow usefulness) |
+| `candidate_pool` | `50` | how many BM25 candidates to dense-rerank in hybrid mode |
+| `candidate_k` | `20` | how many chunks to consider at assembly time |
+| `embedder_*` | various | full embedder customization (model/tokenizer paths, dim, pooling, prefixes) — see source for details |
+
+**Assembly defaults** (per-call overridable):
+
+| param | default | what it does |
+|---|---|---|
+| `strategy` | `"auto"` | `"auto"` / `"reasoning_preserving"` / `"distractor_filtered"` / `"max_density"` / `"raw_topk"` |
+| `token_budget` | `8192` | hard cap on assembled tokens |
+
+### `doc.context(query, ...)`
+
+Query-time only (no re-indexing):
+
+| param | default | what it does |
+|---|---|---|
+| `budget` | None | overrides `token_budget` for this call |
+| `neighbors` | `0` | also include N adjacent chunks per hit (structural expansion) |
+| `include_heading` | `False` | also include the section's heading text |
+
+### `Document.from_folder(path, ...)`
+
+Same as above, plus:
+
+| param | default | what it does |
+|---|---|---|
+| `recursive` | `True` | descend into subdirectories |
+| `gitignore` | `True` | honor `.gitignore` rules |
+| `ignore` | `[]` | extra glob patterns to skip |
+| `persist` | `False` | write an incremental on-disk index at `<path>/.redhop/index.json` so reload is O(changed files) |
+
+### Lower-level API (you already have chunks)
+
+```python
+ctx = redhop.build_context(
+    query="...",
+    retrieved_chunks=[...],          # list of strings or {"text", "id", "source"} dicts
+    strategy="auto",
+    token_budget=8192,
+)
+
+# Pure diagnostics — non-destructive, doesn't modify the chunks:
+report = redhop.analyze_context(query, chunks)
+econ = redhop.context_economics(query, chunks)   # evidence_density, distractor_ratio, …
+```
+
+---
+
+## Assembly strategies — when each is right
+
+| `strategy=` | When |
+|---|---|
+| `"auto"` *(default)* | Size-gated: passes small contexts through untouched (< 1500 tokens), prunes large/diluted ones. The safe choice. |
+| `"reasoning_preserving"` | Keep query-relevant seeds AND rescue low-relevance chunks linked to a seed (the "second-hop" case in multi-hop QA). Drop only unlinked junk. |
+| `"distractor_filtered"` | Drop everything below a query-grounding bar. Single-hop QA only — taxes the second hop on multi-hop. |
+| `"max_density"` | Greedily pack the densest chunks into the budget. Tight budgets where every token matters. |
+| `"raw_topk"` | Keep retrieval order until the budget fills. Baseline / no optimization. |
+
+The defaults are evidence-backed — see
+https://github.com/vysakh0/redhop/tree/main/docs/findings for the measured
+hypothesis-and-result entries each one traces to.
+
+---
+
+## Query writing — the part config can't fix
+
+Two failure modes neither tier nor rerank resolves:
+
+**One-word polysemy.** `"vendor"` retrieves the vendor-management section, not
+the liability cap (even when both mention vendors). `"settle"` retrieves
+indemnification ("settle a claim"), not arbitration ("settle a dispute"). Fix
+in the query: add one disambiguating word — `"liability cap for vendor"`,
+`"arbitration forum to settle disputes"`.
+
+**Natural-language paraphrase with no shared vocabulary.** `"How long do I
+have to cancel and get my money back?"` against a contract that uses
+*"refund"* and *"termination for convenience"* can return an empty context.
+Fix: use the doc's vocabulary (*"What's the refund window?"*). Or escalate
+to `retrieval="semantic"` (full dense, BM25 bypassed) — returns *something*,
+though not always the right clause.
+
+---
+
+## Known issues
+
+**Hybrid sometimes returns fewer candidates than lexical alone** on natural-
+language paraphrase queries — tracked at
+https://github.com/vysakh0/redhop/issues/1. Cross-encoder rerank does not
+fix it (it reranks an empty list). Workaround: fall back to
+`retrieval="semantic"` for those queries, or rephrase using the doc's
+vocabulary.
+
+---
+
+## What RedHop is NOT
+
+- **Not a hosted SaaS.** Runs in your process, no network calls (except
+  optional first-run model download).
+- **Not agent memory.** Stateless per-query document context, not a
+  per-user fact store.
+- **Not a vector database.** BM25 default; optional dense retrieval is
+  exact cosine over your in-memory chunks, no ANN.
+- **Not a framework.** No chains, no agents, no orchestration. The whole
+  surface is `Document.from_*(...).context(query)`.
+- **Not an LLM provider.** Hands you a prompt string; you call any model.
+
+---
+
+## See also
+
+- Quickstart: https://redhop.dev/docs/quickstart/
+- Choosing a configuration: https://redhop.dev/docs/choosing-a-config/
+- Loaders reference: https://redhop.dev/docs/loading/
+- Options reference: https://redhop.dev/docs/options/
+- vs LangChain / LlamaIndex: https://redhop.dev/docs/comparison/
+- Evidence layer (every finding): https://github.com/vysakh0/redhop/tree/main/docs/findings
+- Source: https://github.com/vysakh0/redhop
+- License: Apache-2.0
