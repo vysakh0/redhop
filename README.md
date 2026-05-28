@@ -24,12 +24,12 @@ hypotheses that failed — lives in the [evidence layer](docs/findings/README.md
 
 ## Install
 
-> **Alpha — 0.1.x.** Python and Rust are published; the npm package is in review.
+> **Alpha — 0.1.x.** Published on PyPI, crates.io, and npm.
 
 ```bash
 pip install redhop                            # Python  — on PyPI
 cargo add redhop --features files,semantic    # Rust    — on crates.io
-npm install redhop                            # Node.js — pending
+npm install redhop                            # Node.js — on npm
 ```
 
 The same surface is available in all three. The embedding/reranking models
