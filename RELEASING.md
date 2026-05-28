@@ -4,7 +4,7 @@ RedHop ships to three ecosystems from this one repo. They're independent — rel
 them one at a time. **Recommended order: PyPI first** (simplest, flagship), then npm,
 then crates.io once there's demand.
 
-All three are pinned to the same version (`0.1.0`). Bump in lockstep:
+All three are pinned to the same version (`0.1.2`). Bump in lockstep:
 `python/pyproject.toml`, `nodejs/package.json`, and `[workspace.package] version` in
 `Cargo.toml` (which the crate-to-crate deps in `[workspace.dependencies]` track —
 update those `version = "…"` too).
