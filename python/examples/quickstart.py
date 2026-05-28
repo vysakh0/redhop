@@ -39,7 +39,8 @@ def main() -> None:
     ctx = doc.context("What nationality was the inventor of the safety lamp?")
 
     # 3. The assembled prompt — drop straight into any LLM provider.
-    #    e.g. openai.responses.create(model="gpt-4o-mini", input=ctx.text())
+    #    e.g. openai.chat.completions.create(model="gpt-4o-mini",
+    #         messages=[{"role": "user", "content": ctx.text()}])
     print("Assembled context (feed this to your LLM):")
     print("-" * 60)
     print(ctx.text())
