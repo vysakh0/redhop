@@ -41,11 +41,11 @@
 //! mass on the other regimes, which is what we want when later phases
 //! make hedged decisions.
 //!
-//! [rd]: redhop_core::RegimeDistribution
+//! [rd]: redhop::core::RegimeDistribution
 
 use std::collections::BTreeMap;
 
-use redhop_core::{
+use redhop::core::{
     ClassificationTrace, ConfidenceProfile, DiagnosticsReport, RegimeClassifier,
     RegimeDistribution, RetrievalRegime, RuleFire,
 };
@@ -642,7 +642,7 @@ fn argmax_regime(probs: &BTreeMap<RetrievalRegime, f32>) -> RetrievalRegime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::ConfidenceProfile;
+    use redhop::core::ConfidenceProfile;
 
     fn cls() -> RuleBasedClassifier {
         RuleBasedClassifier::new()

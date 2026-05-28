@@ -12,10 +12,10 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-//! use redhop_core::{Document, TokenizerBackend};
+//! use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+//! use redhop::core::{Document, TokenizerBackend};
 //! use redhop_pipeline::RedHop;
-//! use redhop_retrieval::Bm25Retriever;
+//! use redhop::retrieval::Bm25Retriever;
 //! # async fn run() -> anyhow::Result<()> {
 //! let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
 //! let chunker = Arc::new(SentenceChunker::new(tok.clone(), 256, 384, 0)?);
@@ -36,7 +36,7 @@
 
 use std::sync::Arc;
 
-use redhop_core::{
+use redhop::core::{
     Budget, Chunker, DiagnosticsEngine, DiagnosticsReport, Document, Error, Query,
     RegimeClassifier, Reranker, RerankerLevel, Result, RetrievalResult, RetrievalState, Retriever,
 };
@@ -369,9 +369,9 @@ pub struct ComponentNames {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-    use redhop_core::TokenizerBackend;
-    use redhop_retrieval::Bm25Retriever;
+    use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+    use redhop::core::TokenizerBackend;
+    use redhop::retrieval::Bm25Retriever;
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()

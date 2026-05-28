@@ -137,7 +137,7 @@ pub fn regret_summary(outcomes: &[QueryOutcome]) -> InterventionRegret {
 mod tests {
     use super::*;
     use crate::runner::ActionTraceEntry;
-    use redhop_core::{RerankerLevel, RetrievalRegime};
+    use redhop::core::{RerankerLevel, RetrievalRegime};
 
     fn outcome(intervened: bool, lift: f32, expected: f32, actual: Option<f32>) -> QueryOutcome {
         QueryOutcome {

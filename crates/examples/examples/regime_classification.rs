@@ -11,8 +11,8 @@
 
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, RegimeClassifier, RetrievalRegime,
     TokenizerBackend,
 };
@@ -21,7 +21,7 @@ use redhop_diagnostics::{
 };
 use redhop_orchestration::RuleBasedClassifier;
 use redhop_pipeline::RedHop;
-use redhop_retrieval::Bm25Retriever;
+use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 
@@ -123,10 +123,10 @@ async fn main() -> anyhow::Result<()> {
             "PostgreSQL provides ACID transactions. Postgres supports SQL and stores rows on disk.",
         ),
     ];
-    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs)?);
+    let chunks = embed_chunks(redhop::core::Chunker::chunk_batch(&chunker, &docs)?);
 
     let mut bm25 = Bm25Retriever::new()?;
-    redhop_core::Retriever::index(&mut bm25, &chunks).await?;
+    redhop::core::Retriever::index(&mut bm25, &chunks).await?;
 
     let lexical: Arc<dyn DiagnosticsEngine> = Arc::new(DefaultDiagnosticsEngine::new());
     let semantic: Arc<dyn DiagnosticsEngine> = Arc::new(SemanticDiagnosticsEngine::new());
@@ -192,9 +192,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn diagnostics_for(
-    candidates: &[redhop_core::RetrievalResult],
+    candidates: &[redhop::core::RetrievalResult],
     query: &Query,
-) -> anyhow::Result<redhop_core::DiagnosticsReport> {
+) -> anyhow::Result<redhop::core::DiagnosticsReport> {
     let lexical = DefaultDiagnosticsEngine::new();
     let semantic = SemanticDiagnosticsEngine::new();
     let l = lexical.diagnose(query, candidates)?;

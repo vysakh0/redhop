@@ -24,13 +24,13 @@ use std::time::Instant;
 
 use parking_lot::RwLock;
 use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
-use redhop_context::grounding_score;
-use redhop_core::{
+use redhop::context::grounding_score;
+use redhop::core::{
     Chunk, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenCount, VectorIndex,
 };
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;
@@ -223,7 +223,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let qv = &q_vecs[qi];
         let query = Query::new(&q.question).with_embedding(qv.clone());
-        let recall_at = |res: &[redhop_core::RetrievalResult], k: usize| -> f64 {
+        let recall_at = |res: &[redhop::core::RetrievalResult], k: usize| -> f64 {
             let hit = res
                 .iter()
                 .take(k)

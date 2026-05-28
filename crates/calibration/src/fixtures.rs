@@ -10,7 +10,7 @@
 //! embedder is used throughout the test/example suite — see
 //! `crates/diagnostics/tests/regime_discrimination.rs`.
 
-use redhop_core::{ChunkId, Document, Embedding, RetrievalRegime};
+use redhop::core::{ChunkId, Document, Embedding, RetrievalRegime};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};
 

@@ -11,7 +11,7 @@ fn main() {
     println!("loaded {} records", records.len());
 
     let corpus =
-        load_corpus::<fn(&NeoTraceRecord) -> Option<redhop_core::RetrievalRegime>>(&records, None)
+        load_corpus::<fn(&NeoTraceRecord) -> Option<redhop::core::RetrievalRegime>>(&records, None)
             .unwrap();
     println!(
         "corpus: {} unique queries, {} docs",

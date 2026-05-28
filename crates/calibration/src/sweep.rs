@@ -24,7 +24,7 @@
 
 use std::sync::Arc;
 
-use redhop_core::{
+use redhop::core::{
     DiagnosticsEngine, RegimeClassifier, Reranker, RerankerLevel, Result, Retriever,
 };
 use redhop_orchestration::{ConservativeRulePolicy, Policy, PolicyThresholds};

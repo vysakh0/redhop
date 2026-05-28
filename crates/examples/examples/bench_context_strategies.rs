@@ -26,9 +26,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_context::{build_context, ContextConfig, ContextStrategy};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::context::{build_context, ContextConfig, ContextStrategy};
+use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };

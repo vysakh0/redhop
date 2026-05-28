@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Document, Query, TokenizerBackend};
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Document, Query, TokenizerBackend};
 use redhop_pipeline::RedHop;
-use redhop_retrieval::Bm25Retriever;
+use redhop::retrieval::Bm25Retriever;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_report(r: &redhop_core::DiagnosticsReport) {
+fn print_report(r: &redhop::core::DiagnosticsReport) {
     println!("  lexical_grounding:      {:?}", r.lexical_grounding);
     println!("  chunk_purity:           {:?}", r.chunk_purity);
     println!("  answer_density:         {:?}", r.answer_density);

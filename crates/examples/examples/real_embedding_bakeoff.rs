@@ -26,9 +26,9 @@ use redhop_calibration::{
     embedder_bench::{compare_embedders, render_comparison},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
 };
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{ChunkId, Chunker, EmbeddingProvider, TokenizerBackend};
-use redhop_embeddings::{EmbedderConfig, HashingProvider, OnnxEmbedder};
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{ChunkId, Chunker, EmbeddingProvider, TokenizerBackend};
+use redhop::embeddings::{EmbedderConfig, HashingProvider, OnnxEmbedder};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

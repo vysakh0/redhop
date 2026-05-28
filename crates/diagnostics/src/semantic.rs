@@ -33,7 +33,7 @@
 //! - **`semantic_distractor_ratio`** — fraction of chunks with
 //!   `cosine(query, chunk) < threshold`. *Lower is better.*
 
-use redhop_core::{
+use redhop::core::{
     DiagnosticsEngine, DiagnosticsReport, Embedding, Query, Result, RetrievalResult,
 };
 
@@ -256,7 +256,7 @@ fn unit_clamp(x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop::core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, emb: Vec<f32>) -> RetrievalResult {
         RetrievalResult {

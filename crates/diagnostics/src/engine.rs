@@ -4,7 +4,7 @@
 //! single [`DiagnosticsReport`]. Configurable thresholds drive warning
 //! emission; the actual numeric values are always reported.
 
-use redhop_core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
+use redhop::core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
 
 use crate::metrics;
 
@@ -120,7 +120,7 @@ impl DiagnosticsEngine for DefaultDiagnosticsEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop::core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, score: f32) -> RetrievalResult {
         RetrievalResult {

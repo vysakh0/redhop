@@ -39,7 +39,7 @@
 
 use std::collections::HashMap;
 
-use redhop_core::{Chunk, ChunkId, DiagnosticsWarning};
+use redhop::core::{Chunk, ChunkId, DiagnosticsWarning};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -528,7 +528,7 @@ fn push_warning(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::TokenCount;
+    use redhop::core::TokenCount;
 
     fn chunk(id: &str, text: &str) -> Chunk {
         Chunk::new(id, text, "doc", TokenCount(text.split_whitespace().count()))

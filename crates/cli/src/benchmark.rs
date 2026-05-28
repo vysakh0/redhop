@@ -20,8 +20,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use redhop_context::{build_context, ContextConfig};
-use redhop_core::Query;
+use redhop::context::{build_context, ContextConfig};
+use redhop::core::Query;
 use serde::Deserialize;
 use serde_json::json;
 

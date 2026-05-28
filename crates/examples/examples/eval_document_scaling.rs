@@ -18,7 +18,7 @@
 
 use std::time::Instant;
 
-use redhop_document::Document;
+use redhop::document::Document;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

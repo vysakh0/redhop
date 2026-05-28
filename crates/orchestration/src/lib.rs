@@ -25,8 +25,8 @@
 //!    when they're wrapping an external retriever — pulling Tantivy via
 //!    `redhop-retrieval` would be wasteful.
 //!
-//! [cp]: redhop_core::ConfidenceProfile
-//! [rr]: redhop_core::RetrievalResult
+//! [cp]: redhop::core::ConfidenceProfile
+//! [rr]: redhop::core::RetrievalResult
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

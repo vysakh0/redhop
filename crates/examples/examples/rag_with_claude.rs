@@ -12,11 +12,11 @@
 use std::process::Command;
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Document, Query, TokenizerBackend};
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Document, Query, TokenizerBackend};
 use redhop_pipeline::RedHop;
-use redhop_reranking::LexicalGroundingReranker;
-use redhop_retrieval::Bm25Retriever;
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 
 fn corpus() -> Vec<Document> {
     vec![
@@ -72,7 +72,7 @@ fn corpus() -> Vec<Document> {
     ]
 }
 
-fn build_prompt(query: &str, results: &[redhop_core::RetrievalResult]) -> String {
+fn build_prompt(query: &str, results: &[redhop::core::RetrievalResult]) -> String {
     let mut s = String::new();
     s.push_str(
         "You will answer a question using ONLY the evidence chunks below. \

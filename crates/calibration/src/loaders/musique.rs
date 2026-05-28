@@ -41,7 +41,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::{ChunkId, Chunker, Document, Embedding, Error, Result, RetrievalRegime};
+use redhop::core::{ChunkId, Chunker, Document, Embedding, Error, Result, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};
@@ -213,8 +213,8 @@ pub fn default_regime(ex: &MuSiQueExample) -> RetrievalRegime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-    use redhop_core::TokenizerBackend;
+    use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+    use redhop::core::TokenizerBackend;
     use std::sync::Arc;
 
     const MINI_MUSIQUE: &str = r#"[

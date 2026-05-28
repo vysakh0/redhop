@@ -23,8 +23,8 @@ use std::sync::Arc;
 use redhop_calibration::dataset::LabeledCorpus;
 use redhop_calibration::loaders::hotpotqa::{default_regime as hp_regime, HotpotQADataset};
 use redhop_calibration::loaders::musique::{default_regime as mq_regime, MuSiQueDataset};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Chunk, ChunkId, Chunker, TokenizerBackend};
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Chunk, ChunkId, Chunker, TokenizerBackend};
 use rust_stemmers::{Algorithm, Stemmer};
 use unicode_segmentation::UnicodeSegmentation;
 

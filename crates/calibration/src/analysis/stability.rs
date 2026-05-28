@@ -172,7 +172,7 @@ mod tests {
     use super::*;
     use crate::runner::{ActionTraceEntry, QueryOutcome};
     use crate::sweep::SweepRow;
-    use redhop_core::{RerankerLevel, RetrievalRegime};
+    use redhop::core::{RerankerLevel, RetrievalRegime};
 
     fn mk_row(min_p: f32) -> SweepRow {
         SweepRow {

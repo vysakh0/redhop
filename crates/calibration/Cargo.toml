@@ -6,18 +6,15 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Calibration and evaluation harness for RedHop adaptive retrieval"
+publish = false
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-redhop-core          = { workspace = true }
-redhop-chunking      = { workspace = true }
-redhop-retrieval     = { workspace = true }
-redhop-reranking     = { workspace = true }
+redhop               = { workspace = true }
 redhop-diagnostics   = { workspace = true }
 redhop-orchestration = { workspace = true }
-redhop-storage       = { workspace = true }
 unicode-segmentation = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }

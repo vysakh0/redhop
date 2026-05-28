@@ -10,9 +10,9 @@
 
 use std::sync::Arc;
 
-use redhop_core::EmbeddingProvider;
-use redhop_document::{Document, DocumentConfig, RetrievalMode};
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::core::EmbeddingProvider;
+use redhop::document::{Document, DocumentConfig, RetrievalMode};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 
 const DIM: usize = 384;
 const DEFAULT_MODEL: &str =

@@ -1,24 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/core",
-    "crates/chunking",
-    "crates/retrieval",
-    "crates/reranking",
+    "crates/redhop",
     "crates/calibration",
-    "crates/context",
-    "crates/document",
     "crates/diagnostics",
-    "crates/embeddings",
-    "crates/files",
     "crates/observability",
     "crates/orchestration",
-    "crates/storage",
     "crates/pipeline",
     "crates/benchmarks",
     "crates/examples",
     "crates/cli",
-    "crates/redhop",
 ]
 
 [workspace.lints.rust]
@@ -48,22 +39,18 @@ keywords = ["rag", "retrieval", "llm", "context", "nlp"]
 categories = ["text-processing", "science"]
 
 [workspace.dependencies]
-# Workspace-internal crates. The `version` is required for crates.io: on publish,
-# cargo strips the path and depends on the registry version, so these must track
-# `[workspace.package] version` above.
-redhop-core        = { path = "crates/core", version = "0.1.0" }
-redhop-chunking    = { path = "crates/chunking", version = "0.1.0" }
-redhop-retrieval   = { path = "crates/retrieval", version = "0.1.0" }
-redhop-reranking   = { path = "crates/reranking", version = "0.1.0" }
-redhop-calibration    = { path = "crates/calibration", version = "0.1.0" }
-redhop-context        = { path = "crates/context", version = "0.1.0" }
-redhop-document       = { path = "crates/document", version = "0.1.0" }
-redhop-diagnostics    = { path = "crates/diagnostics", version = "0.1.0" }
-redhop-embeddings     = { path = "crates/embeddings", version = "0.1.0" }
-redhop-observability  = { path = "crates/observability", version = "0.1.0" }
-redhop-orchestration  = { path = "crates/orchestration", version = "0.1.0" }
-redhop-storage        = { path = "crates/storage", version = "0.1.0" }
-redhop-pipeline       = { path = "crates/pipeline", version = "0.1.0" }
+# The single published crate. Internal workspace members (cli, calibration,
+# diagnostics, observability, orchestration, pipeline, benchmarks) depend on
+# `redhop` directly — there is no more `redhop-core` / `redhop-context` / …
+# as separate crates; those are now modules: `redhop::core`, `redhop::context`, …
+redhop               = { path = "crates/redhop" }
+# Internal (publish = false). Dev / research / orchestration code that stays
+# in the workspace but is not part of the published Rust API.
+redhop-diagnostics   = { path = "crates/diagnostics" }
+redhop-observability = { path = "crates/observability" }
+redhop-orchestration = { path = "crates/orchestration" }
+redhop-pipeline      = { path = "crates/pipeline" }
+redhop-calibration   = { path = "crates/calibration" }
 
 # Core runtime / concurrency
 tokio    = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }

@@ -22,7 +22,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::RetrievalRegime;
+use redhop::core::RetrievalRegime;
 use serde::{Deserialize, Serialize};
 
 use crate::runner::QueryOutcome;
@@ -152,7 +152,7 @@ pub fn confusion_matrix(outcomes: &[QueryOutcome]) -> RegimeConfusionMatrix {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::RerankerLevel;
+    use redhop::core::RerankerLevel;
 
     fn outcome(true_r: RetrievalRegime, predicted: Option<RetrievalRegime>) -> QueryOutcome {
         QueryOutcome {

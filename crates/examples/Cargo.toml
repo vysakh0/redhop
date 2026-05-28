@@ -14,23 +14,16 @@ path = "src/lib.rs"
 [features]
 default = []
 # Enables ONNX-backed examples (real embedding bakeoff + cross-encoder).
-# Pulls the onnx feature through redhop-embeddings + redhop-reranking.
-onnx = ["redhop-embeddings/onnx", "redhop-reranking/onnx"]
+# Pulls the merged `semantic` feature on `redhop`.
+onnx = ["redhop/semantic"]
 
 [dependencies]
-redhop-core        = { workspace = true }
-redhop-chunking    = { workspace = true }
-redhop-retrieval   = { workspace = true }
-redhop-reranking   = { workspace = true }
-redhop-diagnostics = { workspace = true }
-redhop-storage     = { workspace = true }
-redhop-embeddings    = { workspace = true }
-redhop-pipeline      = { workspace = true }
+redhop               = { workspace = true, features = ["files"] }
+redhop-diagnostics   = { workspace = true }
 redhop-orchestration = { workspace = true }
+redhop-pipeline      = { workspace = true }
 redhop-calibration   = { workspace = true }
 redhop-observability = { workspace = true }
-redhop-context       = { workspace = true }
-redhop-document      = { workspace = true }
 tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }

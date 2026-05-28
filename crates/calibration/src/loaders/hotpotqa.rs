@@ -49,7 +49,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::{Chunk, ChunkId, Chunker, Document, Embedding, Error, Result, RetrievalRegime};
+use redhop::core::{Chunk, ChunkId, Chunker, Document, Embedding, Error, Result, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};
@@ -245,8 +245,8 @@ fn longest_contiguous_overlap(haystack: &[&str], needle: &[&str]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-    use redhop_core::TokenizerBackend;
+    use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+    use redhop::core::TokenizerBackend;
     use std::sync::Arc;
 
     const MINI_HOTPOTQA: &str = r#"[

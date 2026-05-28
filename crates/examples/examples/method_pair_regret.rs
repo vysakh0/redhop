@@ -24,7 +24,7 @@ use redhop_calibration::{
     loaders::neotrace::{parse_path, NeoTraceRecord},
     runner::{ActionTraceEntry, QueryOutcome},
 };
-use redhop_core::{RerankerLevel, RetrievalRegime};
+use redhop::core::{RerankerLevel, RetrievalRegime};
 
 const NEOTRACE_PATH: &str =
     "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";

@@ -20,10 +20,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
-use redhop_context::{grounding_score, link_strength};
-use redhop_core::{Chunk, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenCount};
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_retrieval::Bm25Retriever;
+use redhop::context::{grounding_score, link_strength};
+use redhop::core::{Chunk, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenCount};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;

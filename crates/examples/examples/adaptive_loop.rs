@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, ChunkId, DiagnosticsEngine, Document, Embedding, Query, RerankerLevel,
     Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
 };
@@ -28,8 +28,8 @@ use redhop_diagnostics::{
 };
 use redhop_orchestration::RuleBasedClassifier;
 use redhop_pipeline::RedHop;
-use redhop_reranking::LexicalGroundingReranker;
-use redhop_retrieval::Bm25Retriever;
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 
 /// A retriever wrapper that re-attaches embeddings after the base
 /// retriever's call. BM25 indexes do not persist arbitrary binary blobs,
@@ -175,10 +175,10 @@ async fn main() -> anyhow::Result<()> {
             "PostgreSQL provides ACID transactions. Postgres supports SQL and stores rows on disk.",
         ),
     ];
-    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs)?);
+    let chunks = embed_chunks(redhop::core::Chunker::chunk_batch(&chunker, &docs)?);
 
     let mut bm25 = Bm25Retriever::new()?;
-    redhop_core::Retriever::index(&mut bm25, &chunks).await?;
+    redhop::core::Retriever::index(&mut bm25, &chunks).await?;
     let retriever: Arc<dyn Retriever> =
         Arc::new(EmbedAttachingRetriever::new(Arc::new(bm25), &chunks));
 

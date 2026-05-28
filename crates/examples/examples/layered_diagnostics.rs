@@ -18,14 +18,14 @@
 
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, Retriever, TokenizerBackend,
 };
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use redhop_retrieval::Bm25Retriever;
+use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 
@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
         ),
     ];
 
-    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs)?);
+    let chunks = embed_chunks(redhop::core::Chunker::chunk_batch(&chunker, &docs)?);
 
     let mut bm25 = Bm25Retriever::new()?;
     bm25.index(&chunks).await?;
@@ -207,9 +207,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn attach_embeddings(
-    mut results: Vec<redhop_core::RetrievalResult>,
+    mut results: Vec<redhop::core::RetrievalResult>,
     indexed: &[Chunk],
-) -> Vec<redhop_core::RetrievalResult> {
+) -> Vec<redhop::core::RetrievalResult> {
     for r in &mut results {
         if let Some(c) = indexed.iter().find(|c| c.id == r.chunk.id) {
             r.chunk.embedding = c.embedding.clone();

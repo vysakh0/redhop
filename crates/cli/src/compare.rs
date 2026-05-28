@@ -5,8 +5,8 @@ use std::collections::HashSet;
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use redhop_context::{build_context, ContextConfig};
-use redhop_core::Query;
+use redhop::context::{build_context, ContextConfig};
+use redhop::core::Query;
 use serde_json::json;
 
 use crate::io::{parse_strategy, RetrievalInput};

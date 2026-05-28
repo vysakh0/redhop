@@ -35,8 +35,8 @@ use redhop_calibration::{
     reliability::reliability_diagram,
     runner::{run_query, QueryOutcome, RunnerConfig},
 };
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, EmbeddingProvider, Query,
     RegimeClassifier, Reranker, RerankerLevel, Result as CoreResult, RetrievalResult, Retriever,
     TokenizerBackend, VectorIndex,
@@ -44,11 +44,11 @@ use redhop_core::{
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop_orchestration::{ConservativeRulePolicy, Policy, RuleBasedClassifier};
-use redhop_reranking::LexicalGroundingReranker;
-use redhop_retrieval::{Bm25Retriever, DenseRetriever};
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::{Bm25Retriever, DenseRetriever};
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

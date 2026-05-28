@@ -37,9 +37,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_context::{build_context, grounding_score, ContextConfig, ContextStrategy};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::context::{build_context, grounding_score, ContextConfig, ContextStrategy};
+use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };

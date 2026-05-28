@@ -21,7 +21,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use redhop_core::{
+use redhop::core::{
     Chunk, ChunkId, DiagnosticsEngine, DiagnosticsReport, Query, Reranker, RerankerLevel,
     Result as CoreResult, RetrievalAction, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown, StopReason, TokenCount,

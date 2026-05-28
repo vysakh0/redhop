@@ -39,7 +39,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::{ChunkId, Document, Error, Result, RetrievalRegime};
+use redhop::core::{ChunkId, Document, Error, Result, RetrievalRegime};
 use serde::{Deserialize, Serialize};
 
 use crate::dataset::{LabeledCorpus, LabeledQuery};
@@ -468,7 +468,7 @@ fn to_outcome(
         retrieval_calls_adaptive: retrieval_calls.max(1),
         rerank_calls_adaptive: rerank_calls,
         sum_actual_gain,
-        final_reranker_level: redhop_core::RerankerLevel::None,
+        final_reranker_level: redhop::core::RerankerLevel::None,
         action_trace,
     }
 }

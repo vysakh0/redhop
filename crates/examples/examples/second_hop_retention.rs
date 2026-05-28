@@ -35,9 +35,9 @@ use std::sync::Arc;
 use redhop_calibration::dataset::LabeledCorpus;
 use redhop_calibration::loaders::hotpotqa::{default_regime as hotpot_regime, HotpotQADataset};
 use redhop_calibration::loaders::musique::{default_regime as musique_regime, MuSiQueDataset};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_context::{build_context, ContextConfig, ContextStrategy};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::context::{build_context, ContextConfig, ContextStrategy};
+use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };

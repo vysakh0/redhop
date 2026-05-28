@@ -4,11 +4,11 @@
 //!
 //! Run: cargo run -p redhop-examples --example ce_smoke --features onnx --release
 
-use redhop_core::{
+use redhop::core::{
     Chunk, ChunkId, Query, Reranker, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
-use redhop_reranking::OnnxCrossEncoder;
+use redhop::reranking::OnnxCrossEncoder;
 
 const CE_MODEL: &str =
     "/Users/vysakh/projects/neorag/models/ms-marco-MiniLM-L-6-v2/onnx/model.onnx";

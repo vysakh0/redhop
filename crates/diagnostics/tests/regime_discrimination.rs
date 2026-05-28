@@ -24,7 +24,7 @@
 //! test is hermetic. The same embedder is used for both the query and the
 //! chunks, so the cosines are computed against a consistent vector space.
 
-use redhop_core::{
+use redhop::core::{
     Chunk, ChunkId, DiagnosticsEngine, Embedding, Query, RetrievalMethod, RetrievalResult, Score,
     ScoreBreakdown, TokenCount,
 };

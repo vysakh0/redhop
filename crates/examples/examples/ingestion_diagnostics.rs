@@ -13,7 +13,7 @@
 //! Run with:
 //!     cargo run -p redhop-examples --example ingestion_diagnostics
 
-use redhop_core::{Chunk, TokenCount};
+use redhop::core::{Chunk, TokenCount};
 use redhop_diagnostics::{diagnose_ingestion, IngestionReport, IngestionThresholds};
 
 fn chunk(id: &str, text: &str) -> Chunk {

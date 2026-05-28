@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use redhop_core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
+use redhop::core::{DiagnosticsEngine, DiagnosticsReport, Query, Result, RetrievalResult};
 
 /// A diagnostics engine that runs a list of underlying engines and merges
 /// their reports.
@@ -62,7 +62,7 @@ impl DiagnosticsEngine for LayeredDiagnosticsEngine {
 mod tests {
     use super::*;
     use crate::{DefaultDiagnosticsEngine, SemanticDiagnosticsEngine};
-    use redhop_core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop::core::{Chunk, Embedding, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn r(text: &str, emb: Option<Vec<f32>>) -> RetrievalResult {
         let mut c = Chunk::new(

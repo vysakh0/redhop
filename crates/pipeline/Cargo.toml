@@ -9,31 +9,25 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Top-level RedHop facade composing chunking, retrieval, reranking, and diagnostics"
+publish = false
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-redhop-core        = { workspace = true }
-redhop-chunking    = { workspace = true }
-redhop-retrieval   = { workspace = true }
-redhop-reranking   = { workspace = true }
-redhop-diagnostics = { workspace = true }
+redhop               = { workspace = true }
+redhop-diagnostics   = { workspace = true }
 redhop-orchestration = { workspace = true }
-redhop-storage     = { workspace = true }
-tokio              = { workspace = true }
-async-trait        = "0.1"
-tracing            = { workspace = true }
-anyhow             = { workspace = true }
+tokio                = { workspace = true }
+async-trait          = "0.1"
+tracing              = { workspace = true }
+anyhow               = { workspace = true }
 
 [dev-dependencies]
 parking_lot          = "0.12"
 unicode-segmentation = { workspace = true }
-redhop-chunking      = { workspace = true }
-redhop-retrieval     = { workspace = true }
-redhop-storage       = { workspace = true }
+redhop               = { workspace = true }
 redhop-diagnostics   = { workspace = true }
-redhop-reranking     = { workspace = true }
 
 [lints]
 workspace = true

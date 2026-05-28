@@ -22,11 +22,11 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
-use redhop_context::grounding_score;
-use redhop_core::{Chunk, ChunkId, EmbeddingProvider, Query, Retriever, TokenCount, VectorIndex};
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::context::grounding_score;
+use redhop::core::{Chunk, ChunkId, EmbeddingProvider, Query, Retriever, TokenCount, VectorIndex};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;
@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     async fn embed_batched(
         bge: &Arc<dyn EmbeddingProvider>,
         texts: &[String],
-    ) -> anyhow::Result<Vec<redhop_core::Embedding>> {
+    ) -> anyhow::Result<Vec<redhop::core::Embedding>> {
         let mut out = Vec::with_capacity(texts.len());
         for batch in texts.chunks(64) {
             out.extend(bge.embed(batch).await?);
@@ -198,7 +198,7 @@ async fn main() -> anyhow::Result<()> {
             Arc::new(HybridRetriever::rrf(vec![bm25.clone(), dense.clone()], n));
 
         let q = Query::new(&it.question).with_embedding(q_vecs[qi].clone());
-        let recall_of = |res: &[redhop_core::RetrievalResult]| -> f64 {
+        let recall_of = |res: &[redhop::core::RetrievalResult]| -> f64 {
             let got = res
                 .iter()
                 .take(TOP_K)

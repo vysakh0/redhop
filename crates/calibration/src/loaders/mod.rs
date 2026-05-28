@@ -28,7 +28,7 @@
 //!   points the loader at a local file they already have.
 //!
 //! [lc]: crate::dataset::LabeledCorpus
-//! [rr]: redhop_core::RetrievalRegime
+//! [rr]: redhop::core::RetrievalRegime
 
 pub mod hotpotqa;
 pub mod jsonl;

@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use redhop_core::RetrievalRegime;
+use redhop::core::RetrievalRegime;
 
 use crate::analysis::{confusion_matrix, regret_summary};
 use crate::economics::{economics, selective_escalation_roi, CostModel};
@@ -369,7 +369,7 @@ fn esc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{RerankerLevel, RetrievalRegime};
+    use redhop::core::{RerankerLevel, RetrievalRegime};
 
     fn outcome(regime: RetrievalRegime, rerank: u32, lift: f32) -> QueryOutcome {
         QueryOutcome {

@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Chunker, Document, Query, Retriever, TokenizerBackend};
-use redhop_retrieval::Bm25Retriever;
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Chunker, Document, Query, Retriever, TokenizerBackend};
+use redhop::retrieval::Bm25Retriever;
 
 fn corpus(n_docs: usize) -> Vec<Document> {
     let templates = [

@@ -27,9 +27,9 @@
 //!    only when this one demonstrably falls short.
 //!
 //! [act]: crate::actuator::Actuator
-//! [bud]: redhop_core::Budget
+//! [bud]: redhop::core::Budget
 
-use redhop_core::{AbstainReason, RetrievalAction, RetrievalRegime, RetrievalState, StopReason};
+use redhop::core::{AbstainReason, RetrievalAction, RetrievalRegime, RetrievalState, StopReason};
 
 /// Output of a policy decision.
 #[derive(Debug, Clone)]
@@ -41,7 +41,7 @@ pub struct PolicyDecision {
     pub expected_gain: f32,
     /// Human-readable rationale; goes into [`TakenAction::rationale`].
     ///
-    /// [`TakenAction::rationale`]: redhop_core::TakenAction::rationale
+    /// [`TakenAction::rationale`]: redhop::core::TakenAction::rationale
     pub rationale: String,
 }
 
@@ -76,7 +76,7 @@ pub struct PolicyThresholds {
     /// Additive top-k step. The orchestrator caps the new top-k at
     /// [`Budget::max_top_k`][bud].
     ///
-    /// [bud]: redhop_core::Budget::max_top_k
+    /// [bud]: redhop::core::Budget::max_top_k
     pub top_k_step: usize,
     /// Below this measured `actual_gain` from the previous action,
     /// terminate with `Stop { NoImprovement }`. Defaults to `0.02` —
@@ -364,7 +364,7 @@ fn expected_gain_expand(p_ambiguous: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{
+    use redhop::core::{
         Budget, ConfidenceProfile, DiagnosticsReport, Query, RegimeDistribution, RerankerLevel,
         RetrievalRegime,
     };
@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn distractor_heavy_does_not_escalate_twice() {
         let mut s = state_with_regime(&[(RetrievalRegime::DistractorHeavy, 0.6)]);
-        s.history.push(redhop_core::TakenAction {
+        s.history.push(redhop::core::TakenAction {
             action: RetrievalAction::EscalateReranker {
                 from: RerankerLevel::None,
                 to: RerankerLevel::Lexical,
@@ -541,7 +541,7 @@ mod tests {
     #[test]
     fn previous_action_with_no_gain_stops_loop() {
         let mut s = state_with_regime(&[(RetrievalRegime::Ambiguous, 0.7)]);
-        s.history.push(redhop_core::TakenAction {
+        s.history.push(redhop::core::TakenAction {
             action: RetrievalAction::ExpandTopK { from: 10, to: 18 },
             iteration: 0,
             expected_gain: 0.04,

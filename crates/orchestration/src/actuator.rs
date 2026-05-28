@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use redhop_core::{
+use redhop::core::{
     ActionCost, Error, Reranker, RerankerLevel, Result, RetrievalAction, RetrievalResult,
     RetrievalState, Retriever,
 };
@@ -71,7 +71,7 @@ pub trait Actuator: Send + Sync {
     /// `state`; the orchestrator merges the [`ActuationOutcome`] into
     /// the state and records a [`TakenAction`][ta].
     ///
-    /// [ta]: redhop_core::TakenAction
+    /// [ta]: redhop::core::TakenAction
     async fn apply(
         &self,
         action: &RetrievalAction,
@@ -84,7 +84,7 @@ pub trait Actuator: Send + Sync {
     /// the policy for no benefit.
     async fn initial_retrieve(
         &self,
-        query: &redhop_core::Query,
+        query: &redhop::core::Query,
         top_k: usize,
     ) -> Result<Vec<RetrievalResult>>;
 
@@ -137,7 +137,7 @@ impl DefaultActuator {
 impl Actuator for DefaultActuator {
     async fn initial_retrieve(
         &self,
-        query: &redhop_core::Query,
+        query: &redhop::core::Query,
         top_k: usize,
     ) -> Result<Vec<RetrievalResult>> {
         self.retriever.retrieve(query, top_k).await
@@ -223,7 +223,7 @@ fn elapsed_ms(start: Instant) -> u64 {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use redhop_core::{Chunk, ChunkId, Query, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop::core::{Chunk, ChunkId, Query, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
     use std::sync::Mutex;
 
     struct MockRetriever {
@@ -308,7 +308,7 @@ mod tests {
             let outcome = act
                 .apply(
                     &RetrievalAction::Stop {
-                        reason: redhop_core::StopReason::Confident,
+                        reason: redhop::core::StopReason::Confident,
                     },
                     &state,
                 )

@@ -6,9 +6,11 @@
 //! what it dropped, and why. Plus citations back to the source. No vector
 //! database, no LLM, all in-process.
 //!
-//! This crate is the high-level façade: it re-exports the [`Document`] surface
-//! and the types you handle, over the focused `redhop-*` crates. The defaults are
-//! evidence-backed (see the benchmarks/findings), so the short path just works.
+//! This is the published Rust crate — every public surface lives here.
+//! Internally it is organized as modules ([`core`], [`chunking`],
+//! [`retrieval`], [`context`], [`document`], optionally [`embeddings`],
+//! [`reranking`], [`files`]); the most-used types are re-exported at the
+//! crate root so the short path just works.
 //!
 //! ```no_run
 //! # fn main() -> redhop::Result<()> {
@@ -38,23 +40,39 @@
 //! ## Feature flags
 //!
 //! - `files` — built-in parsers + [`read_file`]/[`read_bytes`].
-//! - `semantic` — the bundled ONNX embedding backend (see [`embeddings`]) for the
-//!   dense/hybrid retrieval tiers; inject it with [`Document::with_embedder`].
+//! - `semantic` — the bundled ONNX embedding backend ([`embeddings`]) and
+//!   cross-encoder reranker ([`reranking`]) for dense/hybrid retrieval;
+//!   inject the embedder with [`Document::with_embedder`].
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-// ── High-level surface ──────────────────────────────────────────────────────
-pub use redhop_document::{Document, DocumentConfig, RetrievalMode, Section};
+// ── Modules (the consolidated workspace; each was its own crate pre-0.2) ────
+pub mod chunking;
+pub mod context;
+pub mod core;
+pub mod document;
+pub mod retrieval;
+pub mod storage;
+
+#[cfg(feature = "files")]
+pub mod files;
+#[cfg(feature = "semantic")]
+pub mod embeddings;
+#[cfg(feature = "semantic")]
+pub mod reranking;
+
+// ── High-level surface re-exports ───────────────────────────────────────────
+pub use crate::document::{Document, DocumentConfig, RetrievalMode, Section};
 
 // The built context + its telemetry, and the lower-level context entry points.
-pub use redhop_context::{
+pub use crate::context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
     link_strength, AutoDecision, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
 };
 
 // Core types you handle directly.
-pub use redhop_core::{
+pub use crate::core::{
     Chunk, ChunkId, Embedding, Error, Query, Result, RetrievalMethod, RetrievalResult, Score,
     ScoreBreakdown, TokenCount,
 };
@@ -62,22 +80,7 @@ pub use redhop_core::{
 /// Pluggable abstractions for advanced use — custom retrievers, embedders,
 /// chunkers, or tokenizers behind the same contracts RedHop uses internally.
 pub mod traits {
-    pub use redhop_core::{Chunker, EmbeddingProvider, Retriever, TokenizerBackend};
-}
-
-/// Built-in document parsers (PDF/DOCX/PPTX/XLSX + text/code/markdown). Requires
-/// the `files` feature; this is what powers [`read_file`] / [`read_bytes`].
-#[cfg(feature = "files")]
-pub mod files {
-    pub use redhop_files::{extract, extract_bytes, ExtractError, ExtractedDoc, Section};
-}
-
-/// The bundled ONNX embedding backend + model registry for the semantic/hybrid
-/// tiers. Requires the `semantic` feature. Build an embedder and inject it via
-/// [`Document::with_embedder`].
-#[cfg(feature = "semantic")]
-pub mod embeddings {
-    pub use redhop_embeddings::*;
+    pub use crate::core::{Chunker, EmbeddingProvider, Retriever, TokenizerBackend};
 }
 
 mod load;

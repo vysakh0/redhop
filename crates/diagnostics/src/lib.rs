@@ -23,8 +23,8 @@
 //! cold start, OCR'd corpora), and adds *strictly more* signal when
 //! embeddings are available. No tier overwrites the other.
 //!
-//! [`Query`]: redhop_core::Query
-//! [`Chunk`]: redhop_core::Chunk
+//! [`Query`]: redhop::core::Query
+//! [`Chunk`]: redhop::core::Chunk
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

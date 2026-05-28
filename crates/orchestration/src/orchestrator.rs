@@ -35,13 +35,13 @@
 //! interpretable. Phase 9 may revisit the weighting once we have judge-
 //! model labels to calibrate against.
 //!
-//! [bud]: redhop_core::Budget
-//! [hist]: redhop_core::RetrievalState::history
+//! [bud]: redhop::core::Budget
+//! [hist]: redhop::core::RetrievalState::history
 //! [act]: crate::actuator::Actuator
 
 use std::sync::Arc;
 
-use redhop_core::{
+use redhop::core::{
     Budget, DiagnosticsEngine, DiagnosticsReport, Query, RegimeClassifier, Result, RetrievalState,
     TakenAction,
 };
@@ -97,8 +97,8 @@ impl AdaptiveOrchestrator {
     /// `state.history`. Inspect it (or call [`state.terminal_action()`][term]
     /// and [`state.abstained()`][abs]) to learn how the loop exited.
     ///
-    /// [term]: redhop_core::RetrievalState::terminal_action
-    /// [abs]: redhop_core::RetrievalState::abstained
+    /// [term]: redhop::core::RetrievalState::terminal_action
+    /// [abs]: redhop::core::RetrievalState::abstained
     pub async fn run(&self, query: Query) -> Result<RetrievalState> {
         // ---- Initial retrieval ----
         let candidates = self
@@ -232,7 +232,7 @@ mod tests {
     use super::*;
     use crate::{ConservativeRulePolicy, DefaultActuator, RuleBasedClassifier};
     use async_trait::async_trait;
-    use redhop_core::{
+    use redhop::core::{
         Chunk, ChunkId, DiagnosticsEngine, Query, Reranker, RerankerLevel, RetrievalAction,
         RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown, StopReason, TokenCount,
     };

@@ -20,13 +20,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parking_lot::RwLock;
-use redhop_chunking::WhitespaceTokenizer;
-use redhop_core::{
+use redhop::chunking::WhitespaceTokenizer;
+use redhop::core::{
     Chunk, ChunkId, EmbeddingProvider, Query, Retriever, TokenCount, TokenizerBackend, VectorIndex,
 };
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 use serde::Deserialize;
 
 const DIM: usize = 384;
@@ -98,7 +98,7 @@ impl Stat {
     }
 }
 
-fn rank_of(results: &[redhop_core::RetrievalResult], id: &str) -> Option<usize> {
+fn rank_of(results: &[redhop::core::RetrievalResult], id: &str) -> Option<usize> {
     results
         .iter()
         .position(|r| r.chunk.id.as_str() == id)

@@ -11,16 +11,16 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use redhop_context::{
+use redhop::context::{
     analyze_context as rh_analyze, build_context as rh_build, context_economics as rh_economics,
     filter_context as rh_filter, grounding_score as rh_grounding, link_strength as rh_link,
     AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy,
 };
-use redhop_core::{
+use redhop::core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
-use redhop_document::{
+use redhop::document::{
     Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
 };
 
@@ -474,7 +474,7 @@ fn link_strength(a: &str, b: &str) -> f32 {
 }
 
 /// Build the Python `BuiltContext` wrapper from a Rust one.
-fn py_built(ctx: redhop_context::BuiltContext) -> BuiltContext {
+fn py_built(ctx: redhop::context::BuiltContext) -> BuiltContext {
     let text = ctx.text();
     let chunks = ctx.chunks.iter().map(|c| c.text.clone()).collect();
     let cites = cites_of(&ctx.chunks);
@@ -490,7 +490,7 @@ fn py_built(ctx: redhop_context::BuiltContext) -> BuiltContext {
     }
 }
 
-fn to_py<T>(r: redhop_core::Result<T>) -> PyResult<T> {
+fn to_py<T>(r: redhop::core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
@@ -564,8 +564,8 @@ fn apply_dense_embedder(
     // if given; `model=` is ignored.
     if let (Some(m), Some(t)) = (embedder_model.as_ref(), embedder_tokenizer.as_ref()) {
         let pooling = match embedder_pooling.as_deref() {
-            None | Some("cls") => redhop_embeddings::Pooling::Cls,
-            Some("mean") => redhop_embeddings::Pooling::Mean,
+            None | Some("cls") => redhop::embeddings::Pooling::Cls,
+            Some("mean") => redhop::embeddings::Pooling::Mean,
             Some(other) => {
                 return Err(PyValueError::new_err(format!(
                     "unknown embedder_pooling '{other}'; use 'cls' (default, e.g. BGE) or 'mean' \
@@ -573,11 +573,11 @@ fn apply_dense_embedder(
                 )))
             }
         };
-        let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
-            let mut config = redhop_embeddings::EmbedderConfig::bge(embedder_dim);
+        let load = |prefix: &str| -> PyResult<redhop::embeddings::OnnxEmbedder> {
+            let mut config = redhop::embeddings::EmbedderConfig::bge(embedder_dim);
             config.pooling = pooling;
             config.prefix = prefix.to_string();
-            redhop_embeddings::OnnxEmbedder::load(m, t, config)
+            redhop::embeddings::OnnxEmbedder::load(m, t, config)
                 .map_err(|e| PyValueError::new_err(e.to_string()))
         };
         return match (embedder_query_prefix, embedder_passage_prefix) {
@@ -594,11 +594,11 @@ fn apply_dense_embedder(
 
     // Path B — model-by-name, auto-downloaded from HuggingFace (cached). With
     // neither `model` nor explicit paths, fall back to the recommended default.
-    let name = model.as_deref().unwrap_or(redhop_embeddings::DEFAULT_MODEL);
+    let name = model.as_deref().unwrap_or(redhop::embeddings::DEFAULT_MODEL);
     let resolved =
-        redhop_embeddings::resolve_model(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let load = |prefix: &str| -> PyResult<redhop_embeddings::OnnxEmbedder> {
-        redhop_embeddings::OnnxEmbedder::load(
+        redhop::embeddings::resolve_model(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let load = |prefix: &str| -> PyResult<redhop::embeddings::OnnxEmbedder> {
+        redhop::embeddings::OnnxEmbedder::load(
             &resolved.model_path,
             &resolved.tokenizer_path,
             resolved.config(prefix),
@@ -641,10 +641,10 @@ fn apply_dense_embedder(
 #[cfg(feature = "semantic")]
 fn apply_reranker(doc: RhDocument, rerank: Option<String>) -> PyResult<RhDocument> {
     let Some(name) = rerank else { return Ok(doc) };
-    let r = redhop_embeddings::resolve_reranker(&name)
+    let r = redhop::embeddings::resolve_reranker(&name)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let ce =
-        redhop_reranking::OnnxCrossEncoder::load(&r.model_path, &r.tokenizer_path, r.max_seq_len)
+        redhop::reranking::OnnxCrossEncoder::load(&r.model_path, &r.tokenizer_path, r.max_seq_len)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(doc.with_reranker(std::sync::Arc::new(ce)))
 }
@@ -667,13 +667,13 @@ fn apply_reranker(doc: RhDocument, rerank: Option<String>) -> PyResult<RhDocumen
 /// clear, helpful error.
 #[cfg(feature = "files")]
 fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let doc = redhop_files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let doc = redhop::files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok((doc.source, to_rh_sections(doc.sections)))
 }
 
 /// Map `redhop-files` sections to the binding's `RhSection`.
 #[cfg(feature = "files")]
-fn to_rh_sections(sections: Vec<redhop_files::Section>) -> Vec<RhSection> {
+fn to_rh_sections(sections: Vec<redhop::files::Section>) -> Vec<RhSection> {
     sections
         .into_iter()
         .map(|s| RhSection {
@@ -690,7 +690,7 @@ fn to_rh_sections(sections: Vec<redhop_files::Section>) -> Vec<RhSection> {
 /// citation source.
 #[cfg(feature = "files")]
 fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let doc = redhop_files::extract_bytes(data, name)
+    let doc = redhop::files::extract_bytes(data, name)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok((doc.source, to_rh_sections(doc.sections)))
 }

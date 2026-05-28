@@ -8,18 +8,18 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Thin evaluation/observability CLI for RedHop context optimization"
+publish = false
 
 [[bin]]
 name = "redhop"
 path = "src/main.rs"
 
 [dependencies]
-redhop-core    = { workspace = true }
-redhop-context = { workspace = true }
-serde          = { workspace = true }
-serde_json     = { workspace = true }
-anyhow         = { workspace = true }
-clap           = { version = "4.5", features = ["derive"] }
+redhop     = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+anyhow     = { workspace = true }
+clap       = { version = "4.5", features = ["derive"] }
 
 [lints]
 workspace = true

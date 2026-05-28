@@ -4,10 +4,10 @@
 
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Document, TokenizerBackend};
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Document, TokenizerBackend};
 use redhop_pipeline::RedHop;
-use redhop_retrieval::Bm25Retriever;
+use redhop::retrieval::Bm25Retriever;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

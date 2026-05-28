@@ -29,8 +29,8 @@ use redhop_calibration::{
     report::{render_pareto, render_reliability, render_sweep_table},
     ThresholdSweep,
 };
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
     Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend,
 };
@@ -38,8 +38,8 @@ use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_orchestration::RuleBasedClassifier;
-use redhop_reranking::LexicalGroundingReranker;
-use redhop_retrieval::Bm25Retriever;
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 
 /// Mini HotpotQA-shaped fixture. Real users replace this with a path to
 /// the actual HotpotQA dev set. The shape matches the canonical

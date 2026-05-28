@@ -6,12 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Retrieval-state observation and regime classification for RedHop"
+publish = false
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-redhop-core = { workspace = true }
+redhop      = { workspace = true }
 serde       = { workspace = true }
 tracing     = { workspace = true }
 async-trait = "0.1"

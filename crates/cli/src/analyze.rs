@@ -3,8 +3,8 @@
 
 use anyhow::Context as _;
 use clap::Args as ClapArgs;
-use redhop_context::{analyze_context, ContextConfig};
-use redhop_core::Query;
+use redhop::context::{analyze_context, ContextConfig};
+use redhop::core::Query;
 
 use crate::io::RetrievalInput;
 

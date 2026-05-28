@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 
-use redhop_core::{
+use redhop::core::{
     ChunkId, DiagnosticsEngine, Query, RegimeClassifier, Reranker, RerankerLevel, Result,
     RetrievalAction, RetrievalRegime, RetrievalResult, Retriever, TakenAction,
 };
@@ -239,7 +239,7 @@ pub fn default_runner_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redhop_core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
+    use redhop::core::{Chunk, RetrievalMethod, Score, ScoreBreakdown, TokenCount};
 
     fn rr(id: &str) -> RetrievalResult {
         RetrievalResult {

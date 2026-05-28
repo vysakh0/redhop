@@ -9,7 +9,7 @@ repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report. No vector DB, in-process. The high-level Rust API."
+description = "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report. No vector DB, in-process."
 
 [lib]
 path = "src/lib.rs"
@@ -17,27 +17,53 @@ path = "src/lib.rs"
 [features]
 default = []
 # Built-in document parsers (PDF/DOCX/PPTX/XLSX + text/code/markdown) and the
-# read_file / read_bytes / read_folder loaders.
-files = ["dep:redhop-files", "dep:ignore", "dep:serde", "dep:serde_json"]
-# The semantic retrieval tier: the bundled ONNX embedding backend + model
-# registry, plus the cross-encoder reranker (both share the ONNX runtime).
-semantic = [
-    "dep:redhop-embeddings",
-    "redhop-embeddings/onnx",
-    "dep:redhop-reranking",
-    "redhop-reranking/onnx",
+# `read_file` / `read_bytes` / `read_folder` loaders.
+files = [
+    "dep:docx-rs",
+    "dep:calamine",
+    "dep:zip",
+    "dep:quick-xml",
+    "dep:pdf-extract",
+    "dep:ignore",
 ]
+# Semantic retrieval tier: bundled ONNX embedder + model registry, plus the
+# cross-encoder reranker. Shares one ONNX runtime / one tokenizers dep.
+semantic = ["dep:ort", "dep:tokenizers", "dep:hf-hub"]
 
 [dependencies]
-redhop-core       = { workspace = true }
-redhop-context    = { workspace = true }
-redhop-document   = { workspace = true }
-redhop-files      = { path = "../files", optional = true }
-redhop-embeddings = { workspace = true, optional = true }
-redhop-reranking  = { workspace = true, optional = true }
-ignore            = { version = "0.4", optional = true }
-serde             = { version = "1", features = ["derive"], optional = true }
-serde_json        = { version = "1", optional = true }
+# ── always-on (the lexical-only build pulls only these) ──
+serde                = { workspace = true }
+serde_json           = { workspace = true }
+thiserror            = { workspace = true }
+tracing              = { workspace = true }
+unicode-segmentation = { workspace = true }
+regex                = { workspace = true }
+rayon                = { workspace = true }
+tantivy              = { workspace = true }
+tokio                = { workspace = true }
+futures              = { workspace = true }
+async-trait          = "0.1"
+parking_lot          = "0.12"
+rust-stemmers        = "1.2"
+lru                  = "0.12"
+
+# ── `files` feature (document parsers) ──
+docx-rs     = { version = "0.4", optional = true }
+calamine    = { version = "0.32", optional = true }
+zip         = { version = "2", default-features = false, features = ["deflate"], optional = true }
+quick-xml   = { version = "0.37", optional = true }
+pdf-extract = { version = "0.7", optional = true }
+ignore      = { version = "0.4", optional = true }
+
+# ── `semantic` feature (ONNX embedder + cross-encoder reranker) ──
+# `ort` is pinned exactly: the 2.x release-candidate line churns transitive
+# (ndarray) constraints between RCs. We avoid the ndarray feature entirely
+# and construct tensors from plain (shape, Vec) pairs to keep deps minimal.
+ort        = { version = "=2.0.0-rc.10", optional = true, default-features = false, features = ["std", "download-binaries"] }
+tokenizers = { version = "0.20", optional = true, default-features = false, features = ["onig"] }
+# Auto-downloads curated ONNX models by name. Sync `ureq` + `rustls-tls`
+# (no OpenSSL) for clean Linux/Windows/macOS builds.
+hf-hub     = { version = "0.5", optional = true, default-features = false, features = ["ureq", "rustls-tls"] }
 
 [lints]
 workspace = true

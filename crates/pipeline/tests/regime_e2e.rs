@@ -16,8 +16,8 @@
 
 use std::sync::Arc;
 
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, ChunkId, DiagnosticsEngine, Document, Embedding, Query, RegimeClassifier,
     RetrievalMethod, RetrievalRegime, RetrievalResult, Score, ScoreBreakdown, TokenizerBackend,
 };
@@ -26,7 +26,7 @@ use redhop_diagnostics::{
 };
 use redhop_orchestration::RuleBasedClassifier;
 use redhop_pipeline::RedHop;
-use redhop_retrieval::Bm25Retriever;
+use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 
@@ -112,9 +112,9 @@ fn embed_chunks(chunks: Vec<Chunk>) -> Vec<Chunk> {
 /// BM25 strips chunk embeddings on retrieval. Reattach them from the
 /// indexed-side cache so the semantic tier has something to work with.
 fn attach_embeddings(
-    state: redhop_core::RetrievalState,
+    state: redhop::core::RetrievalState,
     indexed: &[Chunk],
-) -> redhop_core::RetrievalState {
+) -> redhop::core::RetrievalState {
     let mut s = state;
     for r in &mut s.candidates {
         if let Some(c) = indexed.iter().find(|c| c.id == r.chunk.id) {
@@ -127,10 +127,10 @@ fn attach_embeddings(
 async fn build_rag(docs: Vec<Document>) -> (RedHop, Vec<Chunk>) {
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok.clone(), 40, 60, 0).unwrap();
-    let chunks = embed_chunks(redhop_core::Chunker::chunk_batch(&chunker, &docs).unwrap());
+    let chunks = embed_chunks(redhop::core::Chunker::chunk_batch(&chunker, &docs).unwrap());
 
     let mut bm25 = Bm25Retriever::new().unwrap();
-    redhop_core::Retriever::index(&mut bm25, &chunks)
+    redhop::core::Retriever::index(&mut bm25, &chunks)
         .await
         .unwrap();
 
@@ -185,7 +185,7 @@ async fn classify_query(
     query_text: &str,
     rag: &RedHop,
     indexed: &[Chunk],
-) -> redhop_core::RegimeDistribution {
+) -> redhop::core::RegimeDistribution {
     let query = Query::new(query_text).with_embedding(embed(query_text));
     let state = rag.retrieve_with_state(query, 4).await.unwrap();
     let state = attach_embeddings(state, indexed);
@@ -316,7 +316,7 @@ fn _unused() -> (
         ScoreBreakdown::default(),
         ChunkId::new("x"),
         RetrievalResult::new(
-            Chunk::new("a", "a", "doc", redhop_core::TokenCount(1)),
+            Chunk::new("a", "a", "doc", redhop::core::TokenCount(1)),
             Score {
                 value: 0.0,
                 method: RetrievalMethod::Lexical,

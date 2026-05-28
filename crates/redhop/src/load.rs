@@ -212,7 +212,7 @@ fn apply_embedder(_doc: Document, _o: &LoadOptions) -> Result<Document> {
 /// Attach a second-stage cross-encoder reranker named by `o.rerank`.
 #[cfg(feature = "semantic")]
 fn apply_reranker(doc: Document, name: &str) -> Result<Document> {
-    use redhop_reranking::OnnxCrossEncoder;
+    use crate::reranking::OnnxCrossEncoder;
     use std::sync::Arc;
     let r = crate::embeddings::resolve_reranker(name)?;
     let ce = OnnxCrossEncoder::load(&r.model_path, &r.tokenizer_path, r.max_seq_len)?;
@@ -285,7 +285,7 @@ mod files_loaders {
     use crate::{Chunk, ChunkId};
     use std::path::{Path, PathBuf};
 
-    fn convert(sections: Vec<redhop_files::Section>) -> Vec<Section> {
+    fn convert(sections: Vec<crate::files::Section>) -> Vec<Section> {
         sections
             .into_iter()
             .map(|s| Section {
@@ -298,7 +298,7 @@ mod files_loaders {
     }
 
     fn extract_path(path: &Path) -> Result<(String, Vec<Section>)> {
-        let d = redhop_files::extract(path).map_err(|e| Error::Other(e.to_string()))?;
+        let d = crate::files::extract(path).map_err(|e| Error::Other(e.to_string()))?;
         Ok((d.source, convert(d.sections)))
     }
 
@@ -321,7 +321,7 @@ mod files_loaders {
     /// Parse bytes into a [`Document`] with options — the on-ramp for S3 / GCS /
     /// Azure Blob / HTTP / DB blobs (fetch with your own client).
     pub fn read_bytes_with(data: &[u8], name: &str, o: &LoadOptions) -> Result<Document> {
-        let d = redhop_files::extract_bytes(data, name).map_err(|e| Error::Other(e.to_string()))?;
+        let d = crate::files::extract_bytes(data, name).map_err(|e| Error::Other(e.to_string()))?;
         build(vec![(d.source, convert(d.sections))], o)
     }
 

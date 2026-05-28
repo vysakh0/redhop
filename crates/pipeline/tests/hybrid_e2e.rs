@@ -6,13 +6,13 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
     Chunk, Chunker, Document, Embedding, Query, Retriever, TokenizerBackend, VectorIndex,
 };
-use redhop_reranking::LexicalGroundingReranker;
-use redhop_retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 use unicode_segmentation::UnicodeSegmentation;
 
 const DIM: usize = 64;
@@ -94,14 +94,14 @@ async fn hybrid_pipeline_end_to_end() {
     // Rerank with lexical grounding — order should remain stable here since
     // the top result already has full grounding, but we exercise the path.
     let reranker = LexicalGroundingReranker::default();
-    let reranked = redhop_core::Reranker::rerank(&reranker, &q, cand.clone(), 4)
+    let reranked = redhop::core::Reranker::rerank(&reranker, &q, cand.clone(), 4)
         .await
         .unwrap();
     assert_eq!(reranked[0].chunk.source, "tokio");
 
     // Diagnostics
     let engine = redhop_diagnostics::DefaultDiagnosticsEngine::new();
-    let report = redhop_core::DiagnosticsEngine::diagnose(&engine, &q, &reranked).unwrap();
+    let report = redhop::core::DiagnosticsEngine::diagnose(&engine, &q, &reranked).unwrap();
     assert!(report.lexical_grounding.unwrap() > 0.0);
     assert!(report.retrieval_confidence.is_some());
 }

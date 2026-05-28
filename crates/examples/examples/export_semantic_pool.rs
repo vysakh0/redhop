@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
-use redhop_context::grounding_score;
+use redhop::context::grounding_score;
 
 const SAMPLE: usize = 400; // identical to semantic_local_rerank
 

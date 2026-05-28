@@ -10,8 +10,8 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use redhop_core::EmbeddingProvider;
-use redhop_embeddings::{CachedEmbedder, HashingProvider};
+use redhop::core::EmbeddingProvider;
+use redhop::embeddings::{CachedEmbedder, HashingProvider};
 
 fn corpus(n: usize) -> Vec<String> {
     let templates = [

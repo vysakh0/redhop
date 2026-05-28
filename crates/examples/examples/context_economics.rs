@@ -29,14 +29,14 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-use redhop_chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop_context::{build_context, ContextConfig, ContextStrategy};
-use redhop_core::{
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::context::{build_context, ContextConfig, ContextStrategy};
+use redhop::core::{
     ChunkId, Chunker, Embedding, EmbeddingProvider, Query, Retriever, TokenizerBackend, VectorIndex,
 };
-use redhop_embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_retrieval::DenseRetriever;
-use redhop_storage::{ChunkStore, FlatVectorIndex};
+use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
+use redhop::retrieval::DenseRetriever;
+use redhop::storage::{ChunkStore, FlatVectorIndex};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     dense.index(&chunks).await?;
 
     // Pre-retrieve the wide net for each query once.
-    let mut wide_nets: Vec<(Vec<ChunkId>, Vec<redhop_core::RetrievalResult>)> = Vec::new();
+    let mut wide_nets: Vec<(Vec<ChunkId>, Vec<redhop::core::RetrievalResult>)> = Vec::new();
     for lq in &corpus.queries {
         if lq.gold_chunk_ids.is_empty() {
             continue;

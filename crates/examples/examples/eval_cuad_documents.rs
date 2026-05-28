@@ -25,8 +25,8 @@
 
 use std::time::Instant;
 
-use redhop_context::{ContextConfig, ContextStrategy};
-use redhop_document::{Document, DocumentConfig};
+use redhop::context::{ContextConfig, ContextStrategy};
+use redhop::document::{Document, DocumentConfig};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -222,9 +222,9 @@ fn main() -> anyhow::Result<()> {
                 end_to_end.add_recall(r);
                 end_to_end.sum_final_tokens += ctx.report.total_tokens as f64;
                 match ctx.report.auto_decision() {
-                    redhop_context::AutoDecision::Passthrough => end_to_end.passthrough += 1,
-                    redhop_context::AutoDecision::Prune => end_to_end.prune += 1,
-                    redhop_context::AutoDecision::NotAuto => {}
+                    redhop::context::AutoDecision::Passthrough => end_to_end.passthrough += 1,
+                    redhop::context::AutoDecision::Prune => end_to_end.prune += 1,
+                    redhop::context::AutoDecision::NotAuto => {}
                 }
 
                 // Retrieval-only ceiling.

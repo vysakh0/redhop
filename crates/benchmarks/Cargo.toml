@@ -12,12 +12,9 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-redhop-core        = { workspace = true }
-redhop-chunking    = { workspace = true }
-redhop-retrieval   = { workspace = true }
+redhop             = { workspace = true, features = ["semantic"] }
 redhop-pipeline    = { workspace = true }
 redhop-diagnostics = { workspace = true }
-redhop-embeddings  = { workspace = true }
 tokio              = { workspace = true }
 
 [dev-dependencies]

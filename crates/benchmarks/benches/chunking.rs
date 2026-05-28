@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use redhop_chunking::{AdaptiveChunker, FixedChunker, SentenceChunker, WhitespaceTokenizer};
-use redhop_core::{Chunker, Document, TokenizerBackend};
+use redhop::chunking::{AdaptiveChunker, FixedChunker, SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Chunker, Document, TokenizerBackend};
 
 fn doc(n_sentences: usize) -> Document {
     let one = "The quick brown fox jumps over the lazy dog and other animals nearby. ";

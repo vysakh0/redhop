@@ -27,24 +27,21 @@ path = "src/lib.rs"
 # Semantic retrieval tier: the local embedding model behind retrieval="hybrid"
 # and retrieval="semantic". Off by default so the base wheel stays lean; the
 # published `redhop[semantic]` wheel is built with it.
-semantic = ["redhop-embeddings/onnx", "dep:redhop-reranking", "redhop-reranking/onnx"]
+semantic = ["redhop/semantic"]
 # Deprecated alias for `semantic` — kept so existing build commands still work.
 onnx = ["semantic"]
 # `redhop[files]` parsing tier: Document.from_file/from_folder for
 # DOCX/PPTX/XLSX/PDF (text/markdown/code work without it).
-files = ["dep:redhop-files"]
+files = ["redhop/files"]
 
 [dependencies]
-redhop-core       = { path = "../crates/core" }
-redhop-context    = { path = "../crates/context" }
-redhop-document   = { path = "../crates/document" }
-redhop-embeddings = { path = "../crates/embeddings", default-features = false }
-redhop-reranking  = { path = "../crates/reranking", optional = true }
-redhop-files      = { path = "../crates/files", optional = true }
-ignore          = "0.4"
-serde           = { version = "1", features = ["derive"] }
-serde_json      = "1"
-pyo3           = { version = "0.23", features = ["extension-module", "abi3-py39"] }
+# Single consolidated dep. `default-features = false` keeps the base wheel
+# lean — `semantic` / `files` get pulled in only by the matching pyo3 features.
+redhop     = { path = "../crates/redhop", default-features = false }
+ignore     = "0.4"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+pyo3       = { version = "0.23", features = ["extension-module", "abi3-py39"] }
 
 [lints]
 workspace = true
