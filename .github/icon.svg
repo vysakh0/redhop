@@ -1,20 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- Crimson rounded-square background (matches --sl-color-accent #e11d48).
-       Same color in light + dark so the icon reads as a brand mark, not a
-       theme-following glyph. -->
   <rect width="64" height="64" rx="14" fill="#e11d48"/>
-
-  <!-- "rH" hand-drawn as stroked paths so we never depend on a font being
-       installed -- favicons get rasterized at 16x16 / 32x32 and some
-       renderers (Safari preview, screenshot tools, certain browser
-       favicon caches) drop SVG <text> fallback fonts entirely. -->
-  <g fill="none" stroke="#ffffff" stroke-width="7"
-     stroke-linecap="round" stroke-linejoin="round">
-    <!-- lowercase 'r': vertical stem + small arc at the top -->
+  <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M14 28 L14 48"/>
     <path d="M14 30 Q14 22 22 22 Q26 22 26 28"/>
-
-    <!-- uppercase 'H': two vertical stems + horizontal crossbar -->
     <path d="M37 16 L37 48"/>
     <path d="M51 16 L51 48"/>
     <path d="M37 32 L51 32"/>
