@@ -1,0 +1,21 @@
+{
+  "name": "redhop-win32-x64-msvc",
+  "version": "0.1.0",
+  "description": "Windows x64 (MSVC) native binary for redhop — a reasoning-aware context runtime for RAG. Installed automatically by the `redhop` package on Windows x64; not intended to be installed directly.",
+  "license": "Apache-2.0",
+  "author": "Vysakh Sreenivasan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vysakh0/redhop.git",
+    "directory": "nodejs"
+  },
+  "homepage": "https://github.com/vysakh0/redhop#readme",
+  "bugs": {
+    "url": "https://github.com/vysakh0/redhop/issues"
+  },
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "main": "redhop.win32-x64-msvc.node",
+  "files": ["redhop.win32-x64-msvc.node"],
+  "keywords": ["rag", "retrieval", "llm", "context", "nlp", "embeddings", "napi-rs", "windows", "native-binary"]
+}

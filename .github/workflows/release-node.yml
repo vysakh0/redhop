@@ -29,14 +29,16 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          # Both macOS targets on the arm64 runner (x86_64 cross-compiles cleanly with
-          # Apple's toolchain) — avoids the scarce/queued macos-13 Intel runners.
-          - { host: macos-14,         target: x86_64-apple-darwin }
-          - { host: macos-14,         target: aarch64-apple-darwin }
-          - { host: ubuntu-latest,    target: x86_64-unknown-linux-gnu }
-          # aarch64-Linux on a native ARM runner (no QEMU → ring compiles natively),
-          # matching the PyPI wheels. Proven working in the Python release.
-          - { host: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          # ── 0.1.0 Windows retry (TEMPORARY) ────────────────────────────────────
+          # These 4 platform packages already shipped at 0.1.0 (immutable on npm).
+          # Re-enabled them after `redhop-win32-x64-msvc@0.1.0` lands. The Windows
+          # publish previously hit npm's spam-detection on a metadata-thin platform
+          # package; this run retries with enriched metadata from .npm-overrides/.
+          # ──────────────────────────────────────────────────────────────────────
+          # - { host: macos-14,         target: x86_64-apple-darwin }
+          # - { host: macos-14,         target: aarch64-apple-darwin }
+          # - { host: ubuntu-latest,    target: x86_64-unknown-linux-gnu }
+          # - { host: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { host: windows-latest,   target: x86_64-pc-windows-msvc }
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +83,20 @@ jobs:
         run: |
           npx napi create-npm-dir -t .
           npx napi artifacts --dir artifacts
-          npx napi prepublish -t npm --skip-gh-release
-      - name: Publish
-        run: npm publish --access public
+          # ── 0.1.0 Windows retry (TEMPORARY) ────────────────────────────────────
+          # Override the napi-generated thin metadata for the Windows platform
+          # package with full legitimacy signals (repository / homepage / bugs /
+          # author + a substantive README). The earlier attempt hit npm's spam
+          # detector with the 86 B placeholder README and 8-field package.json.
+          cp .npm-overrides/win32-x64-msvc/package.json npm/win32-x64-msvc/package.json
+          cp .npm-overrides/win32-x64-msvc/README.md    npm/win32-x64-msvc/README.md
+      - name: Publish Windows platform package only
+        # ── 0.1.0 Windows retry (TEMPORARY) ──────────────────────────────────────
+        # The other 3 platform packages and the `redhop` meta are already on the
+        # registry at 0.1.0 (immutable). Skipping `napi prepublish` and the meta
+        # `npm publish` — they'd 403 against the immutable versions. We publish
+        # ONLY the Windows package directly. Restore the full publish flow before
+        # the next release.
+        run: |
+          cd npm/win32-x64-msvc
+          npm publish --access public
