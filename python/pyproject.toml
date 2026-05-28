@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "redhop"
-version = "0.1.0"
+version = "0.1.2"
 description = "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report. In-process, no vector DB."
 readme = "README.md"
 requires-python = ">=3.9"
