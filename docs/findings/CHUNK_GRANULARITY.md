@@ -47,7 +47,7 @@ chunk size directly.
 
 Reading:
 - **Granularity is the lever, not the strategy.** Across the board `raw_topk` ≥
-  `reasoning_preserving` (re-confirming the optimizer isn't the moat); the big
+  `reasoning_preserving` (re-confirming the optimizer isn't the advantage); the big
   movement comes from chunk size, not strategy.
 - **128 is the robust default.** It's the sweet spot at a tight budget (multi-hop
   77%, vs 54% at 256) and ties the best at a large budget (CUAD 83–84%). Very fine

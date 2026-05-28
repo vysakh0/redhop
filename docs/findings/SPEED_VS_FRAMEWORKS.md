@@ -3,7 +3,7 @@
 > **Hypothesis:** the `Document` runtime is faster than the big Python frameworks
 > on the real `from_text → context` path — and "even dense rerank is faster."
 > **Status:** **Largely falsified as a speed claim.** Compared *like-for-like within
-> the same retrieval scenario*, RedHop has **no setup-speed moat**: lexical-vs-lexical
+> the same retrieval scenario*, RedHop has **no setup-speed advantage**: lexical-vs-lexical
 > all three index in well under a second; semantic-vs-semantic RedHop's local rerank
 > is **slower** to set up (ONNX embedding). The earlier "RedHop ~0.02s vs ~7s" gap was
 > RedHop's **lexical default** vs the frameworks' **vector default** — a *defaults*
@@ -17,7 +17,7 @@
 > (sentence-transformers) for LC/LI. CPU only, single machine (10 cores). PDF parsing
 > excluded. Metric: **time-to-first-answer** and **warm per-query**.
 > **Headline:** lexical — RedHop / LangChain / LlamaIndex all ≤0.25s to first answer at
-> ~189k tokens (no moat). Semantic — all embed every chunk; RedHop rerank **51s** vs
+> ~189k tokens (no advantage). Semantic — all embed every chunk; RedHop rerank **51s** vs
 > LangChain **7.6s** / LlamaIndex **6.5s** to set up, but **4.3ms** warm vs **16–18ms**.
 > **Reproduce:** `HF_HUB_OFFLINE=1 bench/.venv/bin/python bench/speed_compare.py`
 > (needs `bench/models/e5-small-onnx`). Raw output in
@@ -48,7 +48,7 @@ Time to first answer / warm per-query:
 | ~38k tok  | 0.01s / 1.1ms | 0.01s / 0.1ms | 0.05s / 0.1ms |
 | ~189k tok | 0.02s / 1.0ms | 0.05s / 0.7ms | 0.25s / 0.1ms |
 
-**No speed moat.** All three index in well under a second with no embedding step;
+**No speed advantage.** All three index in well under a second with no embedding step;
 RedHop is competitive but not faster. On *raw* warm retrieval the Python BM25
 retrievers are actually quicker (0.1–0.7ms) than RedHop's ~1ms — though RedHop's
 call also prunes and produces a Decision Report, so it's doing more per query.
@@ -69,7 +69,7 @@ BM25 pool) is ~4ms vs ~16–18ms for full vector search — its only clean speed
 
 ## Reading
 
-- **Speed is not the moat.** Like-for-like, RedHop neither dominates nor collapses;
+- **Speed is not the advantage.** Like-for-like, RedHop neither dominates nor collapses;
   it's competitive lexically and a mixed bag semantically (slower setup, faster warm).
   The honest pitch is the rest of the runtime — bounded API, conditional pruning,
   Decision Report, no vector infra — *not* raw speed.
@@ -101,9 +101,9 @@ Still no ANN/vector index (cached vectors + exact cosine over a small pool), so 
    `REDHOP_ONNX_INTRA_THREADS` to tune. (`crates/embeddings/src/onnx.rs`.)
 2. **int8 quantization is the recommended rerank model trade** — embed-all ~51s → ~27s
    (within-run ~2×) at a 4× smaller model (133MB → 34MB). This is the most reliable lever.
-3. **Stop marketing speed as a differentiator.** Site copy corrected from a misleading
-   lexical-vs-vector comparison to honest per-scenario numbers; the pitch is the runtime,
-   not the clock.
+3. **Stop leading with speed.** Site copy corrected from a misleading
+   lexical-vs-vector comparison to honest per-scenario numbers; what RedHop
+   offers is the runtime, not the clock.
 4. **The embedding engine, diagnosed.** Same 1,209-chunk workload: PyTorch+Accelerate
    6ms/chunk; raw Python ORT 15ms/chunk; RedHop's `ort` path ~2× beyond that. So two
    gaps — ORT-CPU is ~2.5× slower than PyTorch+Accelerate for this small model, and our

@@ -51,7 +51,7 @@
   lead (77% vs 71–72%) shrank to a near-tie on *answer quality* — at these budgets
   every system hands the model enough to roughly tie. Worth remembering before
   over-reading any retention number.
-- **The strategy still isn't the moat — downstream too.** `reasoning_preserving`
+- **The strategy still isn't the advantage — downstream too.** `reasoning_preserving`
   vs `raw_topk` is indistinguishable on answers (CUAD 0.324 vs 0.342, Hotpot 0.514
   vs 0.515). Consistent with every prior finding: RedHop's value isn't a magic
   optimizer.
