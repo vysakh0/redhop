@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/icon.svg" width="96" height="96" alt="RedHop">
+</p>
+
 <h1 align="center">RedHop</h1>
 
 <p align="center"><b>A reasoning-preserving context runtime for RAG.</b></p>
