@@ -17,7 +17,7 @@ https://github.com/vysakh0/redhop.
 ```bash
 pip install redhop                            # Python  -- on PyPI
 cargo add redhop --features files,semantic    # Rust    -- on crates.io
-npm install redhop                            # Node.js -- in review (use pip/cargo for now)
+npm install redhop                            # Node.js -- on npm
 ```
 
 One self-contained install per ecosystem. The default lexical tier needs no
