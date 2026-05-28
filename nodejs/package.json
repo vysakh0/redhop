@@ -1,6 +1,6 @@
 {
   "name": "redhop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate document context, with citations and a Decision Report. No vector DB, in-process.",
   "license": "Apache-2.0",
   "main": "index.js",
@@ -26,7 +26,6 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "*.node",
     "README.md",
     "LICENSE"
   ],
