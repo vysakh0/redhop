@@ -1124,7 +1124,12 @@ fn economics(
 // Dropping them sharpens the grounding/linkage signal — validated by the
 // signal_ablation harness (gold-vs-distractor AUC 0.935→0.968 HotpotQA,
 // 0.672→0.734 MuSiQue), CI-clear on both datasets.
-const STOPWORDS: &[&str] = &[
+//
+// Crate-public so `crate::retrieval::bm25` can wire the same list into the
+// Tantivy analyzer — without that, BM25 keeps "the"/"is"/"what" while the
+// grounding scorer drops them, and the two layers disagree on what a query
+// even consists of.
+pub(crate) const STOPWORDS: &[&str] = &[
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or", "but", "is", "are", "was",
     "were", "be", "been", "being", "as", "by", "with", "from", "that", "this", "these", "those",
     "it", "its", "he", "she", "they", "them", "his", "her", "their", "which", "who", "whom",

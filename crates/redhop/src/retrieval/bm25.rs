@@ -18,7 +18,10 @@ use tantivy::query::QueryParser;
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
 };
-use tantivy::tokenizer::{Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, TextAnalyzer};
+use tantivy::tokenizer::{
+    Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter,
+    TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer,
+};
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
 const WRITER_HEAP_BYTES: usize = 64 * 1024 * 1024;
@@ -83,12 +86,25 @@ impl Bm25Retriever {
     pub fn new() -> crate::core::Result<Self> {
         let schema = Schema_::build();
         let index = Index::create_in_ram(schema.schema.clone());
-        // Register the stemming analyzer the schema references. Built once per
-        // index (cheap — just composes filters); the analyzer applies on both
-        // indexing and query-parsing for the `text` field.
+        // Register the stemming analyzer the schema references. Built once
+        // per index (cheap — just composes filters); the analyzer applies on
+        // both indexing and query-parsing for the `text` field. The
+        // stopword and stemmer steps share their word lists with the
+        // grounding scorer in `crate::context` so the two layers agree on
+        // what a query consists of.
+        let stopwords: Vec<String> = crate::context::STOPWORDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let stem_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
             .filter(RemoveLongFilter::limit(40))
+            // Camel/Pascal-case split BEFORE LowerCaser so we still have the
+            // case signal to split on. Emits both the original token and the
+            // pieces, so users querying `compress` find chunks containing
+            // `compressVideo`, and `http` finds `HTTPResponse`.
+            .filter(CamelCaseSplitter)
             .filter(LowerCaser)
+            .filter(StopWordFilter::remove(stopwords))
             .filter(Stemmer::new(Language::English))
             .build();
         index.tokenizers().register(STEM_ANALYZER, stem_analyzer);
@@ -216,6 +232,119 @@ fn sanitize_query(s: &str) -> String {
     }
 }
 
+/// Split a token on case transitions, in the standard "word-delimiter"
+/// fashion used by Lucene/Elasticsearch. Returns the pieces in source order;
+/// callers decide whether to also keep the original.
+///
+/// - `compressVideo`  → `["compress", "Video"]`           (lower→upper)
+/// - `HTTPResponse`   → `["HTTP", "Response"]`            (upper→upper→lower)
+/// - `URL`            → `["URL"]`                          (no transitions)
+/// - `iPhone`         → `["i", "Phone"]`                  (single-char pieces are
+///                                                         dropped later by length /
+///                                                         stopword filters)
+fn case_split_pieces(s: &str) -> Vec<String> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for i in 0..chars.len() {
+        let c = chars[i];
+        if i > 0 {
+            let prev = chars[i - 1];
+            let camel = prev.is_lowercase() && c.is_uppercase();
+            // Acronym tail: HTTPResponse → split before R because R is the
+            // last upper of a run that's followed by a lowercase.
+            let acronym = prev.is_uppercase()
+                && c.is_uppercase()
+                && chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+            if (camel || acronym) && !current.is_empty() {
+                parts.push(std::mem::take(&mut current));
+            }
+        }
+        current.push(c);
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
+}
+
+/// Tantivy token filter: when an input token has internal case transitions,
+/// emit the original token AND each split piece at the same position. The
+/// original keeps queries that exact-match the identifier working (`compressvideo`
+/// after lowercasing); the pieces make `compress` and `video` queries hit the
+/// same chunk. Pieces share the original's source offsets — they describe the
+/// same span of source text.
+#[derive(Clone)]
+struct CamelCaseSplitter;
+
+impl TokenFilter for CamelCaseSplitter {
+    type Tokenizer<T: Tokenizer> = CamelCaseSplitterTokenizer<T>;
+    fn transform<T: Tokenizer>(self, tokenizer: T) -> Self::Tokenizer<T> {
+        CamelCaseSplitterTokenizer { inner: tokenizer }
+    }
+}
+
+#[derive(Clone)]
+struct CamelCaseSplitterTokenizer<T> {
+    inner: T,
+}
+
+impl<T: Tokenizer> Tokenizer for CamelCaseSplitterTokenizer<T> {
+    type TokenStream<'a> = CamelCaseSplitterStream<T::TokenStream<'a>>;
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
+        CamelCaseSplitterStream {
+            tail: self.inner.token_stream(text),
+            queued: Vec::new(),
+            current: Token::default(),
+        }
+    }
+}
+
+struct CamelCaseSplitterStream<S: TokenStream> {
+    tail: S,
+    /// Tokens generated from the current input token that we haven't emitted
+    /// yet. Stored in REVERSE emission order so `pop()` yields them in order.
+    queued: Vec<Token>,
+    current: Token,
+}
+
+impl<S: TokenStream> TokenStream for CamelCaseSplitterStream<S> {
+    fn advance(&mut self) -> bool {
+        if let Some(t) = self.queued.pop() {
+            self.current = t;
+            return true;
+        }
+        if !self.tail.advance() {
+            return false;
+        }
+        let orig = self.tail.token().clone();
+        let pieces = case_split_pieces(&orig.text);
+        if pieces.len() <= 1 {
+            // No internal case transitions — pass the token through unchanged.
+            self.current = orig;
+            return true;
+        }
+        // Emit the original first; queue the pieces (in reverse, so `pop()`
+        // yields them in source order). All share the original's offsets +
+        // position — they're synonyms at the same conceptual location.
+        self.current = orig.clone();
+        for piece in pieces.into_iter().rev() {
+            let mut t = orig.clone();
+            t.text = piece;
+            self.queued.push(t);
+        }
+        true
+    }
+
+    fn token(&self) -> &Token {
+        &self.current
+    }
+
+    fn token_mut(&mut self) -> &mut Token {
+        &mut self.current
+    }
+}
+
 fn field_text(d: &TantivyDocument, f: Field) -> Option<String> {
     use tantivy::schema::Value;
     d.get_first(f)
@@ -274,6 +403,48 @@ mod tests {
     }
 
     #[test]
+    fn stopwords_are_stripped_consistently_with_grounding() {
+        // The bug this regresses: BM25 kept "the"/"is"/"what" while the
+        // grounding scorer (`crate::context::terms`) dropped them. On small
+        // in-process corpora the IDF stats can't reliably suppress them, so
+        // adding stopwords to a query could dilute or shift the ranking
+        // away from the chunk the grounding scorer considers most relevant.
+        // After registering the same stopword list on the BM25 analyzer,
+        // a stopword-padded query ranks identically to the content-only
+        // query against any non-pathological corpus.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+            r.index(&[
+                mk("hit", "the refund window is thirty days from purchase"),
+                mk("miss1", "shipping takes two business days from order"),
+                mk("miss2", "warranty extends for one year after delivery"),
+            ])
+            .await
+            .unwrap();
+
+            // Bare keywords.
+            let bare = r.retrieve(&Query::new("refund window"), 3).await.unwrap();
+            // Same query padded with stopwords every BM25-with-stopwords pipeline
+            // would otherwise score differently.
+            let padded = r
+                .retrieve(&Query::new("what is the refund window"), 3)
+                .await
+                .unwrap();
+
+            assert!(!bare.is_empty(), "bare query must hit");
+            assert!(!padded.is_empty(), "padded query must hit");
+            assert_eq!(
+                bare[0].chunk.id.as_str(),
+                padded[0].chunk.id.as_str(),
+                "stopword-padded query must rank the same chunk first as the bare query; \
+                 got bare={:?} padded={:?}",
+                bare.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+                padded.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+        });
+    }
+
+    #[test]
     fn morphological_query_variants_match_via_stemming() {
         // The bug this regresses: querying `compression` against a chunk that
         // contains `compress_video` returned nothing because the default
@@ -306,6 +477,68 @@ mod tests {
                     hits.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
                 );
             }
+        });
+    }
+
+    #[test]
+    fn case_split_pieces_handles_camel_pascal_and_acronyms() {
+        assert_eq!(case_split_pieces("compressVideo"), vec!["compress", "Video"]);
+        assert_eq!(case_split_pieces("HTTPResponse"), vec!["HTTP", "Response"]);
+        assert_eq!(case_split_pieces("XMLParser"), vec!["XML", "Parser"]);
+        assert_eq!(case_split_pieces("URL"), vec!["URL"]);
+        assert_eq!(case_split_pieces("iPhone"), vec!["i", "Phone"]);
+        assert_eq!(case_split_pieces("alreadylower"), vec!["alreadylower"]);
+        assert_eq!(case_split_pieces("ALLUPPER"), vec!["ALLUPPER"]);
+        assert_eq!(case_split_pieces(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn case_split_makes_camelcase_identifiers_searchable() {
+        // The bug this regresses: `compressVideo` (camelCase) tokenized as
+        // one term `compressvideo` after lowercasing, so a query for
+        // `compress` against a JS/Go/TS codebase using camelCase never
+        // matched. The CamelCaseSplitter filter emits `compress` + `video`
+        // as additional tokens at the same position.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+            r.index(&[
+                mk("camel", "function compressVideo(filePath, quality) { ... }"),
+                mk("pascal", "class HTTPResponse extends BaseResponse { ... }"),
+                mk("snake", "def compress_audio(file_path, bitrate): pass"),
+                mk("unrelated", "the quick brown fox jumps over the lazy dog"),
+            ])
+            .await
+            .unwrap();
+
+            // camelCase: `compress` finds `compressVideo`.
+            let r1 = r.retrieve(&Query::new("compress"), 5).await.unwrap();
+            assert!(
+                r1.iter()
+                    .any(|h| matches!(h.chunk.id.as_str(), "camel" | "snake")),
+                "`compress` query should hit at least the camelCase chunk; got {:?}",
+                r1.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+            assert!(
+                r1.iter().any(|h| h.chunk.id.as_str() == "camel"),
+                "`compress` query must reach the camelCase compressVideo chunk; got {:?}",
+                r1.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+
+            // PascalCase + acronym: `http` finds `HTTPResponse`.
+            let r2 = r.retrieve(&Query::new("http response"), 5).await.unwrap();
+            assert!(
+                r2.iter().any(|h| h.chunk.id.as_str() == "pascal"),
+                "`http response` must reach the HTTPResponse chunk; got {:?}",
+                r2.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+
+            // Original full identifier still hits (the splitter preserves it).
+            let r3 = r.retrieve(&Query::new("compressVideo"), 5).await.unwrap();
+            assert!(
+                r3.iter().any(|h| h.chunk.id.as_str() == "camel"),
+                "the original camelCase identifier must still match itself; got {:?}",
+                r3.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
         });
     }
 
