@@ -7,6 +7,115 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-31
+
+Retrieval-quality release. Fixes the structural hybrid-fusion bug reported in
+[issue #1](https://github.com/vysakh0/redhop/issues/1) and a family of
+silent-search-miss bugs the audit surfaced: BM25 and the grounding scorer were
+disagreeing on what a "token" is. Behavior on existing corpora will shift —
+rankings get sharper for queries with morphological variants, code identifiers,
+filenames, headings, version suffixes, and stopwords.
+
+### Fixed
+- **Hybrid retrieval now RRF-fuses BM25 with the dense rerank** instead of
+  returning `dense.truncate(top_k)` on the pure-prose pool path. A chunk
+  BM25 ranked #1 that the dense model demoted past `top_k` is no longer
+  silently dropped. Restores the documented "hybrid ≥ either tier" contract.
+  Result `score.method` becomes `RetrievalMethod::Hybrid` for every hybrid
+  result, and `breakdown.fused` is populated. (Issue #1.)
+- **BM25 now stems** (Snowball English/Porter2) — same algorithm the
+  grounding scorer already used. Queries like `compression` now match a
+  chunk containing `compress_video`; `running` matches `runs`, etc.
+- **BM25 now drops stopwords**, matching the grounding scorer's
+  `STOPWORDS` list. A stopword-padded query like `"what is the refund
+  window"` ranks the same chunk first as the bare `"refund window"`.
+- **BM25 now splits camelCase / PascalCase identifiers** at index time. A
+  query for `compress` now reaches `compressVideo`; `http` reaches
+  `HTTPResponse`. Original identifiers still self-match.
+- **BM25 now splits letter ↔ digit boundaries.** `parseV2` indexes as
+  `parseV2 + parse + V + 2`; `Phi3` as `Phi3 + Phi + 3` — so the base
+  name reaches versioned identifiers and model names.
+- **BM25 now searches `source` and `heading` in addition to `text`.** A
+  query for the filename `auth.rs` reaches a chunk from that file even
+  when the chunk text itself doesn't mention the filename; a query for a
+  Markdown heading reaches the chunk under that heading. The `source`
+  field type changed from `STRING` (exact-match only) to an analyzed
+  TextField using the same stemming pipeline.
+- **`sanitize_query` no longer over-strips.** It used to replace every
+  non-alphanumeric character with a space to defend against Tantivy
+  QueryParser meta-syntax, degrading `v1.2.3` to three single-char
+  tokens, `.NET` to `NET`, `e-mail` to a single character. It now
+  replaces only the chars QueryParser actually parses as syntax
+  (`+ - : * ? ^ ~ \ ( ) [ ] { } " < >`); everything else passes through
+  to the analyzer, which tokenizes it consistently with indexed text.
+  Uppercase `AND`/`OR`/`NOT` are neutralized by a lowercase pass.
+
+### Added
+- **`ContextReport.low_confidence_retrieval: bool`** +
+  **`low_confidence_threshold: f32`** — a programmatic signal that fires
+  when every selected chunk has grounding ≤ the threshold (default `0.10`,
+  same as `distractor_min_grounding`). Lets callers detect "no good
+  match found" without inferring from `n_selected == 0`. Exposed on the
+  Python report (`report.low_confidence_retrieval`), the Node report
+  (`report.lowConfidenceRetrieval`), and rendered as a one-line warning
+  in `report.render()`. Both new fields use `#[serde(default)]` so older
+  deserialized reports stay compatible.
+- **`ContextConfig.low_confidence_max_grounding: f32`** — the threshold
+  the signal applies. Defaults to `distractor_min_grounding`.
+- **`DocumentConfig.min_candidates: usize`** (default `0` = off) — an
+  opt-in floor on the number of candidates delivered to the assembler.
+  Under `hybrid` / `semantic`, if the primary retriever returns fewer
+  than this, a BM25 fallback over the same chunks tops the result up.
+  Exposed in `LoadOptions.min_candidates: Option<usize>` (Rust loaders)
+  and `Options.minCandidates: Option<u32>` (napi). Pair with
+  `low_confidence_retrieval` to detect when the fallback fires with
+  weak chunks. No-op under `lexical` (the primary already is BM25).
+
+### Notes
+- Five separate test regressions cover the BM25 fixes — see
+  `crates/redhop/src/retrieval/bm25.rs` and
+  `crates/redhop/src/retrieval/local_rerank.rs`. Two more cover the new
+  knob and the low-confidence signal. 99/99 tests pass under
+  `cargo test -p redhop --features files`.
+- Two existing tests had top-1 assertions pinned to specific BM25
+  micro-stats; both are loosened to assert the structural invariant
+  (RRF was applied, dense breakdown is present) rather than the brittle
+  ordering.
+
+## [0.1.2] - 2026-05-28
+
+npm meta-tarball slim-down. PyPI and crates.io bumped to keep version parity;
+no source changes on those sides.
+
+### Fixed
+- **npm `redhop` meta package was 158 MB unpacked** because
+  `napi artifacts --dir artifacts` deposits ALL platform `.node` files in
+  `nodejs/` root before publish, and `"files": ["*.node", ...]` in
+  `nodejs/package.json` slurped them all into the meta tarball. Removing
+  the `*.node` glob from the `files` array drops the meta to **~28 KB**;
+  a Mac M1 user's full `npm install redhop` goes from ~185 MB to ~27 MB.
+  The local-file-first branch in `index.js` was only meaningful during
+  dev (after `napi build` leaves the binary at `nodejs/redhop.<target>.node`);
+  installed-from-npm consumers now follow the `optionalDependencies`
+  path the optional-deps mechanism is designed for.
+
+## [0.1.1] - 2026-05-28
+
+**npm-only release** to ship the Windows platform package under a non-blocked
+name. PyPI and crates.io stayed at 0.1.0 — no source changes affecting them.
+
+### Changed
+- **Windows platform package renamed** from the napi-default
+  `redhop-win32-x64-msvc` to **`redhop-win-x64`** because npm's spam
+  detector blocked the default name. Confirmed by publishing an
+  identical tarball under the new name (same metadata, same binary).
+  The meta `redhop`'s `index.js` and `optionalDependencies` reference
+  the new name; the binary file inside the platform package is still
+  `redhop.win32-x64-msvc.node` (napi-rs derives that from the Rust
+  target triple). A small `nodejs/scripts/publish-npm.mjs` replaces
+  `napi prepublish` so the rename is wired through all the publish
+  steps.
+
 ## [0.1.0] - 2026-05-27
 
 First public release — `pip install redhop` (PyPI); npm and crates.io to follow.
