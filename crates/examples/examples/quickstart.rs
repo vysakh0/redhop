@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::core::{Document, TokenizerBackend};
-use redhop_pipeline::RedHop;
 use redhop::retrieval::Bm25Retriever;
+use redhop_pipeline::RedHop;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

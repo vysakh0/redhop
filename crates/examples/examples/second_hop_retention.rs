@@ -32,15 +32,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use redhop_calibration::dataset::LabeledCorpus;
-use redhop_calibration::loaders::hotpotqa::{default_regime as hotpot_regime, HotpotQADataset};
-use redhop_calibration::loaders::musique::{default_regime as musique_regime, MuSiQueDataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::context::{build_context, ContextConfig, ContextStrategy};
 use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
+use redhop_calibration::dataset::LabeledCorpus;
+use redhop_calibration::loaders::hotpotqa::{default_regime as hotpot_regime, HotpotQADataset};
+use redhop_calibration::loaders::musique::{default_regime as musique_regime, MuSiQueDataset};
 use unicode_segmentation::UnicodeSegmentation;
 
 const SAMPLE_SIZE: usize = 1500;
@@ -179,6 +179,7 @@ fn cfg(strategy: ContextStrategy, tau: f32, budget: usize) -> ContextConfig {
         link_min_jaccard: 0.12,
         auto_passthrough_max_tokens: 8_000,
         redundancy_max_cosine: 1.0,
+        low_confidence_max_grounding: 0.10,
     }
 }
 

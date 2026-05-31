@@ -84,11 +84,14 @@ mod tests {
     #[test]
     fn page_heading_rejects_body_shaped_lines() {
         // Sentence-terminated body lines (a paragraph that starts the page).
-        assert_eq!(page_heading("The parties hereby agree to the following."), None);
+        assert_eq!(
+            page_heading("The parties hereby agree to the following."),
+            None
+        );
         // Page number footers / running headers.
         assert_eq!(page_heading("Page 3 of 24"), None);
         assert_eq!(page_heading("Acme Corp · Q3 2025"), None); // ends with digit
-        // Too short / no letters / empty.
+                                                               // Too short / no letters / empty.
         assert_eq!(page_heading("§ 3"), None); // ends with digit + too short
         assert_eq!(page_heading("---"), None); // no letters
         assert_eq!(page_heading(""), None);

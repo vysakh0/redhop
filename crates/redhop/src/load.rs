@@ -388,9 +388,9 @@ mod files_loaders {
         read_folder_with(path, &FolderOptions::default())
     }
 
-    /// Index a folder into one [`Document`] with options — recursion, `.gitignore`
-    /// + custom `ignore` globs, retrieval/chunking config, and `persist` for an
-    /// incremental on-disk index.
+    /// Index a folder into one [`Document`] with options — recursion,
+    /// `.gitignore` (and custom `ignore` globs), retrieval/chunking config,
+    /// and `persist` for an incremental on-disk index.
     pub fn read_folder_with(path: impl AsRef<Path>, fo: &FolderOptions) -> Result<Document> {
         let root = path.as_ref();
         if !root.is_dir() {

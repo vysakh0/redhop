@@ -14,13 +14,13 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use parking_lot::RwLock;
 use crate::core::{
     Chunk, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score, ScoreBreakdown,
     VectorIndex,
 };
 use crate::storage::ChunkStore;
+use async_trait::async_trait;
+use parking_lot::RwLock;
 
 /// Dense retriever pairing a [`VectorIndex`] with a [`ChunkStore`].
 pub struct DenseRetriever {

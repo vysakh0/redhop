@@ -19,11 +19,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 use redhop::context::{grounding_score, link_strength};
 use redhop::core::{Chunk, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenCount};
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop::retrieval::Bm25Retriever;
+use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;

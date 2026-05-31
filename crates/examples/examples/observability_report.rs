@@ -18,17 +18,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
+    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RegimeClassifier, Reranker,
+    RerankerLevel, Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
+};
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 use redhop_calibration::{
     economics::{economics, selective_escalation_roi, CostModel},
     embedder::HashingEmbedder,
     htmlreport::{render_html, ReportOptions},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
     runner::{run_query, RunnerConfig},
-};
-use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop::core::{
-    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RegimeClassifier, Reranker,
-    RerankerLevel, Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
 };
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
@@ -38,8 +40,6 @@ use redhop_orchestration::RuleBasedClassifier;
 use redhop_orchestration::{
     AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy, PolicyThresholds,
 };
-use redhop::reranking::LexicalGroundingReranker;
-use redhop::retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

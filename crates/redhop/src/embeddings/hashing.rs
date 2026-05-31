@@ -12,8 +12,8 @@
 //! count, L2-normalize. A real model would beat it on paraphrase recall;
 //! it exists to be beaten, measurably.
 
-use async_trait::async_trait;
 use crate::core::{Embedding, EmbeddingProvider, Result};
+use async_trait::async_trait;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::embeddings::pooling::l2_normalize;

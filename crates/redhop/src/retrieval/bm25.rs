@@ -7,21 +7,21 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use parking_lot::RwLock;
 use crate::core::{
     Chunk, ChunkId, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown, TokenCount,
 };
+use async_trait::async_trait;
+use parking_lot::RwLock;
+use serde_json::Value as JsonValue;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
 };
-use serde_json::Value as JsonValue;
 use tantivy::tokenizer::{
-    Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter,
-    TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer,
+    Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzer,
+    Token, TokenFilter, TokenStream, Tokenizer,
 };
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
@@ -279,14 +279,13 @@ fn sanitize_query(s: &str) -> String {
 /// "word-delimiter" fashion used by Lucene/Elasticsearch. Returns the pieces
 /// in source order; callers decide whether to also keep the original.
 ///
-/// - `compressVideo`  → `["compress", "Video"]`           (lower→upper)
-/// - `HTTPResponse`   → `["HTTP", "Response"]`            (upper→upper→lower)
-/// - `parseV2`        → `["parse", "V", "2"]`             (lower→upper, then letter→digit)
-/// - `Phi3`           → `["Phi", "3"]`                    (letter→digit)
-/// - `URL`            → `["URL"]`                          (no transitions)
-/// - `iPhone`         → `["i", "Phone"]`                  (single-char pieces are
-///                                                         dropped later by length /
-///                                                         stopword filters)
+/// - `compressVideo`  → `["compress", "Video"]` (lower→upper)
+/// - `HTTPResponse`   → `["HTTP", "Response"]` (upper→upper→lower)
+/// - `parseV2`        → `["parse", "V", "2"]` (lower→upper, then letter→digit)
+/// - `Phi3`           → `["Phi", "3"]` (letter→digit)
+/// - `URL`            → `["URL"]` (no transitions)
+/// - `iPhone`         → `["i", "Phone"]` (single-char pieces are dropped later
+///   by the length / stopword filters)
 fn case_split_pieces(s: &str) -> Vec<String> {
     let chars: Vec<char> = s.chars().collect();
     let mut parts: Vec<String> = Vec::new();
@@ -558,7 +557,10 @@ mod tests {
                 "stopword-padded query must rank the same chunk first as the bare query; \
                  got bare={:?} padded={:?}",
                 bare.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
-                padded.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+                padded
+                    .iter()
+                    .map(|h| h.chunk.id.as_str())
+                    .collect::<Vec<_>>(),
             );
         });
     }
@@ -601,7 +603,10 @@ mod tests {
 
     #[test]
     fn case_split_pieces_handles_camel_pascal_acronyms_and_digits() {
-        assert_eq!(case_split_pieces("compressVideo"), vec!["compress", "Video"]);
+        assert_eq!(
+            case_split_pieces("compressVideo"),
+            vec!["compress", "Video"]
+        );
         assert_eq!(case_split_pieces("HTTPResponse"), vec!["HTTP", "Response"]);
         assert_eq!(case_split_pieces("XMLParser"), vec!["XML", "Parser"]);
         assert_eq!(case_split_pieces("URL"), vec!["URL"]);

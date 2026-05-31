@@ -22,10 +22,10 @@ use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, Retriever, TokenizerBackend,
 };
+use redhop::retrieval::Bm25Retriever;
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
-use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 

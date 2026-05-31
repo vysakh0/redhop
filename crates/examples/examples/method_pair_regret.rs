@@ -19,12 +19,12 @@
 
 use std::collections::BTreeMap;
 
+use redhop::core::{RerankerLevel, RetrievalRegime};
 use redhop_calibration::{
     analysis::regret_summary,
     loaders::neotrace::{parse_path, NeoTraceRecord},
     runner::{ActionTraceEntry, QueryOutcome},
 };
-use redhop::core::{RerankerLevel, RetrievalRegime};
 
 const NEOTRACE_PATH: &str =
     "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";

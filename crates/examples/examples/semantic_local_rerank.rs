@@ -23,7 +23,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parking_lot::RwLock;
-use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 use redhop::context::grounding_score;
 use redhop::core::{
     Chunk, ChunkId, Embedding, EmbeddingProvider, Query, Retriever, TokenCount, VectorIndex,
@@ -31,6 +30,7 @@ use redhop::core::{
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
 use redhop::storage::{ChunkStore, FlatVectorIndex};
+use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;

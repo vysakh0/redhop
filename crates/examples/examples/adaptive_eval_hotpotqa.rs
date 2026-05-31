@@ -44,6 +44,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
+    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
+    Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend,
+};
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 use redhop_calibration::{
     analysis::{bootstrap_stability, confusion_matrix, regret_summary},
     embedder::HashingEmbedder,
@@ -52,17 +59,10 @@ use redhop_calibration::{
     report::{render_pareto, render_reliability, render_sweep_table},
     ThresholdSweep,
 };
-use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop::core::{
-    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
-    Result as CoreResult, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend,
-};
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_orchestration::RuleBasedClassifier;
-use redhop::reranking::LexicalGroundingReranker;
-use redhop::retrieval::Bm25Retriever;
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

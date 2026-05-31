@@ -19,9 +19,9 @@
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
+use crate::core::{Embedding, EmbeddingProvider, Result};
 use async_trait::async_trait;
 use lru::LruCache;
-use crate::core::{Embedding, EmbeddingProvider, Result};
 
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;

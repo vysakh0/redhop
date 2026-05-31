@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::core::{Document, Query, TokenizerBackend};
-use redhop_pipeline::RedHop;
 use redhop::reranking::LexicalGroundingReranker;
 use redhop::retrieval::Bm25Retriever;
+use redhop_pipeline::RedHop;
 
 fn corpus() -> Vec<Document> {
     vec![

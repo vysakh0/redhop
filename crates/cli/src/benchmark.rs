@@ -152,6 +152,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                     link_min_jaccard: a.link_min_jaccard,
                     auto_passthrough_max_tokens: 8_000,
                     redundancy_max_cosine: 0.92,
+                    low_confidence_max_grounding: 0.10,
                 };
                 let ctx = build_context(&query, &results, &cfg);
                 let kept: HashSet<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();

@@ -1861,12 +1861,19 @@ mod tests {
 
         // analyze_context surfaces the same signal without selection.
         let a = analyze_context(&q, &weak, &cfg);
-        assert!(a.low_confidence_retrieval, "analyze_context must flag the same case");
+        assert!(
+            a.low_confidence_retrieval,
+            "analyze_context must flag the same case"
+        );
 
         // On-topic chunks: grounding is high → signal stays off.
         let strong = vec![
             rr("3", "the refund window is thirty days from purchase", None),
-            rr("4", "cancellation policy: written notice within seven days", None),
+            rr(
+                "4",
+                "cancellation policy: written notice within seven days",
+                None,
+            ),
         ];
         let r2 = build_context(&q, &strong, &cfg).report;
         assert!(

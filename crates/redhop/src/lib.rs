@@ -55,10 +55,10 @@ pub mod document;
 pub mod retrieval;
 pub mod storage;
 
-#[cfg(feature = "files")]
-pub mod files;
 #[cfg(feature = "semantic")]
 pub mod embeddings;
+#[cfg(feature = "files")]
+pub mod files;
 #[cfg(feature = "semantic")]
 pub mod reranking;
 

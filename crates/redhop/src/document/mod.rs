@@ -224,11 +224,7 @@ fn reassign_ids(chunks: &mut [Chunk]) {
 /// True iff the retrieval result is a code-classified chunk. Drives the
 /// `code_neighbors_default` auto-expansion in [`Document::context_with`].
 fn is_code_chunk(r: &RetrievalResult) -> bool {
-    r.chunk
-        .metadata
-        .get("kind")
-        .and_then(|v| v.as_str())
-        == Some("code")
+    r.chunk.metadata.get("kind").and_then(|v| v.as_str()) == Some("code")
 }
 
 /// True iff the retrieval result is a prose chunk carrying a non-empty
@@ -568,15 +564,14 @@ impl Document {
         // Either default can be turned off (`code_neighbors_default = 0` or
         // `prose_heading_default = false`); when both fire on a mixed corpus
         // (some chunks code, some prose-with-headings) both apply.
-        let neighbors = if self.cfg.code_neighbors_default > 0
-            && results.iter().any(is_code_chunk)
+        let neighbors = if self.cfg.code_neighbors_default > 0 && results.iter().any(is_code_chunk)
         {
             self.cfg.code_neighbors_default
         } else {
             0
         };
-        let include_heading = self.cfg.prose_heading_default
-            && results.iter().any(has_prose_heading);
+        let include_heading =
+            self.cfg.prose_heading_default && results.iter().any(has_prose_heading);
         if neighbors > 0 || include_heading {
             let plan = self.expansion_plan(&results, neighbors, include_heading);
             return Ok(build_context_expanded(&q, &results, &cfg, &plan));
@@ -841,8 +836,8 @@ mod tests {
 
     #[test]
     fn reranker_controls_final_selection() {
-        use async_trait::async_trait;
         use crate::core::{RetrievalMethod, Score};
+        use async_trait::async_trait;
 
         // A model-free stand-in for a cross-encoder: keep only candidates whose
         // text mentions "photosynthesis". This proves the reranker, not the BM25

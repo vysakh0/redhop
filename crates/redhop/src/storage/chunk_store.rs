@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use parking_lot::RwLock;
 use crate::core::{Chunk, ChunkId};
+use parking_lot::RwLock;
 
 /// A thread-safe in-memory store of chunks.
 ///

@@ -22,23 +22,23 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{
+    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
+    Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
+};
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 use redhop_calibration::{
     fixtures::{embed, synthetic_dataset},
     reliability::reliability_diagram,
     report::{render_pareto, render_reliability, render_sweep_table},
     ThresholdSweep,
 };
-use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop::core::{
-    Chunk, ChunkId, Chunker, DiagnosticsEngine, Embedding, Query, RerankerLevel,
-    Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
-};
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_orchestration::RuleBasedClassifier;
-use redhop::reranking::LexicalGroundingReranker;
-use redhop::retrieval::Bm25Retriever;
 
 /// Same EmbedAttachingRetriever pattern as the adaptive_loop example.
 struct EmbedAttachingRetriever {

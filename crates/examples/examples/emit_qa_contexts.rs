@@ -23,13 +23,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::context::{build_context, ContextConfig, ContextStrategy};
 use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
@@ -165,6 +165,7 @@ fn main() -> anyhow::Result<()> {
                 link_min_jaccard: 0.12,
                 auto_passthrough_max_tokens: 8_000,
                 redundancy_max_cosine: 1.0,
+                low_confidence_max_grounding: 0.10,
             },
         );
         // Measure filter safety: did it keep the gold chunks?

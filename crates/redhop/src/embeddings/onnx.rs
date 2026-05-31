@@ -36,10 +36,10 @@
 use std::path::Path;
 use std::sync::Mutex;
 
+use crate::core::{Embedding, EmbeddingProvider, Error, Result};
 use async_trait::async_trait;
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
-use crate::core::{Embedding, EmbeddingProvider, Error, Result};
 use tokenizers::Tokenizer;
 
 use crate::embeddings::config::EmbedderConfig;

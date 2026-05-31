@@ -6,8 +6,8 @@
 //! example, to apply a different weight ratio than the retriever's RRF would
 //! have produced, without re-running the candidate retrieval.
 
-use async_trait::async_trait;
 use crate::core::{Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score};
+use async_trait::async_trait;
 
 /// Weighted recombination of per-stage scores.
 #[derive(Debug, Clone)]

@@ -6,8 +6,8 @@
 //! swap in a `VectorIndex` backed by `usearch`/`hnswlib-rs`/`faiss`; the
 //! retriever above does not care.
 
-use parking_lot::RwLock;
 use crate::core::{ChunkId, Embedding, Error, Result, VectorIndex};
+use parking_lot::RwLock;
 
 /// Flat brute-force vector index.
 pub struct FlatVectorIndex {

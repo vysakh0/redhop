@@ -48,11 +48,26 @@ fn chunks() -> Vec<Chunk> {
     // fallback (when min_candidates fires) should top up from BM25's deeper
     // ranking against the same chunks.
     vec![
-        Chunk::new(ChunkId::new("a0"), "alpha alpha alpha alpha", "doc", TokenCount(4)),
-        Chunk::new(ChunkId::new("a1"), "alpha alpha alpha", "doc", TokenCount(3)),
+        Chunk::new(
+            ChunkId::new("a0"),
+            "alpha alpha alpha alpha",
+            "doc",
+            TokenCount(4),
+        ),
+        Chunk::new(
+            ChunkId::new("a1"),
+            "alpha alpha alpha",
+            "doc",
+            TokenCount(3),
+        ),
         Chunk::new(ChunkId::new("a2"), "alpha alpha", "doc", TokenCount(2)),
         Chunk::new(ChunkId::new("a3"), "alpha", "doc", TokenCount(1)),
-        Chunk::new(ChunkId::new("nope"), "completely unrelated content here", "doc", TokenCount(4)),
+        Chunk::new(
+            ChunkId::new("nope"),
+            "completely unrelated content here",
+            "doc",
+            TokenCount(4),
+        ),
     ]
 }
 

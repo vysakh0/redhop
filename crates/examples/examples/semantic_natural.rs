@@ -21,12 +21,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 use redhop::context::grounding_score;
 use redhop::core::{Chunk, ChunkId, EmbeddingProvider, Query, Retriever, TokenCount, VectorIndex};
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop::retrieval::{Bm25Retriever, DenseRetriever, HybridRetriever};
 use redhop::storage::{ChunkStore, FlatVectorIndex};
+use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 
 const DIM: usize = 384;
 const SAMPLE: usize = 400;

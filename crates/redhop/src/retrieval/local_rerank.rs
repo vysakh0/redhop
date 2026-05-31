@@ -21,11 +21,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::core::{
     Chunk, EmbeddingProvider, Error, Query, RetrievalMethod, RetrievalResult, Retriever, Score,
     ScoreBreakdown,
 };
+use async_trait::async_trait;
 
 use crate::retrieval::bm25::Bm25Retriever;
 use crate::retrieval::fusion::reciprocal_rank_fusion;
@@ -376,7 +376,10 @@ mod tests {
             // Pre-fix structural marker #1: method was `Rerank` (dense-only).
             // Post-fix: every result is `Hybrid` (RRF-fused).
             let hyb = r.retrieve(&q, 3).await.unwrap();
-            assert!(!hyb.is_empty(), "hybrid must not be empty when pool is non-empty");
+            assert!(
+                !hyb.is_empty(),
+                "hybrid must not be empty when pool is non-empty"
+            );
             for r in &hyb {
                 assert_eq!(
                     r.score.method,

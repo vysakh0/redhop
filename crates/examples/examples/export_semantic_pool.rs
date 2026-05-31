@@ -10,8 +10,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 use redhop::context::grounding_score;
+use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 
 const SAMPLE: usize = 400; // identical to semantic_local_rerank
 

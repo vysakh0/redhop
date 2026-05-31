@@ -16,12 +16,12 @@ use redhop::core::{
     Chunk, DiagnosticsEngine, Document, Embedding, Query, RegimeClassifier, RetrievalRegime,
     TokenizerBackend,
 };
+use redhop::retrieval::Bm25Retriever;
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_orchestration::RuleBasedClassifier;
 use redhop_pipeline::RedHop;
-use redhop::retrieval::Bm25Retriever;
 
 const DIM: usize = 128;
 

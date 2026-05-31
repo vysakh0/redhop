@@ -28,7 +28,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::context::{build_context, ContextConfig, ContextStrategy};
 use redhop::core::{
@@ -37,6 +36,7 @@ use redhop::core::{
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop::retrieval::DenseRetriever;
 use redhop::storage::{ChunkStore, FlatVectorIndex};
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
@@ -145,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
                         link_min_jaccard: 0.12,
                         auto_passthrough_max_tokens: 8_000,
                         redundancy_max_cosine: 0.92,
+                        low_confidence_max_grounding: 0.10,
                     },
                 );
                 let found = gold.iter().filter(|g| ctx.contains(g)).count();

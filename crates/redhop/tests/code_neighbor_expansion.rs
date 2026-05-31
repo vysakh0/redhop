@@ -10,16 +10,24 @@ use redhop::core::{Chunk, ChunkId, TokenCount};
 use redhop::{Document, DocumentConfig};
 
 fn code(id: &str, text: &str, source: &str) -> Chunk {
-    let mut c = Chunk::new(ChunkId::new(id), text, source, TokenCount(text.split_whitespace().count()));
-    c.metadata
-        .insert("kind".into(), serde_json::json!("code"));
+    let mut c = Chunk::new(
+        ChunkId::new(id),
+        text,
+        source,
+        TokenCount(text.split_whitespace().count()),
+    );
+    c.metadata.insert("kind".into(), serde_json::json!("code"));
     c
 }
 
 fn prose(id: &str, text: &str) -> Chunk {
-    let mut c = Chunk::new(ChunkId::new(id), text, "notes.md", TokenCount(text.split_whitespace().count()));
-    c.metadata
-        .insert("kind".into(), serde_json::json!("prose"));
+    let mut c = Chunk::new(
+        ChunkId::new(id),
+        text,
+        "notes.md",
+        TokenCount(text.split_whitespace().count()),
+    );
+    c.metadata.insert("kind".into(), serde_json::json!("prose"));
     c
 }
 
@@ -29,10 +37,25 @@ fn code_chunks_pull_a_neighbor_by_default() {
     // "compress_video" but the third is the implementation body that a
     // citation should include along with the def chunk.
     let chunks = vec![
-        code("0", "use crate::services::video::compress_video as service_compress;", "video.rs"),
-        code("1", "pub async fn compress_video(file_path: &str, quality: &str)", "video.rs"),
-        code("2", "let result = service_compress(file_path, quality).await?; Ok(result)", "video.rs"),
-        prose("notes-0", "unrelated changelog entry about the build pipeline"),
+        code(
+            "0",
+            "use crate::services::video::compress_video as service_compress;",
+            "video.rs",
+        ),
+        code(
+            "1",
+            "pub async fn compress_video(file_path: &str, quality: &str)",
+            "video.rs",
+        ),
+        code(
+            "2",
+            "let result = service_compress(file_path, quality).await?; Ok(result)",
+            "video.rs",
+        ),
+        prose(
+            "notes-0",
+            "unrelated changelog entry about the build pipeline",
+        ),
     ];
 
     let mut doc = Document::from_chunks_with(chunks, DocumentConfig::default()).unwrap();

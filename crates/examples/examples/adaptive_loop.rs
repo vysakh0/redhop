@@ -23,13 +23,13 @@ use redhop::core::{
     Chunk, ChunkId, DiagnosticsEngine, Document, Embedding, Query, RerankerLevel,
     Result as CoreResult, RetrievalResult, Retriever, TokenizerBackend,
 };
+use redhop::reranking::LexicalGroundingReranker;
+use redhop::retrieval::Bm25Retriever;
 use redhop_diagnostics::{
     DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
 };
 use redhop_orchestration::RuleBasedClassifier;
 use redhop_pipeline::RedHop;
-use redhop::reranking::LexicalGroundingReranker;
-use redhop::retrieval::Bm25Retriever;
 
 /// A retriever wrapper that re-attaches embeddings after the base
 /// retriever's call. BM25 indexes do not persist arbitrary binary blobs,

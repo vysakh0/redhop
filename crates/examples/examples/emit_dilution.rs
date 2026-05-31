@@ -36,13 +36,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::context::{build_context, grounding_score, ContextConfig, ContextStrategy};
 use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 
 const SAMPLE_SIZE: usize = 1000; // big enough for a large distractor pool
 const LINK_MIN_JACCARD: f32 = 0.12;
@@ -101,6 +101,7 @@ fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy, budget: usize)
             link_min_jaccard: LINK_MIN_JACCARD,
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
+            low_confidence_max_grounding: 0.10,
         },
     )
     .chunks

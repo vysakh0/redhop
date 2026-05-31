@@ -12,9 +12,9 @@
 
 use std::sync::Arc;
 
+use crate::core::{Chunk, Error, Query, RetrievalResult, Retriever};
 use async_trait::async_trait;
 use futures::future::try_join_all;
-use crate::core::{Chunk, Error, Query, RetrievalResult, Retriever};
 
 use crate::retrieval::fusion::{reciprocal_rank_fusion, weighted_sum_fusion, FusionStrategy};
 

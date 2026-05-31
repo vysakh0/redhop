@@ -12,10 +12,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 use redhop::context::grounding_score;
 use redhop::core::{Chunk, ChunkId, Query, Retriever, TokenCount};
 use redhop::retrieval::Bm25Retriever;
+use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 
 const SAMPLE: usize = 400;
 const K_CAND: usize = 50;

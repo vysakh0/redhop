@@ -108,7 +108,11 @@ pub trait VectorIndex: Send + Sync {
 
     /// Top-`k` nearest neighbors to `query`, returned as `(chunk_id, score)`
     /// pairs in descending order of score.
-    fn search(&self, query: &Embedding, k: usize) -> Result<Vec<(crate::core::types::ChunkId, f32)>>;
+    fn search(
+        &self,
+        query: &Embedding,
+        k: usize,
+    ) -> Result<Vec<(crate::core::types::ChunkId, f32)>>;
 
     /// Number of vectors stored.
     fn len(&self) -> usize;

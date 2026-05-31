@@ -34,20 +34,20 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parking_lot::RwLock;
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::core::{
     ChunkId, Chunker, DiagnosticsEngine, Embedding, EmbeddingProvider, Query, RegimeClassifier,
     Reranker, RetrievalRegime, RetrievalResult, Retriever, TokenizerBackend, VectorIndex,
 };
-use redhop_diagnostics::{
-    DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
-};
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
-use redhop_orchestration::{compute_confidence, RuleBasedClassifier};
 use redhop::reranking::OnnxCrossEncoder;
 use redhop::retrieval::DenseRetriever;
 use redhop::storage::{ChunkStore, FlatVectorIndex};
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
+use redhop_diagnostics::{
+    DefaultDiagnosticsEngine, LayeredDiagnosticsEngine, SemanticDiagnosticsEngine,
+};
+use redhop_orchestration::{compute_confidence, RuleBasedClassifier};
 
 const HOTPOTQA_PATH: &str =
     "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";

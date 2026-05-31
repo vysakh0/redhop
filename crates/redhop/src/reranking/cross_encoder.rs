@@ -90,10 +90,10 @@ mod onnx_impl {
     use std::path::Path;
     use std::sync::Mutex;
 
+    use crate::core::{Error, Query, Reranker, Result, RetrievalResult};
     use async_trait::async_trait;
     use ort::session::{builder::GraphOptimizationLevel, Session};
     use ort::value::Tensor;
-    use crate::core::{Error, Query, Reranker, Result, RetrievalResult};
     use tokenizers::Tokenizer;
 
     use super::apply_scores;

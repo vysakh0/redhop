@@ -373,7 +373,10 @@ more text
             .iter()
             .find(|s| s.heading == Some("Sub Section".into()))
             .unwrap();
-        assert!(!sub.text.contains("---"), "underline must not leak into body: {sub:?}");
+        assert!(
+            !sub.text.contains("---"),
+            "underline must not leak into body: {sub:?}"
+        );
         assert!(sub.text.contains("more text"));
     }
 

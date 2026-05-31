@@ -9,8 +9,8 @@
 
 use std::collections::HashSet;
 
-use async_trait::async_trait;
 use crate::core::{Query, Reranker, Result, RetrievalMethod, RetrievalResult, Score};
+use async_trait::async_trait;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Reranker that boosts candidates with high query-term overlap.

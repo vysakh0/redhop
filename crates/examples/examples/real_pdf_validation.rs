@@ -28,12 +28,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Chunk, ChunkId, Chunker, Document, TokenizerBackend};
 use redhop_calibration::{
     corruption::{run_degradation_study, CorruptionKind, DegradationStudy},
     embedder::HashingEmbedder,
 };
-use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop::core::{Chunk, ChunkId, Chunker, Document, TokenizerBackend};
 use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
 
 const PDF_TEXT_JSONL: &str = "/Users/vysakh/projects/neorag/exports/real_pdf_text.jsonl";

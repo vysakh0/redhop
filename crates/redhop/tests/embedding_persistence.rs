@@ -9,8 +9,8 @@
 //! plumbed end-to-end but had no test pinning the behavior. This file is
 //! that test.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use redhop::core::{Chunk, ChunkId, Embedding, TokenCount};

@@ -197,8 +197,8 @@ pub fn run_degradation_study(
     seed: u64,
 ) -> DegradationStudy {
     use redhop::core::VectorIndex;
-    use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
     use redhop::storage::FlatVectorIndex;
+    use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
 
     let cfg = IngestionThresholds::default();
     let dim = embedder.dim;

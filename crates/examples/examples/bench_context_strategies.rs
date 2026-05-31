@@ -25,13 +25,13 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
 use redhop::context::{build_context, ContextConfig, ContextStrategy};
 use redhop::core::{
     Chunk, ChunkId, Chunker, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenizerBackend,
 };
+use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
 use unicode_segmentation::UnicodeSegmentation;
 
 const SAMPLE_SIZE: usize = 1500;
@@ -217,6 +217,7 @@ fn main() -> anyhow::Result<()> {
                     link_min_jaccard: LINK_MIN_JACCARD,
                     auto_passthrough_max_tokens: 8_000,
                     redundancy_max_cosine: 1.0,
+                    low_confidence_max_grounding: 0.10,
                 };
                 let ctx = build_context(&case.query, &case.retrieved, &cfg);
                 let kept: HashSet<&ChunkId> = ctx.chunks.iter().map(|c| &c.id).collect();

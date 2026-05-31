@@ -20,11 +20,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
+use redhop::core::{Chunk, ChunkId, Chunker, TokenizerBackend};
 use redhop_calibration::dataset::LabeledCorpus;
 use redhop_calibration::loaders::hotpotqa::{default_regime as hp_regime, HotpotQADataset};
 use redhop_calibration::loaders::musique::{default_regime as mq_regime, MuSiQueDataset};
-use redhop::chunking::{SentenceChunker, WhitespaceTokenizer};
-use redhop::core::{Chunk, ChunkId, Chunker, TokenizerBackend};
 use rust_stemmers::{Algorithm, Stemmer};
 use unicode_segmentation::UnicodeSegmentation;
 
