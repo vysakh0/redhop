@@ -108,6 +108,15 @@ pub struct DocumentConfig {
     pub rerank_pool: usize,
     /// Context-assembly policy. Defaults to [`ContextStrategy::Auto`].
     pub context: ContextConfig,
+    /// Floor on the number of candidates returned to the context assembler.
+    /// When the primary retriever (under [`RetrievalMode::Hybrid`] or
+    /// [`RetrievalMode::Dense`]) returns fewer than this many results, a
+    /// lexical (BM25) fallback over the same chunks tops it up until the
+    /// floor is met. **Default `0`** — the floor is opt-in. Has no effect
+    /// under [`RetrievalMode::Lexical`] (the primary already is BM25). Pair
+    /// with [`ContextReport::low_confidence_retrieval`] (issue #1) to detect
+    /// when the fallback fired with weak chunks.
+    pub min_candidates: usize,
 }
 
 impl Default for DocumentConfig {
@@ -128,6 +137,11 @@ impl Default for DocumentConfig {
                 strategy: ContextStrategy::Auto,
                 ..Default::default()
             },
+            // Opt-in: the strict-superset contract (issue #1, Phase 1 fix) is
+            // already the right behavior for almost every caller. Set this
+            // when an LLM downstream refuses to answer on empty contexts and
+            // a known-weak chunk is better than nothing.
+            min_candidates: 0,
         }
     }
 }
@@ -167,6 +181,10 @@ pub struct Document {
     // first stage fetches `cfg.rerank_pool` candidates and the reranker reorders
     // them down to the requested `k`. None ⇒ the first-stage ranking stands.
     reranker: Option<Arc<dyn Reranker>>,
+    // Lazy BM25 index used to top up the primary retriever when it returns
+    // fewer than `cfg.min_candidates`. Initialized on first fallback need so
+    // documents that never trigger the floor never pay for a second index.
+    fallback_bm25: Option<Bm25Retriever>,
 }
 
 /// Renumber chunk ids to `0..n` so a merged set (e.g. from several files) has
@@ -375,6 +393,7 @@ impl Document {
             query_embedder: None,
             retriever: None,
             reranker: None,
+            fallback_bm25: None,
         })
     }
 
@@ -643,17 +662,46 @@ impl Document {
     fn retrieve(&mut self, query: &str, k: usize) -> Result<Vec<RetrievalResult>> {
         self.ensure_indexed()?;
         let q = Query::new(query);
-        let retriever = self.retriever.as_ref().expect("indexed above");
-        // With a reranker, pull a deeper first-stage pool for it to reorder, then
-        // truncate to `k`; without one, fetch exactly `k`.
-        let mut results = match self.reranker.as_ref() {
-            Some(reranker) => {
-                let pool = self.cfg.rerank_pool.max(k);
-                let cand = self.rt.block_on(retriever.retrieve(&q, pool))?;
-                self.rt.block_on(reranker.rerank(&q, cand, k))?
+        // Primary retrieval scoped so its &self borrow drops before the
+        // fallback path may need &mut self for lazy BM25 init.
+        let mut results = {
+            let retriever = self.retriever.as_ref().expect("indexed above");
+            match self.reranker.as_ref() {
+                Some(reranker) => {
+                    let pool = self.cfg.rerank_pool.max(k);
+                    let cand = self.rt.block_on(retriever.retrieve(&q, pool))?;
+                    self.rt.block_on(reranker.rerank(&q, cand, k))?
+                }
+                None => self.rt.block_on(retriever.retrieve(&q, k))?,
             }
-            None => self.rt.block_on(retriever.retrieve(&q, k))?,
         };
+
+        // Top-up fallback (issue #1, Phase 3): if the primary retriever
+        // returned fewer than `cfg.min_candidates`, pad from BM25 over the
+        // same chunks until the floor is met. No-op under Lexical (the
+        // primary already *is* BM25) and when the floor is 0 (the default).
+        if results.len() < self.cfg.min_candidates
+            && !matches!(self.cfg.retrieval_mode, RetrievalMode::Lexical)
+        {
+            self.ensure_fallback_indexed()?;
+            let need = self.cfg.min_candidates;
+            let existing: std::collections::HashSet<crate::core::ChunkId> =
+                results.iter().map(|r| r.chunk.id.clone()).collect();
+            let fallback = self
+                .fallback_bm25
+                .as_ref()
+                .expect("ensure_fallback_indexed populated it");
+            let lex = self.rt.block_on(fallback.retrieve(&q, need.max(k)))?;
+            for r in lex {
+                if results.len() >= need {
+                    break;
+                }
+                if !existing.contains(&r.chunk.id) {
+                    results.push(r);
+                }
+            }
+        }
+
         // Retrievers (e.g. the Tantivy-backed BM25 index) only round-trip
         // id/text/source, so per-chunk `metadata` (page/heading for citations) is
         // lost. Re-attach it from the source chunks, keyed by id.
@@ -665,6 +713,19 @@ impl Document {
             }
         }
         Ok(results)
+    }
+
+    /// Lazily build a BM25 index over the document's chunks for the
+    /// `min_candidates` fallback path. Indexing happens at most once per
+    /// document; documents that never trigger the floor never pay.
+    fn ensure_fallback_indexed(&mut self) -> Result<()> {
+        if self.fallback_bm25.is_some() {
+            return Ok(());
+        }
+        let mut bm25 = Bm25Retriever::new()?;
+        self.rt.block_on(bm25.index(&self.chunks))?;
+        self.fallback_bm25 = Some(bm25);
+        Ok(())
     }
 }
 

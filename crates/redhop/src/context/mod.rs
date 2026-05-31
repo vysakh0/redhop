@@ -186,6 +186,13 @@ pub struct ContextConfig {
     /// Auto prunes (the dilution regime). Provisional default pending the size
     /// sweep — see `docs/findings/CONTEXT_DILUTION.md`.
     pub auto_passthrough_max_tokens: usize,
+    /// Grounding ceiling for the `low_confidence_retrieval` signal: if every
+    /// selected chunk is at or below this score the retrieval is flagged as
+    /// low-confidence in the [`ContextReport`]. Defaults to the same value as
+    /// `distractor_min_grounding` (the existing "is this a distractor" bar) —
+    /// so the signal fires exactly when the assembled context is all
+    /// distractor-level relevance.
+    pub low_confidence_max_grounding: f32,
 }
 
 impl Default for ContextConfig {
@@ -210,6 +217,10 @@ impl Default for ContextConfig {
             // measured-benefit range: prune where we have evidence it helps,
             // pass through below it where evidence is absent.
             auto_passthrough_max_tokens: 1_500,
+            // Same bar as `distractor_min_grounding`: if every selected chunk
+            // is at-or-below distractor relevance, the retrieval itself was
+            // weak (issue #1) and the caller should know programmatically.
+            low_confidence_max_grounding: 0.10,
         }
     }
 }
@@ -316,6 +327,18 @@ pub struct ContextReport {
     /// document structure, not query relevance, so they are not counted as
     /// distractors. `0` when expansion is off.
     pub n_expanded: usize,
+    /// True when retrieval produced nothing above the
+    /// `low_confidence_max_grounding` threshold — either the assembled
+    /// context is empty, or every chunk in it sits at or below distractor
+    /// relevance. Lets callers detect "no good match found" programmatically
+    /// instead of guessing from `n_selected == 0` (issue #1).
+    #[serde(default)]
+    pub low_confidence_retrieval: bool,
+    /// The grounding ceiling that the `low_confidence_retrieval` signal
+    /// applied. Copies `ContextConfig::low_confidence_max_grounding` so the
+    /// report is self-describing.
+    #[serde(default)]
+    pub low_confidence_threshold: f32,
     /// Token/evidence economics of the assembled context.
     pub economics: ContextEconomics,
 }
@@ -444,6 +467,13 @@ impl ContextReport {
             warnings.push(format!(
                 "context still contains distractors (ratio {:.2}); strategy did not filter",
                 self.economics.distractor_ratio
+            ));
+        }
+        if self.low_confidence_retrieval {
+            warnings.push(format!(
+                "low-confidence retrieval: no chunks above grounding {:.2} — \
+                 the query may share little vocabulary with the corpus",
+                self.low_confidence_threshold
             ));
         }
         if !warnings.is_empty() {
@@ -810,6 +840,14 @@ fn make_report(
     // Rescued = below-bar chunks kept *on purpose* because linked to a seed
     // (flagged during the ReasoningPreserving pass; 0 for other strategies).
     let rescued = selected.iter().filter(|i| i.rescued).count();
+    // Low-confidence retrieval fires when there's nothing above the bar in
+    // the assembled context — either selection was empty, or every selected
+    // chunk sits at distractor relevance. Issue #1: a programmatic signal so
+    // callers don't have to infer "no good match found" from `n_selected==0`.
+    let low_confidence_retrieval = selected.is_empty()
+        || selected
+            .iter()
+            .all(|i| i.grounding <= cfg.low_confidence_max_grounding);
     ContextReport {
         strategy,
         requested_strategy: cfg.strategy,
@@ -830,6 +868,8 @@ fn make_report(
         reasoning_preservation_delta: rescued,
         removed,
         n_expanded: 0,
+        low_confidence_retrieval,
+        low_confidence_threshold: cfg.low_confidence_max_grounding,
         economics,
     }
 }
@@ -881,6 +921,12 @@ pub fn analyze_context(
         })
         .count();
     let economics = economics(&q_terms, &items, n_input_distractor, cfg);
+    // For analyze() the input set *is* the selected set (no filtering yet),
+    // so the same rule applies: low-confidence when nothing is above the bar.
+    let low_confidence_retrieval = items.is_empty()
+        || items
+            .iter()
+            .all(|i| i.grounding <= cfg.low_confidence_max_grounding);
     ContextReport {
         // For Auto, report the action the gate would take on this input
         // (passthrough vs prune) — the diagnostic answer to "should I prune?".
@@ -903,6 +949,8 @@ pub fn analyze_context(
         reasoning_preservation_delta: candidates,
         removed: RemovedBreakdown::default(),
         n_expanded: 0,
+        low_confidence_retrieval,
+        low_confidence_threshold: cfg.low_confidence_max_grounding,
         economics,
     }
 }
@@ -1346,6 +1394,7 @@ mod tests {
             link_min_jaccard: 0.05,
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
+            low_confidence_max_grounding: 0.10,
         }
     }
 
@@ -1525,6 +1574,7 @@ mod tests {
             link_min_jaccard: 0.05,
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
+            low_confidence_max_grounding: 0.10,
             strategy: ContextStrategy::DistractorFiltered,
         };
         let filtered = build_context(&q, &chunks, &aggressive);
@@ -1600,6 +1650,7 @@ mod tests {
             link_min_jaccard: 0.05,
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
+            low_confidence_max_grounding: 0.10,
         };
         let rp = build_context(&q, &bridge_chunks(), &cfg);
         // hop2 is below the bar but rescued → kept, and NOT a distractor.
@@ -1703,6 +1754,7 @@ mod tests {
             link_min_jaccard: 0.05,
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
+            low_confidence_max_grounding: 0.10,
         };
         let before = analyze_context(&q, &bridge_chunks(), &cfg);
         let after = build_context(&q, &bridge_chunks(), &cfg);
@@ -1771,5 +1823,50 @@ mod tests {
         // hop2 is a rescuable second-hop candidate.
         assert!(report.second_hop_rescue_count >= 1);
         assert!(report.input_distractor_ratio > 0.0);
+    }
+
+    /// Issue #1 — observability: when retrieval finds nothing with meaningful
+    /// query overlap, the report flags it explicitly rather than returning a
+    /// silent (and weak) context.
+    #[test]
+    fn low_confidence_retrieval_fires_when_nothing_is_grounded() {
+        let q = Query::new("refund window cancellation policy");
+        let cfg = ContextConfig {
+            // Off the auto-passthrough path so the strategies actually run.
+            auto_passthrough_max_tokens: 0,
+            ..Default::default()
+        };
+
+        // Off-topic chunks that share no terms with the query → all grounding
+        // scores are 0, well below the 0.10 ceiling.
+        let weak = vec![
+            rr("1", "photosynthesis converts sunlight into glucose", None),
+            rr("2", "tectonic plates drift over millions of years", None),
+        ];
+        let r = build_context(&q, &weak, &cfg).report;
+        assert!(
+            r.low_confidence_retrieval,
+            "expected low_confidence_retrieval=true on off-topic corpus, got report: {r:?}"
+        );
+        assert_eq!(r.low_confidence_threshold, cfg.low_confidence_max_grounding);
+        assert!(
+            r.render(None).contains("low-confidence retrieval"),
+            "render() should include the low-confidence warning line"
+        );
+
+        // analyze_context surfaces the same signal without selection.
+        let a = analyze_context(&q, &weak, &cfg);
+        assert!(a.low_confidence_retrieval, "analyze_context must flag the same case");
+
+        // On-topic chunks: grounding is high → signal stays off.
+        let strong = vec![
+            rr("3", "the refund window is thirty days from purchase", None),
+            rr("4", "cancellation policy: written notice within seven days", None),
+        ];
+        let r2 = build_context(&q, &strong, &cfg).report;
+        assert!(
+            !r2.low_confidence_retrieval,
+            "expected low_confidence_retrieval=false on on-topic corpus, got report: {r2:?}"
+        );
     }
 }

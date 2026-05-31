@@ -50,6 +50,13 @@ pub struct LoadOptions {
     /// first-stage ranking as-is. Works under any `retrieval` tier and needs the
     /// `semantic` feature.
     pub rerank: Option<String>,
+    /// Minimum candidates to deliver to the assembler. Under `hybrid` /
+    /// `semantic` retrieval, if the primary tier returns fewer, a BM25
+    /// fallback over the same chunks tops the result up to this floor.
+    /// `None` (default) means no floor — primary results stand as-is. Has no
+    /// effect under `lexical`. Pair with `report.low_confidence_retrieval` to
+    /// detect when the fallback fired with weak chunks (issue #1).
+    pub min_candidates: Option<usize>,
 }
 
 /// Options for [`read_folder_with`] (plus the chunking/retrieval [`LoadOptions`]).
@@ -151,6 +158,7 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         retrieval_mode: mode,
         rerank_pool: base.rerank_pool,
         context,
+        min_candidates: o.min_candidates.unwrap_or(base.min_candidates),
     })
 }
 

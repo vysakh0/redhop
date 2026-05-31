@@ -138,6 +138,9 @@ fn config(
         link_min_jaccard,
         auto_passthrough_max_tokens,
         redundancy_max_cosine,
+        // Inherits the Rust-side default (0.10). Not exposed as a Python kwarg
+        // yet — the signal it drives is observable on the report regardless.
+        ..ContextConfig::default()
     })
 }
 
@@ -215,6 +218,17 @@ impl ContextReport {
     #[getter]
     fn n_expanded(&self) -> usize {
         self.inner.n_expanded
+    }
+    /// `True` when nothing in the assembled context was above the grounding
+    /// floor — the query may share little vocabulary with the corpus.
+    #[getter]
+    fn low_confidence_retrieval(&self) -> bool {
+        self.inner.low_confidence_retrieval
+    }
+    /// The grounding ceiling that `low_confidence_retrieval` applied.
+    #[getter]
+    fn low_confidence_threshold(&self) -> f32 {
+        self.inner.low_confidence_threshold
     }
     #[getter]
     fn distractors_pruned(&self) -> usize {
@@ -542,6 +556,10 @@ fn doc_config(
         retrieval_mode,
         rerank_pool: base.rerank_pool,
         context,
+        // Inherits the Rust-side default (0 = off). Surface this as a Python
+        // kwarg once a real user asks; for now the issue-#1 fix in Phase 1
+        // restored the documented hybrid contract on its own.
+        min_candidates: base.min_candidates,
     })
 }
 

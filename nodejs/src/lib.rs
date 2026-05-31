@@ -54,6 +54,12 @@ pub struct Options {
     /// auto-downloaded). Reorders the candidate pool by jointly scoring each
     /// `(query, passage)` pair. Works under any retrieval tier.
     pub rerank: Option<String>,
+    /// Floor on the number of candidates delivered to the assembler. Under
+    /// `"hybrid"` / `"semantic"` retrieval, if the primary tier returns
+    /// fewer, a BM25 fallback tops the result up to this number. Default
+    /// `0` (off). No effect under `"lexical"`. Pair with
+    /// `report.lowConfidenceRetrieval` to detect a weak-fallback case.
+    pub min_candidates: Option<u32>,
 }
 
 impl Options {
@@ -76,6 +82,7 @@ impl Options {
             embedder_passage_prefix: self.embedder_passage_prefix,
             candidate_pool: u(self.candidate_pool),
             rerank: self.rerank,
+            min_candidates: u(self.min_candidates),
         }
     }
 }
@@ -133,6 +140,11 @@ pub struct Report {
     pub second_hop_rescues: u32,
     /// Structural-expansion chunks added (neighbors / headings).
     pub n_expanded: u32,
+    /// `true` when nothing in the assembled context was above the grounding
+    /// floor — the query may share little vocabulary with the corpus.
+    pub low_confidence_retrieval: bool,
+    /// The grounding ceiling that `low_confidence_retrieval` applied.
+    pub low_confidence_threshold: f64,
     /// The human-readable Decision Report.
     pub rendered: String,
 }
@@ -170,6 +182,8 @@ fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
         retained_evidence_ratio: r.retained_evidence_ratio as f64,
         second_hop_rescues: r.second_hop_rescue_count as u32,
         n_expanded: r.n_expanded as u32,
+        low_confidence_retrieval: r.low_confidence_retrieval,
+        low_confidence_threshold: r.low_confidence_threshold as f64,
         rendered: r.render(None),
     };
     BuiltContext {
