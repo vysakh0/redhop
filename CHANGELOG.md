@@ -9,11 +9,13 @@ minor releases may break; breaking changes are noted here).
 
 ## [0.1.4] - 2026-06-01
 
-Code-search ergonomics + a regression guard around the embedding cache.
-Follow-on to 0.1.3's BM25-quality theme: the retrieval is now precise, but
-the way the assembled context is presented for **code** files leaves the
-user staring at a `def` line without the implementation. Default neighbor
-expansion for code chunks closes that gap.
+Citation ergonomics — for both code and prose. Follow-on to 0.1.3's
+BM25-quality theme: retrieval is now precise, but the **assembled context**
+returned to the LLM left the user staring at a `def` line without the
+implementation, or at a deep section paragraph without its parent heading.
+Both gaps closed by default; both have explicit opt-out knobs. Plus three
+prose-side fixes that surfaced during the audit (setext headings, PDF
+heading heuristic, plumbing).
 
 ### Changed
 - **`Document::context(query)` on a code chunk now attaches ±1 neighbor
@@ -24,17 +26,40 @@ expansion for code chunks closes that gap.
   (the new default), citations on code hits include the surrounding
   implementation. **Behavior change** for code-shaped corpora — set
   `code_neighbors_default: 0` to restore the old chunk-only behavior. No
-  effect on prose corpora (the auto-expansion fires only on chunks tagged
+  effect on prose corpora (fires only on chunks tagged
   `metadata["kind"] == "code"`).
+- **`Document::context(query)` on a prose chunk with a section heading
+  now attaches the section's opener chunk by default.** A query that
+  lands deep inside `## Refunds → ### Eligibility` previously cited only
+  the matched chunk — the LLM lost the section title. With
+  `DocumentConfig::prose_heading_default = true` (the new default), the
+  section's first chunk is attached. **Behavior change** for hierarchical
+  prose — set `prose_heading_default: false` to disable. Only fires on
+  chunks that carry non-empty `metadata["heading"]` (markdown, DOCX,
+  PPTX, XLSX, and — new in this release — PDF).
+- **Markdown sections now recognize setext headings** (`Title\n=====`
+  for H1, `Title\n-----` for H2) in addition to ATX (`#`/`##`/…). YAML
+  frontmatter (`---` ... `---` at file start) is detected and excluded
+  from setext scanning so its closing fence doesn't get treated as an
+  H2 underline. Pandoc output / older docs / man pages now produce the
+  same section structure as their ATX equivalents.
+- **PDF chunks now carry best-effort heading metadata.** A per-page
+  heuristic lifts the first short, non-paragraph-shaped line into
+  `Section::heading` (rejecting page-number footers, body lines ending
+  in sentence punctuation, and lines ending in a digit). Lets the BM25
+  heading-field search added in 0.1.3 actually reach PDF chunks by
+  topic; previously `metadata["heading"]` was always `None` on PDFs.
 
 ### Added
-- **`DocumentConfig::code_neighbors_default: usize`** (default `1`) — the
-  knob that drives the change above. Inherited via the Python / Node
-  bindings' default config; no public binding-surface change.
+- **`DocumentConfig::code_neighbors_default: usize`** (default `1`).
+- **`DocumentConfig::prose_heading_default: bool`** (default `true`).
+  Both inherited via the Python / Node bindings' default config; no
+  binding-surface change for callers who don't override.
 
 ### Fixed
-- (No code fixes — 0.1.3 already closed the BM25 quality gaps. See the
-  Notes section for the verified-not-broken story.)
+- (No code-bug fixes — 0.1.3 already closed the BM25 quality gaps. See
+  the Notes section for the verified-not-broken embedding-persistence
+  story.)
 
 ### Notes
 - **Embedding persistence verified.** The 0.1.3 audit suspected that
@@ -48,10 +73,11 @@ expansion for code chunks closes that gap.
   (`crates/redhop/tests/embedding_persistence.rs`) now pins this — a
   reload triggers exactly 1 embed call (the query), not N+1 (the query +
   every chunk). Locked in as a regression guard.
-- Three new integration tests for the code-neighbor default
-  (`crates/redhop/tests/code_neighbor_expansion.rs`): code chunks get a
-  neighbor, prose corpora are unaffected, opt-out via
-  `code_neighbors_default = 0` works as expected. 103/103 tests pass.
+- Eleven new tests across the citation-ergonomics theme: 3 for the code
+  neighbor default, 3 for the prose heading default, 3 for setext
+  headings + frontmatter handling, 2 for the PDF heading heuristic.
+  **111/111 tests pass** under
+  `cargo test -p redhop --features files`.
 
 ## [0.1.3] - 2026-05-31
 

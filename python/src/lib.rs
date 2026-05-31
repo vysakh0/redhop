@@ -564,6 +564,10 @@ fn doc_config(
         // auto-expansion only fires on code-classified chunks, so a
         // Python user on a text/prose corpus sees no change.
         code_neighbors_default: base.code_neighbors_default,
+        // Inherits the Rust-side default (true). Fires only on chunks that
+        // carry a section heading — attaches the section's opening chunk
+        // for prose-with-headings contexts.
+        prose_heading_default: base.prose_heading_default,
     })
 }
 

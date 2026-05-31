@@ -1,6 +1,8 @@
 //! PDF text extraction via `pdf-extract` (pure-Rust, lopdf-backed). One section
 //! per page, each tagged with its 1-based page number, so retrieved chunks can
-//! be cited ("contract.pdf, p.3").
+//! be cited ("contract.pdf, p.3"). The page's first short, heading-shaped line
+//! is best-effort lifted into `Section::heading` so the BM25 heading-field
+//! search (added in 0.1.3) reaches pages by topic.
 
 use super::{ExtractError, ExtractedDoc, Section};
 
@@ -12,9 +14,9 @@ pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc,
         .enumerate()
         .filter(|(_, text)| !text.trim().is_empty())
         .map(|(i, text)| Section {
+            heading: page_heading(&text),
             text,
             page: Some(i + 1),
-            heading: None,
             line: None,
         })
         .collect();
@@ -29,4 +31,67 @@ pub(crate) fn extract_bytes(data: &[u8], source: String) -> Result<ExtractedDoc,
         sections
     };
     Ok(ExtractedDoc { source, sections })
+}
+
+/// Best-effort heading extraction for a PDF page: take the first non-empty
+/// line if it looks like a heading (short, has text, doesn't end with a
+/// sentence terminator or a digit, isn't an obvious page-number marker).
+/// Returns `None` rather than guess when the first line is body-shaped — a
+/// missing heading is better than a garbage one in the BM25 heading field.
+fn page_heading(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| !l.trim().is_empty())?.trim();
+    if !(4..=80).contains(&line.chars().count()) {
+        return None;
+    }
+    if !line.chars().any(|c| c.is_alphabetic()) {
+        return None;
+    }
+    // Body lines typically end with sentence punctuation; headings rarely do.
+    if matches!(
+        line.chars().last(),
+        Some('.') | Some(',') | Some(';') | Some(':') | Some('?') | Some('!')
+    ) {
+        return None;
+    }
+    // Trailing digit catches "Section 1 of 25" and many footer-style page
+    // numbers; real headings end with a word.
+    if line.chars().last().is_some_and(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let lower = line.to_lowercase();
+    if lower.starts_with("page ") || lower.starts_with("p. ") {
+        return None;
+    }
+    Some(line.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_heading;
+
+    #[test]
+    fn page_heading_accepts_obvious_headings() {
+        assert_eq!(
+            page_heading("MASTER SERVICES AGREEMENT\n\nBody text follows here."),
+            Some("MASTER SERVICES AGREEMENT".into())
+        );
+        assert_eq!(
+            page_heading("Section 4 — Limitation of Liability\nThe parties agree…"),
+            Some("Section 4 — Limitation of Liability".into())
+        );
+    }
+
+    #[test]
+    fn page_heading_rejects_body_shaped_lines() {
+        // Sentence-terminated body lines (a paragraph that starts the page).
+        assert_eq!(page_heading("The parties hereby agree to the following."), None);
+        // Page number footers / running headers.
+        assert_eq!(page_heading("Page 3 of 24"), None);
+        assert_eq!(page_heading("Acme Corp · Q3 2025"), None); // ends with digit
+        // Too short / no letters / empty.
+        assert_eq!(page_heading("§ 3"), None); // ends with digit + too short
+        assert_eq!(page_heading("---"), None); // no letters
+        assert_eq!(page_heading(""), None);
+        assert_eq!(page_heading("\n\n"), None);
+    }
 }

@@ -125,6 +125,14 @@ pub struct DocumentConfig {
     /// having to opt into expansion explicitly. Set to `0` to disable. Has
     /// no effect on result sets where no chunk has `metadata["kind"]=="code"`.
     pub code_neighbors_default: usize,
+    /// When `true` (default), [`Document::context`] attaches the section's
+    /// opening chunk (the heading) to every cited chunk that carries a
+    /// `metadata["heading"]` — so a citation deep inside `## Refunds → ###
+    /// Eligibility` arrives at the LLM with the section title attached for
+    /// context. Mirrors the code-neighbors default but for prose with
+    /// hierarchical structure (markdown, DOCX, PPTX, XLSX, and now PDF).
+    /// Set to `false` to keep citations strictly to the retrieved chunks.
+    pub prose_heading_default: bool,
 }
 
 impl Default for DocumentConfig {
@@ -156,6 +164,10 @@ impl Default for DocumentConfig {
             // the body. Pulling ±1 neighbors as part of the default
             // pull-the-implementation-too behavior. Set to 0 to disable.
             code_neighbors_default: 1,
+            // For sectioned prose, attach each cited chunk's section heading
+            // chunk so the LLM has the topic context. Cheap (one extra chunk
+            // per cited section), bounded by the token budget.
+            prose_heading_default: true,
         }
     }
 }
@@ -217,6 +229,22 @@ fn is_code_chunk(r: &RetrievalResult) -> bool {
         .get("kind")
         .and_then(|v| v.as_str())
         == Some("code")
+}
+
+/// True iff the retrieval result is a prose chunk carrying a non-empty
+/// section heading (markdown / DOCX / PPTX / XLSX / PDF headings). Drives
+/// the `prose_heading_default` auto-expansion in
+/// [`Document::context_with`]. Code chunks are excluded — they get their
+/// own neighbor expansion path.
+fn has_prose_heading(r: &RetrievalResult) -> bool {
+    if is_code_chunk(r) {
+        return false;
+    }
+    r.chunk
+        .metadata
+        .get("heading")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.is_empty())
 }
 
 /// Classify a source by extension. `"code"` and `"data"` are chunked **verbatim**
@@ -529,15 +557,28 @@ impl Document {
         }
         let q = Query::new(query);
 
-        // Auto-expand neighbors when the retrieved set includes a
-        // code-classified chunk. Code chunks are fixed-token windows so a
-        // hit on a `def` line silently omits the function body in the next
-        // chunk; pulling ±N neighbors keeps the citation useful. Opt out
-        // via `cfg.code_neighbors_default = 0` or call `context_with`
-        // explicitly when that knob shouldn't drive the default.
-        let n = self.cfg.code_neighbors_default;
-        if n > 0 && results.iter().any(is_code_chunk) {
-            let plan = self.expansion_plan(&results, n, false);
+        // Auto-expand based on what the retrieved set looks like:
+        //
+        // - **code** chunks → pull ±`code_neighbors_default` adjacent chunks
+        //   so a citation on a `def` line includes the implementation body.
+        // - **prose** chunks with section heading metadata → attach the
+        //   section's opening chunk via `include_heading` so a deep-section
+        //   citation arrives with its parent heading for context.
+        //
+        // Either default can be turned off (`code_neighbors_default = 0` or
+        // `prose_heading_default = false`); when both fire on a mixed corpus
+        // (some chunks code, some prose-with-headings) both apply.
+        let neighbors = if self.cfg.code_neighbors_default > 0
+            && results.iter().any(is_code_chunk)
+        {
+            self.cfg.code_neighbors_default
+        } else {
+            0
+        };
+        let include_heading = self.cfg.prose_heading_default
+            && results.iter().any(has_prose_heading);
+        if neighbors > 0 || include_heading {
+            let plan = self.expansion_plan(&results, neighbors, include_heading);
             return Ok(build_context_expanded(&q, &results, &cfg, &plan));
         }
 

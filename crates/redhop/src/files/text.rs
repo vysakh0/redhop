@@ -5,11 +5,13 @@
 
 use super::Section;
 
-/// Split markdown into sections at ATX headings (`#`, `##`, …). Each section
-/// runs from one heading to the next and carries that heading's text plus the
-/// 1-based line it starts on. Content before the first heading becomes a
-/// heading-less section.
+/// Split markdown into sections at ATX (`#`, `##`, …) **or** setext
+/// (`Title\n=====` / `Title\n-----`) headings. Each section runs from one
+/// heading to the next and carries that heading's text plus the 1-based line
+/// it starts on. Content before the first heading becomes a heading-less
+/// section.
 pub fn markdown_sections(raw: &str) -> Vec<Section> {
+    let lines: Vec<&str> = raw.lines().collect();
     let mut sections: Vec<Section> = Vec::new();
     let mut cur = String::new();
     let mut cur_heading: Option<String> = None;
@@ -26,15 +28,59 @@ pub fn markdown_sections(raw: &str) -> Vec<Section> {
         }
     };
 
-    for (i, line) in raw.lines().enumerate() {
-        if let Some(title) = atx_heading(line) {
-            flush(&mut sections, &cur, &cur_heading, cur_line);
-            cur.clear();
-            cur_heading = Some(title);
-            cur_line = i + 1;
+    // YAML frontmatter (`---` ... `---` at file start) shouldn't trigger
+    // setext detection — the closing `---` would otherwise look like an H2
+    // underline under the last YAML key. We still keep the frontmatter lines
+    // in the indexed body (some users search by `author:` etc.); just skip
+    // heading extraction inside the block.
+    let frontmatter_end: Option<usize> = if lines.first().map(|l| l.trim()) == Some("---") {
+        (1..lines.len()).find(|&j| lines[j].trim() == "---")
+    } else {
+        None
+    };
+    let in_frontmatter = |i: usize| frontmatter_end.is_some_and(|end| i <= end);
+
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+
+        if !in_frontmatter(i) {
+            if let Some(title) = atx_heading(line) {
+                flush(&mut sections, &cur, &cur_heading, cur_line);
+                cur.clear();
+                cur_heading = Some(title);
+                cur_line = i + 1;
+                cur.push_str(line);
+                cur.push('\n');
+                i += 1;
+                continue;
+            }
+
+            // Setext: a non-empty line whose NEXT line is all `=` or `-`
+            // (≥3 chars, possibly with trailing whitespace). The title line
+            // is included in the section body (parallel to ATX); the
+            // underline is skipped so it doesn't pollute the body text.
+            if i + 1 < lines.len()
+                && !in_frontmatter(i + 1)
+                && setext_underline_level(lines[i + 1]).is_some()
+                && !line.trim().is_empty()
+                && setext_underline_level(line).is_none()
+            {
+                let title = line.trim();
+                flush(&mut sections, &cur, &cur_heading, cur_line);
+                cur.clear();
+                cur_heading = Some(title.to_string());
+                cur_line = i + 1;
+                cur.push_str(line);
+                cur.push('\n');
+                i += 2;
+                continue;
+            }
         }
+
         cur.push_str(line);
         cur.push('\n');
+        i += 1;
     }
     flush(&mut sections, &cur, &cur_heading, cur_line);
 
@@ -47,8 +93,24 @@ pub fn markdown_sections(raw: &str) -> Vec<Section> {
     sections
 }
 
+/// `Some(1)` for `===…` (H1), `Some(2)` for `---…` (H2), `None` otherwise.
+/// Requires at least 3 consecutive chars to match CommonMark.
+fn setext_underline_level(line: &str) -> Option<usize> {
+    let t = line.trim_end();
+    if t.len() < 3 {
+        return None;
+    }
+    if t.chars().all(|c| c == '=') {
+        return Some(1);
+    }
+    if t.chars().all(|c| c == '-') {
+        return Some(2);
+    }
+    None
+}
+
 /// The heading text of an ATX markdown heading line (`## Title` → `Title`), or
-/// `None` if the line isn't a heading. Setext (`===`) headings are ignored.
+/// `None` if the line isn't a heading.
 fn atx_heading(line: &str) -> Option<String> {
     let t = line.trim_start();
     if !t.starts_with('#') {
@@ -284,5 +346,75 @@ mod tests {
         let secs = line_blocks("a\nb\nc\n");
         assert_eq!(secs.len(), 1);
         assert_eq!(secs[0].line, Some(1));
+    }
+
+    #[test]
+    fn markdown_recognizes_setext_headings() {
+        // Pre-fix only ATX (`#`) split sections; setext-style markdown (still
+        // common in pandoc output / older docs / man pages) was silently
+        // ignored — no heading metadata, no section break.
+        let md = "\
+Top Title
+=========
+
+intro paragraph
+
+Sub Section
+-----------
+
+more text
+";
+        let secs = markdown_sections(md);
+        let headings: Vec<_> = secs.iter().map(|s| s.heading.as_deref()).collect();
+        assert_eq!(headings, vec![Some("Top Title"), Some("Sub Section")]);
+        // The underline line itself is NOT in the body — body starts with
+        // the title, then content (parallel to ATX behavior).
+        let sub = secs
+            .iter()
+            .find(|s| s.heading == Some("Sub Section".into()))
+            .unwrap();
+        assert!(!sub.text.contains("---"), "underline must not leak into body: {sub:?}");
+        assert!(sub.text.contains("more text"));
+    }
+
+    #[test]
+    fn setext_does_not_misfire_on_yaml_frontmatter() {
+        let md = "\
+---
+title: a doc
+date: 2026
+---
+# Real Heading
+
+body
+";
+        let secs = markdown_sections(md);
+        let headings: Vec<_> = secs.iter().map(|s| s.heading.as_deref()).collect();
+        assert_eq!(headings, vec![None, Some("Real Heading")]);
+    }
+
+    #[test]
+    fn setext_mixed_with_atx() {
+        let md = "\
+ATX-Style
+=========
+
+para A
+
+## Mid Atx
+
+para B
+
+Tail Setext
+-----------
+
+para C
+";
+        let secs = markdown_sections(md);
+        let headings: Vec<_> = secs.iter().map(|s| s.heading.as_deref()).collect();
+        assert_eq!(
+            headings,
+            vec![Some("ATX-Style"), Some("Mid Atx"), Some("Tail Setext")]
+        );
     }
 }

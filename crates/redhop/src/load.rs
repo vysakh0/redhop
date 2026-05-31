@@ -163,6 +163,9 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         // kwarg yet — the auto-expansion fires only on code-classified
         // chunks anyway, so plain text/prose loaders see no change.
         code_neighbors_default: base.code_neighbors_default,
+        // Inherits the Rust-side default (true). Fires only on chunks that
+        // carry a section heading (markdown / DOCX / PPTX / XLSX / PDF).
+        prose_heading_default: base.prose_heading_default,
     })
 }
 
