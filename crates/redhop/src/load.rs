@@ -159,6 +159,10 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         rerank_pool: base.rerank_pool,
         context,
         min_candidates: o.min_candidates.unwrap_or(base.min_candidates),
+        // Inherits the Rust-side default (1 = on). Not exposed as a loader
+        // kwarg yet — the auto-expansion fires only on code-classified
+        // chunks anyway, so plain text/prose loaders see no change.
+        code_neighbors_default: base.code_neighbors_default,
     })
 }
 

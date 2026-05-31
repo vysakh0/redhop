@@ -117,6 +117,14 @@ pub struct DocumentConfig {
     /// with [`ContextReport::low_confidence_retrieval`] (issue #1) to detect
     /// when the fallback fired with weak chunks.
     pub min_candidates: usize,
+    /// Neighbors to attach automatically when the retrieved set includes a
+    /// code-classified chunk. The default `1` makes [`Document::context`]
+    /// behave like [`Document::context_expanded`] with `neighbors=1` for
+    /// code-shaped corpora — so a citation that lands on a function's `def`
+    /// line also brings the implementation chunk along, instead of the user
+    /// having to opt into expansion explicitly. Set to `0` to disable. Has
+    /// no effect on result sets where no chunk has `metadata["kind"]=="code"`.
+    pub code_neighbors_default: usize,
 }
 
 impl Default for DocumentConfig {
@@ -142,6 +150,12 @@ impl Default for DocumentConfig {
             // when an LLM downstream refuses to answer on empty contexts and
             // a known-weak chunk is better than nothing.
             min_candidates: 0,
+            // Code chunks are fixed-token windows, so a single function often
+            // spans 2-3 chunks. Default `context()` on a code hit would cite
+            // only the chunk that matched (typically the `def` line), losing
+            // the body. Pulling ±1 neighbors as part of the default
+            // pull-the-implementation-too behavior. Set to 0 to disable.
+            code_neighbors_default: 1,
         }
     }
 }
@@ -193,6 +207,16 @@ fn reassign_ids(chunks: &mut [Chunk]) {
     for (i, c) in chunks.iter_mut().enumerate() {
         c.id = crate::core::ChunkId::new(format!("{i}"));
     }
+}
+
+/// True iff the retrieval result is a code-classified chunk. Drives the
+/// `code_neighbors_default` auto-expansion in [`Document::context_with`].
+fn is_code_chunk(r: &RetrievalResult) -> bool {
+    r.chunk
+        .metadata
+        .get("kind")
+        .and_then(|v| v.as_str())
+        == Some("code")
 }
 
 /// Classify a source by extension. `"code"` and `"data"` are chunked **verbatim**
@@ -503,7 +527,21 @@ impl Document {
         if let Some(b) = budget {
             cfg.token_budget = b;
         }
-        Ok(build_context(&Query::new(query), &results, &cfg))
+        let q = Query::new(query);
+
+        // Auto-expand neighbors when the retrieved set includes a
+        // code-classified chunk. Code chunks are fixed-token windows so a
+        // hit on a `def` line silently omits the function body in the next
+        // chunk; pulling ±N neighbors keeps the citation useful. Opt out
+        // via `cfg.code_neighbors_default = 0` or call `context_with`
+        // explicitly when that knob shouldn't drive the default.
+        let n = self.cfg.code_neighbors_default;
+        if n > 0 && results.iter().any(is_code_chunk) {
+            let plan = self.expansion_plan(&results, n, false);
+            return Ok(build_context_expanded(&q, &results, &cfg, &plan));
+        }
+
+        Ok(build_context(&q, &results, &cfg))
     }
 
     /// [`Document::context_with`] plus **structural context expansion**: after the

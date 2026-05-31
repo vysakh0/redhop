@@ -560,6 +560,10 @@ fn doc_config(
         // kwarg once a real user asks; for now the issue-#1 fix in Phase 1
         // restored the documented hybrid contract on its own.
         min_candidates: base.min_candidates,
+        // Inherits the Rust-side default (1 = on for code chunks). The
+        // auto-expansion only fires on code-classified chunks, so a
+        // Python user on a text/prose corpus sees no change.
+        code_neighbors_default: base.code_neighbors_default,
     })
 }
 

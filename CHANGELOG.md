@@ -7,6 +7,52 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-01
+
+Code-search ergonomics + a regression guard around the embedding cache.
+Follow-on to 0.1.3's BM25-quality theme: the retrieval is now precise, but
+the way the assembled context is presented for **code** files leaves the
+user staring at a `def` line without the implementation. Default neighbor
+expansion for code chunks closes that gap.
+
+### Changed
+- **`Document::context(query)` on a code chunk now attaches ±1 neighbor
+  chunks by default.** Code is chunked as fixed-token windows so a 50-line
+  function often spans 2-3 chunks; a hit on the chunk containing the `def`
+  line would previously cite only the signature, omitting the body in the
+  next chunk. With `DocumentConfig::code_neighbors_default = 1`
+  (the new default), citations on code hits include the surrounding
+  implementation. **Behavior change** for code-shaped corpora — set
+  `code_neighbors_default: 0` to restore the old chunk-only behavior. No
+  effect on prose corpora (the auto-expansion fires only on chunks tagged
+  `metadata["kind"] == "code"`).
+
+### Added
+- **`DocumentConfig::code_neighbors_default: usize`** (default `1`) — the
+  knob that drives the change above. Inherited via the Python / Node
+  bindings' default config; no public binding-surface change.
+
+### Fixed
+- (No code fixes — 0.1.3 already closed the BM25 quality gaps. See the
+  Notes section for the verified-not-broken story.)
+
+### Notes
+- **Embedding persistence verified.** The 0.1.3 audit suspected that
+  `read_folder_with(persist=true)` re-embedded every chunk on reload
+  (paying ~30-60 sec of bge-small cost per cold start on a 1000-chunk
+  codebase). The machinery is already correct: `embedded_chunks()`
+  populates the `Chunk::embedding` field from the retriever cache before
+  writing `index.json`, `Embedding` is `Serialize`/`Deserialize`, and
+  `LocalRerankRetriever::index` short-circuits any chunk that comes back
+  with an embedding already set. Round-trip test
+  (`crates/redhop/tests/embedding_persistence.rs`) now pins this — a
+  reload triggers exactly 1 embed call (the query), not N+1 (the query +
+  every chunk). Locked in as a regression guard.
+- Three new integration tests for the code-neighbor default
+  (`crates/redhop/tests/code_neighbor_expansion.rs`): code chunks get a
+  neighbor, prose corpora are unaffected, opt-out via
+  `code_neighbors_default = 0` works as expected. 103/103 tests pass.
+
 ## [0.1.3] - 2026-05-31
 
 Retrieval-quality release. Fixes the structural hybrid-fusion bug reported in
