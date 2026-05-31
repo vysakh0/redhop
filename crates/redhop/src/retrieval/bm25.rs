@@ -15,10 +15,22 @@ use crate::core::{
 };
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
-use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
+use tantivy::schema::{
+    Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
+};
+use tantivy::tokenizer::{Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, TextAnalyzer};
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
 const WRITER_HEAP_BYTES: usize = 64 * 1024 * 1024;
+
+/// Custom analyzer name we register on the BM25 index: a Snowball-Porter2
+/// pipeline (lowercase → strip overlong tokens → English stem). Picked to match
+/// the grounding/Jaccard scorers in `crate::context` so a chunk's BM25 score
+/// and its post-retrieval grounding agree on what "the same term" means —
+/// otherwise queries like `"compression"` never match a chunk containing
+/// `compress_video`, even though the grounding scorer would treat them as
+/// identical.
+const STEM_ANALYZER: &str = "redhop_en_stem";
 
 struct Schema_ {
     schema: Schema,
@@ -32,7 +44,16 @@ impl Schema_ {
     fn build() -> Self {
         let mut sb = Schema::builder();
         let id_field = sb.add_text_field("id", STRING | STORED);
-        let text_field = sb.add_text_field("text", TEXT | STORED);
+        // Custom analyzer (`STEM_ANALYZER`) instead of plain `TEXT` so the
+        // BM25 tokenization stems morphological variants. Registered against
+        // the Index in `Bm25Retriever::new`.
+        let text_indexing = TextFieldIndexing::default()
+            .set_tokenizer(STEM_ANALYZER)
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions);
+        let text_opts = TextOptions::default()
+            .set_indexing_options(text_indexing)
+            .set_stored();
+        let text_field = sb.add_text_field("text", text_opts);
         let source_field = sb.add_text_field("source", STRING | STORED);
         let token_count_field = sb.add_u64_field("token_count", STORED | FAST);
         Self {
@@ -62,6 +83,15 @@ impl Bm25Retriever {
     pub fn new() -> crate::core::Result<Self> {
         let schema = Schema_::build();
         let index = Index::create_in_ram(schema.schema.clone());
+        // Register the stemming analyzer the schema references. Built once per
+        // index (cheap — just composes filters); the analyzer applies on both
+        // indexing and query-parsing for the `text` field.
+        let stem_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
+            .filter(RemoveLongFilter::limit(40))
+            .filter(LowerCaser)
+            .filter(Stemmer::new(Language::English))
+            .build();
+        index.tokenizers().register(STEM_ANALYZER, stem_analyzer);
         let writer: IndexWriter = index
             .writer(WRITER_HEAP_BYTES)
             .map_err(|e| Error::Storage(format!("tantivy writer: {e}")))?;
@@ -241,6 +271,42 @@ mod tests {
             "Highlight parts if any of Exclusivity"
         );
         assert_eq!(sanitize_query("   "), "*");
+    }
+
+    #[test]
+    fn morphological_query_variants_match_via_stemming() {
+        // The bug this regresses: querying `compression` against a chunk that
+        // contains `compress_video` returned nothing because the default
+        // Tantivy `TEXT` analyzer didn't stem (so `compression` ≠ `compress`).
+        // After registering the Snowball English stemmer, both stem to
+        // `compress` and match. Mirrors the user-reported symptom from a real
+        // Rust source file indexed with redhop 0.1.2.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+            r.index(&[
+                mk(
+                    "video",
+                    "pub async fn compress_video(file_path: &str, quality: &str)",
+                ),
+                mk(
+                    "convert",
+                    "pub async fn convert_video(file_path: &str, format: &str)",
+                ),
+                mk("unrelated", "the quick brown fox jumps over the lazy dog"),
+            ])
+            .await
+            .unwrap();
+
+            for query in ["compress", "compression", "compresses", "compressing"] {
+                let hits = r.retrieve(&Query::new(query), 3).await.unwrap();
+                assert!(
+                    hits.iter().any(|h| h.chunk.id.as_str() == "video"),
+                    "query {query:?} must find the compress_video chunk via stemming; \
+                     got hits: {:?}",
+                    hits.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+                );
+            }
+        });
     }
 
     #[test]
