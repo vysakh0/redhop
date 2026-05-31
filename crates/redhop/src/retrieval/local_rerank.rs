@@ -2,10 +2,14 @@
 //!
 //! [`LocalRerankRetriever`] composes a lexical first stage (BM25) with a dense
 //! second stage: BM25 prunes the whole corpus to a candidate pool of
-//! `candidate_pool` chunks, then *only that pool* is reordered by cosine of the
-//! query embedding against precomputed chunk embeddings. This matches a global
-//! dense retriever's recall on the validated workloads while touching the dense
-//! model on a bounded pool and needing **no ANN / vector index**.
+//! `candidate_pool` chunks, then that pool is reordered by cosine of the query
+//! embedding against precomputed chunk embeddings, and the two rankings are
+//! **RRF-fused** to produce the final hybrid order. RRF guarantees the
+//! documented contract that hybrid is at least as large as either tier on its
+//! own — a chunk BM25 ranked highly never silently disappears just because the
+//! dense model didn't surface it. Matches a global dense retriever's recall on
+//! the validated workloads while touching the dense model on a bounded pool
+//! and needing **no ANN / vector index**.
 //! See `docs/findings/LOCAL_RERANK.md`.
 //!
 //! It is **embedder-agnostic**: it takes any [`EmbeddingProvider`], so the ONNX
@@ -228,13 +232,8 @@ impl Retriever for LocalRerankRetriever {
             return Ok(cand);
         }
 
-        // Any pool chunk without an embedding is lexical-only (code) — it must
-        // survive on its BM25 rank rather than being dropped.
-        let has_lexical_only = cand
-            .iter()
-            .any(|r| !self.embeddings.contains_key(r.chunk.id.as_str()));
-
         // Dense reranking of the embeddable (prose/data) subset of the pool.
+        // Code chunks (no embedding) are absent here; they survive in `cand`.
         let mut dense: Vec<RetrievalResult> = cand
             .iter()
             .filter_map(|r| {
@@ -259,19 +258,17 @@ impl Retriever for LocalRerankRetriever {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        if !has_lexical_only {
-            // Pure prose pool: dense reranking, as before.
-            dense.truncate(top_k.max(1));
-            return Ok(dense);
-        }
         if dense.is_empty() {
             // Pure lexical pool (all code): BM25 ranking stands.
             let mut out = cand;
             out.truncate(top_k.max(1));
             return Ok(out);
         }
-        // Mixed: fuse the BM25 ranking (keeps code chunks) with the dense
-        // reranking (prose/data) via reciprocal rank fusion.
+        // RRF-fuse the BM25 ranking with the dense reranking. This preserves
+        // the hybrid contract: a chunk ranked highly by BM25 is never dropped
+        // just because the dense model demoted it (issue #1). The previous
+        // prose-pool shortcut (return dense alone) silently lost BM25-only
+        // hits whenever cosine pushed them past `top_k`.
         Ok(reciprocal_rank_fusion(&[cand, dense], 60.0, top_k.max(1)))
     }
 
@@ -331,12 +328,76 @@ mod tests {
         rt().block_on(async {
             let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
             r.index(&chunks()).await.unwrap();
-            // Lexically matches all three; the embedding points at "gamma".
+            // Lexically matches all three; the embedding points at "gamma" — c
+            // is rank-1 in dense (only positive cosine) and BM25-competitive,
+            // so RRF puts it at the top. Method is `Hybrid` (RRF-fused), not
+            // `Rerank` (cosine-only), reflecting the actual fusion path.
             let q =
                 Query::new("alpha beta gamma").with_embedding(Embedding::from(vec![0.0, 0.0, 1.0]));
             let res = r.retrieve(&q, 3).await.unwrap();
             assert_eq!(res[0].chunk.id.as_str(), "c");
-            assert_eq!(res[0].score.method, RetrievalMethod::Rerank);
+            assert_eq!(res[0].score.method, RetrievalMethod::Hybrid);
+        });
+    }
+
+    /// Regression for issue #1: hybrid must RRF-fuse BM25 + dense rather than
+    /// use dense-only. Pre-fix the "pure-prose pool" branch returned
+    /// `dense.truncate(k)`, silently discarding the BM25 ranking. RRF restores
+    /// the documented hybrid contract that BM25 signal contributes to every
+    /// result and that the result count never drops below lexical's.
+    #[test]
+    fn hybrid_fuses_bm25_with_dense_when_dense_disagrees() {
+        rt().block_on(async {
+            let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
+            // Five prose chunks all matching "alpha" to varying degrees; the
+            // dense embedder points at "gamma" so the cosine ranking is
+            // anti-correlated with the BM25 ranking — the worst case for
+            // dense-only retrieval.
+            let cs = vec![
+                Chunk::new("a0", "alpha alpha alpha gamma", "doc", TokenCount(4)),
+                Chunk::new("a1", "alpha alpha gamma gamma", "doc", TokenCount(4)),
+                Chunk::new("a2", "alpha gamma gamma gamma", "doc", TokenCount(4)),
+                Chunk::new("a3", "alpha alpha", "doc", TokenCount(2)),
+                Chunk::new("a4", "alpha", "doc", TokenCount(1)),
+            ];
+            r.index(&cs).await.unwrap();
+            let q = Query::new("alpha").with_embedding(Embedding::from(vec![0.0, 0.0, 1.0]));
+
+            // Pre-fix structural marker #1: method was `Rerank` (dense-only).
+            // Post-fix: every result is `Hybrid` (RRF-fused).
+            let hyb = r.retrieve(&q, 3).await.unwrap();
+            assert!(!hyb.is_empty(), "hybrid must not be empty when pool is non-empty");
+            for r in &hyb {
+                assert_eq!(
+                    r.score.method,
+                    RetrievalMethod::Hybrid,
+                    "issue #1: every hybrid result must carry the Hybrid method (RRF), \
+                     got {:?} for {}",
+                    r.score.method,
+                    r.chunk.id.as_str(),
+                );
+                assert!(
+                    r.breakdown.fused.is_some(),
+                    "issue #1: every hybrid result must have a fused RRF score, missing on {}",
+                    r.chunk.id.as_str(),
+                );
+            }
+
+            // Count parity across top_k values: RRF preserves the candidate
+            // count from the pool, never truncating below what lexical would
+            // return on the same indexed corpus.
+            for k in [1usize, 2, 3, 5] {
+                let lex = r.bm25.retrieve(&q, k).await.unwrap();
+                let hyb = r.retrieve(&q, k).await.unwrap();
+                assert_eq!(
+                    hyb.len(),
+                    lex.len(),
+                    "issue #1: top_k={}: hybrid count {} != lexical count {}",
+                    k,
+                    hyb.len(),
+                    lex.len(),
+                );
+            }
         });
     }
 
@@ -430,11 +491,34 @@ mod tests {
             )
             .unwrap();
             r.index(&chunks()).await.unwrap();
-            // Query text leans "alpha", but the query embedder forces gamma — so
-            // chunk "c" wins, proving the query side used the query embedder.
+            // Query text would rank "alpha" highly under BM25, but the query
+            // embedder ignores the text and forces dense alignment with chunk
+            // "c" (the only one whose vector matches [0,0,1]). The final
+            // ranking is RRF-fused (BM25 + dense), so we don't assert top-1
+            // — we assert the *dense* score on c was the strongest, which is
+            // the directly-observable proof that the const query embedder fed
+            // the query side rather than the passage embedder.
             let q = Query::new("alpha beta gamma");
-            let res = r.retrieve(&q, 1).await.unwrap();
-            assert_eq!(res[0].chunk.id.as_str(), "c");
+            let res = r.retrieve(&q, 3).await.unwrap();
+            let c = res
+                .iter()
+                .find(|r| r.chunk.id.as_str() == "c")
+                .expect("c must be in the top-3 results");
+            let c_dense = c.breakdown.dense.expect("c has a dense breakdown score");
+            for r in &res {
+                if r.chunk.id.as_str() == "c" {
+                    continue;
+                }
+                let other = r.breakdown.dense.expect("each result has a dense score");
+                assert!(
+                    c_dense > other,
+                    "c's dense score ({}) must exceed {}'s ({}) — proves the const \
+                     query embedder pointed at gamma",
+                    c_dense,
+                    r.chunk.id.as_str(),
+                    other,
+                );
+            }
         });
     }
 }
