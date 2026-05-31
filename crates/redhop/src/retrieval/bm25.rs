@@ -18,6 +18,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
 };
+use serde_json::Value as JsonValue;
 use tantivy::tokenizer::{
     Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter,
     TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer,
@@ -40,6 +41,7 @@ struct Schema_ {
     id_field: Field,
     text_field: Field,
     source_field: Field,
+    heading_field: Field,
     token_count_field: Field,
 }
 
@@ -47,23 +49,37 @@ impl Schema_ {
     fn build() -> Self {
         let mut sb = Schema::builder();
         let id_field = sb.add_text_field("id", STRING | STORED);
-        // Custom analyzer (`STEM_ANALYZER`) instead of plain `TEXT` so the
-        // BM25 tokenization stems morphological variants. Registered against
-        // the Index in `Bm25Retriever::new`.
-        let text_indexing = TextFieldIndexing::default()
-            .set_tokenizer(STEM_ANALYZER)
-            .set_index_option(IndexRecordOption::WithFreqsAndPositions);
-        let text_opts = TextOptions::default()
-            .set_indexing_options(text_indexing)
-            .set_stored();
-        let text_field = sb.add_text_field("text", text_opts);
-        let source_field = sb.add_text_field("source", STRING | STORED);
+        // Custom analyzer (`STEM_ANALYZER`) for the searchable fields so all
+        // three share the same tokenization (stemming, stopwords, camelCase
+        // split). The query parser then naturally rolls `source`/`heading`
+        // matches into the BM25 score — so a query for `auth.rs` reaches a
+        // chunk whose source path matches, even if the chunk text itself
+        // never mentions the filename.
+        let analyzed = |name: &str, stored: bool| -> TextOptions {
+            let indexing = TextFieldIndexing::default()
+                .set_tokenizer(STEM_ANALYZER)
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions);
+            let mut opts = TextOptions::default().set_indexing_options(indexing);
+            if stored {
+                opts = opts.set_stored();
+            }
+            let _ = name; // for readability at call sites
+            opts
+        };
+        let text_field = sb.add_text_field("text", analyzed("text", true));
+        // `source` is the file path — keep STORED for citation round-trips,
+        // but ALSO analyze it (separate STRING was exact-match-only before).
+        let source_field = sb.add_text_field("source", analyzed("source", true));
+        // New: heading from chunk metadata (markdown ## headings, code symbols).
+        // Not stored (citations carry it via metadata) — index-only.
+        let heading_field = sb.add_text_field("heading", analyzed("heading", false));
         let token_count_field = sb.add_u64_field("token_count", STORED | FAST);
         Self {
             schema: sb.build(),
             id_field,
             text_field,
             source_field,
+            heading_field,
             token_count_field,
         }
     }
@@ -135,10 +151,19 @@ impl Retriever for Bm25Retriever {
             let mut g = inner.write();
             let s = &g.schema;
             for c in &chunks {
+                // Extract heading from metadata if present (markdown headings,
+                // code symbol names). Indexed so a query for the heading text
+                // surfaces the chunk even when the chunk body doesn't repeat it.
+                let heading = c
+                    .metadata
+                    .get("heading")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("");
                 let d: TantivyDocument = doc!(
                     s.id_field => c.id.as_str().to_string(),
                     s.text_field => c.text.clone(),
                     s.source_field => c.source.clone(),
+                    s.heading_field => heading.to_string(),
                     s.token_count_field => c.token_count.value() as u64,
                 );
                 g.writer
@@ -170,7 +195,18 @@ impl Retriever for Bm25Retriever {
             tokio::task::spawn_blocking(move || -> crate::core::Result<Vec<RetrievalResult>> {
                 let g = inner.read();
                 let searcher = g.reader.searcher();
-                let qp = QueryParser::for_index(&g.index, vec![g.schema.text_field]);
+                // Search across all three analyzed fields. Equal weights — let
+                // BM25's TF-IDF settle the ranking rather than baking a prior
+                // (a heading-boost would, e.g., over-favor short headings on
+                // queries that aren't really about the heading).
+                let qp = QueryParser::for_index(
+                    &g.index,
+                    vec![
+                        g.schema.text_field,
+                        g.schema.source_field,
+                        g.schema.heading_field,
+                    ],
+                );
                 let q = qp
                     .parse_query(&sanitize_query(&text))
                     .map_err(|e| Error::Retrieval(format!("parse: {e}")))?;
@@ -212,19 +248,26 @@ impl Retriever for Bm25Retriever {
     }
 }
 
-/// Reduce arbitrary natural-language text to a clean bag of word tokens, so
-/// Tantivy's `QueryParser` never sees its query meta-syntax. We keep only
-/// alphanumerics (Unicode) and collapse everything else to whitespace; the
-/// parser then ORs the resulting terms over the text field. This is what keeps
-/// `doc.context("Highlight the parts (if any)… “requirements”…")` from being a
-/// parse error — a real natural-language query must never crash internal
-/// retrieval. Ranking is unchanged (same content terms reach the index).
+/// Reduce arbitrary natural-language text to a string Tantivy's `QueryParser`
+/// can parse without crashing. Only the chars QueryParser actually treats as
+/// syntax are replaced with a space; everything else (dots, hyphens, slashes,
+/// @, /, etc.) is preserved so the analyzer can tokenize as it would on
+/// indexed text — keeping query and index in lockstep. The uppercase boolean
+/// keywords `AND`/`OR`/`NOT` are neutralized by lowercasing the whole input
+/// (the analyzer's `LowerCaser` would have done it anyway).
 fn sanitize_query(s: &str) -> String {
+    // Tantivy QueryParser meta-chars (per the docs: bool ops `+`/`-`, field
+    // selector `:`, wildcards `*`/`?`, fuzzy/boost `~`/`^`, escape `\`, range
+    // brackets `[`/`]`/`{`/`}`, grouping `(`/`)`, and phrase quotes `"`).
+    const META: &[char] = &[
+        '+', '-', ':', '*', '?', '^', '~', '\\', '(', ')', '[', ']', '{', '}', '"', '<', '>',
+    ];
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .map(|c| if META.contains(&c) { ' ' } else { c })
         .collect();
-    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lowered = cleaned.to_lowercase();
+    let collapsed = lowered.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
         "*".to_string()
     } else {
@@ -232,12 +275,14 @@ fn sanitize_query(s: &str) -> String {
     }
 }
 
-/// Split a token on case transitions, in the standard "word-delimiter"
-/// fashion used by Lucene/Elasticsearch. Returns the pieces in source order;
-/// callers decide whether to also keep the original.
+/// Split a token on case and letter/digit transitions, in the standard
+/// "word-delimiter" fashion used by Lucene/Elasticsearch. Returns the pieces
+/// in source order; callers decide whether to also keep the original.
 ///
 /// - `compressVideo`  → `["compress", "Video"]`           (lower→upper)
 /// - `HTTPResponse`   → `["HTTP", "Response"]`            (upper→upper→lower)
+/// - `parseV2`        → `["parse", "V", "2"]`             (lower→upper, then letter→digit)
+/// - `Phi3`           → `["Phi", "3"]`                    (letter→digit)
 /// - `URL`            → `["URL"]`                          (no transitions)
 /// - `iPhone`         → `["i", "Phone"]`                  (single-char pieces are
 ///                                                         dropped later by length /
@@ -256,7 +301,12 @@ fn case_split_pieces(s: &str) -> Vec<String> {
             let acronym = prev.is_uppercase()
                 && c.is_uppercase()
                 && chars.get(i + 1).is_some_and(|n| n.is_lowercase());
-            if (camel || acronym) && !current.is_empty() {
+            // Letter ↔ digit transition: `parseV2` → `parse` + `V` + `2`,
+            // `Phi3` → `Phi` + `3`. Catches version suffixes and id-style
+            // identifiers a plain camelCase split would miss.
+            let letter_to_digit = prev.is_alphabetic() && c.is_ascii_digit();
+            let digit_to_letter = prev.is_ascii_digit() && c.is_alphabetic();
+            if (camel || acronym || letter_to_digit || digit_to_letter) && !current.is_empty() {
                 parts.push(std::mem::take(&mut current));
             }
         }
@@ -391,15 +441,84 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_reduces_to_word_bag() {
-        // Meta-chars and punctuation collapse to single spaces (no parser syntax).
+    fn sanitize_strips_only_query_parser_metachars() {
+        // The chars QueryParser would otherwise treat as syntax are replaced
+        // with spaces; everything else passes through so the analyzer can
+        // tokenize it the same way it did the indexed text. Output is
+        // lowercased so uppercase boolean keywords (AND/OR/NOT) become
+        // ordinary words.
         assert_eq!(sanitize_query("foo:bar +baz"), "foo bar baz");
         // Natural-language query with quotes/parens/smart-quotes never crashes.
+        // Smart quotes (U+201C/D) are NOT in META — they pass through.
         assert_eq!(
             sanitize_query("Highlight parts (if any) of “Exclusivity”."),
-            "Highlight parts if any of Exclusivity"
+            "highlight parts if any of “exclusivity”."
         );
         assert_eq!(sanitize_query("   "), "*");
+
+        // Punctuation that's NOT QueryParser syntax is preserved — the
+        // analyzer will tokenize on it later as it does for indexed text.
+        // Pre-fix these all degraded into single-char tokens that the length
+        // filter dropped.
+        assert_eq!(sanitize_query("v1.2.3"), "v1.2.3");
+        assert_eq!(sanitize_query("e-mail templates"), "e mail templates");
+        assert_eq!(sanitize_query(".NET runtime"), ".net runtime");
+        assert_eq!(sanitize_query("api/v1/users"), "api/v1/users");
+        assert_eq!(sanitize_query("@username"), "@username");
+        // Uppercase boolean keywords are neutralized.
+        assert_eq!(sanitize_query("foo AND bar"), "foo and bar");
+    }
+
+    #[test]
+    fn multi_field_search_reaches_file_paths_and_headings() {
+        // The bug this regresses: BM25 only searched the `text` field, so a
+        // query for the filename `auth.rs` returned nothing unless the file's
+        // content also mentioned that string. After indexing `source` and
+        // `heading` through the same analyzer, the file is reachable by name
+        // and by section heading too.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+
+            // Chunk text intentionally has NOTHING in common with the
+            // filename or the heading we'll query for.
+            let mut by_path = Chunk::new(
+                "by_path",
+                "validate the supplied credentials and issue a token",
+                "src/auth.rs",
+                TokenCount(8),
+            );
+            by_path
+                .metadata
+                .insert("heading".into(), serde_json::json!("fn login"));
+            let mut by_heading = Chunk::new(
+                "by_heading",
+                "delegate to the upstream identity provider",
+                "src/handlers/users.rs",
+                TokenCount(6),
+            );
+            by_heading
+                .metadata
+                .insert("heading".into(), serde_json::json!("Refund window"));
+            let unrelated = mk("unrelated", "the quick brown fox jumps over the lazy dog");
+
+            r.index(&[by_path, by_heading, unrelated]).await.unwrap();
+
+            // Query for the filename: only `by_path`'s `source` matches.
+            let r1 = r.retrieve(&Query::new("auth"), 5).await.unwrap();
+            assert!(
+                r1.iter().any(|h| h.chunk.id.as_str() == "by_path"),
+                "filename query must reach the chunk via its source path; got {:?}",
+                r1.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+
+            // Query for the heading: only `by_heading`'s heading metadata matches.
+            let r2 = r.retrieve(&Query::new("refund window"), 5).await.unwrap();
+            assert!(
+                r2.iter().any(|h| h.chunk.id.as_str() == "by_heading"),
+                "heading query must reach the chunk via its heading metadata; got {:?}",
+                r2.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+        });
     }
 
     #[test]
@@ -481,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn case_split_pieces_handles_camel_pascal_and_acronyms() {
+    fn case_split_pieces_handles_camel_pascal_acronyms_and_digits() {
         assert_eq!(case_split_pieces("compressVideo"), vec!["compress", "Video"]);
         assert_eq!(case_split_pieces("HTTPResponse"), vec!["HTTP", "Response"]);
         assert_eq!(case_split_pieces("XMLParser"), vec!["XML", "Parser"]);
@@ -490,6 +609,45 @@ mod tests {
         assert_eq!(case_split_pieces("alreadylower"), vec!["alreadylower"]);
         assert_eq!(case_split_pieces("ALLUPPER"), vec!["ALLUPPER"]);
         assert_eq!(case_split_pieces(""), Vec::<String>::new());
+        // Letter ↔ digit transitions.
+        assert_eq!(case_split_pieces("parseV2"), vec!["parse", "V", "2"]);
+        assert_eq!(case_split_pieces("Phi3"), vec!["Phi", "3"]);
+        assert_eq!(case_split_pieces("v2API"), vec!["v", "2", "API"]);
+        assert_eq!(case_split_pieces("gpt4o"), vec!["gpt", "4", "o"]);
+    }
+
+    #[test]
+    fn digit_boundary_split_makes_versioned_identifiers_searchable() {
+        // The bug this regresses: an identifier like `parseV2` or `Phi3` was
+        // one indivisible lowercase token (`parsev2`/`phi3`) after lowercase,
+        // so a query for the base name (`parse`, `Phi`) didn't match. With
+        // the letter/digit split rule each component is its own searchable
+        // token.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+            r.index(&[
+                mk("v2", "fn parseV2(input: &str) -> Result<()>"),
+                mk("v3", "pub fn parseV3(input: &str) -> Result<()>"),
+                mk("model", "loaded model: Phi3-mini-4k-instruct"),
+                mk("unrelated", "the quick brown fox jumps over the lazy dog"),
+            ])
+            .await
+            .unwrap();
+            // Base name of a versioned identifier finds both versions.
+            let r1 = r.retrieve(&Query::new("parse"), 5).await.unwrap();
+            let ids1: Vec<_> = r1.iter().map(|h| h.chunk.id.as_str()).collect();
+            assert!(
+                ids1.contains(&"v2") && ids1.contains(&"v3"),
+                "`parse` must reach parseV2 + parseV3 via digit-split; got {ids1:?}"
+            );
+            // Brand-with-version (Phi3) findable by brand.
+            let r2 = r.retrieve(&Query::new("phi"), 5).await.unwrap();
+            assert!(
+                r2.iter().any(|h| h.chunk.id.as_str() == "model"),
+                "`phi` must reach the Phi3 chunk via digit-split; got {:?}",
+                r2.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+        });
     }
 
     #[test]
