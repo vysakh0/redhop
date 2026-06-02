@@ -90,6 +90,21 @@ impl LocalRerankRetriever {
         self
     }
 
+    /// Swap the BM25 stage's analyzer. Must be called BEFORE
+    /// [`Retriever::index`] (the BM25 retains its index across calls but
+    /// the analyzer is fixed once any documents have been written).
+    ///
+    /// The 0.1.4 default is English Snowball; this lets a caller opt into
+    /// another language for the lexical first stage of the hybrid path
+    /// (e.g. `SnowballAnalyzer::german()` for a German corpus).
+    pub fn with_analyzer(
+        mut self,
+        analyzer: Arc<dyn crate::analyzer::Analyzer>,
+    ) -> crate::core::Result<Self> {
+        self.bm25 = Bm25Retriever::with_analyzer(analyzer)?;
+        Ok(self)
+    }
+
     /// Embed the query: reuse a precomputed embedding, else embed the text with
     /// the query-side embedder (falling back to the passage embedder).
     async fn embed_query(&self, query: &Query) -> crate::core::Result<crate::core::Embedding> {

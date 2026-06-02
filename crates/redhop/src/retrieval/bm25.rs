@@ -27,15 +27,6 @@ use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
 const WRITER_HEAP_BYTES: usize = 64 * 1024 * 1024;
 
-/// Custom analyzer name we register on the BM25 index: a Snowball-Porter2
-/// pipeline (lowercase → strip overlong tokens → English stem). Picked to match
-/// the grounding/Jaccard scorers in `crate::context` so a chunk's BM25 score
-/// and its post-retrieval grounding agree on what "the same term" means —
-/// otherwise queries like `"compression"` never match a chunk containing
-/// `compress_video`, even though the grounding scorer would treat them as
-/// identical.
-const STEM_ANALYZER: &str = "redhop_en_stem";
-
 struct Schema_ {
     schema: Schema,
     id_field: Field,
@@ -46,33 +37,34 @@ struct Schema_ {
 }
 
 impl Schema_ {
-    fn build() -> Self {
+    /// Build the schema, routing the three searchable text fields
+    /// (`text` / `source` / `heading`) to the analyzer registered under
+    /// `analyzer_name` on the Tantivy index. The caller is responsible for
+    /// having registered that analyzer (see [`Bm25Retriever::with_analyzer`]).
+    fn build(analyzer_name: &str) -> Self {
         let mut sb = Schema::builder();
         let id_field = sb.add_text_field("id", STRING | STORED);
-        // Custom analyzer (`STEM_ANALYZER`) for the searchable fields so all
-        // three share the same tokenization (stemming, stopwords, camelCase
-        // split). The query parser then naturally rolls `source`/`heading`
-        // matches into the BM25 score — so a query for `auth.rs` reaches a
-        // chunk whose source path matches, even if the chunk text itself
-        // never mentions the filename.
-        let analyzed = |name: &str, stored: bool| -> TextOptions {
+        // Same analyzer for all three searchable fields so the query parser
+        // can fold a single query into matches against any of them — a query
+        // for `auth.rs` reaches a chunk via its `source` field even when the
+        // chunk text itself never mentions the filename.
+        let analyzed = |stored: bool| -> TextOptions {
             let indexing = TextFieldIndexing::default()
-                .set_tokenizer(STEM_ANALYZER)
+                .set_tokenizer(analyzer_name)
                 .set_index_option(IndexRecordOption::WithFreqsAndPositions);
             let mut opts = TextOptions::default().set_indexing_options(indexing);
             if stored {
                 opts = opts.set_stored();
             }
-            let _ = name; // for readability at call sites
             opts
         };
-        let text_field = sb.add_text_field("text", analyzed("text", true));
+        let text_field = sb.add_text_field("text", analyzed(true));
         // `source` is the file path — keep STORED for citation round-trips,
         // but ALSO analyze it (separate STRING was exact-match-only before).
-        let source_field = sb.add_text_field("source", analyzed("source", true));
-        // New: heading from chunk metadata (markdown ## headings, code symbols).
+        let source_field = sb.add_text_field("source", analyzed(true));
+        // Heading from chunk metadata (markdown ## headings, code symbols).
         // Not stored (citations carry it via metadata) — index-only.
-        let heading_field = sb.add_text_field("heading", analyzed("heading", false));
+        let heading_field = sb.add_text_field("heading", analyzed(false));
         let token_count_field = sb.add_u64_field("token_count", STORED | FAST);
         Self {
             schema: sb.build(),
@@ -120,37 +112,31 @@ pub fn build_redhop_pipeline(stopwords: Vec<String>, language: Language) -> Text
 }
 
 impl Bm25Retriever {
-    /// Construct a new in-memory BM25 retriever.
+    /// Construct a new in-memory BM25 retriever using the default English
+    /// Snowball analyzer (preserves the 0.1.4 behavior bit-for-bit). For a
+    /// different language or a custom pipeline, see
+    /// [`Bm25Retriever::with_analyzer`].
     pub fn new() -> crate::core::Result<Self> {
-        let schema = Schema_::build();
+        Self::with_analyzer(crate::analyzer::default_english())
+    }
+
+    /// Construct a new in-memory BM25 retriever using the supplied analyzer.
+    ///
+    /// The analyzer drives BOTH indexing and query-parsing for the three
+    /// searchable fields (`text`, `source`, `heading`) — so a chunk's BM25
+    /// score and the grounding scorer in `crate::context` agree on what
+    /// counts as "the same term" only when both layers use the same
+    /// analyzer. `Document::with_analyzer` (C4) wires this end-to-end.
+    pub fn with_analyzer(
+        analyzer: Arc<dyn crate::analyzer::Analyzer>,
+    ) -> crate::core::Result<Self> {
+        let schema = Schema_::build(analyzer.name());
         let index = Index::create_in_ram(schema.schema.clone());
-        // Register the stemming analyzer the schema references. Built once
-        // per index (cheap — just composes filters); the analyzer applies on
-        // both indexing and query-parsing for the `text` field. The
-        // stopword and stemmer steps share their word lists with the
-        // grounding scorer in `crate::context` so the two layers agree on
-        // what a query consists of.
-        let stopwords: Vec<String> = crate::context::STOPWORDS
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let stem_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
-            .filter(RemoveLongFilter::limit(40))
-            // Camel/Pascal-case split BEFORE LowerCaser so we still have the
-            // case signal to split on. Emits both the original token and the
-            // pieces, so users querying `compress` find chunks containing
-            // `compressVideo`, and `http` finds `HTTPResponse`.
-            .filter(CamelCaseSplitter)
-            // ASCII-fold combining diacritics so `café` / `cafe`, `naïve` /
-            // `naive`, `Süßigkeit` / `Sussigkeit` match. Mirrored by an
-            // NFKD-fold step in `crate::context::normalize` so the BM25 side
-            // and the grounding scorer agree on what "the same term" means.
-            .filter(AsciiFoldingFilter)
-            .filter(LowerCaser)
-            .filter(StopWordFilter::remove(stopwords))
-            .filter(Stemmer::new(Language::English))
-            .build();
-        index.tokenizers().register(STEM_ANALYZER, stem_analyzer);
+        // Register the analyzer's pipeline under its `name()`. Cheap — built
+        // once at construction; reused for every index and query.
+        index
+            .tokenizers()
+            .register(analyzer.name(), analyzer.build_text_analyzer());
         let writer: IndexWriter = index
             .writer(WRITER_HEAP_BYTES)
             .map_err(|e| Error::Storage(format!("tantivy writer: {e}")))?;
