@@ -20,8 +20,8 @@ use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
 };
 use tantivy::tokenizer::{
-    Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzer,
-    Token, TokenFilter, TokenStream, Tokenizer,
+    AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer,
+    StopWordFilter, TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer,
 };
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
@@ -119,6 +119,11 @@ impl Bm25Retriever {
             // pieces, so users querying `compress` find chunks containing
             // `compressVideo`, and `http` finds `HTTPResponse`.
             .filter(CamelCaseSplitter)
+            // ASCII-fold combining diacritics so `café` / `cafe`, `naïve` /
+            // `naive`, `Süßigkeit` / `Sussigkeit` match. Mirrored by an
+            // NFKD-fold step in `crate::context::normalize` so the BM25 side
+            // and the grounding scorer agree on what "the same term" means.
+            .filter(AsciiFoldingFilter)
             .filter(LowerCaser)
             .filter(StopWordFilter::remove(stopwords))
             .filter(Stemmer::new(Language::English))

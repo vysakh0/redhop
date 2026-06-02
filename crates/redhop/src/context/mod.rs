@@ -1144,13 +1144,18 @@ fn stopword_set() -> &'static HashSet<&'static str> {
 }
 
 /// Normalize a surface token into its matching term, or `None` if it carries
-/// no signal (too short, or a stopword). Lowercases, drops stopwords, and
-/// applies Snowball (Porter2) stemming so morphological variants
-/// ("invented"/"invention"/"invents") match. Snowball stemming was validated
-/// over a crude stand-in in the ablation harness (AUC 0.973→0.975 HotpotQA,
-/// 0.762→0.768 MuSiQue).
+/// no signal (too short, or a stopword). NFKD-folds combining diacritics
+/// (`café` → `cafe`, `naïve` → `naive`) so accented European text matches its
+/// ASCII form — mirrors Tantivy's `AsciiFoldingFilter` on the BM25 side so the
+/// two layers agree on what "the same term" means. Then lowercases, drops
+/// stopwords, and applies Snowball (Porter2) stemming so morphological
+/// variants ("invented"/"invention"/"invents") match. Snowball stemming was
+/// validated over a crude stand-in in the ablation harness (AUC 0.973→0.975
+/// HotpotQA, 0.762→0.768 MuSiQue).
 fn normalize(w: &str) -> Option<String> {
-    let lower = w.to_lowercase();
+    use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
+    let folded: String = w.nfkd().filter(|c| !is_combining_mark(*c)).collect();
+    let lower = folded.to_lowercase();
     if lower.chars().count() <= 1 || stopword_set().contains(lower.as_str()) {
         return None;
     }

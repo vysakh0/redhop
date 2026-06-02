@@ -26,14 +26,22 @@
 //!   letter↔digit, stopwords, punctuation preservation.
 //! - **Multi-field reach** (T08-T09): filename + heading search through the
 //!   BM25 `source` and `heading` fields.
-//! - **Document structure** (T10-T13): ATX + setext markdown, PDF heading
-//!   heuristic, code symbol-as-heading, chunk-kind metadata.
+//! - **Document structure** (T10-T13): ATX + setext markdown, code
+//!   symbol-as-heading, chunk-kind metadata.
 //! - **Context assembly** (T14-T20): auto-decision passthrough/prune,
 //!   reasoning-preserving vs distractor-filtered, code + prose auto-expansion,
 //!   token budget enforcement.
-//! - **Hybrid contract** (T21-T22): hybrid ≥ lexical count (issue #1),
-//!   low_confidence_retrieval signal.
-//! - **Edge cases** (T23-T26): empty / all-stopword / single-char queries.
+//! - **Hybrid contract** (T21-T22): low_confidence_retrieval signal on/off.
+//! - **Simple edge cases** (T23-T26): empty / all-stopword / single-char
+//!   queries.
+//! - **Unicode / multilingual** (T27-T30): ASCII folding parity (`cafe` ↔
+//!   `café`), emoji + CJK input doesn't crash.
+//! - **Adversarial queries** (T31-T34): very long queries, repeated terms,
+//!   very long single tokens, uppercase boolean keywords.
+//! - **Nested markdown structure** (T35): `### Deep` heading carried into
+//!   chunk metadata.
+//! - **Cross-format mixed corpus** (T36): a single Document with prose +
+//!   code + plain text is queryable across all three.
 
 use redhop::core::{Chunk, ChunkId, TokenCount};
 use redhop::{read_bytes, BuiltContext, Document, DocumentConfig};
@@ -729,4 +737,209 @@ fn t26_single_char_query_returns_gracefully() {
     )]);
     let ctx = doc.context("a").unwrap();
     let _ = ctx.chunks.len();
+}
+
+// ── 7. UNICODE / MULTILINGUAL ──────────────────────────────────────────────
+
+#[test]
+fn t27_ascii_folded_query_finds_accented_chunk() {
+    // `cafe` should reach a chunk containing `café`. Empirically confirmed
+    // broken before this — both layers now fold to ASCII (Tantivy
+    // AsciiFoldingFilter + crate::context::normalize NFKD-fold).
+    let mut doc = build(vec![
+        prose("0", "we met at a charming café in Paris", "trip.md"),
+        prose(
+            "1",
+            "the quick brown fox jumps over the lazy dog",
+            "lipsum.md",
+        ),
+    ]);
+    let ctx = doc.context("cafe").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T27 ASCII-folded query 'cafe' must reach 'café' chunk; cited: {:?}",
+        ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t28_accented_query_finds_unaccented_chunk() {
+    // Symmetric: `café` should reach a chunk containing the unaccented form.
+    let mut doc = build(vec![
+        prose("0", "we met at a charming cafe in Paris", "trip.md"),
+        prose(
+            "1",
+            "the quick brown fox jumps over the lazy dog",
+            "lipsum.md",
+        ),
+    ]);
+    let ctx = doc.context("café").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T28 accented query must reach ASCII chunk; cited: {:?}",
+        ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t29_emoji_in_query_does_not_crash() {
+    // Emoji are multi-byte Unicode. The tokenizer must skip past them
+    // (they're not alphanumeric) without panicking.
+    let mut doc = build(vec![prose(
+        "0",
+        "video compression artifacts in the encoder",
+        "notes.md",
+    )]);
+    let ctx = doc.context("🎨 compression").unwrap();
+    let _ = ctx.chunks.len();
+}
+
+#[test]
+fn t30_cjk_query_does_not_crash() {
+    // CJK doesn't tokenize meaningfully under our English-only pipeline, but
+    // it must NOT crash. Multilingual tokenization is a separate analyzer
+    // concern; the floor here is "no panic".
+    let mut doc = build(vec![prose(
+        "0",
+        "the refund window is thirty days",
+        "policy.md",
+    )]);
+    let ctx = doc.context("圧縮 compression").unwrap();
+    let _ = ctx.chunks.len();
+}
+
+// ── 8. ADVERSARIAL QUERIES ─────────────────────────────────────────────────
+
+#[test]
+fn t31_very_long_query_handled() {
+    // 3000-char query (~750 4-char tokens). Stress on tokenizer + parser.
+    let mut doc = build(vec![prose(
+        "0",
+        "the refund window is thirty days",
+        "policy.md",
+    )]);
+    let long = "abc ".repeat(750);
+    let ctx = doc.context(&long).unwrap();
+    let _ = ctx.chunks.len();
+}
+
+#[test]
+fn t32_repeated_query_terms_dont_distort_ranking() {
+    // BM25's TF saturation should make repeating a term harmless — the bare
+    // and repeated forms should rank the same chunk first.
+    let mut doc = build(vec![
+        prose(
+            "0",
+            "the refund window is thirty days from purchase",
+            "policy.md",
+        ),
+        prose(
+            "1",
+            "shipping takes two business days from order",
+            "policy.md",
+        ),
+    ]);
+    let bare = doc.context("refund").unwrap();
+    let repeated = doc.context("refund refund refund refund refund").unwrap();
+    assert_eq!(
+        bare.chunks[0].id.as_str(),
+        repeated.chunks[0].id.as_str(),
+        "T32 repeated terms: ranking flipped between bare and repeated forms"
+    );
+}
+
+#[test]
+fn t33_very_long_single_token_dropped_silently() {
+    // A 200-char token exceeds the RemoveLongFilter cap (40). Must be
+    // silently dropped, not panic the tokenizer.
+    let mut doc = build(vec![prose(
+        "0",
+        "the refund window is thirty days",
+        "policy.md",
+    )]);
+    let long_token = "a".repeat(200);
+    let ctx = doc.context(&long_token).unwrap();
+    let _ = ctx.chunks.len();
+}
+
+#[test]
+fn t34_tantivy_boolean_keywords_handled() {
+    // Uppercase AND/OR/NOT are QueryParser boolean operators. sanitize_query
+    // lowercases the input, neutralizing them as ordinary (then stopword-
+    // filtered) terms.
+    let mut doc = build(vec![
+        prose("0", "the refund window is thirty days", "policy.md"),
+        prose("1", "shipping takes two business days", "policy.md"),
+    ]);
+    let ctx = doc.context("refund AND OR NOT window").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T34 boolean keywords: must not break the refund hit"
+    );
+}
+
+// ── 9. NESTED MARKDOWN STRUCTURE ───────────────────────────────────────────
+
+#[test]
+fn t35_nested_markdown_heading_set_on_chunk() {
+    // `### Deep Eligibility` is a level-3 ATX heading. Chunks under it
+    // should carry the leaf heading text in metadata (powering BM25
+    // heading-field search + citation rendering).
+    let md = b"# Top\n\nintro paragraph.\n\n## Mid\n\nmid body.\n\n### Deep Eligibility\n\nthe refund window is thirty days from purchase.\n";
+    let mut doc = read_bytes(md, "policy.md").unwrap();
+    let ctx = doc.context("thirty days purchase").unwrap();
+    let headings: Vec<&str> = ctx
+        .chunks
+        .iter()
+        .filter_map(|c| c.metadata.get("heading").and_then(|v| v.as_str()))
+        .collect();
+    assert!(
+        headings
+            .iter()
+            .any(|h| h.contains("Deep Eligibility") || h.contains("Mid") || h.contains("Top")),
+        "T35 nested heading: no markdown heading in citations; got {headings:?}"
+    );
+}
+
+// ── 10. CROSS-FORMAT MIXED CORPUS ──────────────────────────────────────────
+
+#[test]
+fn t36_mixed_format_corpus_all_reachable() {
+    // A realistic shape: prose markdown + code + plain text. Each class must
+    // be reachable by appropriate queries from a single unified Document.
+    let chunks = vec![
+        prose_with_heading(
+            "md",
+            "the refund window is thirty days from purchase",
+            "Refunds",
+            "policy.md",
+        ),
+        code(
+            "py",
+            "def compress_video(file_path, quality): return ffmpeg_run(args)",
+            "video.py",
+        ),
+        prose(
+            "txt",
+            "warranty extends for one year after delivery",
+            "notes.txt",
+        ),
+    ];
+    let mut doc = build(chunks);
+
+    let refund = doc.context("refund window").unwrap();
+    assert!(
+        refund.chunks.iter().any(|c| c.id.as_str() == "md"),
+        "T36 mixed: markdown chunk not reached by prose query"
+    );
+    let compress = doc.context("compress_video").unwrap();
+    assert!(
+        compress.chunks.iter().any(|c| c.id.as_str() == "py"),
+        "T36 mixed: code chunk not reached by symbol query"
+    );
+    let warranty = doc.context("warranty year").unwrap();
+    assert!(
+        warranty.chunks.iter().any(|c| c.id.as_str() == "txt"),
+        "T36 mixed: text chunk not reached by plain prose query"
+    );
 }

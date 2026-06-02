@@ -40,6 +40,7 @@ serde_json           = { workspace = true }
 thiserror            = { workspace = true }
 tracing              = { workspace = true }
 unicode-segmentation = { workspace = true }
+unicode-normalization = "0.1"
 regex                = { workspace = true }
 rayon                = { workspace = true }
 tantivy              = { workspace = true }
