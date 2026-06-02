@@ -1,0 +1,65 @@
+# Create a GitHub Release whenever a `v*` tag is pushed. The release body is
+# the CHANGELOG section matching the tag's version; if no such section exists
+# the workflow fails (forcing the CHANGELOG to be kept in lockstep with tags).
+#
+# This is independent of the three publish workflows (release-crates,
+# release-python, release-node) — those fire on the same tag in parallel. A
+# failure here doesn't block the publishes, and a publish failure doesn't
+# prevent the Release from being created. The Release is the human-readable
+# "new version" signal; the registries are the truth.
+name: create-release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # required to create a GitHub Release
+
+jobs:
+  release:
+    name: create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the CHANGELOG history — a shallow clone is enough since we
+          # only read the file at the tagged commit.
+          fetch-depth: 1
+
+      - name: Extract CHANGELOG section for this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # awk: print lines starting from the section whose header is
+          # `## [<VERSION>]`, stopping at the next `## [...]` header.
+          awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (in_section) exit
+              if ($0 ~ "^## \\[" ver "\\]") in_section = 1
+            }
+            in_section { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "::error::No CHANGELOG.md section for version ${VERSION}. Add a '## [${VERSION}] - YYYY-MM-DD' entry before tagging."
+            exit 1
+          fi
+
+          # Strip the leading '## [VERSION] - DATE' line — the GitHub Release
+          # title carries the version, so repeating it in the body is noise.
+          tail -n +2 release-notes.md > release-notes.trimmed
+          mv release-notes.trimmed release-notes.md
+
+          echo "--- release notes (first 30 lines) ---"
+          head -30 release-notes.md
+          echo "--- end ---"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            --repo "$GITHUB_REPOSITORY"

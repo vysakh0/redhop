@@ -12,7 +12,14 @@
 name: release-node
 
 on:
-  workflow_dispatch:   # manual release only — run from the Actions tab
+  # Primary trigger: push a `v0.1.4`-style tag → builds 5 platform packages
+  # + publishes the meta and per-platform packages to npm, gated on
+  # tag/source version match.
+  push:
+    tags: ['v*']
+  # Escape hatch: re-run from the Actions tab (e.g., to retry a single
+  # platform that hit a transient build error).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,8 +29,29 @@ defaults:
     working-directory: nodejs
 
 jobs:
+  # Fast guard before the build matrix fans out — saves ~15 min of platform
+  # builds if the tag doesn't match the source.
+  verify-version:
+    name: verify tag matches nodejs/package.json
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .   # checkout root, not nodejs/
+    steps:
+      - uses: actions/checkout@v4
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          SRC_VERSION=$(node -p "require('./nodejs/package.json').version")
+          if [ "$TAG_VERSION" != "$SRC_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} resolves to version ${TAG_VERSION}, but nodejs/package.json says ${SRC_VERSION}. Refusing to build."
+            exit 1
+          fi
+          echo "✓ tag ${TAG_VERSION} matches nodejs/package.json ${SRC_VERSION}"
+
   build:
     name: build · ${{ matrix.settings.target }}
+    needs: verify-version
     runs-on: ${{ matrix.settings.host }}
     strategy:
       fail-fast: false

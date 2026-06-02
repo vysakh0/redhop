@@ -1,13 +1,50 @@
 # Releasing RedHop
 
-RedHop ships to three ecosystems from this one repo. They're independent — release
-them one at a time. **Recommended order: PyPI first** (simplest, flagship), then npm,
-then crates.io once there's demand.
+RedHop ships to three ecosystems (PyPI, crates.io, npm) from this one repo.
+All three publish in **parallel from a single `v*` tag push** — no per-
+ecosystem Run-workflow click. A fourth workflow creates the GitHub Release
+with notes from `CHANGELOG.md`, which is how external watchers learn there's
+a new version.
 
 All three are pinned to the same version (`0.1.4`). Bump in lockstep:
-`python/pyproject.toml`, `nodejs/package.json`, and `[workspace.package] version` in
-`Cargo.toml` (which the crate-to-crate deps in `[workspace.dependencies]` track —
-update those `version = "…"` too).
+`python/pyproject.toml`, `nodejs/package.json` (+
+`nodejs/.npm-overrides/win32-x64-msvc/package.json`), and
+`[workspace.package] version` in `Cargo.toml`.
+
+## The release flow
+
+```text
+   1. bump 6 version pins to X.Y.Z (see "Files to bump" below)
+   2. write a "## [X.Y.Z] - YYYY-MM-DD" entry in CHANGELOG.md
+   3. commit + push
+   4. git tag vX.Y.Z && git push --tags        ← the release trigger
+        │
+        ├─► release-crates       (publishes redhop@X.Y.Z to crates.io)
+        ├─► release-python       (builds 5 wheels + sdist, publishes to PyPI)
+        ├─► release-node         (builds 5 platform packages, publishes to npm)
+        └─► create-release       (extracts the CHANGELOG section, creates GH Release)
+```
+
+All four fire in parallel on the tag push. Each publish workflow runs a
+fast `verify-version` step first that fails the build if the tag's version
+doesn't match the source files — so a stale tag never publishes the wrong
+content. `create-release` fails if there's no `## [X.Y.Z]` entry in
+`CHANGELOG.md`, forcing the changelog to stay in lockstep with tags.
+
+The three publish workflows still support `workflow_dispatch` as an escape
+hatch — useful for re-running a single ecosystem if (say) one npm platform
+hit a transient build error. Tag-pushed runs are the normal path.
+
+## Files to bump for a release
+
+| File | What |
+|---|---|
+| `Cargo.toml` | `[workspace.package] version = "X.Y.Z"` |
+| `nodejs/Cargo.toml` | `redhop-node` cdylib version |
+| `nodejs/package.json` | npm meta version |
+| `nodejs/.npm-overrides/win32-x64-msvc/package.json` | Windows platform package version |
+| `python/Cargo.toml` | `redhop-py` cdylib version |
+| `python/pyproject.toml` | PyPI version |
 
 ## One-time setup
 
@@ -15,13 +52,8 @@ update those `version = "…"` too).
 | --- | --- |
 | **PyPI** | Trusted Publishing (OIDC) for this repo + a `pypi` environment. No token secret. |
 | **npm** | An automation token as the `NPM_TOKEN` repo secret. |
-| **crates.io** | `cargo login` locally (first publish is manual — see below). |
-
-Both release workflows are **manual** (`workflow_dispatch`) — they do **not** fire on a
-tag. Release each from the GitHub **Actions** tab → pick the workflow → **Run
-workflow** (on `main`). The version comes from the package files (`pyproject.toml` /
-`package.json`), so bump those before releasing; tag the commit afterward for the
-record if you like (the tag doesn't trigger anything).
+| **crates.io** | `CARGO_REGISTRY_TOKEN` repo secret. |
+| **GitHub Releases** | Nothing — uses the default `GITHUB_TOKEN`. |
 
 ## PyPI (Python wheels)
 
