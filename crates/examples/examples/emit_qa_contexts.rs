@@ -166,6 +166,7 @@ fn main() -> anyhow::Result<()> {
                 auto_passthrough_max_tokens: 8_000,
                 redundancy_max_cosine: 1.0,
                 low_confidence_max_grounding: 0.10,
+                analyzer: redhop::analyzer::default_english(),
             },
         );
         // Measure filter safety: did it keep the gold chunks?

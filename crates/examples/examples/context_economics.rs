@@ -146,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
                         auto_passthrough_max_tokens: 8_000,
                         redundancy_max_cosine: 0.92,
                         low_confidence_max_grounding: 0.10,
+                        analyzer: redhop::analyzer::default_english(),
                     },
                 );
                 let found = gold.iter().filter(|g| ctx.contains(g)).count();

@@ -102,6 +102,7 @@ fn build(query: &Query, set: &[Chunk], strategy: ContextStrategy, budget: usize)
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
+            analyzer: redhop::analyzer::default_english(),
         },
     )
     .chunks

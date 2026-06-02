@@ -63,12 +63,9 @@
 #![warn(missing_docs)]
 
 use std::collections::HashSet;
-use std::sync::OnceLock;
 
 use crate::core::{Chunk, Embedding, Query, RetrievalResult};
-use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
-use unicode_segmentation::UnicodeSegmentation;
 
 /// Term-set Jaccard at/above which two chunks are treated as near-exact
 /// lexical duplicates by `RedundancyPruned` when embeddings are absent (the
@@ -193,6 +190,12 @@ pub struct ContextConfig {
     /// so the signal fires exactly when the assembled context is all
     /// distractor-level relevance.
     pub low_confidence_max_grounding: f32,
+    /// Lexical analyzer driving term extraction in the grounding scorer.
+    /// Defaults to [`crate::analyzer::default_english`] — preserves the 0.1.4
+    /// behavior. Should match the analyzer used by the BM25 retriever
+    /// (`Document::with_analyzer` sets both in lockstep) so the two layers
+    /// agree on what counts as "the same term".
+    pub analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer>,
 }
 
 impl Default for ContextConfig {
@@ -221,6 +224,9 @@ impl Default for ContextConfig {
             // is at-or-below distractor relevance, the retrieval itself was
             // weak (issue #1) and the caller should know programmatically.
             low_confidence_max_grounding: 0.10,
+            // English Snowball Porter2 by default. Process-wide cached Arc so
+            // `Default::default()` is cheap.
+            analyzer: crate::analyzer::default_english(),
         }
     }
 }
@@ -609,7 +615,8 @@ pub fn build_context(
     retrieved: &[RetrievalResult],
     cfg: &ContextConfig,
 ) -> BuiltContext {
-    let q_terms = terms(&query.text);
+    let analyzer = cfg.analyzer.as_ref();
+    let q_terms = terms(&query.text, analyzer);
 
     // Per-chunk grounding + density, computed once.
     let mut items = characterize(&q_terms, retrieved, cfg);
@@ -899,7 +906,7 @@ pub fn analyze_context(
     retrieved: &[RetrievalResult],
     cfg: &ContextConfig,
 ) -> ContextReport {
-    let q_terms = terms(&query.text);
+    let q_terms = terms(&query.text, cfg.analyzer.as_ref());
     let items = characterize(&q_terms, retrieved, cfg);
     let n_input = items.len();
     let n_input_distractor = items.iter().filter(|i| i.is_distractor).count();
@@ -963,7 +970,7 @@ pub fn context_economics(
     chunks: &[RetrievalResult],
     cfg: &ContextConfig,
 ) -> ContextEconomics {
-    let q_terms = terms(&query.text);
+    let q_terms = terms(&query.text, cfg.analyzer.as_ref());
     let items = characterize(&q_terms, chunks, cfg);
     let n_distractor = items.iter().filter(|i| i.is_distractor).count();
     economics(&q_terms, &items, n_distractor, cfg)
@@ -974,15 +981,24 @@ pub fn context_economics(
 /// for observability ("how relevant is this chunk to the query?") and so
 /// external/eval code can reuse the library's exact notion of relevance instead
 /// of reimplementing (and drifting from) it.
+///
+/// Uses the default English analyzer ([`crate::analyzer::default_english`]).
+/// For non-English content, use `Document::context(...).report` which carries
+/// the configured analyzer end-to-end.
 pub fn grounding_score(query: &str, text: &str) -> f32 {
-    grounding(&terms(query), &terms(text))
+    let a = crate::analyzer::default_english();
+    grounding(&terms(query, a.as_ref()), &terms(text, a.as_ref()))
 }
 
 /// Linkage strength between two chunks' text: term-set Jaccard over the same
 /// normalized terms — the chunk↔chunk bridge signal `ReasoningPreserving` uses
 /// to decide whether a low-relevance chunk is a rescuable second hop. In `[0, 1]`.
+///
+/// Uses the default English analyzer. See [`grounding_score`] for the
+/// non-English path.
 pub fn link_strength(a: &str, b: &str) -> f32 {
-    jaccard(&terms(a), &terms(b))
+    let an = crate::analyzer::default_english();
+    jaccard(&terms(a, an.as_ref()), &terms(b, an.as_ref()))
 }
 
 struct Item {
@@ -1008,17 +1024,18 @@ fn characterize(
     retrieved: &[RetrievalResult],
     cfg: &ContextConfig,
 ) -> Vec<Item> {
+    let analyzer = cfg.analyzer.as_ref();
     retrieved
         .iter()
         .map(|r| {
-            let c_terms = terms(&r.chunk.text);
+            let c_terms = terms(&r.chunk.text, analyzer);
             let grounding = grounding(q_terms, &c_terms);
             let tok = r.chunk.token_count.value().max(1);
-            let relevant = r
-                .chunk
-                .text
-                .unicode_words()
-                .filter_map(normalize)
+            // Count duplicates too — `c_terms` is a HashSet (no dups) but
+            // `density` wants term-occurrence frequency over the chunk text.
+            let relevant = analyzer
+                .tokens(&r.chunk.text)
+                .into_iter()
                 .filter(|t| q_terms.contains(t))
                 .count();
             Item {
@@ -1065,13 +1082,15 @@ fn economics(
         };
     }
     let total_tokens: usize = selected.iter().map(|i| i.tokens).sum();
+    let analyzer = cfg.analyzer.as_ref();
     let relevant_tokens: usize = selected
         .iter()
         .map(|i| {
-            i.chunk
-                .text
-                .unicode_words()
-                .filter_map(normalize)
+            // Count duplicates too — `density` wants term-occurrence
+            // frequency over the chunk text, not unique-term coverage.
+            analyzer
+                .tokens(&i.chunk.text)
+                .into_iter()
                 .filter(|t| q_terms.contains(t))
                 .count()
         })
@@ -1138,33 +1157,14 @@ pub(crate) const STOPWORDS: &[&str] = &[
     "would", "should", "could", "may", "might", "about", "between", "during", "such", "also",
 ];
 
-fn stopword_set() -> &'static HashSet<&'static str> {
-    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| STOPWORDS.iter().copied().collect())
-}
-
-/// Normalize a surface token into its matching term, or `None` if it carries
-/// no signal (too short, or a stopword). NFKD-folds combining diacritics
-/// (`café` → `cafe`, `naïve` → `naive`) so accented European text matches its
-/// ASCII form — mirrors Tantivy's `AsciiFoldingFilter` on the BM25 side so the
-/// two layers agree on what "the same term" means. Then lowercases, drops
-/// stopwords, and applies Snowball (Porter2) stemming so morphological
-/// variants ("invented"/"invention"/"invents") match. Snowball stemming was
-/// validated over a crude stand-in in the ablation harness (AUC 0.973→0.975
-/// HotpotQA, 0.762→0.768 MuSiQue).
-fn normalize(w: &str) -> Option<String> {
-    use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
-    let folded: String = w.nfkd().filter(|c| !is_combining_mark(*c)).collect();
-    let lower = folded.to_lowercase();
-    if lower.chars().count() <= 1 || stopword_set().contains(lower.as_str()) {
-        return None;
-    }
-    thread_local!(static STEMMER: Stemmer = Stemmer::create(Algorithm::English));
-    Some(STEMMER.with(|s| s.stem(&lower).into_owned()))
-}
-
-fn terms(text: &str) -> HashSet<String> {
-    text.unicode_words().filter_map(normalize).collect()
+/// Extract the analyzer's terms from a piece of text — used by the grounding
+/// scorer to compute overlap-based relevance. Delegating to
+/// [`crate::analyzer::Analyzer::tokens`] guarantees parity with whatever
+/// pipeline BM25 retrieval uses (Snowball stemming, stopword filtering,
+/// ASCII folding, camelCase splitting, …) so the retriever and the scorer
+/// never disagree on what "the same term" is.
+fn terms(text: &str, analyzer: &dyn crate::analyzer::Analyzer) -> HashSet<String> {
+    analyzer.tokens(text).into_iter().collect()
 }
 
 fn grounding(q: &HashSet<String>, c: &HashSet<String>) -> f32 {
@@ -1405,6 +1405,7 @@ mod tests {
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
+            analyzer: crate::analyzer::default_english(),
         }
     }
 
@@ -1585,6 +1586,7 @@ mod tests {
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
+            analyzer: crate::analyzer::default_english(),
             strategy: ContextStrategy::DistractorFiltered,
         };
         let filtered = build_context(&q, &chunks, &aggressive);
@@ -1661,6 +1663,7 @@ mod tests {
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
+            analyzer: crate::analyzer::default_english(),
         };
         let rp = build_context(&q, &bridge_chunks(), &cfg);
         // hop2 is below the bar but rescued → kept, and NOT a distractor.
@@ -1765,6 +1768,7 @@ mod tests {
             auto_passthrough_max_tokens: 8_000,
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
+            analyzer: crate::analyzer::default_english(),
         };
         let before = analyze_context(&q, &bridge_chunks(), &cfg);
         let after = build_context(&q, &bridge_chunks(), &cfg);

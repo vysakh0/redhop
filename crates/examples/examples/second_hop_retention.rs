@@ -180,6 +180,7 @@ fn cfg(strategy: ContextStrategy, tau: f32, budget: usize) -> ContextConfig {
         auto_passthrough_max_tokens: 8_000,
         redundancy_max_cosine: 1.0,
         low_confidence_max_grounding: 0.10,
+        analyzer: redhop::analyzer::default_english(),
     }
 }
 

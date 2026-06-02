@@ -218,6 +218,7 @@ fn main() -> anyhow::Result<()> {
                     auto_passthrough_max_tokens: 8_000,
                     redundancy_max_cosine: 1.0,
                     low_confidence_max_grounding: 0.10,
+                    analyzer: redhop::analyzer::default_english(),
                 };
                 let ctx = build_context(&case.query, &case.retrieved, &cfg);
                 let kept: HashSet<&ChunkId> = ctx.chunks.iter().map(|c| &c.id).collect();
