@@ -48,6 +48,7 @@
 #![warn(missing_docs)]
 
 // ── Modules (the consolidated workspace; each was its own crate pre-0.2) ────
+pub mod analyzer;
 pub mod chunking;
 pub mod context;
 pub mod core;

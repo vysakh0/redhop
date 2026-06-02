@@ -97,6 +97,28 @@ struct Inner {
     reader: IndexReader,
 }
 
+/// Build redhop's standard analyzer pipeline as a Tantivy `TextAnalyzer`.
+///
+/// The pipeline (shared by every [`crate::analyzer::SnowballAnalyzer`]
+/// language variant): `SimpleTokenizer` → `RemoveLongFilter(40)` →
+/// `CamelCaseSplitter` → `AsciiFoldingFilter` → `LowerCaser` →
+/// `StopWordFilter(stopwords)` → `Stemmer(language)`.
+///
+/// Exposed as a public helper returning a concrete `TextAnalyzer` so the
+/// generic intermediate `TextAnalyzerBuilder<...>` type — which carries the
+/// crate-private `CamelCaseSplitter` filter family — stays inside this
+/// module. Callers in `crate::analyzer` just get a built analyzer.
+pub fn build_redhop_pipeline(stopwords: Vec<String>, language: Language) -> TextAnalyzer {
+    TextAnalyzer::builder(SimpleTokenizer::default())
+        .filter(RemoveLongFilter::limit(40))
+        .filter(CamelCaseSplitter)
+        .filter(AsciiFoldingFilter)
+        .filter(LowerCaser)
+        .filter(StopWordFilter::remove(stopwords))
+        .filter(Stemmer::new(language))
+        .build()
+}
+
 impl Bm25Retriever {
     /// Construct a new in-memory BM25 retriever.
     pub fn new() -> crate::core::Result<Self> {
@@ -341,6 +363,10 @@ fn case_split_pieces(s: &str) -> Vec<String> {
 /// after lowercasing); the pieces make `compress` and `video` queries hit the
 /// same chunk. Pieces share the original's source offsets — they describe the
 /// same span of source text.
+///
+/// Used internally by [`build_redhop_pipeline`] which returns a concrete
+/// `TextAnalyzer` — this keeps the generic intermediate type
+/// `TextAnalyzerBuilder<...>` out of the public surface.
 #[derive(Clone)]
 struct CamelCaseSplitter;
 
