@@ -207,9 +207,22 @@ impl Retriever for Bm25Retriever {
                         g.schema.heading_field,
                     ],
                 );
-                let q = qp
-                    .parse_query(&sanitize_query(&text))
-                    .map_err(|e| Error::Retrieval(format!("parse: {e}")))?;
+                // Some queries reduce to nothing after the analyzer pipeline
+                // — `""`, `"   "`, or `"the and is of"` (all stopwords) all
+                // produce a parse error from Tantivy ("Only excluding terms
+                // given"). Caught by quality_suite::t25 — returning an empty
+                // result is the right behavior for a no-signal query.
+                let parsed_text = sanitize_query(&text);
+                let q = match qp.parse_query(&parsed_text) {
+                    Ok(q) => q,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if msg.contains("Only excluding terms") || msg.contains("empty query") {
+                            return Ok(Vec::new());
+                        }
+                        return Err(Error::Retrieval(format!("parse: {e}")));
+                    }
+                };
                 let hits = searcher
                     .search(&q, &TopDocs::with_limit(top_k))
                     .map_err(|e| Error::Retrieval(format!("search: {e}")))?;
@@ -562,6 +575,25 @@ mod tests {
                     .map(|h| h.chunk.id.as_str())
                     .collect::<Vec<_>>(),
             );
+        });
+    }
+
+    #[test]
+    fn queries_that_reduce_to_empty_return_empty_results_not_an_error() {
+        // After the analyzer pipeline (stopword filter, length filter, etc.)
+        // some queries have zero positive terms, which Tantivy's QueryParser
+        // surfaces as a hard error ("Only excluding terms given"). The
+        // retriever traps that case and returns an empty result — a
+        // no-signal query is not a crash. Caught by quality_suite::t25.
+        rt().block_on(async {
+            let mut r = Bm25Retriever::new().unwrap();
+            r.index(&[mk("0", "the refund window is thirty days from purchase")])
+                .await
+                .unwrap();
+            for q in ["", "   ", "the and is of in or", "a"] {
+                let res = r.retrieve(&Query::new(q), 5).await;
+                assert!(res.is_ok(), "query {q:?} crashed: {res:?}");
+            }
         });
     }
 
