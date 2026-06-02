@@ -42,6 +42,9 @@
 //!   chunk metadata.
 //! - **Cross-format mixed corpus** (T36): a single Document with prose +
 //!   code + plain text is queryable across all three.
+//! - **Non-English pinning** (T37-T40): degraded-but-functional behavior on
+//!   Spanish/German/French/CJK content. See docs/LANGUAGE.md for the
+//!   "what works / what doesn't" matrix.
 
 use redhop::core::{Chunk, ChunkId, TokenCount};
 use redhop::{read_bytes, BuiltContext, Document, DocumentConfig};
@@ -902,6 +905,99 @@ fn t35_nested_markdown_heading_set_on_chunk() {
 }
 
 // ── 10. CROSS-FORMAT MIXED CORPUS ──────────────────────────────────────────
+
+// (T36 below)
+
+// ── 11. NON-ENGLISH PINNING ────────────────────────────────────────────────
+//
+// We're English-tuned (Snowball Porter2 + English stopwords). These tests
+// LOCK IN the current degraded-but-functional behavior for non-English
+// content, so a future change can't silently regress. They test positive
+// behavior of the degraded path — not the absence of features.
+//
+// See docs/LANGUAGE.md for the full breakdown of what works vs what doesn't.
+
+#[test]
+fn t37_spanish_exact_word_lookup_works() {
+    // Spanish content indexes fine via the script-agnostic steps (tokenize,
+    // lowercase, ASCII-fold). Stemming doesn't apply but exact-word lookups
+    // still reach the chunk.
+    let mut doc = build(vec![
+        prose(
+            "0",
+            "la ventana de reembolso es de treinta días",
+            "policy.es.md",
+        ),
+        prose("1", "the quick brown fox jumps", "lipsum.md"),
+    ]);
+    let ctx = doc.context("reembolso").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T37 Spanish: 'reembolso' must reach the Spanish chunk"
+    );
+}
+
+#[test]
+fn t38_german_eszett_folds_to_ss_both_directions() {
+    // AsciiFoldingFilter handles ß → ss (Tantivy's built-in fold table).
+    // Both directions of the query/chunk pairing must reach the right chunk.
+    let mut doc_a = build(vec![
+        prose("0", "Süßigkeit ist eine Art Lebensmittel", "food.de.md"),
+        prose("1", "the quick brown fox jumps", "lipsum.md"),
+    ]);
+    let ctx_a = doc_a.context("Sussigkeit").unwrap();
+    assert!(
+        ctx_a.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T38a: ASCII-form 'Sussigkeit' must reach 'Süßigkeit' chunk"
+    );
+
+    let mut doc_b = build(vec![
+        prose("0", "Sussigkeit ist eine Art Lebensmittel", "food.de.md"),
+        prose("1", "the quick brown fox jumps", "lipsum.md"),
+    ]);
+    let ctx_b = doc_b.context("Süßigkeit").unwrap();
+    assert!(
+        ctx_b.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T38b: ß-form 'Süßigkeit' must reach 'Sussigkeit' chunk"
+    );
+}
+
+#[test]
+fn t39_french_accented_and_ascii_forms_unified() {
+    // French parity tested at the European-Latin level — both accented and
+    // un-accented forms reach the same chunk. T27/T28 covered this with
+    // English-ish content; this pins French specifically.
+    let mut doc = build(vec![
+        prose("0", "le bâtiment a une fenêtre cassée", "report.fr.md"),
+        prose("1", "the quick brown fox jumps", "lipsum.md"),
+    ]);
+    for query in ["fenêtre", "fenetre"] {
+        let ctx = doc.context(query).unwrap();
+        assert!(
+            ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+            "T39 French: query {query:?} must reach the French chunk"
+        );
+    }
+}
+
+#[test]
+fn t40_cjk_space_separated_substring_works() {
+    // CJK in source content WITH explicit spaces between tokens works
+    // (the tokenizer splits on whitespace). This is the "easy path" — real
+    // CJK content usually has no spaces, in which case word-segmentation
+    // breaks (documented in docs/LANGUAGE.md).
+    let mut doc = build(vec![
+        prose("0", "圧縮 アルゴリズム video codec", "spec.ja.md"),
+        prose("1", "the quick brown fox jumps", "lipsum.md"),
+    ]);
+    let ctx = doc.context("圧縮").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "0"),
+        "T40 CJK space-separated: '圧縮' must reach the kanji chunk"
+    );
+}
+
+// ── (existing T36 below — kept here for the "## What's covered" anchor) ────
 
 #[test]
 fn t36_mixed_format_corpus_all_reachable() {

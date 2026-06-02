@@ -157,6 +157,24 @@ enabling.**
 → Not sure which to pick? See [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md)
   — the 60-second decision guide with code recipes.
 
+### Language support
+
+The lexical tier is English-tuned: Snowball Porter2 stemming, English
+stopword filtering, and ASCII folding for accented Latin (`café` ↔ `cafe`,
+`Süßigkeit` ↔ `Sussigkeit`). What this means for non-English content:
+
+| Content | What works | What doesn't |
+| --- | --- | --- |
+| **Western European Latin** (French / German / Spanish / Portuguese / Italian / Polish) | Exact matches, ASCII-folded matches across accents | Morphology — `Bücher` and `Buch` index as different tokens; same for verb conjugations and case declensions |
+| **CJK** (Chinese / Japanese / Korean) | Exact substring **only when whitespace-separated** | Real CJK content without spaces (`圧縮アルゴリズム`) doesn't word-segment; a query for `圧縮` won't reach it |
+| **Right-to-left** (Arabic / Hebrew) | Tokenizes, no crashes | No morphology, no script-specific handling |
+
+If you need per-language stemming or proper CJK word segmentation, the
+analyzer pipeline in `crates/redhop/src/retrieval/bm25.rs` is the right
+place to plug in `rust-stemmers`'s other Snowball languages or a CJK
+tokenizer (Kuromoji-rs for Japanese, jieba-rs for Chinese). See
+[docs/LANGUAGE.md](docs/LANGUAGE.md) for the full breakdown.
+
 ## Assembly strategies
 
 How the context is built from the retrieved candidates. The default is reasoning-preserving;
