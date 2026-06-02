@@ -62,6 +62,20 @@ fn page_heading(text: &str) -> Option<String> {
     if lower.starts_with("page ") || lower.starts_with("p. ") {
         return None;
     }
+    // Citations on academic-style PDFs typically open with `[N]` or `[N, M]`.
+    // They're body content (the bibliography), not headings, even though the
+    // surface shape (short, no terminating period) matches our other rules.
+    if line.starts_with('[') && line.contains(']') {
+        return None;
+    }
+    // Bullet / list markers — same shape as headings but they're items in a
+    // body list, not section titles. Cover the common ASCII + unicode
+    // markers (•, ·, *, -, –, —, →, ►, ▪, ▸).
+    if matches!(line.chars().next(), Some(c) if "•·*-–—→►▪▸".contains(c))
+        && line.chars().nth(1).is_some_and(|c| c.is_whitespace())
+    {
+        return None;
+    }
     Some(line.to_string())
 }
 
@@ -96,5 +110,24 @@ mod tests {
         assert_eq!(page_heading("---"), None); // no letters
         assert_eq!(page_heading(""), None);
         assert_eq!(page_heading("\n\n"), None);
+    }
+
+    #[test]
+    fn page_heading_rejects_citations_and_bullets() {
+        // Academic/bibliography citation lines: short, no terminating period,
+        // alpha — slipped through the original rules. Now explicitly rejected.
+        assert_eq!(page_heading("[1] Smith et al, A Survey of RAG"), None);
+        assert_eq!(page_heading("[12, 13] Compare with prior work"), None);
+        // Bullet / list markers — bodies, not titles. ASCII + unicode covered.
+        assert_eq!(page_heading("• Implementation timeline"), None);
+        assert_eq!(page_heading("* Phase one — discovery"), None);
+        assert_eq!(page_heading("- Deliverables"), None);
+        assert_eq!(page_heading("– Em-dash bullets too"), None);
+        assert_eq!(page_heading("→ Next steps"), None);
+        // A real numbered heading is still accepted (no bullet marker).
+        assert_eq!(
+            page_heading("1. Introduction"),
+            Some("1. Introduction".into())
+        );
     }
 }

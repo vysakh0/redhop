@@ -17,7 +17,7 @@ import pytest
 import redhop
 
 HERE = os.path.dirname(__file__)
-FIXTURES = os.path.normpath(os.path.join(HERE, "..", "..", "crates", "files", "tests", "fixtures"))
+FIXTURES = os.path.normpath(os.path.join(HERE, "..", "..", "crates", "redhop", "tests", "fixtures"))
 
 
 def _has_files_feature() -> bool:
