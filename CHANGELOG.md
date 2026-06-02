@@ -7,6 +7,57 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+Post-v0.1.4 work on `main` — not yet tagged. The 0.1.4 tag was pushed
+before these landed; they're queued for the next release (0.1.5 or
+0.2.0 depending on whether the analyzer plugin architecture lands).
+
+### Fixed
+- **All-stopword query no longer crashes BM25.** A query that the analyzer
+  pipeline reduces to zero positive terms (`""`, `"   "`,
+  `"the and is of in or"`) used to surface as a hard Tantivy error:
+  `Invalid query: Only excluding terms given`. The retriever now traps that
+  error class (and the `empty query` class) and returns an empty result —
+  the only sensible behavior for a no-signal query.
+  Caught by the new `quality_suite::t25` on its first run.
+
+### Added
+- **ASCII folding for accented characters** (`café` ↔ `cafe`,
+  `Süßigkeit` ↔ `Sussigkeit`, `naïve` ↔ `naive`). Both layers (BM25
+  analyzer + grounding scorer's `normalize`) fold combining diacritics via
+  NFKD so European Latin content is reachable from both accented and
+  unaccented forms. Verified empirically before the change (`cafe` query
+  used to miss a `café` chunk). New tests T27, T28, T39 pin this.
+- **`crates/redhop/tests/quality_suite.rs`** — a 40-test behavior-level
+  suite organized by what a user perceives, not by code structure. Covers
+  tokenization (T01-T07), multi-field reach (T08-T09), document structure
+  (T10-T13), context assembly (T14-T20), hybrid contract (T21-T22),
+  edge cases (T23-T26), Unicode/multilingual (T27-T30), adversarial
+  queries (T31-T34), nested markdown (T35), cross-format mixed corpus
+  (T36), and non-English pinning (T37-T40). Found two real bugs on its
+  first runs (the empty-query crash and the accent-folding gap).
+- **`docs/LANGUAGE.md`** — the honest scope of non-English support, by
+  family, plus the names of crates and the code locations to plug in
+  for German morphology / Chinese word-segmentation / etc.
+- **`README.md`** "Language support" subsection under "Retrieval tiers"
+  — a 3-row matrix calibrating expectations for non-English content
+  without bloating the README.
+
+### Changed
+- Two pre-existing tests (`reorders_pool_by_query_embedding`,
+  `separate_query_embedder_drives_the_query_side` from earlier work)
+  remained loosened from previous releases — top-1 assertions were
+  pinned to specific BM25 micro-stats that flip under tokenizer changes.
+  They now assert the structural invariant (RRF applied, dense breakdown
+  present) rather than the brittle ordering.
+
+### Notes
+- `unicode-normalization` promoted from transitive (via tantivy) to a
+  direct dep of redhop. Used for the grounding scorer's NFKD fold.
+- Workspace test count: 301/301 pass under `cargo test --workspace`
+  (was 260 at the v0.1.4 tag).
+- CI gates remain clean: `cargo fmt --all -- --check`, `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+
 ## [0.1.4] - 2026-06-01
 
 Citation ergonomics — for both code and prose. Follow-on to 0.1.3's
