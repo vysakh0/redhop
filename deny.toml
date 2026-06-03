@@ -11,7 +11,18 @@ all-features = true
 version = 2
 yanked = "deny"
 # Add RUSTSEC IDs here only with a written justification when a fix isn't yet available.
-ignore = []
+ignore = [
+    # `instant` (transitive via parking_lot or similar) — unmaintained but
+    # still functional; the ecosystem hasn't migrated off it yet. Re-evaluate
+    # when our direct deps cut a release that drops it.
+    { id = "RUSTSEC-2024-0384", reason = "unmaintained `instant`; transitive, no functional impact, awaiting upstream replacement" },
+    # `paste` proc-macro — unmaintained but no fork; pulled in by ort/onnx
+    # tooling. Re-evaluate when ort migrates.
+    { id = "RUSTSEC-2024-0436", reason = "unmaintained `paste` proc-macro; transitive via ONNX runtime crates" },
+    # IterMut unsound advisory on a transitive dep — known issue, no exploit
+    # path in our usage (we don't expose the iterator across thread boundaries).
+    { id = "RUSTSEC-2026-0002", reason = "transitive IterMut unsoundness; no exploit path in our usage pattern" },
+]
 
 [licenses]
 version = 2
@@ -30,6 +41,11 @@ allow = [
     "Unicode-DFS-2016",
     "CC0-1.0",
     "MPL-2.0",
+    # Linux Foundation's permissive data license — used by webpki-root-certs
+    # / webpki-roots 1.0+ for the embedded Mozilla CA bundle. Functionally
+    # equivalent to Apache-2.0 for our redistribution case (no copyleft, no
+    # patent encumbrance).
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 

@@ -639,9 +639,11 @@ fn apply_dense_embedder(
 
     // Path B — model-by-name, auto-downloaded from HuggingFace (cached). With
     // neither `model` nor explicit paths, fall back to the recommended default.
-    let name = model.as_deref().unwrap_or(redhop::embeddings::DEFAULT_MODEL);
-    let resolved =
-        redhop::embeddings::resolve_model(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let name = model
+        .as_deref()
+        .unwrap_or(redhop::embeddings::DEFAULT_MODEL);
+    let resolved = redhop::embeddings::resolve_model(name)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let load = |prefix: &str| -> PyResult<redhop::embeddings::OnnxEmbedder> {
         redhop::embeddings::OnnxEmbedder::load(
             &resolved.model_path,
@@ -1142,7 +1144,6 @@ fn build_folder_persisted(
         embedder_passage_prefix,
         candidate_pool,
         rerank,
-
         language,
     )?;
 
@@ -1321,7 +1322,6 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
-
             language,
         )?;
         Ok(Self::single(inner))
@@ -1379,7 +1379,6 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
-
             language,
         )?;
         Ok(Self::single(inner))
@@ -1439,7 +1438,6 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
-
             language,
         )?;
         Ok(Self::single(inner))
@@ -1531,7 +1529,6 @@ impl Document {
                 embedder_passage_prefix,
                 candidate_pool,
                 rerank,
-
                 language,
             )?;
             return Ok(Self {
@@ -1578,7 +1575,6 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
-
             language,
         )?;
         Ok(Self {

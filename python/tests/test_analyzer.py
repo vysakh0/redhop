@@ -38,9 +38,7 @@ def test_german_analyzer_unifies_morphology_via_from_chunks():
     contains the plural form `Bücher`."""
     doc = redhop.Document.from_chunks(_german_corpus(), language="german")
     ctx = doc.context("Buch")
-    assert "Bücher" in ctx.text(), (
-        f"German analyzer should unify Bücher↔Buch; got: {ctx.text()!r}"
-    )
+    assert "Bücher" in ctx.text(), f"German analyzer should unify Bücher↔Buch; got: {ctx.text()!r}"
 
 
 def test_french_analyzer_unifies_verb_inflections_via_from_chunks():
@@ -48,19 +46,14 @@ def test_french_analyzer_unifies_verb_inflections_via_from_chunks():
     contains the conjugated form `mange`."""
     doc = redhop.Document.from_chunks(_french_corpus(), language="french")
     ctx = doc.context("manger")
-    assert "mange" in ctx.text(), (
-        f"French analyzer should unify manger↔mange; got: {ctx.text()!r}"
-    )
+    assert "mange" in ctx.text(), f"French analyzer should unify manger↔mange; got: {ctx.text()!r}"
 
 
 def test_german_analyzer_works_via_from_text():
     """Same German morphology check through the chunked text path —
     `from_text` and `from_chunks` are separate plumbing branches; both
     must route `language=`."""
-    text = (
-        "ich habe viele Bücher im Regal stehen.\n\n"
-        "ein Kind spielt fröhlich im Garten."
-    )
+    text = "ich habe viele Bücher im Regal stehen.\n\nein Kind spielt fröhlich im Garten."
     doc = redhop.Document.from_text(text, language="german")
     ctx = doc.context("Buch")
     assert "Bücher" in ctx.text(), (
@@ -99,7 +92,9 @@ def test_unknown_language_raises(ctor):
         else:
             redhop.Document.from_text("ich habe Bücher", language="germann")
     msg = str(excinfo.value).lower()
-    assert "unknown language" in msg, f"error should mention 'unknown language'; got: {excinfo.value!r}"
+    assert "unknown language" in msg, (
+        f"error should mention 'unknown language'; got: {excinfo.value!r}"
+    )
     assert "germann" in str(excinfo.value), (
         f"error should echo the bad language name; got: {excinfo.value!r}"
     )

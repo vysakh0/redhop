@@ -89,7 +89,7 @@ impl<E: EmbeddingProvider> EmbeddingProvider for CachedEmbedder<E> {
             let embedded = self.inner.embed(&miss_texts).await?;
             // Phase 3: synchronous insert + fill.
             let mut cache = self.cache.lock().unwrap();
-            for (slot, emb) in miss_indices.iter().zip(embedded.into_iter()) {
+            for (slot, emb) in miss_indices.iter().zip(embedded) {
                 cache.put(keys[*slot], emb.clone());
                 results[*slot] = Some(emb);
             }
