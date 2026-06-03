@@ -146,7 +146,7 @@ set so Rust enums stay stable.
 ## Regime semantics
 
 Regime is canonical to RedHop; the loader maps it to
-[`redhop_core::RetrievalRegime`]. Codes:
+[`redhop::core::RetrievalRegime`]. Codes:
 
 | code               | meaning                                                  |
 | ------------------ | -------------------------------------------------------- |

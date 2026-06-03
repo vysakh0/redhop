@@ -106,10 +106,10 @@ enable the `onnx` feature, **download a model** (above), and inject the embedder
 
 ```rust
 # #[cfg(feature = "onnx")]
-# fn demo() -> redhop_core::Result<()> {
+# fn demo() -> redhop::core::Result<()> {
 use std::sync::Arc;
-use redhop_core::EmbeddingProvider;
-use redhop_document::{Document, DocumentConfig, RetrievalMode};
+use redhop::core::EmbeddingProvider;
+use redhop::document::{Document, DocumentConfig, RetrievalMode};
 use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
 
 let embedder: Arc<dyn EmbeddingProvider> =
