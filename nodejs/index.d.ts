@@ -148,4 +148,11 @@ export declare class Document {
    * `neighbors` / `includeHeading` add structural context expansion.
    */
   context(query: string, budget?: number | undefined | null, neighbors?: number | undefined | null, includeHeading?: boolean | undefined | null): BuiltContext
+  /**
+   * Pure diagnostics: retrieve + score for the query but DON'T assemble
+   * the prompt. Returns the same `Report` shape as `context().report` so
+   * callers can audit what would happen without paying assembly cost or
+   * stringifying the chunks.
+   */
+  analyze(query: string): Report
 }

@@ -172,6 +172,25 @@ pub struct BuiltContext {
     pub report: Report,
 }
 
+fn to_report(r: &redhop::ContextReport) -> Report {
+    let auto_decision = match r.auto_decision() {
+        redhop::AutoDecision::Passthrough => "passthrough",
+        redhop::AutoDecision::Prune => "prune",
+        redhop::AutoDecision::NotAuto => "not_auto",
+    }
+    .to_string();
+    Report {
+        auto_decision,
+        total_tokens: r.total_tokens as u32,
+        retained_evidence_ratio: r.retained_evidence_ratio as f64,
+        second_hop_rescues: r.second_hop_rescue_count as u32,
+        n_expanded: r.n_expanded as u32,
+        low_confidence_retrieval: r.low_confidence_retrieval,
+        low_confidence_threshold: r.low_confidence_threshold as f64,
+        rendered: r.render(None),
+    }
+}
+
 fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
     let citations = redhop::citations(&ctx)
         .into_iter()
@@ -183,23 +202,7 @@ fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
             text: c.text,
         })
         .collect();
-    let r = &ctx.report;
-    let auto_decision = match r.auto_decision() {
-        redhop::AutoDecision::Passthrough => "passthrough",
-        redhop::AutoDecision::Prune => "prune",
-        redhop::AutoDecision::NotAuto => "not_auto",
-    }
-    .to_string();
-    let report = Report {
-        auto_decision,
-        total_tokens: r.total_tokens as u32,
-        retained_evidence_ratio: r.retained_evidence_ratio as f64,
-        second_hop_rescues: r.second_hop_rescue_count as u32,
-        n_expanded: r.n_expanded as u32,
-        low_confidence_retrieval: r.low_confidence_retrieval,
-        low_confidence_threshold: r.low_confidence_threshold as f64,
-        rendered: r.render(None),
-    };
+    let report = to_report(&ctx.report);
     BuiltContext {
         text: ctx.text(),
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
@@ -289,5 +292,15 @@ impl Document {
         }
         .map_err(err)?;
         Ok(to_built(ctx))
+    }
+
+    /// Pure diagnostics: retrieve + score for the query but DON'T assemble
+    /// the prompt. Returns the same `Report` shape as `context().report` so
+    /// callers can audit what would happen without paying assembly cost or
+    /// stringifying the chunks.
+    #[napi]
+    pub fn analyze(&mut self, query: String) -> napi::Result<Report> {
+        let r = self.inner.analyze(&query).map_err(err)?;
+        Ok(to_report(&r))
     }
 }

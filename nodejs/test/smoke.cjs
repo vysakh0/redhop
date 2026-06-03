@@ -16,6 +16,16 @@ assert.ok(ctx.report.rendered.includes("RedHop Decision Report"));
 // from_chunks
 assert.ok(Document.fromChunks(["alpha one", "beta two refund"]).context("refund").chunks.length >= 1);
 
+// analyze: returns a Report without assembling the prompt; same shape as ctx.report
+{
+  const doc = Document.fromText("the refund window is thirty days from purchase");
+  const report = doc.analyze("refund");
+  assert.ok(typeof report.autoDecision === "string", "analyze().autoDecision should be a string");
+  assert.ok(typeof report.totalTokens === "number", "analyze().totalTokens should be a number");
+  assert.ok(typeof report.rendered === "string" && report.rendered.length > 0, "analyze().rendered should be non-empty");
+  assert.ok(!("chunks" in report), "analyze() returns a Report, NOT a BuiltContext (no .chunks/.citations)");
+}
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-node-"));
 fs.writeFileSync(path.join(dir, "notes.txt"), "the warranty lasts one year");
 fs.writeFileSync(path.join(dir, "m.py"), "def login(u):\n    return make_token(u)\n");

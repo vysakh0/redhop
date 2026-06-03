@@ -95,6 +95,10 @@ for the full breakdown and a calibration disclaimer.
 `neighbors` / `includeHeading` turn on structural context expansion (adjacent
 chunks / section headings, in document order).
 
+`analyze(query)` is the same retrieve + score pass without assembling the
+prompt — useful for auditing what RedHop would do before paying assembly
+cost. Returns just the `report`.
+
 ## Build from source
 
 ```sh
