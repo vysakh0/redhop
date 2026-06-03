@@ -74,7 +74,8 @@ pub struct LoadOptions {
     pub language: Option<String>,
 }
 
-/// Options for [`read_folder_with`] (plus the chunking/retrieval [`LoadOptions`]).
+/// Options for `read_folder_with` (plus the chunking/retrieval [`LoadOptions`]).
+/// `read_folder_with` itself is gated behind the `files` feature.
 #[derive(Debug, Clone, Default)]
 pub struct FolderOptions {
     /// Recurse into subdirectories. Default true.

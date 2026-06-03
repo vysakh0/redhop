@@ -488,7 +488,9 @@ impl Document {
 
     /// Internal setter used by the folder loaders (`read_folder_with`)
     /// to record how many sources actually contributed chunks and which
-    /// were skipped along the way.
+    /// were skipped along the way. Only ever called from the
+    /// `files`-feature-gated loader paths.
+    #[cfg(feature = "files")]
     pub(crate) fn set_folder_provenance(&mut self, n_files: usize, skipped: Vec<(String, String)>) {
         self.n_files = n_files;
         self.skipped_files = skipped;
