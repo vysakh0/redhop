@@ -58,7 +58,7 @@ The lexical path needs the same shape.
 ///
 /// One `Analyzer` drives BOTH the BM25 retrieval pipeline AND the grounding
 /// scorer's term extraction so the two layers stay in lockstep (the recurring
-/// "same tokenizer/scorer contract" we kept fixing through 0.1.3-0.1.4).
+/// "same tokenizer/scorer contract" fixed by hand through 0.1.3-0.1.4).
 pub trait Analyzer: Send + Sync + std::fmt::Debug {
     /// Identifier used to register the analyzer against Tantivy's tokenizer
     /// manager. Must be unique per implementation.

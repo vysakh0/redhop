@@ -56,8 +56,8 @@ let ctx = doc.context("Buch")?;   // finds the chunk via German morphology
 ONE analyzer drives BOTH the BM25 retriever and the grounding scorer —
 that's the architectural guarantee of the `Analyzer` trait. There's no
 risk of the two layers disagreeing on what "the same term" is (the bug
-class we fixed by hand four times through 0.1.3-0.1.4 is now structurally
-impossible).
+class that got fixed by hand four times through 0.1.3-0.1.4 is now
+structurally impossible).
 
 From Python:
 
@@ -129,7 +129,7 @@ and collects its output — so the BM25 side and the grounding side go
 through a **single source of truth**. There's no way to override one
 without the other.
 
-This kills, structurally, the entire class of bugs we kept finding
+This kills, structurally, the entire class of bugs that surfaced
 through 0.1.3-0.1.4 — stemming, stopwords, camelCase, ASCII-folding
 mismatches between the two layers. They now follow from the architecture.
 

@@ -2,8 +2,9 @@
 //!
 //! Where the lexical tier ([`crate::engine::DefaultDiagnosticsEngine`])
 //! computes everything from raw text, the semantic tier reads the
-//! embeddings already present on the [`Query`] and on each retrieved
-//! [`Chunk`]. It closes the *paraphrase blind spot* of the lexical tier:
+//! embeddings already present on the [`redhop::core::Query`] and on each
+//! retrieved [`redhop::core::Chunk`]. It closes the *paraphrase blind spot*
+//! of the lexical tier:
 //!
 //! > A chunk like "Tim Cook earned $99M in fiscal 2023" has zero lexical
 //! > grounding against the query "What is the CEO's salary?" — but high

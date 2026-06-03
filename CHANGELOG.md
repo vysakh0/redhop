@@ -71,14 +71,16 @@ struct field literals from outside the crate need to add
   NFKD so European Latin content is reachable from both accented and
   unaccented forms. Verified empirically before the change (`cafe` query
   used to miss a `café` chunk). New tests T27, T28, T39 pin this.
-- **`crates/redhop/tests/quality_suite.rs`** — a 40-test behavior-level
+- **`crates/redhop/tests/quality_suite.rs`** — a 45-test behavior-level
   suite organized by what a user perceives, not by code structure. Covers
   tokenization (T01-T07), multi-field reach (T08-T09), document structure
   (T10-T13), context assembly (T14-T20), hybrid contract (T21-T22),
   edge cases (T23-T26), Unicode/multilingual (T27-T30), adversarial
   queries (T31-T34), nested markdown (T35), cross-format mixed corpus
-  (T36), and non-English pinning (T37-T40). Found two real bugs on its
-  first runs (the empty-query crash and the accent-folding gap).
+  (T36), non-English pinning (T37-T40), and the analyzer plugin
+  (T41-T45). Found two real bugs on its first runs (the empty-query
+  crash and the accent-folding gap), and one binding bug under T41-T44
+  (`from_chunks` silently dropping `language=` in Python).
 - **`docs/LANGUAGE.md`** — the honest scope of non-English support, by
   family, plus the names of crates and the code locations to plug in
   for German morphology / Chinese word-segmentation / etc.
@@ -97,10 +99,20 @@ struct field literals from outside the crate need to add
 ### Notes
 - `unicode-normalization` promoted from transitive (via tantivy) to a
   direct dep of redhop. Used for the grounding scorer's NFKD fold.
-- Workspace test count: 314/314 pass under `cargo test --workspace`
+- Workspace test count: 317/317 pass under `cargo test --workspace`
   (was 260 at the v0.1.4 tag).
 - CI gates remain clean: `cargo fmt --all -- --check`, `cargo clippy
-  --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+  --workspace --all-targets -- -D warnings`, `cargo test --workspace`,
+  `cargo doc --workspace --no-deps` (warning-free).
+- Workspace CI (`.github/workflows/ci.yml`) now exercises the actual
+  published wheel: `maturin develop --release --features files,semantic`
+  for the Python job. A first-ever Node job was added that builds the
+  napi addon and runs both the smoke and analyzer test suites. Both
+  paths surfaced latent gaps that had never run before
+  (`from_chunks` dropping `language=`, stale `index.d.ts`, missing
+  venv setup, three new `clippy::useless_conversion` sites under
+  Rust 1.96, three RUSTSEC advisory ignores, a `CDLA-Permissive-2.0`
+  license allow for `webpki-roots` 1.0).
 
 ## [0.1.4] - 2026-06-01
 

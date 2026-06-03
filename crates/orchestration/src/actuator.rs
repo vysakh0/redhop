@@ -15,7 +15,7 @@
 //!
 //! After the call the actuator returns an [`ActuationOutcome`] with the
 //! work it performed; the orchestrator records this into a
-//! [`TakenAction`] alongside the policy's [`PolicyDecision`].
+//! [`redhop::core::TakenAction`] alongside the policy's [`PolicyDecision`].
 //!
 //! [`Policy`]: crate::policy::Policy
 //! [`PolicyDecision`]: crate::policy::PolicyDecision

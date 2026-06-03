@@ -17,9 +17,10 @@
 //! }
 //! ```
 //!
-//! The conversion to [`LabeledCorpus`][lc] mirrors the HotpotQA loader:
-//! each unique `(title, paragraph_text)` becomes a [`Document`], and
-//! each query's gold chunks are derived from the supporting paragraphs.
+//! The conversion to [`crate::dataset::LabeledCorpus`] mirrors the
+//! HotpotQA loader: each unique `(title, paragraph_text)` becomes a
+//! [`Document`], and each query's gold chunks are derived from the
+//! supporting paragraphs.
 //!
 //! ## Regime labeling
 //!
@@ -34,10 +35,8 @@
 //! Unanswerable MuSiQue questions are the canonical Sparse regime —
 //! the corpus does not contain the answer. Multi-hop questions with
 //! more hops have more chances to fall off the gold path, and tend to
-//! retrieve more distractor paragraphs in our HotpotQA traces too;
-//! the heuristic reflects that.
-//!
-//! [lc]: crate::dataset::LabeledCorpus
+//! retrieve more distractor paragraphs in HotpotQA traces too; the
+//! heuristic reflects that.
 
 use std::collections::BTreeMap;
 

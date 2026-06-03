@@ -15,7 +15,7 @@
 //!   dense retriever already produces.
 //!
 //! [`LayeredDiagnosticsEngine`] composes both tiers into a single unified
-//! [`DiagnosticsReport`]. This is the recommended production setup once a
+//! [`redhop::core::DiagnosticsReport`]. This is the recommended production setup once a
 //! pipeline has dense embeddings in flight.
 //!
 //! The two-tier split exists for a specific reason: it lets retrieval

@@ -65,9 +65,8 @@ export interface Options {
    * `"finnish"`, `"french"`, `"german"`, `"greek"`, `"hungarian"`,
    * `"italian"`, `"norwegian"`, `"portuguese"`, `"romanian"`,
    * `"russian"`, `"spanish"`, `"swedish"`, `"tamil"`, `"turkish"` —
-   * the 18 Snowball Porter2 languages. Unknown strings ERROR (we
-   * don't silently fall back to English; a typo'd `"germann"` should
-   * surface).
+   * the 18 Snowball Porter2 languages. Unknown strings ERROR (no
+   * silent fallback to English; a typo'd `"germann"` surfaces).
    */
   language?: string
 }

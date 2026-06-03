@@ -32,7 +32,7 @@
 //! ## Regime labeling
 //!
 //! HotpotQA does not have a native "regime" label. The default
-//! [`label_regime`] heuristic maps:
+//! [`default_regime`] heuristic maps:
 //!
 //! | level + type            | regime          |
 //! |-------------------------|------------------|

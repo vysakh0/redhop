@@ -4,7 +4,7 @@
 //! question: *"why did retrieval behave this way on this query?"*
 //!
 //! It is a thin, **core-only** layer that converts a finished
-//! [`RetrievalState`] into a serializable [`RetrievalTrace`] and renders
+//! [`redhop::core::RetrievalState`] into a serializable [`RetrievalTrace`] and renders
 //! it for humans (CLI) or machines (JSON). It introduces **no behavior
 //! change** to the controller — a trace is a *view* over the state the
 //! orchestrator already produced.
@@ -23,7 +23,7 @@
 //! Tracing is opt-in: you call [`RetrievalTrace::from_state`] when you
 //! want a trace. The orchestrator does not record anything extra on the
 //! hot path; everything a trace needs is already in
-//! [`RetrievalState::history`].
+//! [`redhop::core::RetrievalState::history`].
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

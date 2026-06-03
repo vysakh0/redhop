@@ -4,8 +4,8 @@
 //! default. Every classification produces a complete
 //! [`ClassificationTrace`] — every feature inspected, every threshold
 //! applied, every rule that fired, and the pre-softmax regime scores.
-//! Given a [`RegimeDistribution`][rd] you can fully reconstruct *why*
-//! the classifier reached its verdict without rerunning anything.
+//! Given a [`redhop::core::RegimeDistribution`] you can fully reconstruct
+//! *why* the classifier reached its verdict without rerunning anything.
 //!
 //! ## Anatomy of a classification
 //!
@@ -40,8 +40,6 @@
 //! probability that the diagnostics are noisy. Softmax preserves a thin
 //! mass on the other regimes, which is what we want when later phases
 //! make hedged decisions.
-//!
-//! [rd]: redhop::core::RegimeDistribution
 
 use std::collections::BTreeMap;
 

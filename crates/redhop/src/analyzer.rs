@@ -5,12 +5,13 @@
 //!
 //! ## Why one analyzer drives both layers
 //!
-//! Through 0.1.3-0.1.4 we kept finding bugs where BM25's tokenization and the
-//! grounding scorer's notion of "the same term" disagreed (stemming on one
-//! side but not the other; stopwords on one side; camelCase split on one
-//! side; ASCII fold on one side). Each one was a silent-search-miss. The
-//! `Analyzer` trait makes the contract explicit: **a chunk that BM25 returns
-//! and the grounding scorer evaluates went through the same pipeline.**
+//! Through 0.1.3-0.1.4 a series of bugs surfaced where BM25's tokenization
+//! and the grounding scorer's notion of "the same term" disagreed (stemming
+//! on one side but not the other; stopwords on one side; camelCase split on
+//! one side; ASCII fold on one side). Each one was a silent-search-miss.
+//! The `Analyzer` trait makes the contract explicit: **a chunk that BM25
+//! returns and the grounding scorer evaluates went through the same
+//! pipeline.**
 //!
 //! Concretely, [`Analyzer::tokens`] is implemented in terms of
 //! [`Analyzer::build_text_analyzer`]: the BM25 side and the grounding side

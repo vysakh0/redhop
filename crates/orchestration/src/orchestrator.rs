@@ -19,11 +19,12 @@
 //!                ...
 //! ```
 //!
-//! This is the **first phase that mutates retrieval behavior**. Every
-//! action it takes is bounded by the [`Budget`][bud], and every decision
-//! it makes is logged into the [`RetrievalState::history`][hist]. The
-//! orchestrator does not own the retriever or rerankers — those live
-//! behind the [`Actuator`][act] trait so the orchestrator itself stays
+//! This stage is the **first phase that mutates retrieval behavior**.
+//! Every action it takes is bounded by the [`redhop::core::Budget`], and
+//! every decision it makes is logged into the
+//! [`redhop::core::RetrievalState::history`]. The orchestrator does not
+//! own the retriever or rerankers — those live behind the
+//! [`crate::actuator::Actuator`] trait so the orchestrator itself stays
 //! easy to test against mocks.
 //!
 //! ## Evidence quality metric
@@ -32,12 +33,8 @@
 //! quality* aggregate — a fixed weighted sum over the lexical
 //! grounding, semantic grounding, distractor ratio, and evidence
 //! concentration metrics. The aggregate is intentionally simple and
-//! interpretable. Phase 9 may revisit the weighting once we have judge-
-//! model labels to calibrate against.
-//!
-//! [bud]: redhop::core::Budget
-//! [hist]: redhop::core::RetrievalState::history
-//! [act]: crate::actuator::Actuator
+//! interpretable. The weighting may be revisited if judge-model labels
+//! become available to calibrate against.
 
 use std::sync::Arc;
 
