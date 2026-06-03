@@ -47,6 +47,29 @@ export interface Options {
    * `(query, passage)` pair. Works under any retrieval tier.
    */
   rerank?: string
+  /**
+   * Floor on the number of candidates delivered to the assembler. Under
+   * `"hybrid"` / `"semantic"` retrieval, if the primary tier returns
+   * fewer, a BM25 fallback tops the result up to this number. Default
+   * `0` (off). No effect under `"lexical"`. Pair with
+   * `report.lowConfidenceRetrieval` to detect a weak-fallback case.
+   */
+  minCandidates?: number
+  /**
+   * Lexical analyzer language. Drives both BM25 retrieval and the
+   * grounding scorer's term extraction so the two layers agree on what
+   * counts as "the same term" (English `compression` finds `compress`,
+   * German `Bücher` finds `Buch`, etc.). Default `"english"`.
+   *
+   * Supported: `"arabic"`, `"danish"`, `"dutch"`, `"english"`,
+   * `"finnish"`, `"french"`, `"german"`, `"greek"`, `"hungarian"`,
+   * `"italian"`, `"norwegian"`, `"portuguese"`, `"romanian"`,
+   * `"russian"`, `"spanish"`, `"swedish"`, `"tamil"`, `"turkish"` —
+   * the 18 Snowball Porter2 languages. Unknown strings ERROR (we
+   * don't silently fall back to English; a typo'd `"germann"` should
+   * surface).
+   */
+  language?: string
 }
 /** Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`). */
 export interface FolderOptions {
@@ -80,6 +103,13 @@ export interface Report {
   secondHopRescues: number
   /** Structural-expansion chunks added (neighbors / headings). */
   nExpanded: number
+  /**
+   * `true` when nothing in the assembled context was above the grounding
+   * floor — the query may share little vocabulary with the corpus.
+   */
+  lowConfidenceRetrieval: boolean
+  /** The grounding ceiling that `low_confidence_retrieval` applied. */
+  lowConfidenceThreshold: number
   /** The human-readable Decision Report. */
   rendered: string
 }
