@@ -1,4 +1,4 @@
-//! Phase 6 falsification test.
+//! Semantic-tier falsification test.
 //!
 //! Claim: the semantic-tier diagnostics distinguish retrieval regimes that
 //! the lexical tier alone confuses — specifically the *paraphrase regime*,

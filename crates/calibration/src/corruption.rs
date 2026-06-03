@@ -1,7 +1,7 @@
 //! Corpus corruption injection + the diagnostics-vs-degradation
 //! correlation study.
 //!
-//! Phase C built ingestion diagnostics that *claim* to detect
+//! The ingestion-diagnostics work *claims* to detect
 //! retrieval-corrupting corpora. This module validates that claim
 //! empirically: take a real corpus, corrupt it at increasing severity,
 //! and measure at each level both (a) the ingestion diagnostic scores

@@ -139,7 +139,7 @@ starved.
 The benchmark suite (`crates/benchmarks/benches/*.rs`) covers chunking
 throughput and BM25 retrieval latency; run with `cargo bench`.
 
-## Future bindings (Phase 6)
+## Future bindings
 
 `Chunk`, `Document`, `Query`, `RetrievalResult`, and `DiagnosticsReport`
 are all `Serialize + Deserialize`. The intent is that:

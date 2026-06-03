@@ -1,6 +1,6 @@
-//! Phase 8 falsification suite.
+//! Adaptive-controller falsification suite.
 //!
-//! The empirical bar for Phase 8 is:
+//! The empirical bar the adaptive controller has to clear:
 //!
 //!   1. Adaptive must IMPROVE hard regimes (DistractorHeavy / Ambiguous /
 //!      Sparse) compared to a static pipeline on the same retrieval, OR

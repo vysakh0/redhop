@@ -119,9 +119,9 @@ impl RedHopBuilder {
     ///
     /// Configuring a classifier turns on regime annotation in
     /// [`RedHop::retrieve_with_state`]. The static `retrieve` and
-    /// `diagnose` APIs are unaffected — they continue to behave exactly as
-    /// they did before Phase 7. This is the read-only on-ramp to the
-    /// adaptive layer.
+    /// `diagnose` APIs are unaffected — they continue to behave exactly
+    /// as if no classifier were attached. This is the read-only on-ramp
+    /// to the adaptive layer.
     pub fn with_classifier(mut self, c: Arc<dyn RegimeClassifier>) -> Self {
         self.classifier = Some(c);
         self
@@ -262,9 +262,9 @@ impl RedHop {
     /// configured) regime distribution.
     ///
     /// This is the **read-only on-ramp to the adaptive layer**: it is the
-    /// same call shape that the Phase 8 adaptive orchestrator will use
-    /// internally on every iteration. Today the state is observed and
-    /// returned; no part of the pipeline mutates retrieval based on it.
+    /// same call shape the adaptive orchestrator uses internally on every
+    /// iteration. Here the state is observed and returned; no part of the
+    /// pipeline mutates retrieval based on it.
     ///
     /// Static `retrieve` and `diagnose` keep their existing contracts and
     /// are unaffected by whether a classifier is configured.
@@ -285,7 +285,7 @@ impl RedHop {
         Ok(state)
     }
 
-    /// Run the **adaptive** retrieval loop. This is the Phase 8 entrypoint.
+    /// Run the **adaptive** retrieval loop — the orchestrator's entrypoint.
     ///
     /// The orchestrator behind this call is conservative by design: easy
     /// queries take exactly one terminal `Stop` action, sparse queries

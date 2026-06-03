@@ -6,7 +6,7 @@
 //! (`DefaultDiagnosticsEngine` + `SemanticDiagnosticsEngine`).
 //!
 //! The corpus is constructed so two queries demonstrate the paraphrase
-//! regime that Phase 6 was designed to catch:
+//! regime the semantic tier was designed to catch:
 //!
 //! - "feline kitten purrs" — no lexical overlap with corpus that uses
 //!   "cat" / "tabby"; semantic tier catches it.
@@ -29,7 +29,7 @@ use redhop_diagnostics::{
 
 const DIM: usize = 128;
 
-/// The same topic-bucket embedder used by the Phase 6 falsification test.
+/// The same topic-bucket embedder used by the semantic-tier falsification test.
 fn embed(text: &str) -> Embedding {
     const TOPIC_WEIGHT: f32 = 4.0;
     const NOISE_START: usize = 10;

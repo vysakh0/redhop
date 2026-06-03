@@ -200,7 +200,7 @@ impl RegimeDistribution {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Phase 8: actions, budget, taken-action history
+// Adaptive actions, budget, taken-action history
 // ─────────────────────────────────────────────────────────────────────
 
 /// Reranker tiers in escalation order. `None < Lexical < Semantic <
@@ -219,7 +219,8 @@ pub enum RerankerLevel {
     Lexical,
     /// Embedding-based reranker (cosine over chunk vectors).
     Semantic,
-    /// Heavy cross-encoder. Not implemented in Phase 8; reserved.
+    /// Heavy cross-encoder. Reserved for future use; not currently
+    /// wired to a default implementation.
     CrossEncoder,
 }
 
@@ -302,7 +303,7 @@ impl AbstainReason {
 
 /// The action catalog the policy may choose from.
 ///
-/// **Phase 8 intentionally restricts the action space to four members.**
+/// **The action space is intentionally restricted to four members.**
 /// Query rewriting, chunk mutation, and graph traversal are deliberately
 /// excluded until the four below are empirically validated. The space is
 /// designed to be conservative — every action either terminates (Stop /
@@ -448,10 +449,10 @@ impl Budget {
 
 /// The state object that flows through the adaptive retrieval loop.
 ///
-/// Phase 7 introduced the read-only fields (`query`, `candidates`,
-/// `diagnostics`, `confidence`, `regime`); Phase 8 added `history`,
-/// `budget`, and the current `reranker_level`. The orchestrator mutates
-/// these in place across iterations.
+/// Carries both read-only observations (`query`, `candidates`,
+/// `diagnostics`, `confidence`, `regime`) and the loop's mutable
+/// machinery (`history`, `budget`, current `reranker_level`). The
+/// orchestrator mutates these in place across iterations.
 ///
 /// Fields are public so consumers can read them directly without going
 /// through getters; mutation is the orchestrator's job.

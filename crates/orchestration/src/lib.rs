@@ -1,32 +1,36 @@
 //! # redhop-orchestration
 //!
-//! Retrieval-state observation and regime classification.
+//! Retrieval-state observation, regime classification, policy, and the
+//! adaptive controller that actions them.
 //!
-//! This is the **Phase 7 home** for everything that *observes* retrieval
-//! state without mutating it. Phase 8 will add the action engine and the
-//! adaptive orchestrator in this same crate; for now it ships:
+//! Ships:
 //!
 //! - [`confidence::compute_confidence`] — derives a
-//!   [`ConfidenceProfile`][cp] from a list of [`RetrievalResult`][rr]s.
-//! - [`classifier::RuleBasedClassifier`] — interpretable, threshold-driven
-//!   regime classifier with full audit traces.
+//!   [`redhop::core::ConfidenceProfile`] from a list of
+//!   [`redhop::core::RetrievalResult`]s.
+//! - [`classifier::RuleBasedClassifier`] — interpretable,
+//!   threshold-driven regime classifier with full audit traces.
+//! - [`policy::ConservativeRulePolicy`] — the bounded policy that turns
+//!   regime probabilities into [`policy::PolicyDecision`]s.
+//! - [`actuator::DefaultActuator`] — the work-doer behind a
+//!   [`actuator::Actuator`] trait so the orchestrator stays testable
+//!   against mocks.
+//! - [`orchestrator::AdaptiveOrchestrator`] — the iteration loop that
+//!   ties diagnostics → classifier → policy → actuator together under a
+//!   bounded budget.
 //!
 //! ## Why a separate crate
 //!
-//! Three reasons:
+//! Two reasons:
 //!
 //! 1. Diagnostics observe per-result quality; orchestration observes
 //!    *state*. The conceptual layer is different and the dependencies are
-//!    different — this crate touches neither chunkers nor retrievers.
-//! 2. The forthcoming `AdaptiveOrchestrator`, `Actuator`, and policy
-//!    implementations will share this crate's home, but should not pull
-//!    `redhop-diagnostics` deeper into the dependency graph.
-//! 3. Bindings (Python, Node) will frequently want orchestration alone
-//!    when they're wrapping an external retriever — pulling Tantivy via
-//!    `redhop-retrieval` would be wasteful.
-//!
-//! [cp]: redhop::core::ConfidenceProfile
-//! [rr]: redhop::core::RetrievalResult
+//!    different — this crate touches neither chunkers nor retrievers
+//!    directly, only the [`redhop::core::Retriever`] trait through
+//!    [`actuator::Actuator`].
+//! 2. Bindings (Python, Node) that wrap an external retriever can pull
+//!    orchestration alone without dragging in Tantivy through
+//!    `redhop`'s retrieval layer.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

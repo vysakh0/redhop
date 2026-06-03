@@ -1,4 +1,4 @@
-//! Ingestion diagnostics demo (Phase C).
+//! Ingestion-diagnostics demo.
 //!
 //! Runs `diagnose_ingestion` over several deliberately-messy synthetic
 //! corpora — clean, OCR-garbled, boilerplate-heavy, fragmented, and

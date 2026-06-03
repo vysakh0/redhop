@@ -10,7 +10,7 @@
 //! flat tail tells you the top-1 is safe but the tail is ambiguous. Low
 //! `decision_margin` with low `score_entropy` means the top-1 and top-2
 //! are tied but the rest is far behind — a different problem. The policy
-//! layer in Phase 8 will read all three.
+//! layer reads all three.
 //!
 //! Implementation notes:
 //!

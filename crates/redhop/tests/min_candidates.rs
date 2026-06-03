@@ -1,4 +1,4 @@
-//! Issue #1, Phase 3: `min_candidates` floor with lexical fallback.
+//! `min_candidates` floor with lexical fallback (issue #1).
 //!
 //! Verifies the contract that when `Hybrid`/`Dense` retrieval returns fewer
 //! candidates than `cfg.min_candidates`, a BM25 fallback over the same chunks

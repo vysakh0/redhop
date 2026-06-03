@@ -1,8 +1,8 @@
-//! Phase 8 demo: the closed adaptive loop, end to end.
+//! Adaptive-controller demo: the closed loop, end to end.
 //!
 //! Runs four queries (aligned / paraphrase / wrong_overlap / sparse) through
 //! the adaptive orchestrator and prints the full action history for each.
-//! The example demonstrates the three Phase 8 falsification claims live:
+//! The example demonstrates the three adaptive-controller falsification claims live:
 //!
 //!   1. Easy queries take exactly one terminal Stop action and zero
 //!      retrieval mutation.
@@ -206,7 +206,7 @@ async fn main() -> anyhow::Result<()> {
         ("sparse        ", "ancient roman aqueducts"),
     ];
 
-    println!("Phase 8 adaptive loop demo — the controller is CONSERVATIVE by design.");
+    println!("Adaptive-loop demo — the controller is CONSERVATIVE by design.");
     println!("Most queries will result in zero retrieval mutation; that is the point.");
     println!("See crates/orchestration/tests/adaptive_falsification.rs for the cases");
     println!("where strong signal makes the controller intervene.\n");

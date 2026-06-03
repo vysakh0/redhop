@@ -1,4 +1,4 @@
-//! Phase 7 end-to-end falsification.
+//! Regime-classifier end-to-end falsification.
 //!
 //! Constructs four queries that exercise four regimes, runs the full
 //! `RedHop::retrieve_with_state` path (chunker → BM25 → layered

@@ -373,7 +373,7 @@ pub struct DiagnosticsReport {
     /// Average per-chunk topical purity (low cross-talk between sentences).
     pub chunk_purity: Option<f32>,
 
-    // ---- Semantic tier (Phase 6) ----
+    // ---- Semantic tier ----
     //
     // The semantic-tier metrics close the paraphrase blind spot in the
     // lexical tier: a chunk like "Tim Cook earned $99M" has zero lexical

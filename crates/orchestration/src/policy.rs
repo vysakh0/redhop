@@ -6,7 +6,7 @@
 //! decision; that split is what lets us replay, compare, and later learn
 //! over historical decisions without re-running retrieval.
 //!
-//! ## Phase 8 policy is deliberately conservative
+//! ## The policy is deliberately conservative
 //!
 //! Three design principles, in order of importance:
 //!

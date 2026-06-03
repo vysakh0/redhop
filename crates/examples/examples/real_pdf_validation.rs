@@ -1,8 +1,8 @@
-//! Phase 3: real enterprise-PDF ingestion validation.
+//! Real enterprise-PDF ingestion validation.
 //!
 //! Loads text extracted from real arXiv PDFs (BERT, DPR, RAG, the
 //! Transformer paper, word2vec, an LLM survey — 219 pages) and answers
-//! the question Phase C was built for:
+//! the ingestion-diagnostics validation question:
 //!
 //!   Do RedHop's ingestion diagnostics actually CORRELATE with real
 //!   retrieval degradation?
@@ -160,7 +160,7 @@ fn main() -> anyhow::Result<()> {
     println!("\nInterpretation: a high positive correlation means the ingestion");
     println!("diagnostic RISES as retrieval recall FALLS — i.e. the diagnostic");
     println!("predicts real retrieval degradation, not just describes text. That");
-    println!("is the validation Phase C needed: the diagnostics earn their place");
+    println!("is the validation the diagnostics needed to earn their place");
     println!("as an early-warning signal on messy enterprise corpora.");
     Ok(())
 }

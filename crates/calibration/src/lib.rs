@@ -4,7 +4,7 @@
 //!
 //! ## What this crate is for
 //!
-//! Phase 8 proved that the adaptive controller **can** improve hard
+//! The calibration substrate proved that the adaptive controller **can** improve hard
 //! regimes and stay neutral on easy ones. It did not answer the
 //! follow-up question that actually matters in production:
 //!
@@ -35,7 +35,7 @@
 //! - Not a benchmark harness in the criterion sense. Criterion measures
 //!   wall-clock; this crate measures *evidence quality* and
 //!   *intervention utility*.
-//! - Not a learned-policy training loop. Phase 9 may build one on top of
+//! - Not a learned-policy training loop. A future iteration may build one on top of
 //!   the [`runner::QueryOutcome`] traces this crate emits, but no
 //!   training happens here.
 //! - Not a replacement for empirical evaluation against real workloads.

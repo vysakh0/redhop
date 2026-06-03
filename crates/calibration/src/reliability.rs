@@ -82,11 +82,11 @@ pub fn reliability_diagram_for(
     assert!(n_bins >= 1, "n_bins must be ≥ 1");
     let mut bins: Vec<(usize, f32, f32)> = vec![(0, 0.0, 0.0); n_bins];
 
-    // For each query, compute p(regime). We use `true_regime_p` when the
+    // For each query, compute p(regime). Use `true_regime_p` when the
     // regime in question is the *true* regime — that is the natural
     // diagram for "how confident is the classifier in the truth?". For
-    // other regimes, we'd need the full distribution. Phase 8 doesn't
-    // expose that on QueryOutcome by default; we approximate with
+    // other regimes, the full distribution would be needed; QueryOutcome
+    // doesn't expose that, so approximate with
     // `predicted_regime == regime` ? `predicted_regime_p` : 0.0.
     for o in outcomes {
         let p = if o.predicted_regime == Some(regime) {

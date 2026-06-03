@@ -1,4 +1,4 @@
-//! Phase 7 demo: regime classification with full audit trace.
+//! Regime-classifier demo: regime classification with full audit trace.
 //!
 //! Runs four queries against a small corpus through the layered diagnostics
 //! and the rule-based regime classifier. For each query it prints the full

@@ -154,10 +154,10 @@ impl Default for DocumentConfig {
                 strategy: ContextStrategy::Auto,
                 ..Default::default()
             },
-            // Opt-in: the strict-superset contract (issue #1, Phase 1 fix) is
-            // already the right behavior for almost every caller. Set this
-            // when an LLM downstream refuses to answer on empty contexts and
-            // a known-weak chunk is better than nothing.
+            // Opt-in: the strict-superset contract restored in 0.1.3 (issue
+            // #1) is already the right behavior for almost every caller. Set
+            // this when an LLM downstream refuses to answer on empty
+            // contexts and a known-weak chunk is better than nothing.
             min_candidates: 0,
             // Code chunks are fixed-token windows, so a single function often
             // spans 2-3 chunks. Default `context()` on a code hit would cite
@@ -827,10 +827,10 @@ impl Document {
             }
         };
 
-        // Top-up fallback (issue #1, Phase 3): if the primary retriever
-        // returned fewer than `cfg.min_candidates`, pad from BM25 over the
-        // same chunks until the floor is met. No-op under Lexical (the
-        // primary already *is* BM25) and when the floor is 0 (the default).
+        // Top-up fallback (issue #1): if the primary retriever returned
+        // fewer than `cfg.min_candidates`, pad from BM25 over the same
+        // chunks until the floor is met. No-op under Lexical (the primary
+        // already *is* BM25) and when the floor is 0 (the default).
         if results.len() < self.cfg.min_candidates
             && !matches!(self.cfg.retrieval_mode, RetrievalMode::Lexical)
         {

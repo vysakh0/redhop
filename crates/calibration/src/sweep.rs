@@ -12,7 +12,7 @@
 //!
 //! ## Sweep dimensions
 //!
-//! Phase 8 has two policy thresholds with strong leverage:
+//! The adaptive policy has two thresholds with strong leverage:
 //!
 //! - `min_p_distractor` — controls when EscalateReranker fires.
 //! - `min_p_ambiguous` — controls when ExpandTopK fires.
