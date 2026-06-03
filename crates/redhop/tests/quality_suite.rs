@@ -45,6 +45,10 @@
 //! - **Non-English pinning** (T37-T40): degraded-but-functional behavior on
 //!   Spanish/German/French/CJK content. See docs/LANGUAGE.md for the
 //!   "what works / what doesn't" matrix.
+//! - **Analyzer plugin** (T41-T44): `Document::with_analyzer` actually
+//!   swaps both BM25 retrieval AND the grounding scorer — German morphology
+//!   (`Bücher` ↔ `Buch`), French infinitive (`manger` ↔ `mange`), unknown-
+//!   language error, default-English preserved.
 
 use redhop::core::{Chunk, ChunkId, TokenCount};
 use redhop::{read_bytes, BuiltContext, Document, DocumentConfig};
@@ -1037,5 +1041,135 @@ fn t36_mixed_format_corpus_all_reachable() {
     assert!(
         warranty.chunks.iter().any(|c| c.id.as_str() == "txt"),
         "T36 mixed: text chunk not reached by plain prose query"
+    );
+}
+
+// ── 12. ANALYZER PLUGIN ────────────────────────────────────────────────────
+//
+// `Document::with_analyzer` swaps the lexical analyzer for BOTH BM25
+// retrieval and the grounding scorer in lockstep. These tests exercise
+// the public extension point a user reaches for non-English content.
+
+#[test]
+fn t41_german_analyzer_unifies_morphology() {
+    // Plural / singular German forms — only the German Snowball stemmer
+    // unifies them. With the default English analyzer the singular query
+    // can't reach the plural chunk.
+    use redhop::analyzer::SnowballAnalyzer;
+    use std::sync::Arc;
+
+    let chunks = vec![
+        prose("books", "ich habe viele Bücher gelesen", "library.de.md"),
+        prose("car", "das Auto steht in der Garage", "garage.de.md"),
+    ];
+    // (a) Default English fails — sanity check that the German fix is real.
+    let mut english = build(chunks.clone());
+    let en = english.context("Buch").unwrap();
+    assert!(
+        !en.chunks.iter().any(|c| c.id.as_str() == "books"),
+        "T41a: English analyzer should NOT unify Bücher↔Buch (sanity check)"
+    );
+    // (b) German analyzer — singular reaches plural via Snowball morphology.
+    let mut german = Document::from_chunks_with(chunks, DocumentConfig::default())
+        .unwrap()
+        .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+    let de = german.context("Buch").unwrap();
+    assert!(
+        de.chunks.iter().any(|c| c.id.as_str() == "books"),
+        "T41b: German analyzer must unify Bücher↔Buch; cited: {:?}",
+        de.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t42_french_analyzer_unifies_verb_inflections() {
+    // `manger` (infinitive) / `mange` (present 1sg) — French Snowball strips
+    // the `-er` / `-e` suffix to a common stem. English doesn't.
+    use redhop::analyzer::SnowballAnalyzer;
+    use std::sync::Arc;
+
+    let chunks = vec![
+        prose("eating", "nous voulons manger des pommes", "menu.fr.md"),
+        prose("unrelated", "le chat dort sur le canapé", "story.fr.md"),
+    ];
+    let mut french = Document::from_chunks_with(chunks, DocumentConfig::default())
+        .unwrap()
+        .with_analyzer(Arc::new(SnowballAnalyzer::french()));
+    let ctx = french.context("mange").unwrap();
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "eating"),
+        "T42 French: 'mange' (present) must reach 'manger' (infinitive) chunk; cited: {:?}",
+        ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t43_with_analyzer_swaps_both_retrieval_and_grounding() {
+    // The whole point of the plugin trait — ONE analyzer drives both layers.
+    // To prove the grounding side actually swapped (not just BM25), force
+    // a config that REQUIRES the grounding scorer to evaluate properly:
+    // off the auto-passthrough path so distractor filtering runs.
+    use redhop::analyzer::SnowballAnalyzer;
+    use std::sync::Arc;
+
+    let chunks = vec![
+        prose("plur", "ich habe viele Bücher gelesen", "library.de.md"),
+        prose(
+            "filler",
+            "the quick brown fox jumps over the lazy dog",
+            "lipsum.md",
+        ),
+        prose(
+            "filler2",
+            "lorem ipsum dolor sit amet consectetur adipiscing",
+            "lipsum2.md",
+        ),
+    ];
+    let cfg = DocumentConfig {
+        context: redhop::context::ContextConfig {
+            // Force the grounding/distractor path on (small inputs would
+            // otherwise auto-passthrough and never invoke grounding).
+            auto_passthrough_max_tokens: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut german = Document::from_chunks_with(chunks, cfg)
+        .unwrap()
+        .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+    let ctx = german.context("Buch").unwrap();
+    // German singular → plural chunk survives the grounding filter only if
+    // the analyzer agreed they're the same term on the grounding side too.
+    assert!(
+        ctx.chunks.iter().any(|c| c.id.as_str() == "plur"),
+        "T43: with_analyzer didn't reach the grounding scorer — 'Buch' query \
+         can match 'Bücher' via BM25 stemming but would be filtered as a \
+         distractor if grounding still used English Porter2"
+    );
+}
+
+#[test]
+fn t44_unknown_language_via_load_options_errors() {
+    // The string-routed entry point (LoadOptions::language → bindings'
+    // `language=...` kwarg) must REJECT unknown names rather than silently
+    // fall back to English — a typo'd `"germann"` should surface as a
+    // ValueError, not give the user wrong rankings forever.
+    let res = redhop::read_bytes_with(
+        b"some text",
+        "notes.md",
+        &redhop::LoadOptions {
+            language: Some("germann".to_string()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        res.is_err(),
+        "T44: LoadOptions::language='germann' should error, not silently \
+         fall back to English"
+    );
+    let err = res.err().unwrap().to_string();
+    assert!(
+        err.to_lowercase().contains("germann") || err.to_lowercase().contains("unknown"),
+        "T44: error message should name the unknown language; got: {err}"
     );
 }

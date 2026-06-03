@@ -60,6 +60,19 @@ pub struct Options {
     /// `0` (off). No effect under `"lexical"`. Pair with
     /// `report.lowConfidenceRetrieval` to detect a weak-fallback case.
     pub min_candidates: Option<u32>,
+    /// Lexical analyzer language. Drives both BM25 retrieval and the
+    /// grounding scorer's term extraction so the two layers agree on what
+    /// counts as "the same term" (English `compression` finds `compress`,
+    /// German `Bücher` finds `Buch`, etc.). Default `"english"`.
+    ///
+    /// Supported: `"arabic"`, `"danish"`, `"dutch"`, `"english"`,
+    /// `"finnish"`, `"french"`, `"german"`, `"greek"`, `"hungarian"`,
+    /// `"italian"`, `"norwegian"`, `"portuguese"`, `"romanian"`,
+    /// `"russian"`, `"spanish"`, `"swedish"`, `"tamil"`, `"turkish"` —
+    /// the 18 Snowball Porter2 languages. Unknown strings ERROR (we
+    /// don't silently fall back to English; a typo'd `"germann"` should
+    /// surface).
+    pub language: Option<String>,
 }
 
 impl Options {
@@ -83,6 +96,7 @@ impl Options {
             candidate_pool: u(self.candidate_pool),
             rerank: self.rerank,
             min_candidates: u(self.min_candidates),
+            language: self.language,
         }
     }
 }

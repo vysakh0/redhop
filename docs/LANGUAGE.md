@@ -36,23 +36,64 @@ Steps 1-5 are language-agnostic. Steps 6 and 7 are English-only.
 
 ## If you need better non-English support
 
-The places to extend:
+### Per-language stemming via the public `Analyzer` plugin (in-tree, no fork)
 
-### Per-language stemming + stopwords
+`crate::analyzer::SnowballAnalyzer` ships pre-baked constructors for all
+18 Snowball Porter2 languages (`arabic, danish, dutch, english, finnish,
+french, german, greek, hungarian, italian, norwegian, portuguese,
+romanian, russian, spanish, swedish, tamil, turkish`). Swap the default
+English analyzer with `Document::with_analyzer`:
 
-`rust-stemmers` (already in our dep tree) ships Snowball Porter2 stemmers
-for: **Arabic, Danish, Dutch, English, French, German, Greek, Hungarian,
-Italian, Norwegian, Portuguese, Romanian, Russian, Spanish, Swedish,
-Tamil, Turkish.**
+```rust
+use std::sync::Arc;
+use redhop::analyzer::SnowballAnalyzer;
 
-To use a different one, replace `Stemmer::new(Language::English)` in
-`crates/redhop/src/retrieval/bm25.rs::Bm25Retriever::new` with the target
-language. You'll also want a matching stopword list — Snowball publishes
-one per language at <https://snowballstem.org/algorithms/>.
+let mut doc = redhop::Document::from_text("library", "ich habe viele Bücher")?
+    .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+let ctx = doc.context("Buch")?;   // finds the chunk via German morphology
+```
 
-`crate::context::normalize` would need a parallel change so the BM25 side
-and the grounding scorer stay in lockstep (this is the recurring "same
-tokenizer/scorer contract" — see CHANGELOG 0.1.3-0.1.4).
+ONE analyzer drives BOTH the BM25 retriever and the grounding scorer —
+that's the architectural guarantee of the `Analyzer` trait. There's no
+risk of the two layers disagreeing on what "the same term" is (the bug
+class we fixed by hand four times through 0.1.3-0.1.4 is now structurally
+impossible).
+
+From Python:
+
+```python
+doc = redhop.Document.from_text("ich habe viele Bücher", language="german")
+ctx = doc.context("Buch")     # finds it via Snowball German
+```
+
+From Node:
+
+```javascript
+const doc = Document.fromText("ich habe viele Bücher", { language: "german" });
+const ctx = doc.context("Buch");
+```
+
+Unknown language strings ERROR (we don't silently fall back to English —
+a typo'd `"germann"` should surface). For a CJK tokenizer or a custom
+pipeline, implement the `crate::analyzer::Analyzer` trait yourself and
+pass `Document::with_analyzer(Arc::new(MyAnalyzer))` directly.
+
+### Per-language stopword lists
+
+`SnowballAnalyzer::english()` ships with the curated list from
+`crate::context::STOPWORDS`. The other 17 builtins ship with **empty**
+stopword lists — we don't have curated lists per language, and shipping
+uncalibrated ones violates the measure-don't-overclaim discipline.
+Attach your own:
+
+```rust
+let german = SnowballAnalyzer::german()
+    .with_stopwords(vec!["der".into(), "die".into(), "das".into(), /* … */]);
+```
+
+Snowball publishes per-language lists at
+<https://snowballstem.org/algorithms/>; the ones from `nltk.corpus.stopwords`
+are also a reasonable starting point.
 
 ### CJK tokenization
 
@@ -73,25 +114,43 @@ before being handed to redhop, with each segment tagged via
 `chunk.metadata["language"]`. The Tantivy multi-field analyzer setup
 would then key the analyzer by language.
 
-## Why we shipped this way
+## How the plugin guarantees parity
 
-Two reasons:
+The `Analyzer` trait has two methods: `build_text_analyzer()` returns a
+Tantivy `TextAnalyzer` (used by BM25), and `tokens(text)` returns the
+list of search terms (used by the grounding scorer). The default
+`tokens()` impl runs the analyzer returned by `build_text_analyzer()`
+and collects its output — so the BM25 side and the grounding side go
+through a **single source of truth**. There's no way to override one
+without the other.
 
-1. **Validation cost.** A per-language analyzer change needs a per-language
-   eval corpus to know it's actually helping. We have evidence on English
-   (HotpotQA, MuSiQue, CUAD). We don't have eval data on Spanish or
-   German content, so adding stemmers without evaluation is the
-   "ship-a-feature-we-can't-measure" trap.
+This kills, structurally, the entire class of bugs we kept finding
+through 0.1.3-0.1.4 — stemming, stopwords, camelCase, ASCII-folding
+mismatches between the two layers. They now follow from the architecture.
 
-2. **Bounded scope.** The 0.1.x line ships an English-focused RAG runtime
-   with explicit, observable behavior. Adding language pipelines without
-   strong demand turns the library into a knobs-and-config piece of work
-   we'd rather not be on the hook for. When two users ask for German,
-   that's the trigger.
+## Calibration disclaimer
+
+Pre-baked non-English builtins (`german`, `french`, etc.) get you the
+Snowball Porter2 stemmer for that language, full stop. We have **no
+eval corpus** for non-English — we can't tell you whether the ranking
+quality matches English Snowball's on HotpotQA / MuSiQue / CUAD.
+Empirically: `Bücher` ↔ `Buch` unifies under the German analyzer in our
+T41 test, but we can't promise that ranking on a real German legal
+contract is as good as English Snowball on a real English one.
+
+For demanding use cases, supply your own analyzer (implement the
+`Analyzer` trait) and benchmark on your own corpus.
 
 ## Pinning tests
 
-`crates/redhop/tests/quality_suite.rs` (T37-T40 region) locks the
-current degraded-but-functional behavior in place. If a future change
-accidentally regresses (e.g., breaks Spanish exact-word lookup or
-German ß-folding), CI catches it.
+`crates/redhop/tests/quality_suite.rs`:
+
+- **T37-T40** lock in the basic non-English behaviors (Spanish exact
+  match, German ß-folding, French accent parity, CJK substring).
+- **T41-T44** exercise the `Analyzer` plugin end-to-end: German
+  morphology via `with_analyzer(German)`, French verb inflections via
+  `with_analyzer(French)`, the with_analyzer call swaps both layers
+  (proven by forcing the grounding scorer to run), unknown language
+  strings error rather than silently falling back to English.
+
+If a future change accidentally regresses any of these, CI catches it.

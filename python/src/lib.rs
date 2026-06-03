@@ -535,15 +535,34 @@ fn doc_config(
     chunk_size: usize,
     chunk_overlap: usize,
     retrieval_mode: RetrievalMode,
+    language: Option<String>,
 ) -> PyResult<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match strategy {
         Some(s) => strategy_from_str(&s)?,
         None => base.context.strategy,
     };
+    // Route language string → SnowballAnalyzer builtin. Errors on unknown
+    // names so a typo'd `"germann"` surfaces, not silently falls back to
+    // English ranking.
+    let analyzer: std::sync::Arc<dyn redhop::analyzer::Analyzer> = match language {
+        None => base.context.analyzer.clone(),
+        Some(name) => match redhop::analyzer::SnowballAnalyzer::by_name(&name) {
+            Some(a) => std::sync::Arc::new(a),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown language '{name}'; supported: arabic, danish, dutch, \
+                     english, finnish, french, german, greek, hungarian, italian, \
+                     norwegian, portuguese, romanian, russian, spanish, swedish, \
+                     tamil, turkish"
+                )));
+            }
+        },
+    };
     let context = ContextConfig {
         token_budget,
         strategy,
+        analyzer,
         ..base.context
     };
     Ok(DocumentConfig {
@@ -937,6 +956,7 @@ fn build_chunks_doc(
     embedder_passage_prefix: Option<String>,
     candidate_pool: usize,
     rerank: Option<String>,
+    language: Option<String>,
 ) -> PyResult<RhDocument> {
     let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
     let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
@@ -947,6 +967,7 @@ fn build_chunks_doc(
         chunk_size,
         chunk_overlap,
         mode,
+        language,
     )?;
     let mut inner = to_py(RhDocument::from_chunks_with(chunks, cfg))?;
     if needs_embedder {
@@ -995,6 +1016,7 @@ fn build_folder_persisted(
     embedder_passage_prefix: Option<String>,
     candidate_pool: usize,
     rerank: Option<String>,
+    language: Option<String>,
 ) -> PyResult<FolderBuild> {
     use std::collections::{HashMap, HashSet};
 
@@ -1031,6 +1053,7 @@ fn build_folder_persisted(
         chunk_size,
         chunk_overlap,
         mode,
+        language.clone(),
     )?;
 
     let mut entries: Vec<CachedFile> = Vec::new();
@@ -1119,6 +1142,8 @@ fn build_folder_persisted(
         embedder_passage_prefix,
         candidate_pool,
         rerank,
+
+        language,
     )?;
 
     // Persist only when the corpus changed. Pull embeddings onto the chunks first
@@ -1183,6 +1208,7 @@ fn build_text_doc(
     embedder_passage_prefix: Option<String>,
     candidate_pool: usize,
     rerank: Option<String>,
+    language: Option<String>,
 ) -> PyResult<RhDocument> {
     let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
     let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
@@ -1193,6 +1219,7 @@ fn build_text_doc(
         chunk_size,
         chunk_overlap,
         mode,
+        language,
     )?;
     let mut inner = to_py(RhDocument::from_sources_with(files, cfg))?;
     if needs_embedder {
@@ -1248,7 +1275,7 @@ impl Document {
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -1268,6 +1295,8 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
         rerank: Option<String>,
+
+        language: Option<String>,
     ) -> PyResult<Self> {
         let sections = vec![RhSection {
             text: text.to_string(),
@@ -1292,6 +1321,8 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
+
+            language,
         )?;
         Ok(Self::single(inner))
     }
@@ -1308,7 +1339,7 @@ impl Document {
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_file(
         path: &str,
@@ -1327,6 +1358,8 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
         rerank: Option<String>,
+
+        language: Option<String>,
     ) -> PyResult<Self> {
         let (source, sections) = extract_file_text(path)?;
         let inner = build_text_doc(
@@ -1346,6 +1379,8 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
+
+            language,
         )?;
         Ok(Self::single(inner))
     }
@@ -1363,7 +1398,7 @@ impl Document {
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_bytes(
         data: Vec<u8>,
@@ -1383,6 +1418,8 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
         rerank: Option<String>,
+
+        language: Option<String>,
     ) -> PyResult<Self> {
         let (source, sections) = extract_bytes_sections(&data, source)?;
         let inner = build_text_doc(
@@ -1402,6 +1439,8 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
+
+            language,
         )?;
         Ok(Self::single(inner))
     }
@@ -1434,7 +1473,7 @@ impl Document {
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50,
-                        ignore=None, gitignore=true, rerank=None))]
+                        ignore=None, gitignore=true, rerank=None, language=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_folder(
         path: &str,
@@ -1458,6 +1497,8 @@ impl Document {
         ignore: Option<Vec<String>>,
         gitignore: bool,
         rerank: Option<String>,
+
+        language: Option<String>,
     ) -> PyResult<Self> {
         let root = Path::new(path);
         if !root.is_dir() {
@@ -1490,6 +1531,8 @@ impl Document {
                 embedder_passage_prefix,
                 candidate_pool,
                 rerank,
+
+                language,
             )?;
             return Ok(Self {
                 inner,
@@ -1535,6 +1578,8 @@ impl Document {
             embedder_passage_prefix,
             candidate_pool,
             rerank,
+
+            language,
         )?;
         Ok(Self {
             inner,
@@ -1549,7 +1594,7 @@ impl Document {
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -1566,6 +1611,8 @@ impl Document {
         embedder_passage_prefix: Option<String>,
         candidate_pool: usize,
         rerank: Option<String>,
+
+        language: Option<String>,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
@@ -1573,7 +1620,7 @@ impl Document {
             .collect();
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
         let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode)?;
+        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, None)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if needs_embedder {
             inner = apply_dense_embedder(

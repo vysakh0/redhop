@@ -7,9 +7,36 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
-Post-v0.1.4 work on `main` — not yet tagged. The 0.1.4 tag was pushed
-before these landed; they're queued for the next release (0.1.5 or
-0.2.0 depending on whether the analyzer plugin architecture lands).
+Post-v0.1.4 work on `main` — not yet tagged. Queued for the next
+release. Targets **0.2.0** because `ContextConfig` and `DocumentConfig`
+grew new required fields for the pluggable analyzer — callers using
+struct field literals from outside the crate need to add
+`analyzer: ...`. Callers using `..Default::default()` are unaffected.
+
+### Added
+
+- **Pluggable lexical analyzer.** The new `crate::analyzer::Analyzer`
+  trait + `SnowballAnalyzer` (18 Snowball Porter2 languages) is a
+  first-class extension point: one analyzer drives BOTH the BM25
+  retriever AND the grounding scorer, so the two layers can't drift on
+  what "the same term" means (the bug class fixed by hand four times
+  through 0.1.3-0.1.4). Design rationale in
+  `docs/design/ANALYZER_PLUGIN.md`; usage in `docs/LANGUAGE.md`.
+- **`Document::with_analyzer(Arc<dyn Analyzer>)`** — mirrors
+  `with_embedder`. Swaps the analyzer for both layers in lockstep.
+- **`LoadOptions::language: Option<String>`** — string-routed access to
+  the 18 builtins (`"english"`, `"german"`, `"french"`, …). Unknown
+  language names return an error (no silent fallback to English).
+- **Python `language` kwarg** on every `Document.from_*` constructor.
+- **Node `language` field** on `Options`.
+- **`ContextConfig::analyzer`** + **`DocumentConfig::analyzer`** — the
+  analyzer flows end-to-end (loaders → `DocumentConfig` → `Document` →
+  `Bm25Retriever` / `LocalRerankRetriever` / fallback BM25 / grounding
+  scorer).
+- **Quality suite T41-T44** pinning the analyzer plugin end-to-end:
+  German `Bücher`↔`Buch` morphology, French `manger`↔`mange`
+  inflections, proof that `with_analyzer` swaps both layers in lockstep,
+  unknown-language error.
 
 ### Fixed
 - **All-stopword query no longer crashes BM25.** A query that the analyzer
@@ -53,7 +80,7 @@ before these landed; they're queued for the next release (0.1.5 or
 ### Notes
 - `unicode-normalization` promoted from transitive (via tantivy) to a
   direct dep of redhop. Used for the grounding scorer's NFKD fold.
-- Workspace test count: 301/301 pass under `cargo test --workspace`
+- Workspace test count: 314/314 pass under `cargo test --workspace`
   (was 260 at the v0.1.4 tag).
 - CI gates remain clean: `cargo fmt --all -- --check`, `cargo clippy
   --workspace --all-targets -- -D warnings`, `cargo test --workspace`.

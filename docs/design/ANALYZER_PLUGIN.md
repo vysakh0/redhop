@@ -1,7 +1,9 @@
-# Design: pluggable lexical analyzer (Option B)
+# Design: pluggable lexical analyzer
 
-**Status**: proposed (not yet implemented).
-**Target**: 0.2.x — likely 0.2.0, the first release with public-API breakage.
+**Status**: **IMPLEMENTED** on `main`. Queued for the next release.
+Targets 0.2.0 because `ContextConfig` and `DocumentConfig` grew new
+required fields — callers constructing those structs via field literals
+from outside the crate need to add `analyzer: ...`.
 **Scope**: cross-binding extension surface for the lexical analyzer (the
 tokenizer + filter pipeline that drives both BM25 retrieval AND the
 grounding scorer's term extraction).
