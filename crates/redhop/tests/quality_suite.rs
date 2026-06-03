@@ -1241,3 +1241,159 @@ fn t45_analyzer_does_not_leak_between_documents() {
          if it does, the earlier German registration leaked forward"
     );
 }
+
+// ── 13. ADVERSARIAL ROBUSTNESS ─────────────────────────────────────────────
+//
+// Beyond the T31-T34 stress queries: input shapes that don't crash today
+// but COULD silently regress (return wrong results / panic / consume
+// memory) if the analyzer or retriever changes. Each test asserts a
+// clean outcome (empty result OR clean error), never a panic.
+
+#[test]
+fn t46_nul_bytes_in_chunk_text_dont_crash() {
+    // A chunk containing literal NUL bytes — easy to produce from a buggy
+    // loader that mishandles binary files. Tantivy used to panic on NUL
+    // in some versions; if we regress, the test fails loud rather than
+    // silently returning garbage.
+    let mut doc = build(vec![
+        prose(
+            "0",
+            "the refund window is thirty days\0from purchase",
+            "policy.md",
+        ),
+        prose("1", "unrelated junk content", "other.md"),
+    ]);
+    let ctx = doc.context("refund window").unwrap();
+    // We don't care about ranking precision here — just that the NUL
+    // didn't crash and we got SOMETHING back when there's a real match.
+    assert!(
+        ctx.chunks.iter().any(|c| c.text.contains("refund")),
+        "T46: NUL byte in chunk text broke retrieval; cited: {:?}",
+        ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t47_query_reducing_to_zero_terms_after_stopwords_returns_empty() {
+    // Query that's all stopwords AFTER the analyzer runs but non-empty
+    // BEFORE. The analyzer pipeline strips stopwords; what's left is
+    // empty. The retriever has to treat that as a "no signal" empty
+    // result, not an error.
+    let mut doc = build(vec![
+        prose(
+            "0",
+            "the refund window is thirty days from purchase",
+            "policy.md",
+        ),
+        prose("1", "customers may return items", "policy.md"),
+    ]);
+    // Every word here is an English stopword in our STOPWORDS list.
+    let ctx = doc.context("the and is of in or").unwrap();
+    assert!(
+        ctx.chunks.is_empty(),
+        "T47: all-stopword query should return empty, not match arbitrary chunks; cited: {:?}",
+        ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn t48_empty_corpus_with_nonempty_query_errors_cleanly() {
+    // Document with no chunks should error at construction time (already
+    // tested elsewhere), but pinning here so the message stays actionable
+    // and the failure mode doesn't drift to "silently returns empty".
+    let err = Document::from_chunks_with(vec![], DocumentConfig::default()).err();
+    assert!(
+        err.is_some(),
+        "T48: empty corpus should error, not silently succeed"
+    );
+    let msg = err.unwrap().to_string().to_lowercase();
+    assert!(
+        msg.contains("no chunks") || msg.contains("empty"),
+        "T48: empty-corpus error message should mention 'no chunks' or 'empty'; got: {msg}"
+    );
+}
+
+#[test]
+fn t49_chunk_with_empty_source_string_doesnt_crash() {
+    // A loader that forgets to set `source` (or sets it to "") shouldn't
+    // crash the index or break citations. Citations should still render
+    // with whatever empty string was provided.
+    let mut doc = build(vec![
+        prose("0", "the refund window is thirty days", ""),
+        prose("1", "unrelated content", ""),
+    ]);
+    let ctx = doc.context("refund").unwrap();
+    assert!(
+        !ctx.chunks.is_empty(),
+        "T49: empty source shouldn't drop chunks"
+    );
+}
+
+#[test]
+fn t50_very_large_single_chunk_handled() {
+    // A loader that returns a single ~100KB chunk (e.g. raw paste of a
+    // whole file) shouldn't crash the index or the assembler. The
+    // robustness contract is "no panic, no error" — actual ranking on a
+    // hyper-long chunk is best-effort because BM25 length-normalization
+    // penalizes it (which is fine; production loaders use the chunker to
+    // avoid this shape in the first place).
+    let huge_text: String =
+        "refund window thirty days. ".repeat(4000) + "the unrelated tail mentions photosynthesis.";
+    let mut doc = build(vec![
+        prose("0", &huge_text, "huge.md"),
+        prose("1", "off-topic short chunk", "other.md"),
+    ]);
+    // Just assert it returns without panicking; the report is sane.
+    let ctx = doc.context("refund window").unwrap();
+    assert!(
+        ctx.report.n_input_chunks >= 1,
+        "T50: input chunks should be counted even if BM25 length-normalizes the huge one out of the top-k"
+    );
+}
+
+#[test]
+fn t51_query_with_only_punctuation_returns_empty() {
+    // A query that the analyzer reduces to zero tokens because it's all
+    // punctuation/whitespace. The retriever has to handle this without
+    // crashing — same class as T25 (already pinned for explicit empty
+    // strings) but for a non-empty input that's whitespace-equivalent.
+    let mut doc = build(vec![
+        prose("0", "the refund window is thirty days", "policy.md"),
+        prose("1", "other content", "other.md"),
+    ]);
+    for adversarial in &["...", "!!!???", "    \t\n  ", "()[]{}"] {
+        let ctx = doc.context(adversarial).unwrap();
+        assert!(
+            ctx.chunks.is_empty(),
+            "T51: adversarial-punct query {adversarial:?} should return empty; cited: {:?}",
+            ctx.chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn t52_auto_chunked_ids_are_unique() {
+    // `from_chunks_with` is BYO-ids — the caller owns them (database row
+    // ids, external system ids, etc.) and the library does NOT renumber.
+    // BUT every auto-chunking constructor (`from_text_with`,
+    // `from_sources_with`) MUST produce a unique-id set even on text that
+    // chunks into many similar pieces, because downstream code (citations,
+    // expansion plan, persisted-index cache) keys on chunk id.
+    let text: String = "The refund window is thirty days from purchase. ".repeat(50);
+    let doc = Document::from_text_with("policy.md", &text, DocumentConfig::default()).unwrap();
+    let ids: Vec<&str> = doc.chunks().iter().map(|c| c.id.as_str()).collect();
+    let unique: std::collections::HashSet<&&str> = ids.iter().collect();
+    assert_eq!(
+        ids.len(),
+        unique.len(),
+        "T52: auto-chunked text must yield unique chunk ids; got {ids:?}"
+    );
+    // Relaxed lower bound — the actual chunk count depends on chunk_size
+    // (128 tokens) + overlap; the important property is "more than one
+    // chunk, all unique" not the exact count.
+    assert!(
+        ids.len() >= 2,
+        "T52: 50-sentence text should chunk into ≥2 chunks; got {} ids",
+        ids.len()
+    );
+}

@@ -221,11 +221,17 @@ impl Retriever for Bm25Retriever {
                     ],
                 );
                 // Some queries reduce to nothing after the analyzer pipeline
-                // — `""`, `"   "`, or `"the and is of"` (all stopwords) all
-                // produce a parse error from Tantivy ("Only excluding terms
-                // given"). Caught by quality_suite::t25 — returning an empty
-                // result is the right behavior for a no-signal query.
+                // — `""`, `"   "`, `"!!!???"`, or `"the and is of"` (all
+                // stopwords) all produce a parse error from Tantivy ("Only
+                // excluding terms given") or — worse — would parse to a `*`
+                // wildcard (match-everything) if sanitize_query fell back to
+                // that. Treating no-signal queries as empty results is the
+                // only sane behavior. Caught by quality_suite::t25 (empty +
+                // all-stopword) and t51 (whitespace + punctuation only).
                 let parsed_text = sanitize_query(&text);
+                if parsed_text.is_empty() {
+                    return Ok(Vec::new());
+                }
                 let q = match qp.parse_query(&parsed_text) {
                     Ok(q) => q,
                     Err(e) => {
@@ -293,12 +299,11 @@ fn sanitize_query(s: &str) -> String {
         .map(|c| if META.contains(&c) { ' ' } else { c })
         .collect();
     let lowered = cleaned.to_lowercase();
-    let collapsed = lowered.split_whitespace().collect::<Vec<_>>().join(" ");
-    if collapsed.is_empty() {
-        "*".to_string()
-    } else {
-        collapsed
-    }
+    // Empty fallback is **empty**, not `"*"`. A wildcard would silently turn
+    // a no-signal query (whitespace, punctuation, all-stopword) into a
+    // match-everything — wrong behavior, and the caller (`retrieve`) now
+    // short-circuits to an empty result when this returns empty.
+    lowered.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Split a token on case and letter/digit transitions, in the standard
@@ -483,7 +488,22 @@ mod tests {
             sanitize_query("Highlight parts (if any) of “Exclusivity”."),
             "highlight parts if any of “exclusivity”."
         );
-        assert_eq!(sanitize_query("   "), "*");
+        // No-signal queries (whitespace, punctuation, all-stopword) now
+        // collapse to empty string, not `"*"`. The retriever caller
+        // short-circuits to empty results when sanitize_query returns
+        // empty — see the `if parsed_text.is_empty()` guard in
+        // `Bm25Retriever::retrieve`. Previously the `"*"` fallback would
+        // silently match every document, which is the opposite of what a
+        // user typing accidental whitespace expects.
+        assert_eq!(sanitize_query("   "), "");
+        assert_eq!(sanitize_query(""), "");
+        // All-META input also collapses to empty.
+        assert_eq!(sanitize_query("()[]{}"), "");
+        assert_eq!(sanitize_query("???"), "");
+        // Mixed META + non-META: `?` is META, `!` is not — `!` stays as a
+        // sub-word token that the analyzer's stopword/length filters drop
+        // downstream, so retrieve still short-circuits to empty results.
+        assert_eq!(sanitize_query("!!!???"), "!!!");
 
         // Punctuation that's NOT QueryParser syntax is preserved — the
         // analyzer will tokenize on it later as it does for indexed text.
