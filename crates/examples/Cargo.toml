@@ -46,6 +46,7 @@ path = "examples/diagnostics.rs"
 [[example]]
 name = "rag_with_claude"
 path = "examples/rag_with_claude.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "layered_diagnostics"
@@ -58,14 +59,17 @@ path = "examples/regime_classification.rs"
 [[example]]
 name = "adaptive_loop"
 path = "examples/adaptive_loop.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "calibration_sweep"
 path = "examples/calibration_sweep.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "real_corpus_calibration"
 path = "examples/real_corpus_calibration.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "neotrace_import"
@@ -74,10 +78,12 @@ path = "examples/neotrace_import.rs"
 [[example]]
 name = "adaptive_eval_hotpotqa"
 path = "examples/adaptive_eval_hotpotqa.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "adaptive_eval_musique"
 path = "examples/adaptive_eval_musique.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "method_pair_regret"
@@ -86,6 +92,7 @@ path = "examples/method_pair_regret.rs"
 [[example]]
 name = "observability_report"
 path = "examples/observability_report.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "ingestion_diagnostics"

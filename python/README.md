@@ -109,6 +109,26 @@ doc = redhop.Document.from_file("support.md",
 The 60-second decision guide with trade-offs and query-writing tips:
 [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).
 
+## Non-English content
+
+Default is English Snowball. Swap with the `language=` kwarg — any of
+the 18 Snowball Porter2 languages (`arabic, danish, dutch, english,
+finnish, french, german, greek, hungarian, italian, norwegian,
+portuguese, romanian, russian, spanish, swedish, tamil, turkish`):
+
+```python
+doc = redhop.Document.from_text(german_text, language="german")
+# Now `Buch` finds chunks containing `Bücher` (and vice versa)
+```
+
+One analyzer drives both BM25 retrieval AND the grounding scorer, so
+they can't drift on what "the same term" means. Unknown names raise
+(we don't silently fall back to English). See the
+[language guide](https://github.com/vysakh0/redhop/blob/main/docs/LANGUAGE.md)
+for the full breakdown and the calibration disclaimer (we ship the
+stemmers; eval-corpus ranking quality on a real domain corpus is the
+user's call).
+
 ## Assembly strategies
 
 | `strategy=` | What it does |

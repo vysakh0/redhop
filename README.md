@@ -159,21 +159,44 @@ enabling.**
 
 ### Language support
 
-The lexical tier is English-tuned: Snowball Porter2 stemming, English
-stopword filtering, and ASCII folding for accented Latin (`café` ↔ `cafe`,
-`Süßigkeit` ↔ `Sussigkeit`). What this means for non-English content:
+The default lexical tier is English-tuned: Snowball Porter2 stemming,
+English stopword filtering, and ASCII folding for accented Latin
+(`café` ↔ `cafe`, `Süßigkeit` ↔ `Sussigkeit`).
 
-| Content | What works | What doesn't |
-| --- | --- | --- |
-| **Western European Latin** (French / German / Spanish / Portuguese / Italian / Polish) | Exact matches, ASCII-folded matches across accents | Morphology — `Bücher` and `Buch` index as different tokens; same for verb conjugations and case declensions |
-| **CJK** (Chinese / Japanese / Korean) | Exact substring **only when whitespace-separated** | Real CJK content without spaces (`圧縮アルゴリズム`) doesn't word-segment; a query for `圧縮` won't reach it |
-| **Right-to-left** (Arabic / Hebrew) | Tokenizes, no crashes | No morphology, no script-specific handling |
+For non-English content, swap the analyzer to any of the 18 Snowball
+Porter2 languages (one analyzer drives both BM25 retrieval AND the
+grounding scorer, so the two layers can't drift):
 
-If you need per-language stemming or proper CJK word segmentation, the
-analyzer pipeline in `crates/redhop/src/retrieval/bm25.rs` is the right
-place to plug in `rust-stemmers`'s other Snowball languages or a CJK
-tokenizer (Kuromoji-rs for Japanese, jieba-rs for Chinese). See
-[docs/LANGUAGE.md](docs/LANGUAGE.md) for the full breakdown.
+```python
+# Python
+doc = redhop.Document.from_text(german_text, language="german")
+```
+
+```javascript
+// Node
+const doc = Document.fromText(germanText, { language: "german" });
+```
+
+```rust
+// Rust
+use redhop::analyzer::SnowballAnalyzer;
+use std::sync::Arc;
+let mut doc = redhop::Document::from_text("library", german_text)?
+    .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+```
+
+Supported: `arabic, danish, dutch, english, finnish, french, german,
+greek, hungarian, italian, norwegian, portuguese, romanian, russian,
+spanish, swedish, tamil, turkish`. Unknown names error (we don't
+silently fall back to English — a typo'd `"germann"` should surface).
+
+For CJK word segmentation (`圧縮アルゴリズム` → `圧縮` + `アルゴリズム`)
+or any other custom analyzer, implement the `crate::analyzer::Analyzer`
+trait and pass it via `Document::with_analyzer`. See
+[docs/LANGUAGE.md](docs/LANGUAGE.md) for the full breakdown, including
+a calibration disclaimer (we ship the stemmers, we don't have eval
+corpora for non-English so ranking quality on a real domain corpus is
+the user's call).
 
 ## Assembly strategies
 

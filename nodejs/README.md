@@ -64,6 +64,24 @@ named by `options.model` (`"bge-small"` / `"bge-base"`). The 60-second
 decision guide:
 [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).
 
+## Non-English content
+
+Default is English Snowball. Swap with `options.language` — any of the
+18 Snowball Porter2 languages (`arabic, danish, dutch, english,
+finnish, french, german, greek, hungarian, italian, norwegian,
+portuguese, romanian, russian, spanish, swedish, tamil, turkish`):
+
+```javascript
+const doc = Document.fromText(germanText, { language: "german" });
+// Now `Buch` finds chunks containing `Bücher` (and vice versa)
+```
+
+One analyzer drives both BM25 retrieval AND the grounding scorer, so
+they can't drift on what "the same term" means. Unknown names throw
+(we don't silently fall back to English). See the
+[language guide](https://github.com/vysakh0/redhop/blob/main/docs/LANGUAGE.md)
+for the full breakdown and a calibration disclaimer.
+
 ## The result
 
 `context(query, budget?, neighbors?, includeHeading?)` returns:
