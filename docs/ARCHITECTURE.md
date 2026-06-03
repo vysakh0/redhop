@@ -20,29 +20,41 @@ retrieval quality observable.
 
 ## Layering
 
+The published Rust crate is `redhop`. It is one consolidated crate
+organized as modules; sibling crates handle the things that don't
+belong inside the published surface (the adaptive controller, the
+research/calibration tooling, the bindings).
+
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  redhop-pipeline           RedHop facade + builder           │
-└────────┬──────────┬──────────┬──────────┬───────────────────-┘
-         │          │          │          │
-         ▼          ▼          ▼          ▼
-   ┌─────────┐ ┌───────────┐ ┌──────────┐ ┌──────────────┐
-   │chunking │ │retrieval  │ │reranking │ │diagnostics   │
-   └────┬────┘ └─────┬─────┘ └─────┬────┘ └──────┬───────┘
-        │            │             │             │
-        └────────────▼─────────────▼─────────────▼
-                     redhop-core (traits + types)
-                                ▲
-                                │
-                  redhop-storage (ChunkStore, VectorIndex)
+                ┌─────────────────────────────────────────┐
+                │  redhop  (the published Rust crate)     │
+                │                                          │
+                │   document   context   analyzer   files  │ ←- public API
+                │   chunking   retrieval reranking embeddings│ ←- semantic-/files-gated
+                │   storage    core (traits + types)        │
+                └─────────────────────────────────────────┘
+                              ▲           ▲
+                              │           │
+                ┌─────────────┴─────┐ ┌───┴──────────────────────────┐
+                │ redhop-pipeline   │ │ redhop-py    (pyo3 bindings) │
+                │ redhop-diagnostics│ │ redhop-node  (napi bindings) │
+                │ redhop-orchestration│└──────────────────────────────┘
+                │ redhop-observability│
+                │ redhop-calibration │ ←- research / eval / metrics
+                │ redhop-benchmarks  │
+                │ redhop-cli         │ ←- thin CLI
+                │ redhop-examples    │ ←- finding-reproduction
+                └────────────────────┘
 ```
 
-Every box above the `redhop-core` line depends on the trait surface
-defined there. Crates do not depend on each other's implementations.
+Inside `redhop`, every non-`core` module depends only on the trait
+surface defined in `core`. Modules do not depend on each other's
+implementations. The sibling crates depend on `redhop` and use only its
+public surface (no `pub(crate)` reach-ins).
 
 ## Trait surface
 
-`redhop-core` defines six pluggable abstractions:
+`redhop::core` defines six pluggable abstractions:
 
 | Trait                | Owns                                          |
 | -------------------- | --------------------------------------------- |
@@ -55,8 +67,8 @@ defined there. Crates do not depend on each other's implementations.
 | `DiagnosticsEngine`  | `(Query, &[RetrievalResult]) → DiagnosticsReport`. |
 
 This is the entire contract a caller has to understand. The pipeline
-facade composes these; downstream language bindings (`pyo3`, `napi-rs`)
-will expose them by name.
+facade composes these; the language bindings (`pyo3`, `napi-rs`) expose
+them by name.
 
 ## Data flow
 
@@ -96,8 +108,8 @@ async and batch-friendly so any of those can plug in cleanly.
 
 ### Diagnostics are first-class
 
-Retrieval failure modes are observable from text alone — you do not need
-the LLM to know whether you served it a context full of distractors.
+Retrieval failure modes are observable from text alone — the LLM is not
+needed to know whether a context is full of distractors.
 `redhop-diagnostics` computes six metrics on every query without any
 model dependence. `DefaultDiagnosticsEngine` also emits *warnings* with
 machine-readable codes (`low_lexical_grounding`,
@@ -139,18 +151,25 @@ starved.
 The benchmark suite (`crates/benchmarks/benches/*.rs`) covers chunking
 throughput and BM25 retrieval latency; run with `cargo bench`.
 
-## Future bindings
+## Language bindings
 
 `Chunk`, `Document`, `Query`, `RetrievalResult`, and `DiagnosticsReport`
-are all `Serialize + Deserialize`. The intent is that:
+are all `Serialize + Deserialize`, which makes them cross FFI cleanly:
 
-- `redhop-python-bindings` (`pyo3 + maturin`) exposes `RedHop`,
-  `RedHopBuilder`, and the trait-shaped factory functions as a Python
-  class hierarchy, with chunkers/retrievers selectable by string name.
-- `redhop-node-bindings` (`napi-rs`) does the same for Node.
+- **`redhop-py`** (`pyo3 + maturin`) ships the Python wheel. It exposes
+  `Document.from_text` / `from_chunks` / `from_file` / `from_bytes` /
+  `from_folder` (with `language=`, `strategy=`, `retrieval=` kwargs),
+  `Document.context` / `analyze` / `n_files` / `skipped_files`, plus
+  the top-level `build_context` / `filter_context` / `analyze_context`
+  / `context_economics` / `grounding_score` / `link_strength`.
+- **`redhop-node`** (`napi-rs`) ships the npm package. Mirrors the
+  Python surface: `Document.fromText` / `fromChunks` / `fromFile` /
+  `fromBytes` / `fromFolder` (with `language` option),
+  `Document.context` / `analyze` / `chunkCount` / `nFiles` /
+  `skippedFiles`, plus top-level `groundingScore` / `linkStrength`.
 
-The data model already crosses FFI cleanly; the wrappers themselves are
-mostly mechanical.
+The bindings wrap the consolidated `redhop` crate directly — no
+parallel implementations.
 
 ## What we explicitly avoided
 
