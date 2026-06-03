@@ -99,6 +99,12 @@ chunks / section headings, in document order).
 prompt — useful for auditing what RedHop would do before paying assembly
 cost. Returns just the `report`.
 
+`fromFolder` exposes two more getters: `doc.nFiles` (count of indexed
+files) and `doc.skippedFiles` (`{ source, reason }[]` — files that
+couldn't be parsed: unsupported formats, unreadable bytes, scanned PDFs
+without OCR, etc.). Single-source constructors default to `nFiles=1`
+and `skippedFiles=[]`.
+
 ## Build from source
 
 ```sh

@@ -46,9 +46,34 @@ ctx = Document.fromBytes(Buffer.from("# Policy\n\nrefund within thirty days"), "
 assert.strictEqual(ctx.citations[0].heading, "Policy");
 
 // from_folder + ignore globs
-assert.ok(Document.fromFolder(dir).chunkCount >= 3);
+{
+  const folderDoc = Document.fromFolder(dir);
+  assert.ok(folderDoc.chunkCount >= 3);
+  assert.ok(folderDoc.nFiles >= 3, `expected ≥3 indexed files; got ${folderDoc.nFiles}`);
+  assert.ok(Array.isArray(folderDoc.skippedFiles), "skippedFiles should be an array");
+}
 ctx = Document.fromFolder(dir, { ignore: ["**/*.md"] }).context("shipping orders ship");
 assert.ok(ctx.citations.every((c) => !c.source.endsWith(".md")));
+
+// single-source ctors default to nFiles=1, skippedFiles=[]
+{
+  const sd = Document.fromText("hello world");
+  assert.strictEqual(sd.nFiles, 1, "single-source ctor should have nFiles=1");
+  assert.deepStrictEqual(sd.skippedFiles, [], "single-source ctor should have empty skippedFiles");
+}
+
+// from_folder with a bad file: the bad one is in skippedFiles with a reason
+{
+  const baddir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-skip-"));
+  fs.writeFileSync(path.join(baddir, "good.md"), "# Title\n\nrefund within 30 days");
+  fs.writeFileSync(path.join(baddir, "bad.txt"), "");  // empty — NoText
+  const fd = Document.fromFolder(baddir);
+  assert.strictEqual(fd.nFiles, 1, `only the good file should index; got nFiles=${fd.nFiles}`);
+  assert.strictEqual(fd.skippedFiles.length, 1, `the empty file should be skipped; got ${JSON.stringify(fd.skippedFiles)}`);
+  assert.ok(fd.skippedFiles[0].source.endsWith("bad.txt"));
+  assert.ok(typeof fd.skippedFiles[0].reason === "string" && fd.skippedFiles[0].reason.length > 0);
+  fs.rmSync(baddir, { recursive: true, force: true });
+}
 
 // structural expansion
 ctx = Document.fromText("Alpha clause here. The xyzzy term governs payment. Gamma clause here.", { chunkSize: 6 })

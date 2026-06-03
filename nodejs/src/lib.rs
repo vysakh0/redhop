@@ -163,6 +163,16 @@ pub struct Report {
     pub rendered: String,
 }
 
+/// A file that `Document.fromFolder` skipped, with the reason why.
+#[napi(object)]
+pub struct SkippedFile {
+    /// Source path of the file that was skipped.
+    pub source: String,
+    /// Human-readable reason: unsupported format, unreadable bytes, no
+    /// extractable text, etc.
+    pub reason: String,
+}
+
 /// The assembled context: prompt string, selected chunks, citations, report.
 #[napi(object)]
 pub struct BuiltContext {
@@ -270,6 +280,31 @@ impl Document {
     #[napi(getter)]
     pub fn chunk_count(&self) -> u32 {
         self.inner.len() as u32
+    }
+
+    /// Number of source files indexed into this Document. `1` for the
+    /// single-source constructors (`fromText`, `fromFile`, `fromBytes`,
+    /// `fromChunks`); the readable file count for `fromFolder` (excludes
+    /// `skippedFiles`).
+    #[napi(getter)]
+    pub fn n_files(&self) -> u32 {
+        self.inner.n_files() as u32
+    }
+
+    /// Files that `fromFolder` skipped, as `{ source, reason }` objects —
+    /// unsupported formats, unreadable bytes, no extractable text (e.g.
+    /// scanned PDFs without OCR), etc. Empty array for single-source
+    /// constructors.
+    #[napi(getter)]
+    pub fn skipped_files(&self) -> Vec<SkippedFile> {
+        self.inner
+            .skipped_files()
+            .iter()
+            .map(|(source, reason)| SkippedFile {
+                source: source.clone(),
+                reason: reason.clone(),
+            })
+            .collect()
     }
 
     /// Assemble the reasoning context for a query (retrieve → allocate).

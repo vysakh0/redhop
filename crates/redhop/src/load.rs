@@ -436,9 +436,11 @@ mod files_loaders {
             return persisted(root, fo);
         }
         let mut files = Vec::new();
+        let mut skipped: Vec<(String, String)> = Vec::new();
         for p in collect_files(root, fo)? {
-            if let Ok(f) = extract_path(&p) {
-                files.push(f);
+            match extract_path(&p) {
+                Ok(f) => files.push(f),
+                Err(e) => skipped.push((p.to_string_lossy().into_owned(), e.to_string())),
             }
         }
         if files.is_empty() {
@@ -447,7 +449,10 @@ mod files_loaders {
                 root.display()
             )));
         }
-        build(files, &fo.load)
+        let n_files = files.len();
+        let mut doc = build(files, &fo.load)?;
+        doc.set_folder_provenance(n_files, skipped);
+        Ok(doc)
     }
 
     // ── persistence ─────────────────────────────────────────────────────────
@@ -519,9 +524,11 @@ mod files_loaders {
         let mut entries: Vec<CachedFile> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         let mut changed = !had_cache;
+        let mut skipped: Vec<(String, String)> = Vec::new();
         for p in collect_files(root, fo)? {
             let source = p.to_string_lossy().to_string();
             let Some((mtime, size)) = file_stat(&p) else {
+                skipped.push((source, "could not stat file".to_string()));
                 continue;
             };
             seen.insert(source.clone());
@@ -536,17 +543,21 @@ mod files_loaders {
                     continue;
                 }
             }
-            let Ok((_, sections)) = extract_path(&p) else {
-                continue;
-            };
-            let chunks = Document::chunk_sections(&source, &sections, &cfg)?;
-            entries.push(CachedFile {
-                source,
-                mtime,
-                size,
-                chunks,
-            });
-            changed = true;
+            match extract_path(&p) {
+                Ok((_, sections)) => {
+                    let chunks = Document::chunk_sections(&source, &sections, &cfg)?;
+                    entries.push(CachedFile {
+                        source,
+                        mtime,
+                        size,
+                        chunks,
+                    });
+                    changed = true;
+                }
+                Err(e) => {
+                    skipped.push((source, e.to_string()));
+                }
+            }
         }
         if cache.keys().any(|s| !seen.contains(s)) {
             changed = true;
@@ -566,6 +577,7 @@ mod files_loaders {
         }
         let mut doc = Document::from_chunks_with(all, cfg)?;
         doc = finish_models(doc, &fo.load, mode)?;
+        doc.set_folder_provenance(entries.len(), skipped);
         if changed {
             let embedded = doc.embedded_chunks()?;
             let mut by_source: HashMap<String, Vec<Chunk>> = HashMap::new();

@@ -9,12 +9,18 @@ best contributions sharpen what exists rather than expand scope.
 cargo build --workspace        # pure-Rust workspace (no Python needed)
 cargo test --workspace
 
-# Optional features: `onnx` (the semantic tier — ONNX embeddings) and `files`
-# (Document.from_file / from_folder parsing).
-cargo build --workspace --features onnx
+# Optional features on the redhop crate: `semantic` (ONNX embeddings +
+# cross-encoder reranker) and `files` (Document.from_file / from_folder
+# parsing). Mirror this when running examples or the per-crate tests.
+cargo test -p redhop --features files,semantic
 
-# Python bindings (needs maturin in a virtualenv)
-cd python && maturin develop --release && python -m pytest tests/
+# Python bindings (needs maturin in a virtualenv). The `files,semantic`
+# features mirror the published wheel — without them, test_loader_errors
+# and test_rerank can't exercise the right surface.
+cd python && maturin develop --release --features files,semantic && python -m pytest tests/
+
+# Node binding
+cd nodejs && npm install && npm run build && npm test
 
 # CLI
 cargo build -p redhop-cli --release   # → target/release/redhop
@@ -38,10 +44,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check                  # licenses + advisories  (cargo install cargo-deny)
 
-# Python (in the venv, with the extension built)
+# Python (in the venv, with the extension built — see Build & test above
+# for the right `maturin develop` invocation)
 cd python
 ruff check . && ruff format --check .      # pip install ruff
 python -m pytest tests/ -q
+
+# Node (build the addon, then run both smoke + analyzer suites)
+cd nodejs && npm run build && npm test
 
 # Coverage (optional, local)
 cargo llvm-cov --workspace                 # cargo install cargo-llvm-cov

@@ -216,6 +216,15 @@ pub struct Document {
     // fewer than `cfg.min_candidates`. Initialized on first fallback need so
     // documents that never trigger the floor never pay for a second index.
     fallback_bm25: Option<Bm25Retriever>,
+    // Number of source files indexed into this Document. 1 for the
+    // single-source constructors (`from_text`, `from_chunks`, `read_file`,
+    // `read_bytes`); the readable file count for `read_folder` /
+    // `read_folder_with`.
+    n_files: usize,
+    // Files that `read_folder` / `read_folder_with` skipped, as
+    // `(source_path, reason)` pairs — unsupported formats, unreadable bytes,
+    // or no extractable text. Empty for single-source constructors.
+    skipped_files: Vec<(String, String)>,
 }
 
 /// Renumber chunk ids to `0..n` so a merged set (e.g. from several files) has
@@ -453,7 +462,35 @@ impl Document {
             retriever: None,
             reranker: None,
             fallback_bm25: None,
+            n_files: 1,
+            skipped_files: Vec::new(),
         })
+    }
+
+    /// Number of source files indexed into this Document.
+    ///
+    /// - `1` for the single-source constructors ([`Document::from_text`],
+    ///   [`Document::from_chunks`], [`read_file`], [`read_bytes`]).
+    /// - The readable file count for [`read_folder`] / [`read_folder_with`]
+    ///   (excludes the ones in [`Document::skipped_files`]).
+    pub fn n_files(&self) -> usize {
+        self.n_files
+    }
+
+    /// Files that [`read_folder`] / [`read_folder_with`] skipped, as
+    /// `(source_path, reason)` pairs — unsupported formats, unreadable
+    /// bytes, no extractable text (e.g. scanned PDFs without OCR), etc.
+    /// Empty for single-source constructors.
+    pub fn skipped_files(&self) -> &[(String, String)] {
+        &self.skipped_files
+    }
+
+    /// Internal setter used by the folder loaders ([`read_folder_with`])
+    /// to record how many sources actually contributed chunks and which
+    /// were skipped along the way.
+    pub(crate) fn set_folder_provenance(&mut self, n_files: usize, skipped: Vec<(String, String)>) {
+        self.n_files = n_files;
+        self.skipped_files = skipped;
     }
 
     /// Supply the embedder used by [`RetrievalMode::Dense`]. The library

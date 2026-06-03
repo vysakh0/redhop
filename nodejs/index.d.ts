@@ -113,6 +113,16 @@ export interface Report {
   /** The human-readable Decision Report. */
   rendered: string
 }
+/** A file that `Document.fromFolder` skipped, with the reason why. */
+export interface SkippedFile {
+  /** Source path of the file that was skipped. */
+  source: string
+  /**
+   * Human-readable reason: unsupported format, unreadable bytes, no
+   * extractable text, etc.
+   */
+  reason: string
+}
 /** The assembled context: prompt string, selected chunks, citations, report. */
 export interface BuiltContext {
   text: string
@@ -143,6 +153,20 @@ export declare class Document {
   static fromFolder(path: string, options?: FolderOptions | undefined | null): Document
   /** Number of chunks the document holds. */
   get chunkCount(): number
+  /**
+   * Number of source files indexed into this Document. `1` for the
+   * single-source constructors (`fromText`, `fromFile`, `fromBytes`,
+   * `fromChunks`); the readable file count for `fromFolder` (excludes
+   * `skippedFiles`).
+   */
+  get nFiles(): number
+  /**
+   * Files that `fromFolder` skipped, as `{ source, reason }` objects —
+   * unsupported formats, unreadable bytes, no extractable text (e.g.
+   * scanned PDFs without OCR), etc. Empty array for single-source
+   * constructors.
+   */
+  get skippedFiles(): Array<SkippedFile>
   /**
    * Assemble the reasoning context for a query (retrieve → allocate).
    * `neighbors` / `includeHeading` add structural context expansion.
