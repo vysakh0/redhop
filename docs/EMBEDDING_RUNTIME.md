@@ -8,17 +8,17 @@ ONNX-Runtime-backed BGE/E5 embeddings and a cross-encoder reranker.
 
 | Component | Crate | Always available? | Status |
 | --------- | ----- | ----------------- | ------ |
-| `pooling` (mean/CLS + L2, mask-aware) | `redhop-embeddings` | ✅ | unit-tested |
-| `EmbedderConfig` (BGE/E5/mxbai presets, prefixes) | `redhop-embeddings` | ✅ | unit-tested |
-| `HashingProvider` (zero-dep TF baseline) | `redhop-embeddings` | ✅ | unit-tested |
-| `CachedEmbedder<E>` (bounded LRU) | `redhop-embeddings` | ✅ | unit-tested |
-| `OnnxEmbedder` (BGE/E5/jina/mxbai) | `redhop-embeddings` | feature `onnx` | **compile-verified** vs `ort` 2.0.0-rc.10 |
-| `apply_scores` (rerank decision logic) | `redhop-reranking` | ✅ | unit-tested |
-| `OnnxCrossEncoder` (ms-marco MiniLM etc.) | `redhop-reranking` | feature `onnx` | **compile-verified** |
+| `pooling` (mean/CLS + L2, mask-aware) | `redhop::embeddings` | feature `semantic` | unit-tested |
+| `EmbedderConfig` (BGE/E5/mxbai presets, prefixes) | `redhop::embeddings` | feature `semantic` | unit-tested |
+| `HashingProvider` (zero-dep TF baseline) | `redhop::embeddings` | feature `semantic` | unit-tested |
+| `CachedEmbedder<E>` (bounded LRU) | `redhop::embeddings` | feature `semantic` | unit-tested |
+| `OnnxEmbedder` (BGE/E5/jina/mxbai) | `redhop::embeddings` | feature `semantic` | **compile-verified** vs `ort` 2.0.0-rc.10 |
+| `apply_scores` (rerank decision logic) | `redhop::reranking` | feature `semantic` | unit-tested |
+| `OnnxCrossEncoder` (ms-marco MiniLM etc.) | `redhop::reranking` | feature `semantic` | **compile-verified** |
 | `bench_embedder` / `compare_embedders` | `redhop-calibration` | ✅ | unit-tested |
 | criterion embedding benches | `redhop-benchmarks` | ✅ | runs |
 
-"Compile-verified" means `cargo check --features onnx` passes against
+"Compile-verified" means `cargo check --features semantic` passes against
 the pinned `ort` and the ONNX Runtime binary downloads and links. It
 does **not** mean end-to-end-validated: that needs a real model file
 (BGE-small etc.), which the build sandbox does not carry. The error-prone
@@ -79,10 +79,10 @@ optimum-cli export onnx --model cross-encoder/ms-marco-MiniLM-L-6-v2 ce-onnx/
 Then:
 
 ```rust
-# #[cfg(feature = "onnx")]
+# #[cfg(feature = "semantic")]
 # {
-use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
-use redhop_reranking::OnnxCrossEncoder;
+use redhop::embeddings::{OnnxEmbedder, EmbedderConfig};
+use redhop::reranking::OnnxCrossEncoder;
 
 // BGE-small: CLS pooling, normalize, 384-dim.
 let embedder = OnnxEmbedder::load("bge/model.onnx", "bge/tokenizer.json",
@@ -102,21 +102,21 @@ let reranker = OnnxCrossEncoder::load("ce/model.onnx", "ce/tokenizer.json", 512)
 
 This is the dependency cost of RedHop's **semantic retrieval tier**. The default
 `Document` is BM25 — zero model, fully offline. To get semantic recall you opt in:
-enable the `onnx` feature, **download a model** (above), and inject the embedder.
+enable the `semantic` feature, **download a model** (above), and inject the embedder.
 
 ```rust
-# #[cfg(feature = "onnx")]
+# #[cfg(feature = "semantic")]
 # fn demo() -> redhop::core::Result<()> {
 use std::sync::Arc;
 use redhop::core::EmbeddingProvider;
 use redhop::document::{Document, DocumentConfig, RetrievalMode};
-use redhop_embeddings::{OnnxEmbedder, EmbedderConfig};
+use redhop::embeddings::{OnnxEmbedder, EmbedderConfig};
 
 let embedder: Arc<dyn EmbeddingProvider> =
     Arc::new(OnnxEmbedder::load("bge/model.onnx", "bge/tokenizer.json", EmbedderConfig::bge(384))?);
 
 let cfg = DocumentConfig {
-    retrieval_mode: RetrievalMode::DenseRerank { candidate_pool: 50 },
+    retrieval_mode: RetrievalMode::Hybrid { candidate_pool: 50 },
     ..Default::default()
 };
 let mut doc = Document::from_text_with("doc.txt", "…", cfg)?.with_embedder(embedder);
@@ -125,9 +125,10 @@ let _ctx = doc.context("a paraphrased / semantic query")?;
 ```
 
 BM25 prunes the corpus to `candidate_pool` candidates; the dense model reorders
-only that pool — **no vector DB, no ANN**. Selecting `DenseRerank` without an
-embedder is a clear error, so the model dependency is explicit, never implicit.
-Runnable example: `cargo run -p redhop-examples --example document_rerank --features onnx`.
+only that pool — **no vector DB, no ANN**. Selecting `Hybrid` (or `Dense`)
+without an embedder is a clear error, so the model dependency is explicit,
+never implicit. Runnable example:
+`cargo run -p redhop-examples --example semantic_local_rerank --features onnx`.
 The tier trade-offs (and where the free tiers fall short) are measured in
 `docs/findings/SEMANTIC_ZERO_DEP.md` and `docs/findings/LOCAL_RERANK.md`.
 
@@ -162,8 +163,8 @@ Hermetic numbers today (this machine, hashing baseline):
 - `cached_embed_512_all_hit`: dominated by the cache probe, not
   embedding.
 
-Add the ONNX arm on a real box by extending the bench behind
-`--features onnx` with a loaded model.
+Add the ONNX arm on a real box by extending the bench (which already
+pulls in `redhop` with the `semantic` feature) with a loaded model.
 
 ## Expected outcomes (hypotheses to falsify with real numbers)
 
