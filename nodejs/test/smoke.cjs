@@ -100,4 +100,38 @@ fs.rmSync(pdir, { recursive: true, force: true });
   assert.ok(l > 0 && l <= 1, `linkStrength should be in (0,1] when chunks share terms; got ${l}`);
 }
 
+// low-level context functions — caller brings their own chunks (mirrors
+// Python's redhop.build_context / filter_context / analyze_context /
+// context_economics).
+{
+  const { buildContext, filterContext, analyzeContext, contextEconomics } = require("../index.js");
+  const query = "what is the refund window?";
+  const chunks = [
+    { id: "g1", text: "The refund window is thirty days from the purchase date." },
+    { id: "g2", text: "Customers may return items within 30 days for a full refund." },
+    { id: "d1", text: "Photosynthesis converts sunlight into glucose in plants." },
+  ];
+
+  // buildContext: assembles + filters + reports
+  const ctx = buildContext(query, chunks);
+  assert.ok(ctx.text.includes("refund"), "buildContext should keep the on-topic chunks");
+  assert.ok(!ctx.text.includes("Photosynthesis"), "buildContext should drop the off-topic chunk");
+  assert.ok(ctx.report.totalTokens > 0, "buildContext should report token totals");
+
+  // filterContext: same as buildContext but no budget cap
+  const filtered = filterContext(query, chunks);
+  assert.ok(filtered.text.includes("refund"), "filterContext should keep on-topic");
+
+  // analyzeContext: report only, no assembly
+  const report = analyzeContext(query, chunks);
+  assert.ok(typeof report.totalTokens === "number", "analyzeContext should return a Report");
+  assert.ok(!("chunks" in report), "analyzeContext result is a Report, not a BuiltContext");
+
+  // contextEconomics: returns a JSON string with economics fields
+  const econJson = contextEconomics(query, chunks);
+  const econ = JSON.parse(econJson);
+  assert.ok(typeof econ === "object" && econ !== null, "contextEconomics should JSON-parse to an object");
+  assert.ok("evidence_density" in econ || "evidenceDensity" in econ, `contextEconomics object should include evidence_density: ${JSON.stringify(econ)}`);
+}
+
 console.log("✓ node smoke tests passed");

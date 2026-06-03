@@ -358,3 +358,190 @@ pub fn grounding_score(query: String, text: String) -> f64 {
 pub fn link_strength(a: String, b: String) -> f64 {
     redhop::context::link_strength(&a, &b) as f64
 }
+
+// ── Low-level context functions (caller brings their own chunks) ────────────
+//
+// `Document.fromChunks(...)` is the high-level path: hand RedHop a list of
+// chunk strings and let it own the index. The functions below are for users
+// who do their own retrieval (vector DB, BM25 outside RedHop, hybrid stacks)
+// and want RedHop just for the final assembly + diagnostics step.
+
+/// A single retrieved chunk for the low-level `buildContext` / `filterContext`
+/// / `analyzeContext` / `contextEconomics` functions.
+#[napi(object)]
+pub struct ChunkInput {
+    /// The chunk text. Required.
+    pub text: String,
+    /// Stable identifier. Defaults to `c<index>`.
+    pub id: Option<String>,
+    /// Source path / label. Defaults to `"input"`.
+    pub source: Option<String>,
+    /// Token count (defaults to whitespace word count).
+    pub token_count: Option<u32>,
+    /// Optional dense vector (for embedding-based scoring downstream).
+    pub embedding: Option<Vec<f64>>,
+    /// Retrieval score from the upstream retriever. Defaults to `1.0`.
+    pub score: Option<f64>,
+}
+
+/// Optional knobs for the low-level context functions. Every field is
+/// optional; defaults match RedHop's `ContextConfig::default()`.
+#[napi(object)]
+#[derive(Default)]
+pub struct ContextOptions {
+    /// Assembly strategy: `auto` (default for `Document`) / `reasoning_preserving`
+    /// (default for the low-level path) / `distractor_filtered` / `redundancy_pruned`
+    /// / `max_density` / `raw_topk`.
+    pub strategy: Option<String>,
+    /// Token budget cap on the assembled context. Default 8192.
+    pub token_budget: Option<u32>,
+    /// Grounding bar below which a chunk is treated as a distractor.
+    /// Default 0.10.
+    pub distractor_min_grounding: Option<f64>,
+    /// Jaccard floor for chunk↔chunk linkage. Default 0.12.
+    pub link_min_jaccard: Option<f64>,
+    /// Token-count gate for the Auto strategy's passthrough decision.
+    /// Default 1500.
+    pub auto_passthrough_max_tokens: Option<u32>,
+    /// Cosine ceiling above which a chunk is treated as redundant. Default 0.92.
+    pub redundancy_max_cosine: Option<f64>,
+}
+
+fn build_chunk_input(c: ChunkInput, idx: usize) -> redhop::core::RetrievalResult {
+    use redhop::core::{
+        Chunk, ChunkId, Embedding, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
+        TokenCount,
+    };
+    let id = c.id.unwrap_or_else(|| format!("c{idx}"));
+    let source = c.source.unwrap_or_else(|| "input".to_string());
+    let token_count = c
+        .token_count
+        .map(|n| n as usize)
+        .unwrap_or_else(|| c.text.split_whitespace().count().max(1));
+    let mut chunk = Chunk::new(ChunkId::new(id), &c.text, source, TokenCount(token_count));
+    if let Some(e) = c.embedding {
+        let v: Vec<f32> = e.into_iter().map(|x| x as f32).collect();
+        chunk = chunk.with_embedding(Embedding::from(v));
+    }
+    RetrievalResult {
+        chunk,
+        score: Score {
+            value: c.score.unwrap_or(1.0) as f32,
+            method: RetrievalMethod::Dense,
+        },
+        breakdown: ScoreBreakdown::default(),
+    }
+}
+
+fn build_context_config(opts: Option<ContextOptions>) -> napi::Result<redhop::ContextConfig> {
+    let o = opts.unwrap_or_default();
+    let base = redhop::ContextConfig::default();
+    let strategy = match o.strategy {
+        Some(s) => redhop::strategy_from_str(&s).map_err(err)?,
+        None => base.strategy,
+    };
+    Ok(redhop::ContextConfig {
+        token_budget: o.token_budget.map(|n| n as usize).unwrap_or(base.token_budget),
+        strategy,
+        distractor_min_grounding: o
+            .distractor_min_grounding
+            .map(|n| n as f32)
+            .unwrap_or(base.distractor_min_grounding),
+        link_min_jaccard: o
+            .link_min_jaccard
+            .map(|n| n as f32)
+            .unwrap_or(base.link_min_jaccard),
+        auto_passthrough_max_tokens: o
+            .auto_passthrough_max_tokens
+            .map(|n| n as usize)
+            .unwrap_or(base.auto_passthrough_max_tokens),
+        redundancy_max_cosine: o
+            .redundancy_max_cosine
+            .map(|n| n as f32)
+            .unwrap_or(base.redundancy_max_cosine),
+        ..base
+    })
+}
+
+/// Assemble the reasoning context from caller-supplied retrieved chunks
+/// (skip RedHop's chunking + retrieval and use it only for the final
+/// allocation step). Returns the same `BuiltContext` shape as
+/// `Document.context()`.
+#[napi]
+pub fn build_context(
+    query: String,
+    retrieved_chunks: Vec<ChunkInput>,
+    options: Option<ContextOptions>,
+) -> napi::Result<BuiltContext> {
+    let cfg = build_context_config(options)?;
+    let q = redhop::core::Query::new(&query);
+    let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| build_chunk_input(c, i))
+        .collect();
+    let ctx = redhop::context::build_context(&q, &retrieved, &cfg);
+    Ok(to_built(ctx))
+}
+
+/// Distractor-only filter (no budget truncation): keep everything above the
+/// grounding bar, drop only the off-topic chunks. Returns a `BuiltContext`
+/// whose `text` / `chunks` / `citations` reflect the filtered set.
+#[napi]
+pub fn filter_context(
+    query: String,
+    retrieved_chunks: Vec<ChunkInput>,
+    options: Option<ContextOptions>,
+) -> napi::Result<BuiltContext> {
+    let mut cfg = build_context_config(options)?;
+    // filter = build with no budget truncation
+    cfg.token_budget = usize::MAX;
+    let q = redhop::core::Query::new(&query);
+    let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| build_chunk_input(c, i))
+        .collect();
+    let ctx = redhop::context::filter_context(&q, &retrieved, &cfg);
+    Ok(to_built(ctx))
+}
+
+/// Pure diagnostics over caller-supplied chunks: what would RedHop do, and
+/// why, without paying the assembly cost. Returns the same `Report` shape
+/// as `Document.context().report`.
+#[napi]
+pub fn analyze_context(
+    query: String,
+    retrieved_chunks: Vec<ChunkInput>,
+    options: Option<ContextOptions>,
+) -> napi::Result<Report> {
+    let cfg = build_context_config(options)?;
+    let q = redhop::core::Query::new(&query);
+    let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| build_chunk_input(c, i))
+        .collect();
+    let report = redhop::context::analyze_context(&q, &retrieved, &cfg);
+    Ok(to_report(&report))
+}
+
+/// Token economics over caller-supplied chunks (evidence density, distractor
+/// ratio, redundancy, estimated wasted tokens). Returns a JSON string —
+/// callers `JSON.parse()` for the typed shape.
+#[napi]
+pub fn context_economics(
+    query: String,
+    retrieved_chunks: Vec<ChunkInput>,
+    options: Option<ContextOptions>,
+) -> napi::Result<String> {
+    let cfg = build_context_config(options)?;
+    let q = redhop::core::Query::new(&query);
+    let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| build_chunk_input(c, i))
+        .collect();
+    let econ = redhop::context::context_economics(&q, &retrieved, &cfg);
+    serde_json::to_string(&econ).map_err(err)
+}

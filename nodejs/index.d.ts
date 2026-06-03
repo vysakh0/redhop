@@ -146,6 +146,77 @@ export declare function groundingScore(query: string, text: string): number
  */
 export declare function linkStrength(a: string, b: string): number
 /**
+ * A single retrieved chunk for the low-level `buildContext` / `filterContext`
+ * / `analyzeContext` / `contextEconomics` functions.
+ */
+export interface ChunkInput {
+  /** The chunk text. Required. */
+  text: string
+  /** Stable identifier. Defaults to `c<index>`. */
+  id?: string
+  /** Source path / label. Defaults to `"input"`. */
+  source?: string
+  /** Token count (defaults to whitespace word count). */
+  tokenCount?: number
+  /** Optional dense vector (for embedding-based scoring downstream). */
+  embedding?: Array<number>
+  /** Retrieval score from the upstream retriever. Defaults to `1.0`. */
+  score?: number
+}
+/**
+ * Optional knobs for the low-level context functions. Every field is
+ * optional; defaults match RedHop's `ContextConfig::default()`.
+ */
+export interface ContextOptions {
+  /**
+   * Assembly strategy: `auto` (default for `Document`) / `reasoning_preserving`
+   * (default for the low-level path) / `distractor_filtered` / `redundancy_pruned`
+   * / `max_density` / `raw_topk`.
+   */
+  strategy?: string
+  /** Token budget cap on the assembled context. Default 8192. */
+  tokenBudget?: number
+  /**
+   * Grounding bar below which a chunk is treated as a distractor.
+   * Default 0.10.
+   */
+  distractorMinGrounding?: number
+  /** Jaccard floor for chunk↔chunk linkage. Default 0.12. */
+  linkMinJaccard?: number
+  /**
+   * Token-count gate for the Auto strategy's passthrough decision.
+   * Default 1500.
+   */
+  autoPassthroughMaxTokens?: number
+  /** Cosine ceiling above which a chunk is treated as redundant. Default 0.92. */
+  redundancyMaxCosine?: number
+}
+/**
+ * Assemble the reasoning context from caller-supplied retrieved chunks
+ * (skip RedHop's chunking + retrieval and use it only for the final
+ * allocation step). Returns the same `BuiltContext` shape as
+ * `Document.context()`.
+ */
+export declare function buildContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): BuiltContext
+/**
+ * Distractor-only filter (no budget truncation): keep everything above the
+ * grounding bar, drop only the off-topic chunks. Returns a `BuiltContext`
+ * whose `text` / `chunks` / `citations` reflect the filtered set.
+ */
+export declare function filterContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): BuiltContext
+/**
+ * Pure diagnostics over caller-supplied chunks: what would RedHop do, and
+ * why, without paying the assembly cost. Returns the same `Report` shape
+ * as `Document.context().report`.
+ */
+export declare function analyzeContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): Report
+/**
+ * Token economics over caller-supplied chunks (evidence density, distractor
+ * ratio, redundancy, estimated wasted tokens). Returns a JSON string —
+ * callers `JSON.parse()` for the typed shape.
+ */
+export declare function contextEconomics(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): string
+/**
  * A document you reason over. RedHop owns chunking, internal retrieval, and
  * reasoning-preserving context allocation; you think in documents and queries.
  */
