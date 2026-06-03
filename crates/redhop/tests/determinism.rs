@@ -39,12 +39,32 @@ fn chunk(id: &str, text: &str, source: &str, kind: &str) -> Chunk {
 /// mixed code + prose, on-topic + off-topic, near-duplicate text.
 fn mixed_corpus() -> Vec<Chunk> {
     vec![
-        chunk("a", "the refund window is thirty days from purchase", "policy.md", "prose"),
-        chunk("b", "customers may return items within 30 days", "policy.md", "prose"),
+        chunk(
+            "a",
+            "the refund window is thirty days from purchase",
+            "policy.md",
+            "prose",
+        ),
+        chunk(
+            "b",
+            "customers may return items within 30 days",
+            "policy.md",
+            "prose",
+        ),
         chunk("c", "fn compress_video(path: &str)", "video.rs", "code"),
         chunk("d", "fn decompress_video(path: &str)", "video.rs", "code"),
-        chunk("e", "photosynthesis converts sunlight into glucose", "bio.md", "prose"),
-        chunk("f", "thirty-day return policy with full refund", "faq.md", "prose"),
+        chunk(
+            "e",
+            "photosynthesis converts sunlight into glucose",
+            "bio.md",
+            "prose",
+        ),
+        chunk(
+            "f",
+            "thirty-day return policy with full refund",
+            "faq.md",
+            "prose",
+        ),
     ]
 }
 
@@ -100,7 +120,11 @@ fn determinism_report_totals_stable_across_runs() {
         r1.retained_evidence_ratio, r2.retained_evidence_ratio,
         "retained_evidence_ratio drift"
     );
-    assert_eq!(r1.auto_decision(), r2.auto_decision(), "auto_decision drift");
+    assert_eq!(
+        r1.auto_decision(),
+        r2.auto_decision(),
+        "auto_decision drift"
+    );
     assert_eq!(
         r1.input_distractor_ratio, r2.input_distractor_ratio,
         "input_distractor_ratio drift"
