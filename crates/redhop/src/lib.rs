@@ -27,13 +27,15 @@
 //! PPTX, XLSX, or text/code) — chunked, indexed, with per-chunk citations:
 //!
 //! ```no_run
-//! # #[cfg(feature = "files")]
 //! # fn main() -> redhop::Result<()> {
+//! # #[cfg(feature = "files")]
+//! # {
 //! let mut doc = redhop::read_file("contract.pdf")?;
 //! let ctx = doc.context("What is the governing law?")?;
 //! for c in &ctx.chunks {
 //!     // c.source / c.metadata["page"|"heading"|"line"] → cite the evidence
 //! }
+//! # }
 //! # Ok(()) }
 //! ```
 //!

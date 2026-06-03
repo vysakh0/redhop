@@ -102,9 +102,14 @@ morphological analysis (segmentation + lemmatization). For Chinese,
 `jieba-rs`. For Korean, `lindera`'s ko-dic. Each adds ~1-10 MB of
 dictionary data and a real per-language analyzer.
 
-Wire them as a Tantivy `TextAnalyzer` alongside `STEM_ANALYZER` and
-route based on a `language` field on the chunk's metadata. Out of scope
-for the 0.1.x line — file an issue if you need this.
+Implement the `crate::analyzer::Analyzer` trait (two methods:
+`build_text_analyzer()` returning a Tantivy `TextAnalyzer`, and
+`tokens()` returning the term list for the grounding scorer), then
+attach via `Document::with_analyzer(Arc::new(MyCjkAnalyzer))`. The
+default `tokens()` impl on the trait delegates to `build_text_analyzer()`
+so you only have to wire the Tantivy side. We don't ship CJK builtins
+because the dictionary data is large and per-language; if you build one
+worth sharing, send a PR.
 
 ### What we won't auto-detect
 

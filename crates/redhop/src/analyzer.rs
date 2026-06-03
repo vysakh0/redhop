@@ -24,18 +24,18 @@
 //!
 //! ## Swapping languages
 //!
-//! [`SnowballAnalyzer`] is generic across the 17 languages
+//! [`SnowballAnalyzer`] is generic across the 18 languages
 //! [`rust_stemmers`] ships:
 //!
-//! ```ignore
-//! // (C4 wires `Document::with_analyzer` — until that lands, the example is
-//! // documentation only.)
+//! ```no_run
+//! # fn main() -> redhop::Result<()> {
 //! use std::sync::Arc;
 //! use redhop::analyzer::SnowballAnalyzer;
 //!
 //! let german = Arc::new(SnowballAnalyzer::german());
 //! let mut doc = redhop::Document::from_text("doc", "Bücher und Schriften")?
 //!     .with_analyzer(german);
+//! # Ok(()) }
 //! ```
 //!
 //! Stopwords are caller-supplied for non-English (we don't ship lists we
@@ -96,7 +96,7 @@ pub trait Analyzer: Send + Sync + std::fmt::Debug {
 
 // ── SnowballAnalyzer ────────────────────────────────────────────────────────
 
-/// Snowball Porter2-based analyzer, generic across the 17 languages
+/// Snowball Porter2-based analyzer, generic across the 18 languages
 /// [`rust_stemmers`] supports.
 ///
 /// The pipeline (same for every language) is:
@@ -313,7 +313,7 @@ pub fn default_english() -> Arc<dyn Analyzer> {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Map `rust_stemmers::Algorithm` to Tantivy's `Language` enum. They both
-/// cover the same 17 Snowball languages; this just shuttles between the two
+/// cover the same 18 Snowball languages; this just shuttles between the two
 /// representations.
 fn snowball_to_tantivy(a: Algorithm) -> Language {
     match a {

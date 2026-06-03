@@ -4,6 +4,24 @@
 Targets 0.2.0 because `ContextConfig` and `DocumentConfig` grew new
 required fields — callers constructing those structs via field literals
 from outside the crate need to add `analyzer: ...`.
+
+**Deviations from this proposal during implementation** (so future
+readers don't follow the API shape below):
+
+- There is no separate `EnglishAnalyzer` struct. `SnowballAnalyzer`
+  handles all 18 builtins including English (`SnowballAnalyzer::english()`
+  ships the curated stopword list; the other 17 default to empty
+  stopwords).
+- The `tokens()` trait method has a **default impl** that delegates to
+  `build_text_analyzer()`, so callers implementing a custom analyzer
+  only override `build_text_analyzer()`. Original proposal had `tokens()`
+  as required and `build_text_analyzer()` as defaulted — we flipped it
+  to keep BM25 and grounding from drifting structurally.
+- The `crate::context::normalize` helper became `terms(text, analyzer)`
+  rather than `normalize_with(w, analyzer)` — pre-tokenized assumption
+  dropped.
+
+The "what we get" / "what we don't" lists below remain accurate.
 **Scope**: cross-binding extension surface for the lexical analyzer (the
 tokenizer + filter pipeline that drives both BM25 retrieval AND the
 grounding scorer's term extraction).
@@ -64,7 +82,7 @@ pub trait Analyzer: Send + Sync + std::fmt::Debug {
 /// → LowerCaser → StopWordFilter(English) → Snowball English stemmer.
 pub struct EnglishAnalyzer { /* … */ }
 
-/// Snowball Porter2 stemmer over any of `rust-stemmers`' 17 languages.
+/// Snowball Porter2 stemmer over any of `rust-stemmers`' 18 languages.
 /// Stopwords are caller-supplied (we ship empty lists by default for
 /// non-English — callers can supply their own).
 pub struct SnowballAnalyzer {
