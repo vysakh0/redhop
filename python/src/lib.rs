@@ -776,8 +776,6 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
     ))
 }
 
-/// Build/cache dirs excluded by default even without a `.gitignore`.
-
 /// Shared construction for text-backed documents (used by `from_text` and
 /// `from_file`): resolve the tier, build the config, chunk+index, attach the
 /// embedder if the tier needs one.

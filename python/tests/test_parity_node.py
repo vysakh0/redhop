@@ -42,8 +42,12 @@ NODE_BIN = shutil.which("node")
 ADDON_BUILT = any((REPO_ROOT / "nodejs").glob("redhop.*.node"))
 
 pytestmark = [
-    pytest.mark.skipif(NODE_BIN is None, reason="node not on PATH (install Node.js to run parity tests)"),
-    pytest.mark.skipif(not ADDON_BUILT, reason="napi addon not built (run `npm run build` in nodejs/)"),
+    pytest.mark.skipif(
+        NODE_BIN is None, reason="node not on PATH (install Node.js to run parity tests)"
+    ),
+    pytest.mark.skipif(
+        not ADDON_BUILT, reason="napi addon not built (run `npm run build` in nodejs/)"
+    ),
     pytest.mark.skipif(not RUNNER.exists(), reason="parity runner missing"),
 ]
 
@@ -193,6 +197,4 @@ def test_context_economics_parity():
     query = "what is the refund window?"
     py = redhop.context_economics(query, CORPUS)
     node = node_call("contextEconomics", [query, CORPUS])
-    assert py == node, (
-        f"context_economics diverged:\n  python: {py!r}\n  node:   {node!r}"
-    )
+    assert py == node, f"context_economics diverged:\n  python: {py!r}\n  node:   {node!r}"
