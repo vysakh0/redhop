@@ -1,6 +1,6 @@
 {
   "name": "redhop-win-x64",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Windows x64 (MSVC) native binary for redhop — a reasoning-preserving context runtime for RAG. Installed automatically by the `redhop` package on Windows x64; not intended to be installed directly.",
   "license": "Apache-2.0",
   "author": "Vysakh Sreenivasan",

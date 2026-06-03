@@ -7,118 +7,181 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
-Post-v0.1.4 work on `main` — not yet tagged. Queued for the next
-release. Targets **0.2.0** because:
-1. `ContextConfig` and `DocumentConfig` grew new required fields for
-   the pluggable analyzer — callers using struct field literals from
-   outside the crate need to add `analyzer: ...`. Callers using
-   `..Default::default()` are unaffected.
-2. `ContextConfig::default().token_budget` changed from `2048` to
-   `8192` to align with the Python binding's long-standing default.
-   Rust callers relying on the old 2048 default will now get a 4×
-   larger assembled context. Set `token_budget: 2048` explicitly to
-   restore the old behavior. Python users see no change.
+Nothing yet. Open work lands here, then graduates into a release
+section on the next `v*` tag.
+
+## [0.2.0] - 2026-06-03
+
+The **binding-parity + non-English** release. Three months of incremental
+quality work plus a focused arc on cross-binding consistency: Python, Node,
+and Rust all expose the same surface, return the same values for the same
+inputs, and drift is now actively prevented in CI. The Rust crate also gains
+a pluggable lexical analyzer, closing the structural bug class (BM25 ↔
+grounding-scorer disagreement) that 0.1.3–0.1.4 fixed by hand four times.
+
+### Breaking changes
+
+Two source-level breaks for Rust callers; `..Default::default()` and the
+`pip`/`npm` consumers are unaffected:
+
+1. **`ContextConfig` + `DocumentConfig` grew new required fields**
+   (`analyzer: Arc<dyn Analyzer>`) for the pluggable lexical analyzer.
+   Callers constructing those structs via field literals from outside
+   the crate need to add `analyzer: redhop::analyzer::default_english()`.
+2. **`ContextConfig::default().token_budget`** changed from **2048 → 8192**
+   to align with the Python binding's long-standing default (which was
+   shipping to PyPI users that whole time). Rust callers relying on the
+   old 2048 default will now get a 4× larger assembled context. Set
+   `token_budget: 2048` explicitly to restore the old behavior. Python +
+   Node users see no change.
 
 ### Added
 
-- **Pluggable lexical analyzer.** The new `crate::analyzer::Analyzer`
-  trait + `SnowballAnalyzer` (18 Snowball Porter2 languages) is a
-  first-class extension point: one analyzer drives BOTH the BM25
-  retriever AND the grounding scorer, so the two layers can't drift on
-  what "the same term" means (the bug class fixed by hand four times
-  through 0.1.3-0.1.4). Design rationale in
-  `docs/design/ANALYZER_PLUGIN.md`; usage in `docs/LANGUAGE.md`.
+#### Pluggable lexical analyzer
+
+- **`crate::analyzer::Analyzer` trait** + **`SnowballAnalyzer`** (18
+  Snowball Porter2 languages). First-class extension point: one analyzer
+  drives BOTH the BM25 retriever AND the grounding scorer, so the two
+  layers structurally cannot disagree on what "the same term" means.
+  Design rationale in `docs/design/ANALYZER_PLUGIN.md`; usage in
+  `docs/LANGUAGE.md`.
 - **`Document::with_analyzer(Arc<dyn Analyzer>)`** — mirrors
   `with_embedder`. Swaps the analyzer for both layers in lockstep.
 - **`LoadOptions::language: Option<String>`** — string-routed access to
-  the 18 builtins (`"english"`, `"german"`, `"french"`, …). Unknown
-  language names return an error (no silent fallback to English).
+  the 18 builtins (`english`, `german`, `french`, `spanish`, `italian`,
+  `portuguese`, `dutch`, `russian`, `swedish`, `norwegian`, `danish`,
+  `finnish`, `romanian`, `hungarian`, `turkish`, `arabic`, `greek`,
+  `tamil`). Unknown language names return an error (no silent fallback
+  to English).
 - **Python `language` kwarg** on every `Document.from_*` constructor.
 - **Node `language` field** on `Options`.
-- **`ContextConfig::analyzer`** + **`DocumentConfig::analyzer`** — the
-  analyzer flows end-to-end (loaders → `DocumentConfig` → `Document` →
-  `Bm25Retriever` / `LocalRerankRetriever` / fallback BM25 / grounding
-  scorer).
-- **Quality suite T41-T45** pinning the analyzer plugin end-to-end:
-  German `Bücher`↔`Buch` morphology, French `manger`↔`mange`
-  inflections, proof that `with_analyzer` swaps both layers in lockstep,
-  unknown-language error, and per-Document analyzer isolation (no leak
-  through the OnceLock default or Tantivy's tokenizer manager).
-- **Document binding parity** (Node):
-  - `Document.analyze(query)` — pure diagnostics, returns the same
-    `Report` shape as `context().report` without paying assembly cost.
-    Was missing on Node (Python and Rust had it).
-  - `Document.nFiles` getter (u32) — number of source files actually
-    indexed. `1` for single-source ctors, the readable count for
-    `fromFolder`.
-  - `Document.skippedFiles` getter (`SkippedFile[]`) — `{source, reason}`
-    pairs for files `fromFolder` couldn't parse. Was previously a
-    silent skip with no introspection. Mirrors Python's
-    `doc.skipped_files`.
-- **Core**: `Document` carries `n_files()` and `skipped_files()`
-  accessors. Single-source constructors default to `1` and empty.
-  `read_folder_with` (both simple + persisted paths) now records
-  `(source, reason)` for each file it skips instead of silently
-  dropping them.
 
-### Fixed
-- **All-stopword query no longer crashes BM25.** A query that the analyzer
-  pipeline reduces to zero positive terms (`""`, `"   "`,
-  `"the and is of in or"`) used to surface as a hard Tantivy error:
-  `Invalid query: Only excluding terms given`. The retriever now traps that
-  error class (and the `empty query` class) and returns an empty result —
-  the only sensible behavior for a no-signal query.
-  Caught by the new `quality_suite::t25` on its first run.
+#### Binding parity (Node catches up to Python)
 
-### Added
-- **ASCII folding for accented characters** (`café` ↔ `cafe`,
-  `Süßigkeit` ↔ `Sussigkeit`, `naïve` ↔ `naive`). Both layers (BM25
-  analyzer + grounding scorer's `normalize`) fold combining diacritics via
-  NFKD so European Latin content is reachable from both accented and
-  unaccented forms. Verified empirically before the change (`cafe` query
-  used to miss a `café` chunk). New tests T27, T28, T39 pin this.
-- **`crates/redhop/tests/quality_suite.rs`** — a 45-test behavior-level
-  suite organized by what a user perceives, not by code structure. Covers
-  tokenization (T01-T07), multi-field reach (T08-T09), document structure
-  (T10-T13), context assembly (T14-T20), hybrid contract (T21-T22),
-  edge cases (T23-T26), Unicode/multilingual (T27-T30), adversarial
-  queries (T31-T34), nested markdown (T35), cross-format mixed corpus
-  (T36), non-English pinning (T37-T40), and the analyzer plugin
-  (T41-T45). Found two real bugs on its first runs (the empty-query
-  crash and the accent-folding gap), and one binding bug under T41-T44
-  (`from_chunks` silently dropping `language=` in Python).
-- **`docs/LANGUAGE.md`** — the honest scope of non-English support, by
-  family, plus the names of crates and the code locations to plug in
-  for German morphology / Chinese word-segmentation / etc.
-- **`README.md`** "Language support" subsection under "Retrieval tiers"
-  — a 3-row matrix calibrating expectations for non-English content
-  without bloating the README.
+- **`Document.analyze(query)`** — pure diagnostics, returns the same
+  `Report` shape as `context().report` without paying assembly cost.
+- **`Document.nFiles`** getter — number of source files indexed (`1`
+  for single-source ctors, the readable count for `fromFolder`).
+- **`Document.skippedFiles`** getter — `SkippedFile[]` (`{source,
+  reason}` pairs) for files `fromFolder` couldn't parse. Was a silent
+  skip with no introspection before.
+- **`buildContext` / `filterContext` / `analyzeContext` /
+  `contextEconomics`** top-level functions — the low-level "I do my own
+  retrieval, just want RedHop for assembly" surface. Mirrors Python's
+  same-named functions; takes `ChunkInput[]` + `ContextOptions`.
+- **`groundingScore(query, text)`** + **`linkStrength(a, b)`** — the
+  observability primitives the strategies use internally, exposed so
+  external code reuses RedHop's exact relevance notion instead of
+  reimplementing.
+
+#### Tests + infrastructure
+
+- **`crates/redhop/tests/quality_suite.rs`** — 45-test behavior-level
+  suite organized by what a user perceives, not by code structure.
+  Covers tokenization (T01-T07), multi-field reach (T08-T09), document
+  structure (T10-T13), context assembly (T14-T20), hybrid contract
+  (T21-T22), edge cases (T23-T26), Unicode/multilingual (T27-T30),
+  adversarial queries (T31-T34), nested markdown (T35), cross-format
+  mixed corpus (T36), non-English pinning (T37-T40), and the analyzer
+  plugin (T41-T45). Found two real bugs on its first runs (an
+  empty-query BM25 crash and an accent-folding gap), and a binding bug
+  via T41-T44 (`from_chunks` silently dropping `language=` in Python).
+- **`python/tests/test_parity_node.py`** + **`nodejs/test/parity_runner.cjs`**
+  — cross-binding parity harness. 6 tests hand identical inputs to
+  Python and Node and diff structured outputs (caught the
+  `analyzeContext` / `contextEconomics` `token_budget` divergence on
+  its first run).
+- **`crates/cli/tests/cli_smoke.rs`** — first-ever CLI integration
+  tests. Asserts `--help` works on each subcommand + a real
+  `analyze-context -` stdin pipe.
+- **Node CI job** — `.github/workflows/ci.yml` now builds the napi
+  addon and runs `npm test` on PRs. Previously PRs only exercised
+  Rust + Python.
+- **ASCII folding** (`café` ↔ `cafe`, `Süßigkeit` ↔ `Sussigkeit`,
+  `naïve` ↔ `naive`) in both BM25 and the grounding scorer (via NFKD).
+  New tests T27, T28, T39 pin this.
+
+#### Documentation
+
+- **`docs/LANGUAGE.md`** — honest scope of non-English support, by
+  family + the `Analyzer` plugin's public API (Rust / Python / Node).
+- **`docs/design/ANALYZER_PLUGIN.md`** — rewritten to describe the
+  shipped surface (was originally a proposal with several deviations).
+- **README "Language support" section** + per-package READMEs
+  (`python/README.md`, `nodejs/README.md`) — `language=` examples.
+- **`docs/ARCHITECTURE.md`** — refreshed against the post-consolidation
+  workspace (the pre-0.2 split of `redhop-{core,context,…}` into
+  separate crates was rolled into one published `redhop` crate; diagram
+  and crate-name references updated).
+- **`docs/API_STABILITY.md`** — full Node section added; Python section
+  updated with `language=`, `n_files`, `skipped_files`; Rust section
+  updated with the consolidated module paths.
 
 ### Changed
-- Two pre-existing tests (`reorders_pool_by_query_embedding`,
-  `separate_query_embedder_drives_the_query_side` from earlier work)
-  remained loosened from previous releases — top-1 assertions were
-  pinned to specific BM25 micro-stats that flip under tokenizer changes.
-  They now assert the structural invariant (RRF applied, dense breakdown
-  present) rather than the brittle ordering.
+
+- **Python folder walker unified with Rust's `read_folder_with`** —
+  −429 LOC in `python/src/lib.rs` (≈25% of the file). Removed the
+  parallel `build_folder_persisted`, `collect_files`, `PersistedIndex`,
+  `CachedFile`, `fingerprint`, etc. Both bindings now share Rust's
+  single implementation; on-disk index format is byte-compatible with
+  the previous Python writer, so existing caches reload cleanly.
+- **`strategy_from_str` + `retrieval_from_str`** consolidated to a
+  single source of truth in `redhop::load`. Python's wrappers now
+  forward to the Rust functions with `map_err` instead of duplicating
+  the match arms.
+- **`Document` carries `n_files()` and `skipped_files()` accessors** on
+  the Rust struct. Single-source constructors default to `1` / empty;
+  `read_folder_with` (both simple and persisted paths) now records
+  `(source, reason)` for each skipped file instead of silently dropping
+  them.
+- **MSRV bumped 1.75 → 1.77** across all three workspace declarations
+  (workspace, `python/Cargo.toml`, `nodejs/Cargo.toml`) — the napi-rs
+  2.x in the Node binding sets the actual floor; the inconsistency
+  meant a 1.75 user hit a mysterious napi error instead of a clear MSRV
+  one.
+
+### Fixed
+
+- **All-stopword query no longer crashes BM25.** A query the analyzer
+  pipeline reduces to zero positive terms (`""`, `"   "`, `"the and is
+  of in or"`) used to surface as a hard Tantivy error (`Invalid query:
+  Only excluding terms given`). The retriever now traps that error
+  class (and the `empty query` class) and returns an empty result.
+  Caught by `quality_suite::t25` on its first run.
+- **Python `Document.from_chunks` silently dropped `language=`** — the
+  pyo3 signature accepted the kwarg but the call into `doc_config`
+  passed `None` instead of the user's value. Caught by the new Python
+  analyzer test suite on its first run.
+- **Node `analyzeContext` / `contextEconomics`** were honoring the
+  user's `token_budget` option; Python's equivalents hardcode
+  `usize::MAX` because these are no-budget pure-analysis surfaces.
+  Caught by the cross-binding parity tests on their first run.
+- **Node `index.d.ts`** was stale — the `language` field and
+  `minCandidates` field were present on the Rust `Options` struct but
+  hadn't been regenerated. TypeScript users got "Object literal may
+  only specify known properties" on perfectly valid options.
 
 ### Notes
+
 - `unicode-normalization` promoted from transitive (via tantivy) to a
   direct dep of redhop. Used for the grounding scorer's NFKD fold.
-- Workspace test count: 317/317 pass under `cargo test --workspace`
-  (was 260 at the v0.1.4 tag).
-- CI gates remain clean: `cargo fmt --all -- --check`, `cargo clippy
-  --workspace --all-targets -- -D warnings`, `cargo test --workspace`,
-  `cargo doc --workspace --no-deps` (warning-free).
-- Workspace CI (`.github/workflows/ci.yml`) now exercises the actual
-  published wheel: `maturin develop --release --features files,semantic`
-  for the Python job. A first-ever Node job was added that builds the
-  napi addon and runs both the smoke and analyzer test suites. Both
-  paths surfaced latent gaps that had never run before
-  (`from_chunks` dropping `language=`, stale `index.d.ts`, missing
-  venv setup, three new `clippy::useless_conversion` sites under
-  Rust 1.96, three RUSTSEC advisory ignores, a `CDLA-Permissive-2.0`
-  license allow for `webpki-roots` 1.0).
+- **Workspace test count**: 320/320 (Rust) + 81/81 (Python, +1 BGE
+  fixture skip) + Node smoke + analyzer suites. Was 260 at the v0.1.4
+  tag.
+- CI gates: `cargo fmt --all -- --check`, `cargo clippy --workspace
+  --all-targets -- -D warnings`, `cargo test --workspace`, `cargo doc
+  --workspace --no-deps --features files,semantic` (warning-free), the
+  cross-binding parity suite, and the Node smoke + analyzer suites.
+  All six CI jobs green.
+- **`[package.metadata.docs.rs] all-features = true`** added to the
+  redhop crate so the published doc page on docs.rs shows the
+  `files` + `semantic` items instead of just the lean lexical surface.
+- 21 example files swept clean of hardcoded `/Users/vysakh/...` paths;
+  they resolve datasets/models/exports through
+  `redhop_examples::{data_path, exports_path, model_path,
+  bge_small_paths, ms_marco_paths}` helpers that honor
+  `REDHOP_{DATA,EXPORTS,MODELS}_DIR` env vars.
+
 
 ## [0.1.4] - 2026-06-01
 
