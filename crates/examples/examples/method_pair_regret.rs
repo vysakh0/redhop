@@ -25,10 +25,6 @@ use redhop_calibration::{
     loaders::neotrace::{parse_path, NeoTraceRecord},
     runner::{ActionTraceEntry, QueryOutcome},
 };
-
-const NEOTRACE_PATH: &str =
-    "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";
-
 /// Bracket method codes seen across HotpotQA. Order matters in the
 /// printed table.
 const METHODS: &[&str] = &[
@@ -49,11 +45,12 @@ fn main() -> anyhow::Result<()> {
     println!("╚══════════════════════════════════════════════════════════════════╝");
     println!();
 
-    let records = parse_path(NEOTRACE_PATH)?;
+    let neotrace_path = redhop_examples::exports_path("neotrace/hotpot_full.neotrace.jsonl");
+    let records = parse_path(neotrace_path.as_path())?;
     println!(
         "loaded {} NeoTrace records from {}",
         records.len(),
-        NEOTRACE_PATH
+        neotrace_path.display()
     );
 
     // Group records by item_id.

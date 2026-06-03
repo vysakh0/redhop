@@ -32,11 +32,6 @@ use serde::Deserialize;
 const DIM: usize = 384;
 const TOP_K: usize = 5;
 const CANDIDATE_K: usize = 10;
-const DEFAULT_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const DEFAULT_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
-
 #[derive(Deserialize)]
 struct Data {
     items: Vec<Item>,
@@ -107,9 +102,7 @@ fn rank_of(results: &[redhop::core::RetrievalResult], id: &str) -> Option<usize>
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let model = std::env::var("REDHOP_BGE_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
-    let tokenizer =
-        std::env::var("REDHOP_BGE_TOKENIZER").unwrap_or_else(|_| DEFAULT_TOKENIZER.into());
+    let (model, tokenizer) = redhop_examples::bge_small_paths();
 
     let raw = std::fs::read_to_string(redhop_examples::data_path("semantic_mismatch.json"))?;
     let data: Data = serde_json::from_str(&raw)?;

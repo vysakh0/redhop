@@ -30,10 +30,6 @@ use redhop::core::{
     TokenizerBackend,
 };
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const OUT: &str = "/Users/vysakh/projects/neorag/exports/qa_contexts.jsonl";
 const SAMPLE_SIZE: usize = 30;
 const DISTRACTOR_GROUNDING: f32 = 0.10;
 
@@ -76,7 +72,9 @@ fn join_ctx(chunks: &[Chunk]) -> String {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -195,8 +193,10 @@ fn main() -> anyhow::Result<()> {
         out.push('\n');
         n += 1;
     }
-    std::fs::write(OUT, out)?;
-    println!("wrote {n} query context-sets → {OUT}");
+    let out_path = redhop_examples::exports_path("qa_contexts.jsonl");
+    std::fs::create_dir_all(out_path.parent().unwrap()).ok();
+    std::fs::write(&out_path, out)?;
+    println!("wrote {n} query context-sets → {}", out_path.display());
     println!(
         "filter safety check: kept {}/{} gold chunks ({:.0}%), removed {} injected distractors total",
         filtered_kept_gold,

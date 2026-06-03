@@ -9,12 +9,15 @@
 //!      over the lexical hashing baseline on multi-hop QA?
 //!   2. What does that cost in per-query embedding latency and memory?
 //!
-//! Setup (one-time):
-//!   /Users/vysakh/projects/neorag/.venv/bin/python -c "
+//! Setup (one-time): download the BGE-small ONNX model + tokenizer to any
+//! directory and point `REDHOP_MODELS_DIR` at its parent (or set
+//! `REDHOP_BGE_MODEL` / `REDHOP_BGE_TOKENIZER` per-file):
+//!   python -c "
 //!   from huggingface_hub import hf_hub_download
 //!   for f in ['onnx/model.onnx','tokenizer.json']:
 //!       hf_hub_download('BAAI/bge-small-en-v1.5', f,
-//!           local_dir='/Users/vysakh/projects/neorag/models/bge-small-en-v1.5')"
+//!           local_dir='./models/bge-small-en-v1.5')"
+//!   export REDHOP_MODELS_DIR=$PWD/models
 //!
 //! Run:
 //!   cargo run -p redhop-examples --example real_embedding_bakeoff \
@@ -29,11 +32,6 @@ use redhop_calibration::{
     embedder_bench::{compare_embedders, render_comparison},
     loaders::hotpotqa::{default_regime, HotpotQADataset},
 };
-
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 50;
 const TOP_K: usize = 4;
 
@@ -44,7 +42,9 @@ async fn main() -> anyhow::Result<()> {
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
     // ── Load HotpotQA sample → LabeledCorpus ──
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -67,10 +67,11 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Providers ──
     let hashing: Arc<dyn EmbeddingProvider> = Arc::new(HashingProvider::with_dim(384));
-    println!("loading BGE-small ONNX model ({BGE_MODEL})...");
+    let (bge_model, bge_tokenizer) = redhop_examples::bge_small_paths();
+    println!("loading BGE-small ONNX model ({})...", bge_model.display());
     let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
-        BGE_MODEL,
-        BGE_TOKENIZER,
+        &bge_model,
+        &bge_tokenizer,
         EmbedderConfig::bge(384),
     )?);
     println!("  loaded. dim={}\n", bge.dim());

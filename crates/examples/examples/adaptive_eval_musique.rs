@@ -36,7 +36,6 @@ use redhop_diagnostics::{
 };
 use redhop_orchestration::RuleBasedClassifier;
 
-const MUSIQUE_PATH: &str = "/Users/vysakh/projects/neorag/data/musique/dev.jsonl";
 const SAMPLE_SIZE: usize = 200;
 const SWEEP_TOP_K: usize = 6;
 const BOOTSTRAP_B: usize = 200;
@@ -86,8 +85,9 @@ async fn main() -> anyhow::Result<()> {
     println!();
 
     let t = Instant::now();
-    println!("loading MuSiQue dev from {MUSIQUE_PATH}");
-    let mut dataset = MuSiQueDataset::from_path(MUSIQUE_PATH)?;
+    let musique_path = redhop_examples::data_path("musique/dev.jsonl");
+    println!("loading MuSiQue dev from {}", musique_path.display());
+    let mut dataset = MuSiQueDataset::from_path(&musique_path)?;
     let full_size = dataset.len();
     dataset.examples.truncate(SAMPLE_SIZE);
     println!(

@@ -15,11 +15,6 @@ use redhop::document::{Document, DocumentConfig, RetrievalMode};
 use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 
 const DIM: usize = 384;
-const DEFAULT_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const DEFAULT_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
-
 const TEXT: &str = "The employee was terminated for cause and a severance review followed. \
     The annual budget review was approved by the board after a long discussion. \
     The cafeteria introduced a new vegetarian menu on Fridays. \
@@ -28,9 +23,7 @@ const TEXT: &str = "The employee was terminated for cause and a severance review
 const QUERY: &str = "why did the employee leave the company?";
 
 fn main() -> anyhow::Result<()> {
-    let model = std::env::var("REDHOP_BGE_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
-    let tokenizer =
-        std::env::var("REDHOP_BGE_TOKENIZER").unwrap_or_else(|_| DEFAULT_TOKENIZER.into());
+    let (model, tokenizer) = redhop_examples::bge_small_paths();
     let embedder: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
         &model,
         &tokenizer,

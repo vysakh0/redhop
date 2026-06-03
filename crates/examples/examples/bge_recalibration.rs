@@ -49,11 +49,6 @@ use redhop_diagnostics::{
 use redhop_orchestration::{
     ClassifierThresholds, ConservativeRulePolicy, Policy, RuleBasedClassifier,
 };
-
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 60;
 const TOP_K: usize = 4;
 
@@ -219,7 +214,9 @@ async fn main() -> anyhow::Result<()> {
     println!("║  BGE recalibration: genuine reduced reranking, or threshold drift? ║");
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
@@ -231,9 +228,10 @@ async fn main() -> anyhow::Result<()> {
     let hsub = build_substrate(hashing, &dataset, &chunker).await?;
 
     println!("building BGE substrate (real ONNX inference)...");
+    let (bge_model, bge_tokenizer) = redhop_examples::bge_small_paths();
     let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
-        BGE_MODEL,
-        BGE_TOKENIZER,
+        &bge_model,
+        &bge_tokenizer,
         EmbedderConfig::bge(384),
     )?);
     let bsub = build_substrate(bge, &dataset, &chunker).await?;

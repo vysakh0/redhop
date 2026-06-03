@@ -9,12 +9,6 @@ use redhop::core::{
     TokenCount,
 };
 use redhop::reranking::OnnxCrossEncoder;
-
-const CE_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/ms-marco-MiniLM-L-6-v2/onnx/model.onnx";
-const CE_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/ms-marco-MiniLM-L-6-v2/tokenizer.json";
-
 fn cand(id: &str, text: &str) -> RetrievalResult {
     RetrievalResult {
         chunk: Chunk::new(
@@ -33,7 +27,8 @@ fn cand(id: &str, text: &str) -> RetrievalResult {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    let ce = OnnxCrossEncoder::load(CE_MODEL, CE_TOKENIZER, 256)?;
+    let (ce_model, ce_tokenizer) = redhop_examples::ms_marco_paths();
+    let ce = OnnxCrossEncoder::load(&ce_model, &ce_tokenizer, 256)?;
     let query = Query::new("What is the capital of France?");
     let candidates = vec![
         cand(

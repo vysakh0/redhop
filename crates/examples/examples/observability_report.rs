@@ -40,13 +40,8 @@ use redhop_orchestration::RuleBasedClassifier;
 use redhop_orchestration::{
     AdaptiveOrchestrator, ConservativeRulePolicy, DefaultActuator, Policy, PolicyThresholds,
 };
-
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
 const SAMPLE_SIZE: usize = 150;
 const TOP_K: usize = 4;
-const HTML_OUT: &str = "/Users/vysakh/projects/neorag1/target/redhop_report.html";
-const TRACE_OUT: &str = "/Users/vysakh/projects/neorag1/target/redhop_traces.jsonl";
 // Uniform-rerank lift baseline measured by method_pair_regret on this corpus.
 const UNIFORM_RERANK_LIFT: f32 = 0.046;
 
@@ -87,7 +82,9 @@ impl Retriever for EmbedAttachingRetriever {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     // ── Setup ─────────────────────────────────────────────────────
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 60, 90, 0)?;
@@ -156,8 +153,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Write all traces as JSONL.
-    std::fs::write(TRACE_OUT, json::render_jsonl(&traces))?;
-    println!("wrote {} per-query traces → {}", traces.len(), TRACE_OUT);
+    let trace_out = redhop_examples::exports_path("redhop_traces.jsonl");
+    std::fs::create_dir_all(trace_out.parent().unwrap()).ok();
+    std::fs::write(&trace_out, json::render_jsonl(&traces))?;
+    println!(
+        "wrote {} per-query traces → {}",
+        traces.len(),
+        trace_out.display()
+    );
 
     // ── 3+4. Aggregate outcomes for the HTML report + economics ───
     let cfg = RunnerConfig {
@@ -213,8 +216,13 @@ async fn main() -> anyhow::Result<()> {
         uniform_rerank_lift: Some(UNIFORM_RERANK_LIFT),
     };
     let html = render_html(&outcomes, &opts);
-    std::fs::write(HTML_OUT, &html)?;
-    println!("\nwrote self-contained HTML moat report → {}", HTML_OUT);
+    let html_out = redhop_examples::exports_path("redhop_report.html");
+    std::fs::create_dir_all(html_out.parent().unwrap()).ok();
+    std::fs::write(&html_out, &html)?;
+    println!(
+        "\nwrote self-contained HTML moat report → {}",
+        html_out.display()
+    );
     println!("  ({} bytes, open it in any browser)", html.len());
 
     Ok(())

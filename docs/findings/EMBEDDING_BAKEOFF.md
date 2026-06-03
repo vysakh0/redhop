@@ -8,11 +8,13 @@ Reproduce:
 
 ```bash
 # one-time: fetch the model (~133 MB)
-/Users/vysakh/projects/neorag/.venv/bin/python -c "
+python -c "
 from huggingface_hub import hf_hub_download
 for f in ['onnx/model.onnx','tokenizer.json']:
     hf_hub_download('BAAI/bge-small-en-v1.5', f,
-        local_dir='/Users/vysakh/projects/neorag/models/bge-small-en-v1.5')"
+        local_dir='./models/bge-small-en-v1.5')"
+export REDHOP_MODELS_DIR=$PWD/models
+export REDHOP_DATA_DIR=$PWD/data  # contains hotpotqa/hotpot_dev_distractor_v1.json
 
 cargo run -p redhop-examples --example real_embedding_bakeoff \
     --features onnx --release

@@ -31,11 +31,6 @@ use redhop_calibration::loaders::hotpotqa::HotpotQADataset;
 const DIM: usize = 384;
 const SAMPLE: usize = 400;
 const TOP_K: usize = 3;
-const DEFAULT_MODEL: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const DEFAULT_TOKENIZER: &str =
-    "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
-
 #[derive(Default, Clone)]
 struct Rec {
     n: usize,
@@ -57,9 +52,7 @@ fn tc(s: &str) -> usize {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let model = std::env::var("REDHOP_BGE_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
-    let tokenizer =
-        std::env::var("REDHOP_BGE_TOKENIZER").unwrap_or_else(|_| DEFAULT_TOKENIZER.into());
+    let (model, tokenizer) = redhop_examples::bge_small_paths();
 
     let mut ds = HotpotQADataset::from_path(redhop_examples::data_path(
         "hotpotqa/hotpot_dev_distractor_v1.json",

@@ -64,9 +64,6 @@ use redhop_diagnostics::{
 };
 use redhop_orchestration::RuleBasedClassifier;
 
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-
 const SAMPLE_SIZE: usize = 200;
 const SWEEP_TOP_K: usize = 4;
 const BOOTSTRAP_B: usize = 200;
@@ -121,8 +118,9 @@ async fn main() -> anyhow::Result<()> {
 
     // ─── 1. Load HotpotQA dev ─────────────────────────────────────
     let t = Instant::now();
-    println!("loading HotpotQA dev from {HOTPOTQA_PATH}");
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let hotpot_path = redhop_examples::data_path("hotpotqa/hotpot_dev_distractor_v1.json");
+    println!("loading HotpotQA dev from {}", hotpot_path.display());
+    let mut dataset = HotpotQADataset::from_path(&hotpot_path)?;
     let full_size = dataset.len();
     dataset.examples.truncate(SAMPLE_SIZE);
     println!(

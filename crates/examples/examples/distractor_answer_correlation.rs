@@ -17,30 +17,24 @@
 
 use redhop_calibration::{corruption::pearson, loaders::neotrace::parse_path};
 
+/// `(label, neotrace_filename_under_<exports>/neotrace/)`. Resolve each via
+/// `redhop_examples::exports_path` so the lab and any contributor's copy of
+/// the corpus (override with `REDHOP_EXPORTS_DIR`) both work.
 const FILES: &[(&str, &str)] = &[
-    (
-        "HotpotQA (haiku)",
-        "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl",
-    ),
+    ("HotpotQA (haiku)", "neotrace/hotpot_full.neotrace.jsonl"),
     (
         "HotpotQA (llama8b)",
-        "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_llama8b.neotrace.jsonl",
+        "neotrace/hotpot_llama8b.neotrace.jsonl",
     ),
-    (
-        "MuSiQue (haiku)",
-        "/Users/vysakh/projects/neorag/exports/neotrace/musique_full.neotrace.jsonl",
-    ),
-    (
-        "MuSiQue (qwen7b)",
-        "/Users/vysakh/projects/neorag/exports/neotrace/musique_qwen7b.neotrace.jsonl",
-    ),
+    ("MuSiQue (haiku)", "neotrace/musique_full.neotrace.jsonl"),
+    ("MuSiQue (qwen7b)", "neotrace/musique_qwen7b.neotrace.jsonl"),
     (
         "MuSiQue (mistralnemo)",
-        "/Users/vysakh/projects/neorag/exports/neotrace/musique_mistralnemo.neotrace.jsonl",
+        "neotrace/musique_mistralnemo.neotrace.jsonl",
     ),
     (
         "evidence study",
-        "/Users/vysakh/projects/neorag/exports/neotrace/evidence_evidence.neotrace.jsonl",
+        "neotrace/evidence_evidence.neotrace.jsonl",
     ),
 ];
 
@@ -61,8 +55,9 @@ fn main() -> anyhow::Result<()> {
     let mut all_sim = Vec::new();
     let mut all_density = Vec::new();
 
-    for (label, path) in FILES {
-        let records = match parse_path(path) {
+    for (label, rel) in FILES {
+        let path = redhop_examples::exports_path(rel);
+        let records = match parse_path(&path) {
             Ok(r) => r,
             Err(e) => {
                 println!("  {label:<24} (skip: {e})");

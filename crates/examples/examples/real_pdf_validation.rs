@@ -35,14 +35,18 @@ use redhop_calibration::{
     embedder::HashingEmbedder,
 };
 use redhop_diagnostics::{diagnose_ingestion, IngestionThresholds};
-
-const PDF_TEXT_JSONL: &str = "/Users/vysakh/projects/neorag/exports/real_pdf_text.jsonl";
 const MAX_PAGES: usize = 120;
 const TOP_K: usize = 3;
 
 fn load_pages() -> Vec<(String, usize, String)> {
-    let text = std::fs::read_to_string(PDF_TEXT_JSONL)
-        .expect("run ../redhop/scripts/extract_pdf_text.py first");
+    let path = redhop_examples::exports_path("real_pdf_text.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "could not read {} ({e}). Run ../redhop/scripts/extract_pdf_text.py \
+             or point REDHOP_EXPORTS_DIR at a directory containing real_pdf_text.jsonl",
+            path.display()
+        )
+    });
     let mut out = Vec::new();
     for line in text.lines() {
         let v: serde_json::Value = serde_json::from_str(line).unwrap();

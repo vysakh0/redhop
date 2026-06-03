@@ -37,11 +37,6 @@ use redhop::embeddings::{EmbedderConfig, OnnxEmbedder};
 use redhop::retrieval::DenseRetriever;
 use redhop::storage::{ChunkStore, FlatVectorIndex};
 use redhop_calibration::loaders::hotpotqa::{default_regime, HotpotQADataset};
-
-const HOTPOTQA_PATH: &str =
-    "/Users/vysakh/projects/neorag/data/hotpotqa/hotpot_dev_distractor_v1.json";
-const BGE_MODEL: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/onnx/model.onnx";
-const BGE_TOKENIZER: &str = "/Users/vysakh/projects/neorag/models/bge-small-en-v1.5/tokenizer.json";
 const SAMPLE_SIZE: usize = 60;
 const WIDE_N: usize = 20;
 const DIM: usize = 384;
@@ -59,15 +54,18 @@ async fn main() -> anyhow::Result<()> {
     println!("║  Context economics: token-efficiency of pruned vs raw top-k      ║");
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
-    let mut dataset = HotpotQADataset::from_path(HOTPOTQA_PATH)?;
+    let mut dataset = HotpotQADataset::from_path(redhop_examples::data_path(
+        "hotpotqa/hotpot_dev_distractor_v1.json",
+    ))?;
     dataset.examples.truncate(SAMPLE_SIZE);
     let tok: Arc<dyn TokenizerBackend> = Arc::new(WhitespaceTokenizer::new());
     let chunker = SentenceChunker::new(tok, 40, 60, 0)?;
 
     println!("loading BGE-small...");
+    let (bge_model, bge_tokenizer) = redhop_examples::bge_small_paths();
     let bge: Arc<dyn EmbeddingProvider> = Arc::new(OnnxEmbedder::load(
-        BGE_MODEL,
-        BGE_TOKENIZER,
+        &bge_model,
+        &bge_tokenizer,
         EmbedderConfig::bge(DIM),
     )?);
 

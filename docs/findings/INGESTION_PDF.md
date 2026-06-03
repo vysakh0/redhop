@@ -12,9 +12,11 @@ All numbers below are measured on text extracted from 6 real arXiv PDFs
 Reproduce:
 
 ```bash
-# Python extracts PDF text (the boundary: Rust never parses PDFs)
-/Users/vysakh/projects/neorag/.venv/bin/python \
-    /Users/vysakh/projects/neorag/scripts/extract_pdf_text.py
+# Python extracts PDF text into <exports>/real_pdf_text.jsonl (Rust never parses PDFs).
+# Bring your own extractor; the expected schema is one JSON object per line:
+#   {"source": "paper.pdf", "page": 1, "text": "..."}
+export REDHOP_EXPORTS_DIR=$PWD/exports
+
 # Rust runs the correlation study
 cargo run -p redhop-examples --example real_pdf_validation --release
 ```

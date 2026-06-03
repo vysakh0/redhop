@@ -6,8 +6,8 @@ use redhop_calibration::loaders::neotrace::{
 };
 
 fn main() {
-    let path = "/Users/vysakh/projects/neorag/exports/neotrace/hotpot_full.neotrace.jsonl";
-    let records = parse_path(path).expect("parse");
+    let path = redhop_examples::exports_path("neotrace/hotpot_full.neotrace.jsonl");
+    let records = parse_path(&path).expect("parse");
     println!("loaded {} records", records.len());
 
     let corpus =
