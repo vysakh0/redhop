@@ -33,10 +33,27 @@ struct field literals from outside the crate need to add
   analyzer flows end-to-end (loaders → `DocumentConfig` → `Document` →
   `Bm25Retriever` / `LocalRerankRetriever` / fallback BM25 / grounding
   scorer).
-- **Quality suite T41-T44** pinning the analyzer plugin end-to-end:
+- **Quality suite T41-T45** pinning the analyzer plugin end-to-end:
   German `Bücher`↔`Buch` morphology, French `manger`↔`mange`
   inflections, proof that `with_analyzer` swaps both layers in lockstep,
-  unknown-language error.
+  unknown-language error, and per-Document analyzer isolation (no leak
+  through the OnceLock default or Tantivy's tokenizer manager).
+- **Document binding parity** (Node):
+  - `Document.analyze(query)` — pure diagnostics, returns the same
+    `Report` shape as `context().report` without paying assembly cost.
+    Was missing on Node (Python and Rust had it).
+  - `Document.nFiles` getter (u32) — number of source files actually
+    indexed. `1` for single-source ctors, the readable count for
+    `fromFolder`.
+  - `Document.skippedFiles` getter (`SkippedFile[]`) — `{source, reason}`
+    pairs for files `fromFolder` couldn't parse. Was previously a
+    silent skip with no introspection. Mirrors Python's
+    `doc.skipped_files`.
+- **Core**: `Document` carries `n_files()` and `skipped_files()`
+  accessors. Single-source constructors default to `1` and empty.
+  `read_folder_with` (both simple + persisted paths) now records
+  `(source, reason)` for each file it skips instead of silently
+  dropping them.
 
 ### Fixed
 - **All-stopword query no longer crashes BM25.** A query that the analyzer

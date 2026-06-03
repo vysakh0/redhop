@@ -170,7 +170,8 @@ pub fn resolve_reranker(name: &str) -> Result<ResolvedReranker> {
     })
 }
 
-/// A resolved, on-disk model ready to hand to [`crate::OnnxEmbedder::load`].
+/// A resolved, on-disk model ready to hand to
+/// [`crate::embeddings::OnnxEmbedder::load`].
 pub struct ResolvedModel {
     /// Local path to the ONNX graph file.
     pub model_path: PathBuf,

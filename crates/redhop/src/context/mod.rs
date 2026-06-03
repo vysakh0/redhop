@@ -119,15 +119,16 @@ pub enum ContextStrategy {
     /// measurements show matters.
     ///
     /// - **Small input** (total input tokens ≤ `auto_passthrough_max_tokens`):
-    ///   pass the context through unpruned (behaves like [`RawTopK`]). Under
-    ///   headroom, relevance-based pruning is a wash-to-harmful — it can only
-    ///   remove information the model would have tolerated, and on multi-hop it
-    ///   risks the second-hop tax. So the right move is to not touch it.
+    ///   pass the context through unpruned (behaves like
+    ///   [`ContextStrategy::RawTopK`]). Under headroom, relevance-based
+    ///   pruning is a wash-to-harmful — it can only remove information the
+    ///   model would have tolerated, and on multi-hop it risks the
+    ///   second-hop tax. So the right move is to not touch it.
     /// - **Large input** (above the gate): the context is big enough that
     ///   attention *dilutes* (lost-in-the-middle); stuffing it all in collapses
     ///   accuracy, and pruning to the budget *recovers* it. Behaves like
-    ///   [`ReasoningPreserving`] (drop unlinked junk, keep seeds + linked hops,
-    ///   fill the budget).
+    ///   [`ContextStrategy::ReasoningPreserving`] (drop unlinked junk, keep
+    ///   seeds + linked hops, fill the budget).
     ///
     /// The load-bearing decision is the **gate (input size)**, not the pruner:
     /// in the dilution regime any sensible pruner captures the recoverable gain

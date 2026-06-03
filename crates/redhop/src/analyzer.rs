@@ -1,6 +1,7 @@
 //! Lexical analyzer plugin point — the cross-cutting tokenization that drives
-//! BOTH [`Bm25Retriever`] (via Tantivy's `TextAnalyzer` interface) AND the
-//! grounding scorer in [`crate::context`] (via [`Analyzer::tokens`]).
+//! BOTH [`crate::retrieval::Bm25Retriever`] (via Tantivy's `TextAnalyzer`
+//! interface) AND the grounding scorer in [`crate::context`] (via
+//! [`Analyzer::tokens`]).
 //!
 //! ## Why one analyzer drives both layers
 //!
@@ -69,7 +70,8 @@ pub trait Analyzer: Send + Sync + std::fmt::Debug {
     fn name(&self) -> &str;
 
     /// Build the Tantivy `TextAnalyzer` for BM25 indexing + query parsing.
-    /// Called once when a [`Bm25Retriever`] is constructed with this analyzer.
+    /// Called once when a [`crate::retrieval::Bm25Retriever`] is constructed
+    /// with this analyzer.
     ///
     /// Implementors MUST ensure that running this pipeline over a piece of
     /// text produces the same tokens as [`Analyzer::tokens`] — the default
@@ -300,8 +302,9 @@ impl Analyzer for SnowballAnalyzer {
 // ── Shared "default English instance" ──────────────────────────────────────
 
 /// A process-wide cloned `Arc<dyn Analyzer>` pointing at
-/// [`SnowballAnalyzer::english`]. Used as the default in [`ContextConfig`]
-/// and elsewhere — clone is cheap (just an Arc bump), construction happens
+/// [`SnowballAnalyzer::english`]. Used as the default in
+/// [`crate::context::ContextConfig`] and elsewhere — clone is cheap (just
+/// an Arc bump), construction happens
 /// once.
 pub fn default_english() -> Arc<dyn Analyzer> {
     static INSTANCE: OnceLock<Arc<dyn Analyzer>> = OnceLock::new();

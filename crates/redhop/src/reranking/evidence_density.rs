@@ -6,7 +6,7 @@
 //! higher density → ranked higher. Useful when context budget is the
 //! bottleneck, which it usually is.
 //!
-//! [`LexicalGroundingReranker`]: crate::LexicalGroundingReranker
+//! [`LexicalGroundingReranker`]: crate::reranking::LexicalGroundingReranker
 
 use std::collections::HashSet;
 

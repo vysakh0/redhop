@@ -1,5 +1,5 @@
 //! Reranker that recombines per-stage scores already present in
-//! [`ScoreBreakdown`].
+//! [`crate::core::ScoreBreakdown`].
 //!
 //! This is the cheapest possible reranker: it does not look at chunk text at
 //! all. It is useful as a *second* fusion pass after a hybrid retriever — for

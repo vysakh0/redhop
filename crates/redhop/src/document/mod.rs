@@ -31,9 +31,10 @@
 //! [`RetrievalMode::Dense`] and inject an embedder via
 //! [`Document::with_embedder`] (exact cosine over every chunk, no ANN). A
 //! zero-model semantic tier lives in the external `semantic-bm25` crate and is
-//! deliberately not wired here. This crate is pure layering over
-//! [`redhop_chunking`], [`redhop_retrieval`], and [`redhop_context`] — no new
-//! logic, no new architecture tower.
+//! deliberately not wired here. This module is pure layering over
+//! [`crate::chunking`], [`crate::retrieval`], and [`crate::context`] — no
+//! new logic, no new architecture tower. (The three were separate crates
+//! pre-0.2; they're now sibling modules in the consolidated workspace.)
 //!
 //! The default context policy is [`ContextStrategy::Auto`]: do nothing under
 //! headroom, prune under dilution, preserve bridge evidence, and report every
@@ -470,14 +471,14 @@ impl Document {
     /// Number of source files indexed into this Document.
     ///
     /// - `1` for the single-source constructors ([`Document::from_text`],
-    ///   [`Document::from_chunks`], [`read_file`], [`read_bytes`]).
-    /// - The readable file count for [`read_folder`] / [`read_folder_with`]
+    ///   [`Document::from_chunks`], `read_file`, `read_bytes`).
+    /// - The readable file count for `read_folder` / `read_folder_with`
     ///   (excludes the ones in [`Document::skipped_files`]).
     pub fn n_files(&self) -> usize {
         self.n_files
     }
 
-    /// Files that [`read_folder`] / [`read_folder_with`] skipped, as
+    /// Files that `read_folder` / `read_folder_with` skipped, as
     /// `(source_path, reason)` pairs — unsupported formats, unreadable
     /// bytes, no extractable text (e.g. scanned PDFs without OCR), etc.
     /// Empty for single-source constructors.
@@ -485,7 +486,7 @@ impl Document {
         &self.skipped_files
     }
 
-    /// Internal setter used by the folder loaders ([`read_folder_with`])
+    /// Internal setter used by the folder loaders (`read_folder_with`)
     /// to record how many sources actually contributed chunks and which
     /// were skipped along the way.
     pub(crate) fn set_folder_provenance(&mut self, n_files: usize, skipped: Vec<(String, String)>) {

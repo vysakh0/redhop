@@ -8,9 +8,9 @@
 //!
 //! This is the published Rust crate — every public surface lives here.
 //! Internally it is organized as modules ([`core`], [`chunking`],
-//! [`retrieval`], [`context`], [`document`], optionally [`embeddings`],
-//! [`reranking`], [`files`]); the most-used types are re-exported at the
-//! crate root so the short path just works.
+//! [`retrieval`], [`context`], [`document`]; plus `embeddings`, `reranking`,
+//! `files` under their feature flags); the most-used types are re-exported
+//! at the crate root so the short path just works.
 //!
 //! ```no_run
 //! # fn main() -> redhop::Result<()> {
@@ -41,10 +41,10 @@
 //!
 //! ## Feature flags
 //!
-//! - `files` — built-in parsers + [`read_file`]/[`read_bytes`].
-//! - `semantic` — the bundled ONNX embedding backend ([`embeddings`]) and
-//!   cross-encoder reranker ([`reranking`]) for dense/hybrid retrieval;
-//!   inject the embedder with [`Document::with_embedder`].
+//! - `files` — built-in parsers + `read_file`/`read_bytes`.
+//! - `semantic` — the bundled ONNX embedding backend (`embeddings` module)
+//!   and cross-encoder reranker (`reranking` module) for dense/hybrid
+//!   retrieval; inject the embedder with [`Document::with_embedder`].
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

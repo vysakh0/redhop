@@ -8,8 +8,8 @@ use parking_lot::RwLock;
 /// A thread-safe in-memory store of chunks.
 ///
 /// Cloneable: clones share the underlying storage via `Arc`-like semantics
-/// (an `RwLock` wrapped in an `Arc`). Use [`ChunkStore::handle`] to obtain a
-/// cheap shared handle.
+/// (an `RwLock` wrapped in an `Arc`), so handing the store across modules
+/// is cheap.
 #[derive(Default)]
 pub struct ChunkStore {
     inner: RwLock<HashMap<ChunkId, Chunk>>,

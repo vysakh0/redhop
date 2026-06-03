@@ -3,7 +3,7 @@
 //! A real [`EmbeddingProvider`] for BERT-family sentence embedders
 //! (BGE / E5 / jina / mxbai) exported to ONNX. It does the minimum:
 //! tokenize a batch, run the session, pool, normalize. All math is
-//! delegated to [`crate::pooling`], which is unit-tested without a
+//! delegated to [`crate::embeddings::pooling`], which is unit-tested without a
 //! model — so the only model-dependent surface here is tokenization +
 //! tensor shapes + the session call.
 //!

@@ -32,7 +32,7 @@ impl SentenceChunker {
     ///   prepend to chunk *N + 1*. Set to `0` for crisp, non-overlapping
     ///   chunks; set to `1`–`2` to soften boundary effects in retrieval.
     ///
-    /// [`FixedChunker`]: crate::FixedChunker
+    /// [`FixedChunker`]: crate::chunking::FixedChunker
     pub fn new(
         tokenizer: Arc<dyn TokenizerBackend>,
         target_tokens: usize,
