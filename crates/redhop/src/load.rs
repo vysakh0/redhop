@@ -135,7 +135,12 @@ fn strategy_from_str(s: &str) -> Result<ContextStrategy> {
         "max_density" => S::MaxDensity,
         "reasoning_preserving" => S::ReasoningPreserving,
         "auto" => S::Auto,
-        other => return Err(Error::Other(format!("unknown strategy '{other}'"))),
+        other => {
+            return Err(Error::Other(format!(
+                "unknown strategy '{other}' (expected: raw_topk, distractor_filtered, \
+                 redundancy_pruned, max_density, reasoning_preserving, auto)"
+            )))
+        }
     })
 }
 
@@ -148,7 +153,9 @@ fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Result<
         Some("semantic") => RetrievalMode::Dense,
         Some(other) => {
             return Err(Error::Other(format!(
-                "unknown retrieval mode '{other}'; use 'lexical', 'hybrid', or 'semantic'"
+                "unknown retrieval mode '{other}'; use 'lexical' (default, BM25), 'hybrid' \
+                 (BM25 prune → dense rerank — large corpora, no vector DB), or 'semantic' \
+                 (global dense over every chunk — small/bounded corpora)"
             )))
         }
     })
@@ -213,7 +220,11 @@ fn apply_embedder(doc: Document, o: &LoadOptions) -> Result<Document> {
         let pooling = match o.embedder_pooling.as_deref() {
             None | Some("cls") => Pooling::Cls,
             Some("mean") => Pooling::Mean,
-            Some(other) => return Err(Error::Other(format!("unknown pooling '{other}'"))),
+            Some(other) => {
+                return Err(Error::Other(format!(
+                    "unknown embedder pooling '{other}' (expected: 'cls' or 'mean')"
+                )))
+            }
         };
         let dim = o.embedder_dim.unwrap_or(384);
         let load = |prefix: &str| -> Result<OnnxEmbedder> {

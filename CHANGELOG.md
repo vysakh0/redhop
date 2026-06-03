@@ -8,10 +8,16 @@ minor releases may break; breaking changes are noted here).
 ## [Unreleased]
 
 Post-v0.1.4 work on `main` — not yet tagged. Queued for the next
-release. Targets **0.2.0** because `ContextConfig` and `DocumentConfig`
-grew new required fields for the pluggable analyzer — callers using
-struct field literals from outside the crate need to add
-`analyzer: ...`. Callers using `..Default::default()` are unaffected.
+release. Targets **0.2.0** because:
+1. `ContextConfig` and `DocumentConfig` grew new required fields for
+   the pluggable analyzer — callers using struct field literals from
+   outside the crate need to add `analyzer: ...`. Callers using
+   `..Default::default()` are unaffected.
+2. `ContextConfig::default().token_budget` changed from `2048` to
+   `8192` to align with the Python binding's long-standing default.
+   Rust callers relying on the old 2048 default will now get a 4×
+   larger assembled context. Set `token_budget: 2048` explicitly to
+   restore the old behavior. Python users see no change.
 
 ### Added
 
