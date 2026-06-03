@@ -1,122 +1,82 @@
 # Design: pluggable lexical analyzer
 
-**Status**: **IMPLEMENTED** on `main`. Queued for the next release.
-Targets 0.2.0 because `ContextConfig` and `DocumentConfig` grew new
-required fields — callers constructing those structs via field literals
-from outside the crate need to add `analyzer: ...`.
+**Status**: **shipped** on `main`. Queued for the next release (0.2.0:
+`ContextConfig` and `DocumentConfig` grew new required fields — callers
+constructing those via struct field literals from outside the crate need
+to add `analyzer: ...`; callers using `..Default::default()` are
+unaffected).
 
-**Deviations from this proposal during implementation** (so future
-readers don't follow the API shape below):
+## What this solves
 
-- There is no separate `EnglishAnalyzer` struct. `SnowballAnalyzer`
-  handles all 18 builtins including English (`SnowballAnalyzer::english()`
-  ships the curated stopword list; the other 17 default to empty
-  stopwords).
-- The `tokens()` trait method has a **default impl** that delegates to
-  `build_text_analyzer()`, so callers implementing a custom analyzer
-  only override `build_text_analyzer()`. Original proposal had `tokens()`
-  as required and `build_text_analyzer()` as defaulted — we flipped it
-  to keep BM25 and grounding from drifting structurally.
-- The `crate::context::normalize` helper became `terms(text, analyzer)`
-  rather than `normalize_with(w, analyzer)` — pre-tokenized assumption
-  dropped.
+Through 0.1.3-0.1.4 a class of silent-search-miss bugs surfaced where
+BM25's tokenization and the grounding scorer's notion of "the same term"
+disagreed (stemming on one side but not the other; stopwords on one
+side; camelCase split on one side; ASCII fold on one side). Each one
+was fixed by hand. The plugin closes that class structurally: one
+`Analyzer` drives both layers, so they cannot drift.
 
-The "what we get" / "what we don't" lists below remain accurate.
-**Scope**: cross-binding extension surface for the lexical analyzer (the
-tokenizer + filter pipeline that drives both BM25 retrieval AND the
-grounding scorer's term extraction).
+The plugin also surfaces a public extension point for non-English
+content. Before 0.1.5 a user who wanted German morphology had to fork
+the crate and edit `crates/redhop/src/retrieval/bm25.rs::Bm25Retriever::new`
+*and* the grounding scorer separately — and accept silent drift between
+them. That's gone.
 
-## What today is broken
+## API surface
 
-The promise in 0.1.4's `docs/LANGUAGE.md` — "the bones are there, when a
-user needs German morphology they plug in here" — is misleading. There IS
-no public extension point for the lexical analyzer. To swap the Snowball
-stemmer from English to German, a user has to **fork the redhop crate**
-and edit `crates/redhop/src/retrieval/bm25.rs::Bm25Retriever::new`. That's
-not "extensible."
-
-Worse, even with a forked redhop, the grounding scorer in
-`crate::context::normalize` hardcodes the English stemmer separately. The
-two layers (retrieval + grounding) would drift unless the user edits both.
-
-Compare to the **dense** path, which IS publicly extensible:
+`crate::analyzer` (in `crates/redhop/src/analyzer.rs`):
 
 ```rust
-let mut doc = Document::from_text("d", "…")?
-    .with_embedder(Arc::new(my_custom_embedder));
-```
-
-The lexical path needs the same shape.
-
-## API shape
-
-```rust
-//! New module: crates/redhop/src/analyzer.rs
-
-/// Lexical analyzer plugin point. The default is English Snowball Porter2
-/// (`EnglishAnalyzer`). Swap to another via `Document::with_analyzer`.
-///
-/// One `Analyzer` drives BOTH the BM25 retrieval pipeline AND the grounding
-/// scorer's term extraction so the two layers stay in lockstep (the recurring
-/// "same tokenizer/scorer contract" fixed by hand through 0.1.3-0.1.4).
 pub trait Analyzer: Send + Sync + std::fmt::Debug {
     /// Identifier used to register the analyzer against Tantivy's tokenizer
     /// manager. Must be unique per implementation.
     fn name(&self) -> &str;
 
-    /// Tokenize + normalize text into search terms. Used by the grounding
-    /// scorer in `crate::context::normalize`. Must produce the same terms
-    /// that `build_text_analyzer().token_stream(text)` would, so BM25 and
-    /// grounding agree on what "the same term" means.
-    fn tokens(&self, text: &str) -> Vec<String>;
-
-    /// Build the Tantivy `TextAnalyzer` for the BM25 index. Called once
-    /// per `Bm25Retriever::with_analyzer`. Default impl: compose a pipeline
-    /// from `tokens()` so callers only override one method. Custom impls
-    /// may override to use Tantivy's built-in filters (faster).
+    /// Build the Tantivy `TextAnalyzer` for BM25 indexing + query parsing.
+    /// Called once when a `Bm25Retriever` is constructed with this analyzer.
     fn build_text_analyzer(&self) -> tantivy::tokenizer::TextAnalyzer;
+
+    /// Tokenize + normalize text into search terms. Default impl runs the
+    /// analyzer from `build_text_analyzer()` and collects its output, so
+    /// the BM25 side and the grounding side share a single source of
+    /// truth. Override only if a custom analyzer can produce the term
+    /// list more cheaply than running the Tantivy pipeline.
+    fn tokens(&self, text: &str) -> Vec<String> { /* default impl */ }
 }
 
-/// The 0.1.4 default — pre-baked English pipeline.
-/// SimpleTokenizer → RemoveLong(40) → CamelCaseSplitter → AsciiFolding
-/// → LowerCaser → StopWordFilter(English) → Snowball English stemmer.
-pub struct EnglishAnalyzer { /* … */ }
+/// Snowball Porter2 stemmer over any of `rust_stemmers`' 18 languages.
+/// Pipeline: SimpleTokenizer → RemoveLong(40) → CamelCaseSplitter →
+/// AsciiFolding → LowerCaser → StopWordFilter(<lang>) → Snowball(<lang>).
+pub struct SnowballAnalyzer { /* … */ }
 
-/// Snowball Porter2 stemmer over any of `rust-stemmers`' 18 languages.
-/// Stopwords are caller-supplied (we ship empty lists by default for
-/// non-English — callers can supply their own).
-pub struct SnowballAnalyzer {
-    language: rust_stemmers::Algorithm,
-    stopwords: HashSet<String>,
-    name: String,
-    /// Same filter chain as EnglishAnalyzer (camelCase split + ASCII fold
-    /// + lowercase + stopword + Snowball with `language`).
-}
-
-// Builtins — pre-baked configs for the most common Snowball languages,
-// with EMPTY stopword lists (gap honestly documented — callers can supply
-// their own via `SnowballAnalyzer::with_stopwords`).
 impl SnowballAnalyzer {
-    pub fn french() -> Self { /* Algorithm::French + [] stopwords */ }
-    pub fn german() -> Self { /* Algorithm::German + [] */ }
-    pub fn spanish() -> Self { /* Algorithm::Spanish + [] */ }
-    pub fn italian() -> Self { /* Algorithm::Italian + [] */ }
-    pub fn portuguese() -> Self { /* Algorithm::Portuguese + [] */ }
-    pub fn dutch() -> Self { /* Algorithm::Dutch + [] */ }
-    pub fn russian() -> Self { /* Algorithm::Russian + [] */ }
-    pub fn swedish() -> Self { /* Algorithm::Swedish + [] */ }
-    pub fn norwegian() -> Self { /* Algorithm::Norwegian + [] */ }
-    pub fn danish() -> Self { /* Algorithm::Danish + [] */ }
-    pub fn romanian() -> Self { /* Algorithm::Romanian + [] */ }
-    pub fn hungarian() -> Self { /* Algorithm::Hungarian + [] */ }
-    pub fn turkish() -> Self { /* Algorithm::Turkish + [] */ }
-    pub fn arabic() -> Self { /* Algorithm::Arabic + [] */ }
-    pub fn greek() -> Self { /* Algorithm::Greek + [] */ }
-    pub fn tamil() -> Self { /* Algorithm::Tamil + [] */ }
+    /// English builtin — ships with the curated stopword list from
+    /// `crate::context::STOPWORDS`.
+    pub fn english() -> Self;
 
-    /// Caller-supplied stopword list (must already be lowercase + folded).
-    pub fn with_stopwords(mut self, stopwords: Vec<String>) -> Self { /* … */ }
+    /// One pre-baked constructor per Snowball language (`german`,
+    /// `french`, `spanish`, `italian`, `portuguese`, `dutch`, `russian`,
+    /// `swedish`, `norwegian`, `danish`, `finnish`, `romanian`,
+    /// `hungarian`, `turkish`, `arabic`, `greek`, `tamil`). All default
+    /// to **empty** stopword lists — see Calibration disclaimer below.
+    pub fn german() -> Self;
+    pub fn french() -> Self;
+    // … 15 more
+
+    /// Route a language name (case-insensitive) to its builtin. Used by
+    /// the string-routed binding surfaces (Python `language=`, Node
+    /// `language`). Returns `None` for unknown names so callers can
+    /// surface a clean error rather than silently falling back.
+    pub fn by_name(name: &str) -> Option<Self>;
+
+    /// Attach a stopword list (lowercase + folded) on top of the
+    /// language's stemmer.
+    pub fn with_stopwords(self, stopwords: Vec<String>) -> Self;
 }
+
+/// Process-wide cached `Arc<dyn Analyzer>` pointing at
+/// `SnowballAnalyzer::english()`. Used as the default in
+/// `ContextConfig::analyzer` (always populated).
+pub fn default_english() -> Arc<dyn Analyzer>;
 ```
 
 ## Wiring
@@ -124,57 +84,34 @@ impl SnowballAnalyzer {
 ### Document API
 
 ```rust
-let mut doc = Document::from_text("d", "Bücher gelesen")?
+let mut doc = redhop::Document::from_text("d", "ich habe Bücher")?
     .with_analyzer(Arc::new(SnowballAnalyzer::german()));
 ```
 
-`Document::with_analyzer(Arc<dyn Analyzer>)` mirrors `with_embedder` —
-attaches an analyzer that gets passed to:
-- `Bm25Retriever::with_analyzer(analyzer)` at index build time
-- `ContextConfig::analyzer` for the grounding scorer
+`Document::with_analyzer(Arc<dyn Analyzer>)` mirrors `with_embedder` — it
+sets `self.analyzer` (drives the retrievers) AND
+`self.cfg.context.analyzer` (drives the grounding scorer) in lockstep,
+and resets the lazily-built BM25 index since analyzer choice is fixed
+at index time.
 
-If not called, the default is `EnglishAnalyzer` (0.1.4 behavior preserved).
+### `Bm25Retriever`
 
-### Bm25Retriever
-
-Add a new constructor:
 ```rust
-pub fn with_analyzer(analyzer: Arc<dyn Analyzer>) -> Result<Self> {
-    // Register analyzer.build_text_analyzer() against the index's
-    // tokenizer manager under analyzer.name().
-}
+let bm25 = Bm25Retriever::with_analyzer(analyzer.clone())?;
+// `Bm25Retriever::new()` is sugar over with_analyzer(default_english()).
 ```
-
-Keep `Bm25Retriever::new()` as a sugar that calls
-`Bm25Retriever::with_analyzer(Arc::new(EnglishAnalyzer::new()))`.
 
 ### Grounding scorer
 
-`crate::context::normalize` becomes a method on the analyzer (delegated):
+`crate::context::terms(text, &dyn Analyzer)` collects the analyzer's
+output for the grounding-scorer pass. `build_context` /
+`analyze_context` read the analyzer from `cfg.context.analyzer` (always
+populated; default = `default_english()`).
 
-```rust
-// Before:
-fn normalize(w: &str) -> Option<String> { /* hardcoded English */ }
+### Cross-binding (Python / Node)
 
-// After:
-fn normalize_with(w: &str, analyzer: &dyn Analyzer) -> Option<String> {
-    let tokens = analyzer.tokens(w);
-    tokens.into_iter().next()  // pre-tokenized input → single term
-}
-
-// `terms(text, analyzer)` becomes:
-fn terms(text: &str, analyzer: &dyn Analyzer) -> HashSet<String> {
-    analyzer.tokens(text).into_iter().collect()
-}
-```
-
-`build_context` / `analyze_context` get `cfg.analyzer` from `ContextConfig`
-(new field, default = `Arc::new(EnglishAnalyzer::new())`).
-
-### Cross-binding
-
-For `pyo3` / `napi-rs`: Rust trait objects don't cross FFI cleanly, so the
-bindings get a **string-routed** view:
+Rust trait objects don't cross FFI cleanly, so the bindings expose a
+**string-routed** view:
 
 ```python
 doc = redhop.Document.from_text(text, language="german")
@@ -184,84 +121,52 @@ doc = redhop.Document.from_text(text, language="german")
 const doc = Document.fromText(text, { language: "german" });
 ```
 
-Maps to one of the builtin `SnowballAnalyzer::<language>()` constructors.
+Both map to a `SnowballAnalyzer::by_name(...)` lookup in `LoadOptions`.
+Unknown names surface as an `Err`/`ValueError`/`Error` — no silent
+fallback.
 
-Truly-custom analyzers (a Python user implementing the trait via pyo3's
-`PyAny`-based dispatch) are deliberately deferred — Python-side method
-dispatch per token would be 100× slower than the Rust-side fold.
-Documented as a future "advanced extension" once a real user needs it.
+Custom analyzers implemented in Python or Node (via pyo3 `PyAny`-based
+dispatch / napi callbacks) are deliberately deferred — per-token FFI
+dispatch would be 100× slower than the Rust-side fold. Implement the
+trait in Rust if you need a CJK tokenizer or a custom pipeline.
 
-## What we get (and don't)
+## Pinning tests
 
-**Get**:
-- Cross-binding language selection by name (`language="german"`, etc.).
-- Rust-side custom analyzer trait (anyone can implement `Analyzer`).
-- BM25 and grounding stay in lockstep — same trait drives both.
-- Backward-compatible: `with_analyzer` is additive; existing callers see
-  no change.
+- `crates/redhop/src/analyzer.rs` (mod tests) — 10 unit tests: English
+  stems, English stopwords, German morphology, French inflections,
+  ASCII folding across languages, camelCase split, `by_name` routing
+  (case-insensitive + unknown name), `default_english` Arc identity,
+  `tokens` ⇔ `build_text_analyzer` agreement, and a parametrized smoke
+  across all 18 builtins.
+- `crates/redhop/tests/quality_suite.rs::t41`-`t45` — end-to-end
+  behavior: German `Bücher`↔`Buch` via `with_analyzer(German)`, French
+  `manger`↔`mange`, both-layers-swapped proof, unknown-language error,
+  and per-Document analyzer isolation.
+- `python/tests/test_analyzer.py` — 24 cases through the pyo3 boundary
+  (caught a real binding bug on first run: `from_chunks` was silently
+  dropping `language=`).
+- `nodejs/test/analyzer.cjs` — 24 assertions through the napi boundary.
 
-**Don't get** (deferred):
-- Python/Node users implementing custom analyzers (FFI overhead per token).
-- Calibrated stopword lists per language — we ship empty lists; users can
-  supply their own. Calibration needs eval corpora per language.
-- CJK word segmentation — needs a separate tokenizer family
-  (lindera / jieba / kuromoji). Different scope.
-- A `language` auto-detection step. Mixed-language content needs explicit
-  per-chunk tagging by the loader; explicit > magic.
+## Calibration disclaimer
 
-## Execution plan (3-5 commits)
+Pre-baked non-English builtins get you the Snowball Porter2 stemmer for
+that language, full stop. There is **no eval corpus** for non-English —
+ranking quality on a real German legal contract is not measured to
+match English Snowball's on a real English one. The pinning tests prove
+morphology unifies (`Bücher` ↔ `Buch`); they don't prove ranking
+quality on a domain corpus.
 
-1. **C1**: define the `Analyzer` trait + `EnglishAnalyzer` + `SnowballAnalyzer` in
-   `crates/redhop/src/analyzer.rs`. No wiring yet — just the surface. No
-   behavior change to existing code paths.
+For demanding use cases, supply a custom `Analyzer` impl and benchmark
+on your own corpus.
 
-2. **C2**: refactor `Bm25Retriever` to take `Arc<dyn Analyzer>`. Keep
-   `Bm25Retriever::new()` as a sugar over `with_analyzer(EnglishAnalyzer)`.
-   No external behavior change.
+## What's out of scope
 
-3. **C3**: refactor `crate::context::normalize` + `terms` to use the
-   analyzer from `ContextConfig`. Add `ContextConfig::analyzer` (default
-   = English). No external behavior change.
-
-4. **C4**: wire `Document::with_analyzer`. Add `DocumentConfig::analyzer`
-   so the loaders can configure it via `LoadOptions::language: Option<String>`.
-
-5. **C5**: bindings + tests + docs.
-   - Python: `language: Option<String>` arg on every `from_*` constructor.
-   - Node: `language: Option<String>` field on `Options`.
-   - quality_suite tests for German `Bücher` → `Buch`, French
-     `courait` → `court`, etc. with the new analyzer.
-   - Update `docs/LANGUAGE.md` to point at the new public API.
-
-Each commit keeps `cargo test --workspace`, `clippy -- -D warnings`, and
-`fmt --check` green.
-
-## Open questions before coding
-
-1. **Do we want `with_analyzer` to take `Arc<dyn Analyzer>` or
-   `Box<dyn Analyzer>`?** `Arc` mirrors `with_embedder` and lets the
-   analyzer be cheap to clone across BM25 / grounding / reranker. Probably
-   `Arc`.
-
-2. **Should `ContextConfig::analyzer` be `Option<Arc<dyn Analyzer>>`
-   (defaults to `None` → callers wire English internally) or
-   `Arc<dyn Analyzer>` (always populated)?** The latter is cleaner but
-   needs a non-`None` default value in `Default` impl. Probably the latter
-   with a lazy-static English instance.
-
-3. **Snowball builtins: which 8-10 languages do we pre-bake?** All 17 is
-   easy (rust-stemmers ships them) but bloats the API surface. Top 8 by
-   user population: english, spanish, french, german, portuguese, italian,
-   russian, arabic. Or all 17 if we don't care about API noise.
-
-4. **Cross-binding language string format**: ISO 639-1 (`"en"`, `"de"`)
-   or full names (`"english"`, `"german"`)? Snowball's `Algorithm` enum
-   uses full names. Match that for consistency.
-
-5. **What's `EnglishAnalyzer::tokens()` doing differently from the rest?**
-   It includes the English `STOPWORDS` const from `crate::context`. The
-   generic `SnowballAnalyzer` defaults to empty stopwords. So
-   `EnglishAnalyzer ≠ SnowballAnalyzer::with_language(English)`. Worth
-   documenting; not a problem.
-
-Sign off on the API shape and the open questions, then C1 begins.
+- **Python/Node users implementing custom analyzers** — FFI overhead
+  per token. Implement in Rust.
+- **Calibrated stopword lists per language** — empty by default; users
+  can supply their own via `SnowballAnalyzer::with_stopwords`.
+- **CJK word segmentation** — needs a separate tokenizer family
+  (lindera / jieba / kuromoji); not shipped. Implement the trait
+  yourself and attach via `Document::with_analyzer`.
+- **Language auto-detection** — mixed-language content needs explicit
+  per-chunk tagging by the loader.
