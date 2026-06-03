@@ -198,3 +198,33 @@ def test_context_economics_parity():
     py = redhop.context_economics(query, CORPUS)
     node = node_call("contextEconomics", [query, CORPUS])
     assert py == node, f"context_economics diverged:\n  python: {py!r}\n  node:   {node!r}"
+
+
+# ── Determinism within a binding (rerun must equal first run) ──────────────
+
+
+def test_python_determinism_repeat_run():
+    """Same call twice on the Python side must produce byte-identical
+    results. The cross-binding parity tests above presume both sides are
+    deterministic; this pins that assumption directly."""
+    query = "what is the refund window?"
+    a = redhop.build_context(query, CORPUS)
+    b = redhop.build_context(query, CORPUS)
+    assert a.text() == b.text(), "python build_context text not deterministic"
+    assert list(a.chunks) == list(b.chunks), "python chunks order not deterministic"
+    assert a.report.total_tokens == b.report.total_tokens, (
+        "python total_tokens not deterministic"
+    )
+    assert a.report.auto_decision == b.report.auto_decision
+
+
+def test_node_determinism_repeat_run():
+    """Same buildContext call twice on the Node side must produce
+    byte-identical results."""
+    query = "what is the refund window?"
+    a = node_call("buildContext", [query, CORPUS])
+    b = node_call("buildContext", [query, CORPUS])
+    assert a["text"] == b["text"], "node buildContext text not deterministic"
+    assert a["chunks"] == b["chunks"], "node chunks order not deterministic"
+    assert a["report"]["totalTokens"] == b["report"]["totalTokens"]
+    assert a["report"]["autoDecision"] == b["report"]["autoDecision"]
