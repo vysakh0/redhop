@@ -202,7 +202,14 @@ pub struct ContextConfig {
 impl Default for ContextConfig {
     fn default() -> Self {
         Self {
-            token_budget: 2048,
+            // 8192-token assembled-context budget by default. Most production
+            // LLMs have ≥32k usable context, so anything smaller leaves
+            // capacity on the table for the average user. Set explicitly via
+            // `ContextConfig { token_budget: ..., ..Default::default() }` or
+            // `Document::context(..., budget=...)` if you need a different
+            // ceiling. Python bindings have advertised this default since the
+            // wheel shipped; this aligns Rust/Node with that contract.
+            token_budget: 8192,
             // Safe-by-default: ReasoningPreserving keeps relevant evidence,
             // removes only unlinked junk, and never aggressively prunes by
             // relevance (which the second-hop-tax findings show is harmful
