@@ -1620,7 +1620,7 @@ impl Document {
             .collect();
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
         let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, None)?;
+        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, language)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if needs_embedder {
             inner = apply_dense_embedder(
