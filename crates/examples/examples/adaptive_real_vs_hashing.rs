@@ -138,7 +138,7 @@ async fn embed_map(
     let vecs = provider.embed(&texts).await?;
     Ok(chunks
         .iter()
-        .zip(vecs.into_iter())
+        .zip(vecs)
         .map(|(c, v)| (c.id.clone(), v))
         .collect())
 }
@@ -156,7 +156,7 @@ async fn run_arm(
         .map(|e| e.question.clone())
         .collect();
     let q_vecs = provider.embed(&q_texts).await?;
-    let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs.into_iter()).collect();
+    let q_map: HashMap<String, Embedding> = q_texts.into_iter().zip(q_vecs).collect();
 
     let corpus = dataset.to_labeled_corpus(chunker, |q| q_map.get(q).cloned(), default_regime)?;
 

@@ -48,17 +48,32 @@ jobs:
       - name: Clippy (bindings, warnings = errors)
         working-directory: python
         run: cargo clippy --all-targets --features files,semantic -- -D warnings
-      - name: Install build tooling
-        run: pip install maturin pytest pytest-cov
+      - name: Set up venv + install build tooling
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install maturin pytest pytest-cov
       - name: Build + install the extension (mirrors the published wheel — both features ON)
         working-directory: python
-        run: maturin develop --release --features files,semantic
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        run: |
+          source $VIRTUAL_ENV/bin/activate
+          maturin develop --release --features files,semantic
       - name: Unit tests (with coverage)
         working-directory: python
-        run: python -m pytest tests/ -q --cov=redhop --cov-report=term-missing
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        run: |
+          source $VIRTUAL_ENV/bin/activate
+          python -m pytest tests/ -q --cov=redhop --cov-report=term-missing
       - name: Quickstart smoke (Document path, no network/LLM)
         working-directory: python
-        run: python examples/quickstart.py
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        run: |
+          source $VIRTUAL_ENV/bin/activate
+          python examples/quickstart.py
 
   node:
     name: Node binding build + smoke

@@ -79,7 +79,7 @@ pub async fn bench_embedder(
     let texts: Vec<String> = chunk_texts.iter().map(|(_, t)| t.clone()).collect();
     let chunk_vecs = provider.embed(&texts).await?;
     let mut index = FlatVectorIndex::new(dim);
-    for ((id, _), v) in chunk_texts.iter().zip(chunk_vecs.into_iter()) {
+    for ((id, _), v) in chunk_texts.iter().zip(chunk_vecs) {
         index.add(id.clone(), v)?;
     }
 

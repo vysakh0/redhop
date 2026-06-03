@@ -258,11 +258,7 @@ fn build_cases(corpus: &LabeledCorpus, chunks: &[Chunk]) -> (Vec<Case>, f32) {
 
         // Retrieved set, presented relevance-ranked (descending grounding),
         // as a real retriever would return it — the second hop sits low.
-        let mut all: Vec<Chunk> = gold
-            .iter()
-            .map(|(_, c, _)| c.clone())
-            .chain(junk.into_iter())
-            .collect();
+        let mut all: Vec<Chunk> = gold.iter().map(|(_, c, _)| c.clone()).chain(junk).collect();
         let g_of = |c: &Chunk| grounding(&q_terms, &terms(&c.text));
         all.sort_by(|a, b| g_of(b).partial_cmp(&g_of(a)).unwrap());
 
