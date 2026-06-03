@@ -338,3 +338,23 @@ impl Document {
         Ok(to_report(&r))
     }
 }
+
+/// Query grounding of a chunk's text: stopword-removed, Snowball-stemmed
+/// query-term overlap, in `[0, 1]`. The same relevance signal the strategies
+/// use internally; exposed so external code reuses redhop's exact notion of
+/// relevance instead of drifting from it. Uses the default English analyzer;
+/// non-English content should reach grounding via `Document.context().report`
+/// (which carries the configured analyzer end-to-end).
+#[napi]
+pub fn grounding_score(query: String, text: String) -> f64 {
+    redhop::context::grounding_score(&query, &text) as f64
+}
+
+/// Chunk↔chunk linkage strength: term-set Jaccard over the same normalized
+/// terms — the bridge signal `reasoning_preserving` uses to decide whether
+/// a low-relevance chunk is a rescuable second hop. In `[0, 1]`. Uses the
+/// default English analyzer.
+#[napi]
+pub fn link_strength(a: String, b: String) -> f64 {
+    redhop::context::link_strength(&a, &b) as f64
+}

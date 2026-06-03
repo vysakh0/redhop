@@ -130,6 +130,22 @@ export interface BuiltContext {
   report: Report
 }
 /**
+ * Query grounding of a chunk's text: stopword-removed, Snowball-stemmed
+ * query-term overlap, in `[0, 1]`. The same relevance signal the strategies
+ * use internally; exposed so external code reuses redhop's exact notion of
+ * relevance instead of drifting from it. Uses the default English analyzer;
+ * non-English content should reach grounding via `Document.context().report`
+ * (which carries the configured analyzer end-to-end).
+ */
+export declare function groundingScore(query: string, text: string): number
+/**
+ * Chunk↔chunk linkage strength: term-set Jaccard over the same normalized
+ * terms — the bridge signal `reasoning_preserving` uses to decide whether
+ * a low-relevance chunk is a rescuable second hop. In `[0, 1]`. Uses the
+ * default English analyzer.
+ */
+export declare function linkStrength(a: string, b: string): number
+/**
  * A document you reason over. RedHop owns chunking, internal retrieval, and
  * reasoning-preserving context allocation; you think in documents and queries.
  */

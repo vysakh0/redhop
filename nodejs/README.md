@@ -99,6 +99,19 @@ chunks / section headings, in document order).
 prompt — useful for auditing what RedHop would do before paying assembly
 cost. Returns just the `report`.
 
+Standalone observability primitives (the same scoring the strategies use
+internally, exposed so external code never has to reimplement and drift):
+
+```javascript
+const { groundingScore, linkStrength } = require("redhop");
+
+groundingScore("refund window", chunkText);   // → number in [0, 1]
+linkStrength(chunkA, chunkB);                  // → number in [0, 1]
+```
+
+Both use the default English analyzer; non-English content reaches the
+configured analyzer through `Document.context(...).report` instead.
+
 `fromFolder` exposes two more getters: `doc.nFiles` (count of indexed
 files) and `doc.skippedFiles` (`{ source, reason }[]` — files that
 couldn't be parsed: unsupported formats, unreadable bytes, scanned PDFs

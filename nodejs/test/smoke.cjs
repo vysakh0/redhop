@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { Document } = require("../index.js");
+const { Document, groundingScore, linkStrength } = require("../index.js");
 
 // from_text → context → citations + report
 let ctx = Document.fromText("the refund window is thirty days from purchase").context("refund window");
@@ -89,5 +89,15 @@ assert.ok(fs.existsSync(path.join(pdir, ".redhop", "index.json")), "persist inde
 let pctx = Document.fromFolder(pdir, { persist: true }).context("refund window");
 assert.ok(pctx.citations.some((c) => c.source.endsWith("x.txt")));
 fs.rmSync(pdir, { recursive: true, force: true });
+
+// observability primitives — match Python's redhop.grounding_score / link_strength
+{
+  const g = groundingScore("refund window", "the refund window is thirty days");
+  assert.ok(g > 0 && g <= 1, `groundingScore should be in (0,1] when query terms appear in text; got ${g}`);
+  const g0 = groundingScore("xyzzy frobnicate", "the refund window is thirty days");
+  assert.strictEqual(g0, 0, `groundingScore should be 0 when no terms overlap; got ${g0}`);
+  const l = linkStrength("refund within thirty days", "thirty-day refund policy");
+  assert.ok(l > 0 && l <= 1, `linkStrength should be in (0,1] when chunks share terms; got ${l}`);
+}
 
 console.log("✓ node smoke tests passed");
