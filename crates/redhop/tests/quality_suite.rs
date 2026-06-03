@@ -45,10 +45,12 @@
 //! - **Non-English pinning** (T37-T40): degraded-but-functional behavior on
 //!   Spanish/German/French/CJK content. See docs/LANGUAGE.md for the
 //!   "what works / what doesn't" matrix.
-//! - **Analyzer plugin** (T41-T44): `Document::with_analyzer` actually
+//! - **Analyzer plugin** (T41-T45): `Document::with_analyzer` actually
 //!   swaps both BM25 retrieval AND the grounding scorer — German morphology
 //!   (`Bücher` ↔ `Buch`), French infinitive (`manger` ↔ `mange`), unknown-
-//!   language error, default-English preserved.
+//!   language error, default-English preserved, and per-Document analyzer
+//!   isolation (no leak between Documents via OnceLock-cached default or
+//!   Tantivy's tokenizer manager).
 
 use redhop::core::{Chunk, ChunkId, TokenCount};
 use redhop::{read_bytes, BuiltContext, Document, DocumentConfig};
@@ -1171,5 +1173,71 @@ fn t44_unknown_language_via_load_options_errors() {
     assert!(
         err.to_lowercase().contains("germann") || err.to_lowercase().contains("unknown"),
         "T44: error message should name the unknown language; got: {err}"
+    );
+}
+
+#[test]
+fn t45_analyzer_does_not_leak_between_documents() {
+    // Paranoia test for the analyzer-per-Document contract. If the
+    // OnceLock-cached `default_english()` instance or Tantivy's
+    // tokenizer manager leaked state between Document instances, one
+    // Document's analyzer choice could bleed into another's behavior.
+    //
+    // Set-up: TWO Documents with the SAME German corpus but DIFFERENT
+    // analyzers (one English-default, one German). Each must behave
+    // according to ITS analyzer. We build them in both orders to catch
+    // first-built-wins and last-built-wins styles of leak.
+    use redhop::analyzer::SnowballAnalyzer;
+    use std::sync::Arc;
+
+    let german_corpus = || {
+        vec![
+            prose("books", "ich habe viele Bücher gelesen", "library.de.md"),
+            prose("car", "das Auto steht in der Garage", "garage.de.md"),
+        ]
+    };
+
+    // Order A: build English-default first, then German.
+    let mut en_first = build(german_corpus());
+    let mut de_second = Document::from_chunks_with(german_corpus(), DocumentConfig::default())
+        .unwrap()
+        .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+
+    let en_first_hit = en_first.context("Buch").unwrap();
+    let de_second_hit = de_second.context("Buch").unwrap();
+    assert!(
+        !en_first_hit.chunks.iter().any(|c| c.id.as_str() == "books"),
+        "T45 order-A: English-default Document must NOT find Bücher via 'Buch'; \
+         if it does, the German analyzer leaked back from de_second"
+    );
+    assert!(
+        de_second_hit
+            .chunks
+            .iter()
+            .any(|c| c.id.as_str() == "books"),
+        "T45 order-A: German-analyzer Document MUST find Bücher via 'Buch'"
+    );
+
+    // Order B: build German first, then English-default — proves the
+    // earlier German registration didn't poison Tantivy's tokenizer
+    // manager such that the later default-English Document inherits it.
+    let mut de_first = Document::from_chunks_with(german_corpus(), DocumentConfig::default())
+        .unwrap()
+        .with_analyzer(Arc::new(SnowballAnalyzer::german()));
+    let mut en_second = build(german_corpus());
+
+    let de_first_hit = de_first.context("Buch").unwrap();
+    let en_second_hit = en_second.context("Buch").unwrap();
+    assert!(
+        de_first_hit.chunks.iter().any(|c| c.id.as_str() == "books"),
+        "T45 order-B: German-analyzer Document MUST find Bücher via 'Buch'"
+    );
+    assert!(
+        !en_second_hit
+            .chunks
+            .iter()
+            .any(|c| c.id.as_str() == "books"),
+        "T45 order-B: English-default Document must NOT find Bücher via 'Buch'; \
+         if it does, the earlier German registration leaked forward"
     );
 }

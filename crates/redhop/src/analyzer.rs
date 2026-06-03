@@ -498,4 +498,70 @@ mod tests {
         };
         assert_eq!(direct, via_analyzer);
     }
+
+    /// Smoke every advertised Snowball builtin. Catches: (a) a missing
+    /// per-language constructor, (b) drift between the by_name() name
+    /// list and the actual constructors, (c) a rust-stemmers ABI break
+    /// on any single language we don't otherwise exercise.
+    ///
+    /// We don't assert per-language linguistic correctness here — we
+    /// have no eval corpus for most of these languages (see
+    /// docs/LANGUAGE.md's calibration disclaimer). What we DO assert:
+    /// the builtin is reachable, its analyzer name matches the input
+    /// string, and `tokens()` round-trips on a plain ASCII sentence
+    /// without panicking. Per-language behavioral tests for the
+    /// languages we ship corpora for (German, French) live in
+    /// `tests/quality_suite.rs` (T41-T44).
+    #[test]
+    fn all_18_snowball_builtins_construct_and_tokenize() {
+        // Every name advertised in the unknown-language error message
+        // (in python/src/lib.rs and nodejs/src/lib.rs) must work here,
+        // or callers see "supported: ..., tamil, ..." and then get a
+        // None from by_name. The match below is the authoritative list.
+        let all = [
+            "arabic",
+            "danish",
+            "dutch",
+            "english",
+            "finnish",
+            "french",
+            "german",
+            "greek",
+            "hungarian",
+            "italian",
+            "norwegian",
+            "portuguese",
+            "romanian",
+            "russian",
+            "spanish",
+            "swedish",
+            "tamil",
+            "turkish",
+        ];
+
+        for name in all {
+            let a = SnowballAnalyzer::by_name(name)
+                .unwrap_or_else(|| panic!("by_name({name:?}) returned None"));
+            assert_eq!(a.name(), name, "analyzer name should match input");
+
+            let tokens = a.tokens("the quick brown fox jumps over the lazy dog");
+            assert!(
+                !tokens.is_empty(),
+                "{name}: tokens() should produce non-empty output on a plain ASCII sentence"
+            );
+
+            // Build the Tantivy TextAnalyzer too — proves the cross-FFI
+            // path is wired, not just the in-Rust tokens() helper.
+            let mut ta = a.build_text_analyzer();
+            let mut stream = ta.token_stream("hello world");
+            let mut got_any = false;
+            while stream.advance() {
+                got_any = true;
+            }
+            assert!(
+                got_any,
+                "{name}: build_text_analyzer() stream should emit at least one token"
+            );
+        }
+    }
 }
