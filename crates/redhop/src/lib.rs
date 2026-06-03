@@ -87,7 +87,10 @@ pub mod traits {
 }
 
 mod load;
-pub use load::{chunks, citations, text, Citation, FolderOptions, LoadOptions};
+pub use load::{
+    chunks, citations, retrieval_from_str, strategy_from_str, text, Citation, FolderOptions,
+    LoadOptions,
+};
 #[cfg(feature = "files")]
 pub use load::{
     read_bytes, read_bytes_with, read_file, read_file_with, read_folder, read_folder_with,

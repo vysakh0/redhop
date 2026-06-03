@@ -126,7 +126,11 @@ pub fn citations(ctx: &BuiltContext) -> Vec<Citation> {
         .collect()
 }
 
-fn strategy_from_str(s: &str) -> Result<ContextStrategy> {
+/// Parse a string into a [`ContextStrategy`]. The canonical mapping used by
+/// every binding (Python `strategy=`, Node `options.strategy`, the CLI), so
+/// each language exposes the same strings and the same error message for an
+/// unknown name. See [`ContextStrategy`] for what each strategy does.
+pub fn strategy_from_str(s: &str) -> Result<ContextStrategy> {
     use ContextStrategy as S;
     Ok(match s {
         "raw_topk" => S::RawTopK,
@@ -144,7 +148,13 @@ fn strategy_from_str(s: &str) -> Result<ContextStrategy> {
     })
 }
 
-fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Result<RetrievalMode> {
+/// Parse a string into a [`RetrievalMode`]. `None` and `Some("lexical")` both
+/// resolve to BM25 (the default); `Some("hybrid")` produces
+/// [`RetrievalMode::Hybrid`] with the given candidate-pool depth (clamped to
+/// at least 1); `Some("semantic")` produces [`RetrievalMode::Dense`]. Same
+/// canonical mapping as [`strategy_from_str`] — every binding shares it so
+/// the strings and the unknown-mode error message stay in sync.
+pub fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Result<RetrievalMode> {
     Ok(match retrieval {
         None | Some("lexical") => RetrievalMode::Lexical,
         Some("hybrid") => RetrievalMode::Hybrid {

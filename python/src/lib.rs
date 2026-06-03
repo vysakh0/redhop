@@ -24,21 +24,11 @@ use redhop::document::{
     Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
 };
 
+/// Thin forwarder over [`redhop::strategy_from_str`] — the canonical
+/// string→enum mapping lives in the Rust crate so every binding shares it
+/// and the unknown-strategy error message can't drift.
 fn strategy_from_str(s: &str) -> PyResult<ContextStrategy> {
-    Ok(match s {
-        "raw_topk" => ContextStrategy::RawTopK,
-        "distractor_filtered" => ContextStrategy::DistractorFiltered,
-        "redundancy_pruned" => ContextStrategy::RedundancyPruned,
-        "max_density" => ContextStrategy::MaxDensity,
-        "reasoning_preserving" => ContextStrategy::ReasoningPreserving,
-        "auto" => ContextStrategy::Auto,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown strategy '{other}' (expected: raw_topk, distractor_filtered, \
-                 redundancy_pruned, max_density, reasoning_preserving, auto)"
-            )))
-        }
-    })
+    redhop::strategy_from_str(s).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 fn strategy_to_str(s: ContextStrategy) -> &'static str {
@@ -508,23 +498,12 @@ fn to_py<T>(r: redhop::core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Thin forwarder over [`redhop::retrieval_from_str`] — the canonical
+/// string→enum mapping lives in the Rust crate so every binding shares it
+/// and the unknown-mode error message can't drift.
 fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResult<RetrievalMode> {
-    Ok(match retrieval {
-        None | Some("lexical") => RetrievalMode::Lexical,
-        // BM25 prune → dense rerank the pool: scales to large corpora, no vector DB.
-        Some("hybrid") => RetrievalMode::Hybrid {
-            candidate_pool: candidate_pool.max(1),
-        },
-        // Global dense over every chunk: best recall on small/bounded corpora.
-        Some("semantic") => RetrievalMode::Dense,
-        Some(other) => {
-            return Err(PyValueError::new_err(format!(
-                "unknown retrieval mode '{other}'; use 'lexical' (default, BM25), 'hybrid' \
-                 (BM25 prune → dense rerank — large corpora, no vector DB), or 'semantic' \
-                 (global dense over every chunk — small/bounded corpora)"
-            )))
-        }
-    })
+    redhop::retrieval_from_str(retrieval, candidate_pool)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[allow(clippy::too_many_arguments)]
