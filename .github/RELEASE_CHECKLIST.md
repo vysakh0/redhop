@@ -18,10 +18,24 @@ Pre-release sanity for a tagged RedHop version.
 
 - [ ] Workspace `version` in root `Cargo.toml`.
 - [ ] `python/pyproject.toml` version (and `python/Cargo.toml`).
+- [ ] `nodejs/package.json` version.
 - [ ] Note changes in the changelog.
 
 ## Publish (when ready)
 
-- [ ] `cargo publish` core crates in dependency order (`redhop-core` → `redhop-context` → …).
-- [ ] Build wheels for the target platforms (cibuildwheel / maturin-action) and `maturin publish` to PyPI.
-- [ ] Tag the release; update the docs website.
+Publishing is tag-driven — push a `v<version>` tag and three workflows
+fire in parallel:
+
+- [ ] `release-crates.yml` — `cargo publish -p redhop` (single
+  consolidated crate; no in-order multi-crate publish anymore).
+- [ ] `release-python.yml` — `maturin build --release --features
+  semantic,files` per platform, then `maturin publish` to PyPI.
+- [ ] `release-node.yml` — `napi build --release` per target in
+  `napi.triples`, then `npm publish` the meta + per-platform packages.
+- [ ] `create-release.yml` — drafts the GitHub Release from CHANGELOG.
+
+Pre-tag manual checks:
+
+- [ ] Tag matches all three version fields above.
+- [ ] CI is green on the commit being tagged (`gh run list --workflow CI`).
+- [ ] Update the docs website (separate repo).
