@@ -509,13 +509,19 @@ pub fn filter_context(
 /// Pure diagnostics over caller-supplied chunks: what would RedHop do, and
 /// why, without paying the assembly cost. Returns the same `Report` shape
 /// as `Document.context().report`.
+///
+/// Like Python's `redhop.analyze_context`, this is a "no-budget" surface —
+/// the `token_budget` option, if supplied, is ignored so the report's
+/// `budget_utilization` reflects pure-analysis semantics (all chunks
+/// counted) and stays consistent across bindings.
 #[napi]
 pub fn analyze_context(
     query: String,
     retrieved_chunks: Vec<ChunkInput>,
     options: Option<ContextOptions>,
 ) -> napi::Result<Report> {
-    let cfg = build_context_config(options)?;
+    let mut cfg = build_context_config(options)?;
+    cfg.token_budget = usize::MAX;
     let q = redhop::core::Query::new(&query);
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()
@@ -529,13 +535,19 @@ pub fn analyze_context(
 /// Token economics over caller-supplied chunks (evidence density, distractor
 /// ratio, redundancy, estimated wasted tokens). Returns a JSON string —
 /// callers `JSON.parse()` for the typed shape.
+///
+/// Like Python's `redhop.context_economics`, this is a "no-budget" surface
+/// — the `token_budget` option is ignored so `budget_utilization` is
+/// computed against an unbounded budget (essentially 0), matching the
+/// "pure analysis, no filtering, no truncation" intent.
 #[napi]
 pub fn context_economics(
     query: String,
     retrieved_chunks: Vec<ChunkInput>,
     options: Option<ContextOptions>,
 ) -> napi::Result<String> {
-    let cfg = build_context_config(options)?;
+    let mut cfg = build_context_config(options)?;
+    cfg.token_budget = usize::MAX;
     let q = redhop::core::Query::new(&query);
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()

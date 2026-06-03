@@ -208,12 +208,22 @@ export declare function filterContext(query: string, retrievedChunks: Array<Chun
  * Pure diagnostics over caller-supplied chunks: what would RedHop do, and
  * why, without paying the assembly cost. Returns the same `Report` shape
  * as `Document.context().report`.
+ *
+ * Like Python's `redhop.analyze_context`, this is a "no-budget" surface —
+ * the `token_budget` option, if supplied, is ignored so the report's
+ * `budget_utilization` reflects pure-analysis semantics (all chunks
+ * counted) and stays consistent across bindings.
  */
 export declare function analyzeContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): Report
 /**
  * Token economics over caller-supplied chunks (evidence density, distractor
  * ratio, redundancy, estimated wasted tokens). Returns a JSON string —
  * callers `JSON.parse()` for the typed shape.
+ *
+ * Like Python's `redhop.context_economics`, this is a "no-budget" surface
+ * — the `token_budget` option is ignored so `budget_utilization` is
+ * computed against an unbounded budget (essentially 0), matching the
+ * "pure analysis, no filtering, no truncation" intent.
  */
 export declare function contextEconomics(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): string
 /**

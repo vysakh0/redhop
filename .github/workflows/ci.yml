@@ -60,6 +60,19 @@ jobs:
         run: |
           source $VIRTUAL_ENV/bin/activate
           maturin develop --release --features files,semantic
+      # Build the Node addon too — `test_parity_node.py` spawns the napi
+      # binding via the parity_runner.cjs subprocess and diffs Python's
+      # results against Node's. The test SKIPS cleanly if either Node is
+      # missing or the addon isn't built, but on this CI runner both are
+      # present, so the parity guards stay active.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build the Node addon (for cross-binding parity tests)
+        working-directory: nodejs
+        run: |
+          npm ci || npm install
+          npm run build
       - name: Unit tests (with coverage)
         working-directory: python
         env:
