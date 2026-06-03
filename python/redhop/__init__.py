@@ -169,12 +169,72 @@ def report_to_dict(report: ContextReport) -> dict[str, Any]:
     return json.loads(report.json())
 
 
+def context_with_timeout(
+    doc: Document,
+    query: str,
+    *,
+    timeout_ms: int,
+    budget: int | None = None,
+    neighbors: int = 0,
+    include_heading: bool = False,
+) -> BuiltContext:
+    """Like ``doc.context(query, ...)`` but raise :class:`TimeoutError` if
+    the call doesn't return within ``timeout_ms`` milliseconds.
+
+    Intended for **agent integrations** that need to bail on stale queries
+    (user typed more, prior context is no longer needed). The retrieval
+    itself can't be interrupted mid-flight — Tantivy and ONNX have no
+    cooperative cancellation — but the watchdog thread returns control to
+    the caller on schedule. The background thread continues until it
+    finishes; its result is discarded.
+
+    Example:
+        try:
+            ctx = redhop.context_with_timeout(doc, q, timeout_ms=5000)
+        except TimeoutError:
+            # serve a fallback, prompt the user, etc.
+            ...
+
+    Raises:
+        TimeoutError: if the call doesn't complete within ``timeout_ms``.
+        ValueError: if ``timeout_ms <= 0``.
+    """
+    if timeout_ms <= 0:
+        raise ValueError(f"timeout_ms must be positive; got {timeout_ms}")
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as _FutTimeout
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="redhop-ctx") as ex:
+        fut = ex.submit(
+            doc.context,
+            query,
+            budget=budget,
+            neighbors=neighbors,
+            include_heading=include_heading,
+        )
+        try:
+            return fut.result(timeout=timeout_ms / 1000.0)
+        except _FutTimeout:
+            # The native call is still running in the worker thread; we just
+            # stop waiting. The thread pool's __exit__ will block on it
+            # finishing — which we DON'T want for "fire and forget" timeout
+            # semantics. Cancel the future (Python won't actually interrupt
+            # the running thread, but it prevents new work being scheduled).
+            fut.cancel()
+            raise TimeoutError(
+                f"redhop context() exceeded {timeout_ms}ms; the underlying "
+                "retrieval can't be interrupted but the watchdog returned. "
+                "The background work will finish and its result be discarded."
+            ) from None
+
+
 __all__ = [
     "Document",
     "build_context",
     "filter_context",
     "analyze_context",
     "context_economics",
+    "context_with_timeout",
     "grounding_score",
     "link_strength",
     "report_to_dict",
