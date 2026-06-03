@@ -57,6 +57,21 @@ pub struct LoadOptions {
     /// effect under `lexical`. Pair with `report.low_confidence_retrieval` to
     /// detect when the fallback fired with weak chunks (issue #1).
     pub min_candidates: Option<usize>,
+    /// Lexical analyzer language (`"english"` default; also `"french"`,
+    /// `"german"`, `"spanish"`, `"italian"`, `"portuguese"`, `"dutch"`,
+    /// `"russian"`, `"swedish"`, `"norwegian"`, `"danish"`, `"finnish"`,
+    /// `"romanian"`, `"hungarian"`, `"turkish"`, `"arabic"`, `"greek"`,
+    /// `"tamil"` — the 18 Snowball Porter2 languages). Drives both BM25
+    /// retrieval and the grounding scorer's term extraction so the two
+    /// layers agree on what counts as "the same term".
+    ///
+    /// Routes to [`crate::analyzer::SnowballAnalyzer::by_name`]; unknown
+    /// language strings return an error (we don't silently fall back to
+    /// English — a typo'd `"germann"` should surface, not silently degrade
+    /// to English ranking). For a custom analyzer (e.g. a CJK tokenizer),
+    /// drop the string config and call `Document::with_analyzer` directly
+    /// with your `Arc<dyn Analyzer>`.
+    pub language: Option<String>,
 }
 
 /// Options for [`read_folder_with`] (plus the chunking/retrieval [`LoadOptions`]).
@@ -145,9 +160,27 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         None => base.context.strategy,
     };
     let chunk_size = o.chunk_size.unwrap_or(128);
+    // Route LoadOptions::language → SnowballAnalyzer builtin. Unknown names
+    // error out so a typo can't silently fall back to English (which would
+    // hide the misconfiguration).
+    let analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer> = match &o.language {
+        None => base.context.analyzer.clone(),
+        Some(name) => match crate::analyzer::SnowballAnalyzer::by_name(name) {
+            Some(a) => std::sync::Arc::new(a),
+            None => {
+                return Err(Error::Other(format!(
+                    "unknown language {name:?}; supported: arabic, danish, dutch, \
+                     english, finnish, french, german, greek, hungarian, italian, \
+                     norwegian, portuguese, romanian, russian, spanish, swedish, \
+                     tamil, turkish"
+                )));
+            }
+        },
+    };
     let context = ContextConfig {
         token_budget: o.token_budget.unwrap_or(8192),
         strategy,
+        analyzer,
         ..base.context
     };
     Ok(DocumentConfig {

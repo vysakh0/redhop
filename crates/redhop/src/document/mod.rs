@@ -200,6 +200,11 @@ pub struct Document {
     embedder: Option<Arc<dyn EmbeddingProvider>>,
     // Optional separate query-side embedder for asymmetric models (e.g. E5).
     query_embedder: Option<Arc<dyn EmbeddingProvider>>,
+    // Lexical analyzer driving the BM25 retriever (and the
+    // ContextConfig.analyzer inside `cfg.context`, kept in lockstep). Defaults
+    // to English Snowball Porter2; override via `with_analyzer`. Always
+    // populated — there is no "no analyzer" state.
+    analyzer: Arc<dyn crate::analyzer::Analyzer>,
     // Lazily built on first query so construction is cheap (goal: lazy
     // chunk/index init).
     retriever: Option<Box<dyn Retriever>>,
@@ -433,12 +438,18 @@ impl Document {
         // A current-thread runtime is enough: the internal retriever's work is
         // CPU-bound (Tantivy on a blocking worker); we only block_on it.
         let rt = Builder::new_current_thread().build()?;
+        // The Document-level analyzer mirrors `cfg.context.analyzer`. The
+        // ContextConfig is the source of truth for analyzer choice when a
+        // loader (`LoadOptions::language`) sets it; we lift it onto the
+        // Document so retrievers can read it cheaply without traversing cfg.
+        let analyzer = cfg.context.analyzer.clone();
         Ok(Self {
             chunks,
             cfg,
             rt,
             embedder: None,
             query_embedder: None,
+            analyzer,
             retriever: None,
             reranker: None,
             fallback_bm25: None,
@@ -455,6 +466,26 @@ impl Document {
     pub fn with_embedder(mut self, embedder: Arc<dyn EmbeddingProvider>) -> Self {
         self.embedder = Some(embedder);
         self.retriever = None;
+        self
+    }
+
+    /// Supply the [`Analyzer`](crate::analyzer::Analyzer) that drives the
+    /// BM25 retriever AND the grounding scorer in [`crate::context`].
+    /// Defaults to English Snowball Porter2; swap for another language with
+    /// e.g. `Document::from_text("d", "Bücher")?.with_analyzer(Arc::new(SnowballAnalyzer::german()))`.
+    ///
+    /// Sets both `self.analyzer` (drives the retrievers) AND
+    /// `self.cfg.context.analyzer` (drives the grounding scorer) so the two
+    /// layers stay in lockstep — that's the whole point of the trait. Resets
+    /// any lazily-built BM25 index / fallback (analyzer is fixed at index
+    /// time per Tantivy's constraints).
+    ///
+    /// Call before the first `context`/`analyze` query.
+    pub fn with_analyzer(mut self, analyzer: Arc<dyn crate::analyzer::Analyzer>) -> Self {
+        self.analyzer = analyzer.clone();
+        self.cfg.context.analyzer = analyzer;
+        self.retriever = None;
+        self.fallback_bm25 = None;
         self
     }
 
@@ -691,7 +722,9 @@ impl Document {
     fn ensure_indexed(&mut self) -> Result<()> {
         if self.retriever.is_none() {
             let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
-                RetrievalMode::Lexical => Box::new(Bm25Retriever::new()?),
+                RetrievalMode::Lexical => {
+                    Box::new(Bm25Retriever::with_analyzer(self.analyzer.clone())?)
+                }
                 RetrievalMode::Hybrid { candidate_pool } => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
                         crate::core::Error::InvalidConfig(
@@ -701,14 +734,15 @@ impl Document {
                                 .into(),
                         )
                     })?;
-                    match self.query_embedder.clone() {
-                        Some(q) => Box::new(LocalRerankRetriever::new_with_query_embedder(
+                    let r = match self.query_embedder.clone() {
+                        Some(q) => LocalRerankRetriever::new_with_query_embedder(
                             embedder,
                             q,
                             candidate_pool,
-                        )?),
-                        None => Box::new(LocalRerankRetriever::new(embedder, candidate_pool)?),
-                    }
+                        )?,
+                        None => LocalRerankRetriever::new(embedder, candidate_pool)?,
+                    };
+                    Box::new(r.with_analyzer(self.analyzer.clone())?)
                 }
                 RetrievalMode::Dense => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
@@ -724,7 +758,12 @@ impl Document {
                         Some(q) => LocalRerankRetriever::new_with_query_embedder(embedder, q, 1)?,
                         None => LocalRerankRetriever::new(embedder, 1)?,
                     };
-                    Box::new(r.global())
+                    // Analyzer threaded through so the optional fallback /
+                    // hybrid-degradation path agrees with the rest of the
+                    // stack on what a term is. Global Dense doesn't use it
+                    // for ranking but the internal BM25 might still be
+                    // queried.
+                    Box::new(r.with_analyzer(self.analyzer.clone())?.global())
                 }
             };
             self.rt.block_on(r.index(&self.chunks))?;
@@ -796,7 +835,11 @@ impl Document {
         if self.fallback_bm25.is_some() {
             return Ok(());
         }
-        let mut bm25 = Bm25Retriever::new()?;
+        // Same analyzer as the primary retriever — otherwise the fallback's
+        // notion of "matches the query" would diverge from the primary's,
+        // which is exactly the silent-search-miss class we're architecturally
+        // avoiding.
+        let mut bm25 = Bm25Retriever::with_analyzer(self.analyzer.clone())?;
         self.rt.block_on(bm25.index(&self.chunks))?;
         self.fallback_bm25 = Some(bm25);
         Ok(())
