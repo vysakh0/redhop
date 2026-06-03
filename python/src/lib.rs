@@ -5,8 +5,6 @@
 //! Pythonic inputs (dicts/lists/strings) to the Rust types and wraps the
 //! results in small Python classes.
 
-use std::path::{Path, PathBuf};
-
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -779,393 +777,6 @@ fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
 }
 
 /// Build/cache dirs excluded by default even without a `.gitignore`.
-const DEFAULT_IGNORES: &[&str] = &[
-    "node_modules",
-    "target",
-    "__pycache__",
-    "venv",
-    "dist",
-    "build",
-];
-
-/// Collect the files to index under `root`, using the same walker ripgrep does:
-/// skips hidden entries, honors `.gitignore`/`.ignore` (when `gitignore`), excludes
-/// build/cache dirs and any caller `ignore` globs (gitignore-style). Sorted for
-/// deterministic chunk ids. `recursive=false` stays in the top level.
-fn collect_files(
-    root: &Path,
-    recursive: bool,
-    gitignore: bool,
-    ignore_globs: &[String],
-) -> PyResult<Vec<PathBuf>> {
-    // Override globs: a `!glob` excludes. All-exclude → everything else included.
-    let mut ob = ignore::overrides::OverrideBuilder::new(root);
-    for d in DEFAULT_IGNORES {
-        let _ = ob.add(&format!("!{d}"));
-    }
-    for g in ignore_globs {
-        ob.add(&format!("!{g}")).map_err(|e| {
-            PyValueError::new_err(format!("from_folder: invalid ignore pattern '{g}': {e}"))
-        })?;
-    }
-    let overrides = ob
-        .build()
-        .map_err(|e| PyValueError::new_err(format!("from_folder: ignore patterns: {e}")))?;
-
-    let mut wb = ignore::WalkBuilder::new(root);
-    wb.hidden(true) // skip dotfiles (.git, .venv, .redhop)
-        .git_ignore(gitignore)
-        .git_global(gitignore)
-        .git_exclude(gitignore)
-        .ignore(gitignore)
-        .parents(gitignore)
-        // Honor a .gitignore even when the folder isn't itself a git repo.
-        .require_git(false)
-        .overrides(overrides);
-    if !recursive {
-        wb.max_depth(Some(1));
-    }
-
-    let mut out = Vec::new();
-    for entry in wb.build() {
-        // Skip unreadable entries rather than failing the whole walk.
-        let Ok(entry) = entry else { continue };
-        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            out.push(entry.into_path());
-        }
-    }
-    out.sort();
-    Ok(out)
-}
-
-// ---- Persistent folder index (opt-in via `from_folder(persist=True)`) --------
-
-/// On-disk format version. Bump when the layout changes incompatibly.
-const INDEX_VERSION: u32 = 1;
-/// The index file written inside the index directory.
-const INDEX_FILE: &str = "index.json";
-
-/// One file's cached contribution to a folder index: its chunks (with
-/// embeddings) plus the stat used to detect changes on the next run.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct CachedFile {
-    source: String,
-    mtime: u64,
-    size: u64,
-    chunks: Vec<Chunk>,
-}
-
-/// The persisted folder index: a fingerprint of the indexing config (so a cache
-/// built with different settings is ignored) plus the per-file caches.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PersistedIndex {
-    version: u32,
-    fingerprint: String,
-    files: Vec<CachedFile>,
-}
-
-/// `(mtime_nanos, size)` for change detection, or `None` if the file vanished.
-fn file_stat(path: &Path) -> Option<(u64, u64)> {
-    let m = std::fs::metadata(path).ok()?;
-    let mtime = m
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_nanos() as u64;
-    Some((mtime, m.len()))
-}
-
-/// A string identifying the indexing settings. A cache only counts as valid if
-/// its fingerprint matches — change the chunking/retrieval/model and we rebuild.
-#[allow(clippy::too_many_arguments)]
-fn index_fingerprint(
-    chunk_size: usize,
-    chunk_overlap: usize,
-    retrieval: &Option<String>,
-    model: &Option<String>,
-    embedder_model: &Option<String>,
-    embedder_dim: usize,
-) -> String {
-    let s = |o: &Option<String>| o.clone().unwrap_or_default();
-    format!(
-        "v{INDEX_VERSION}|cs={chunk_size}|co={chunk_overlap}|r={}|m={}|em={}|ed={embedder_dim}",
-        s(retrieval),
-        s(model),
-        s(embedder_model),
-    )
-}
-
-/// Resolve where the index lives: explicit `index_dir`, else `<folder>/.redhop`.
-fn resolve_index_dir(folder: &Path, index_dir: &Option<String>) -> PathBuf {
-    match index_dir {
-        Some(d) => PathBuf::from(d),
-        None => folder.join(".redhop"),
-    }
-}
-
-/// Load a persisted index if present and its fingerprint matches; otherwise None
-/// (missing, unreadable, wrong version, or stale settings → full rebuild).
-fn load_index(dir: &Path, fingerprint: &str) -> Option<PersistedIndex> {
-    let raw = std::fs::read_to_string(dir.join(INDEX_FILE)).ok()?;
-    let idx: PersistedIndex = serde_json::from_str(&raw).ok()?;
-    if idx.version == INDEX_VERSION && idx.fingerprint == fingerprint {
-        Some(idx)
-    } else {
-        None
-    }
-}
-
-/// Build a document from chunks you already have (cached + freshly chunked),
-/// applying the embedder when the tier needs one. Mirrors `build_text_doc` but
-/// skips chunking (the chunks are ready).
-#[allow(clippy::too_many_arguments)]
-fn build_chunks_doc(
-    chunks: Vec<Chunk>,
-    strategy: Option<String>,
-    chunk_size: usize,
-    chunk_overlap: usize,
-    token_budget: usize,
-    candidate_k: usize,
-    retrieval: Option<String>,
-    model: Option<String>,
-    embedder_model: Option<String>,
-    embedder_tokenizer: Option<String>,
-    embedder_dim: usize,
-    embedder_pooling: Option<String>,
-    embedder_query_prefix: Option<String>,
-    embedder_passage_prefix: Option<String>,
-    candidate_pool: usize,
-    rerank: Option<String>,
-    language: Option<String>,
-) -> PyResult<RhDocument> {
-    let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-    let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-    let cfg = doc_config(
-        strategy,
-        token_budget,
-        candidate_k,
-        chunk_size,
-        chunk_overlap,
-        mode,
-        language,
-    )?;
-    let mut inner = to_py(RhDocument::from_chunks_with(chunks, cfg))?;
-    if needs_embedder {
-        inner = apply_dense_embedder(
-            inner,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-        )?;
-    }
-    apply_reranker(inner, rerank)
-}
-
-/// Build a folder index with on-disk persistence + incremental re-index.
-/// Reuses cached chunks (with embeddings) for files whose mtime+size are
-/// unchanged, re-chunks new/changed files, drops removed ones, and rewrites the
-/// index only when something changed.
-#[allow(clippy::too_many_arguments)]
-/// `(document, skipped (path, reason), files indexed)` — the result of building a
-/// folder index.
-type FolderBuild = (RhDocument, Vec<(String, String)>, usize);
-
-#[allow(clippy::too_many_arguments)]
-fn build_folder_persisted(
-    folder: &Path,
-    recursive: bool,
-    gitignore: bool,
-    ignore_globs: &[String],
-    index_dir: &Option<String>,
-    strategy: Option<String>,
-    chunk_size: usize,
-    chunk_overlap: usize,
-    token_budget: usize,
-    candidate_k: usize,
-    retrieval: Option<String>,
-    model: Option<String>,
-    embedder_model: Option<String>,
-    embedder_tokenizer: Option<String>,
-    embedder_dim: usize,
-    embedder_pooling: Option<String>,
-    embedder_query_prefix: Option<String>,
-    embedder_passage_prefix: Option<String>,
-    candidate_pool: usize,
-    rerank: Option<String>,
-    language: Option<String>,
-) -> PyResult<FolderBuild> {
-    use std::collections::{HashMap, HashSet};
-
-    let dir = resolve_index_dir(folder, index_dir);
-    let fingerprint = index_fingerprint(
-        chunk_size,
-        chunk_overlap,
-        &retrieval,
-        &model,
-        &embedder_model,
-        embedder_dim,
-    );
-
-    // Load the prior index (if any, and if its settings still match).
-    let mut cache_map: HashMap<String, CachedFile> = HashMap::new();
-    let had_cache = match load_index(&dir, &fingerprint) {
-        Some(idx) => {
-            for f in idx.files {
-                cache_map.insert(f.source.clone(), f);
-            }
-            true
-        }
-        None => false,
-    };
-
-    // Walk the folder. Config for re-chunking new/changed files.
-    let paths = collect_files(folder, recursive, gitignore, ignore_globs)?;
-    let dir_abs = dir.canonicalize().ok();
-    let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-    let cfg = doc_config(
-        strategy.clone(),
-        token_budget,
-        candidate_k,
-        chunk_size,
-        chunk_overlap,
-        mode,
-        language.clone(),
-    )?;
-
-    let mut entries: Vec<CachedFile> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut skipped: Vec<(String, String)> = Vec::new();
-    let mut changed = !had_cache;
-
-    for p in &paths {
-        // Never ingest our own index directory if it lives inside the folder.
-        if let (Some(da), Ok(pa)) = (&dir_abs, p.canonicalize()) {
-            if pa.starts_with(da) {
-                continue;
-            }
-        }
-        let source = p.to_string_lossy().to_string();
-        let (mtime, size) = match file_stat(p) {
-            Some(s) => s,
-            None => continue,
-        };
-        seen.insert(source.clone());
-        // Unchanged → reuse the cached chunks (with their embeddings).
-        if let Some(prev) = cache_map.get(&source) {
-            if prev.mtime == mtime && prev.size == size {
-                entries.push(CachedFile {
-                    source,
-                    mtime,
-                    size,
-                    chunks: prev.chunks.clone(),
-                });
-                continue;
-            }
-        }
-        // New or changed → extract + chunk fresh; record skips (path, reason).
-        let sections = match extract_file_text(&source) {
-            Ok((_, s)) => s,
-            Err(e) => {
-                skipped.push((source.clone(), e.to_string()));
-                continue;
-            }
-        };
-        let chunks = to_py(RhDocument::chunk_sections(&source, &sections, &cfg))?;
-        entries.push(CachedFile {
-            source,
-            mtime,
-            size,
-            chunks,
-        });
-        changed = true;
-    }
-    // Files present in the cache but gone from disk count as a change.
-    if cache_map.keys().any(|s| !seen.contains(s)) {
-        changed = true;
-    }
-
-    // Merge every file's chunks into one corpus and give them unique ids.
-    let mut all: Vec<Chunk> = Vec::new();
-    for f in &entries {
-        all.extend(f.chunks.iter().cloned());
-    }
-    if all.is_empty() {
-        return Err(PyValueError::new_err(format!(
-            "from_folder: no readable files found under '{}'. This build reads \
-             text/code files; the standard `pip install redhop` also parses PDF/DOCX/PPTX/XLSX.",
-            folder.display()
-        )));
-    }
-    for (i, c) in all.iter_mut().enumerate() {
-        c.id = ChunkId::new(format!("{i}"));
-    }
-
-    let n_files = entries.len();
-    let mut doc = build_chunks_doc(
-        all,
-        strategy,
-        chunk_size,
-        chunk_overlap,
-        token_budget,
-        candidate_k,
-        retrieval,
-        model,
-        embedder_model,
-        embedder_tokenizer,
-        embedder_dim,
-        embedder_pooling,
-        embedder_query_prefix,
-        embedder_passage_prefix,
-        candidate_pool,
-        rerank,
-        language,
-    )?;
-
-    // Persist only when the corpus changed. Pull embeddings onto the chunks first
-    // (so reloads skip re-embedding), then regroup them by file.
-    if changed {
-        let embedded = to_py(doc.embedded_chunks())?;
-        let mut by_source: HashMap<String, Vec<Chunk>> = HashMap::new();
-        for c in embedded {
-            by_source.entry(c.source.clone()).or_default().push(c);
-        }
-        let files_out: Vec<CachedFile> = entries
-            .into_iter()
-            .map(|f| CachedFile {
-                chunks: by_source.remove(&f.source).unwrap_or_default(),
-                source: f.source,
-                mtime: f.mtime,
-                size: f.size,
-            })
-            .collect();
-        let idx = PersistedIndex {
-            version: INDEX_VERSION,
-            fingerprint,
-            files: files_out,
-        };
-        std::fs::create_dir_all(&dir).map_err(|e| {
-            PyValueError::new_err(format!(
-                "from_folder: creating index dir '{}': {e}",
-                dir.display()
-            ))
-        })?;
-        let json = serde_json::to_string(&idx)
-            .map_err(|e| PyValueError::new_err(format!("from_folder: serializing index: {e}")))?;
-        std::fs::write(dir.join(INDEX_FILE), json).map_err(|e| {
-            PyValueError::new_err(format!(
-                "from_folder: writing index to '{}': {e}",
-                dir.display()
-            ))
-        })?;
-    }
-
-    Ok((doc, skipped, n_files))
-}
 
 /// Shared construction for text-backed documents (used by `from_text` and
 /// `from_file`): resolve the tier, build the config, chunk+index, attach the
@@ -1222,22 +833,17 @@ fn build_text_doc(
 /// internal detail — you think in documents and queries, not retrievers.
 #[pyclass]
 struct Document {
+    // `n_files` and `skipped_files` live on the inner Rust `RhDocument` —
+    // single-source constructors default to `n_files=1`, `skipped_files=[]`;
+    // the folder loaders populate them as files get walked. Python's
+    // getters below pull straight through.
     inner: RhDocument,
-    // Files skipped during `from_folder` (path, reason). Empty for single-doc
-    // constructors. Surfaced via the `skipped_files` getter.
-    skipped: Vec<(String, String)>,
-    // Number of files actually indexed (1 for single-doc constructors).
-    n_files: usize,
 }
 
 impl Document {
-    /// Wrap an inner document from a single-source constructor (no skips).
+    /// Wrap an inner document from a single-source constructor.
     fn single(inner: RhDocument) -> Self {
-        Self {
-            inner,
-            skipped: Vec::new(),
-            n_files: 1,
-        }
+        Self { inner }
     }
 }
 
@@ -1477,22 +1083,51 @@ impl Document {
 
         language: Option<String>,
     ) -> PyResult<Self> {
-        let root = Path::new(path);
-        if !root.is_dir() {
-            return Err(PyValueError::new_err(format!(
-                "from_folder: '{path}' is not a directory"
-            )));
+        // The walk + persist + cache-format + skipped-tracking all live in
+        // Rust's `redhop::read_folder_with` so Python and Node share one
+        // implementation. The Document carries `n_files()` and
+        // `skipped_files()` accessors, which surface as Python getters
+        // further down.
+        #[cfg(feature = "files")]
+        {
+            let fo = redhop::FolderOptions {
+                recursive: Some(recursive),
+                gitignore: Some(gitignore),
+                ignore: ignore.unwrap_or_default(),
+                persist,
+                index_dir,
+                load: redhop::LoadOptions {
+                    source: None,
+                    chunk_size: Some(chunk_size),
+                    chunk_overlap: Some(chunk_overlap),
+                    token_budget: Some(token_budget),
+                    candidate_k: Some(candidate_k),
+                    strategy,
+                    retrieval,
+                    model,
+                    embedder_model,
+                    embedder_tokenizer,
+                    embedder_dim: Some(embedder_dim),
+                    embedder_pooling,
+                    embedder_query_prefix,
+                    embedder_passage_prefix,
+                    candidate_pool: Some(candidate_pool),
+                    rerank,
+                    min_candidates: None,
+                    language,
+                },
+            };
+            let inner = to_py(redhop::read_folder_with(path, &fo))?;
+            Ok(Self { inner })
         }
-        let ignore_globs = ignore.unwrap_or_default();
-
-        // Persisted path: incremental on-disk index.
-        if persist || index_dir.is_some() {
-            let (inner, skipped, n_files) = build_folder_persisted(
-                root,
+        #[cfg(not(feature = "files"))]
+        {
+            // Suppress unused-kwarg warnings under the lean (no-files) build.
+            let _ = (
+                path,
                 recursive,
-                gitignore,
-                &ignore_globs,
-                &index_dir,
+                persist,
+                index_dir,
                 strategy,
                 chunk_size,
                 chunk_overlap,
@@ -1507,60 +1142,17 @@ impl Document {
                 embedder_query_prefix,
                 embedder_passage_prefix,
                 candidate_pool,
+                ignore,
+                gitignore,
                 rerank,
                 language,
-            )?;
-            return Ok(Self {
-                inner,
-                skipped,
-                n_files,
-            });
+            );
+            Err(PyValueError::new_err(
+                "from_folder requires the file-parsing tier. The standard \
+                 `pip install redhop` includes it; if you built from source, \
+                 add `--features files`.",
+            ))
         }
-
-        // In-memory path: walk, extract, build one index (rebuilt each run).
-        // Files we can't read/parse are skipped but recorded (path, reason) so the
-        // caller can see what was dropped via `skipped_files`.
-        let paths = collect_files(root, recursive, gitignore, &ignore_globs)?;
-        let mut files: Vec<(String, Vec<RhSection>)> = Vec::new();
-        let mut skipped: Vec<(String, String)> = Vec::new();
-        for p in &paths {
-            let sp = p.to_string_lossy();
-            match extract_file_text(&sp) {
-                Ok((source, sections)) => files.push((source, sections)),
-                Err(e) => skipped.push((sp.into_owned(), e.to_string())),
-            }
-        }
-        if files.is_empty() {
-            return Err(PyValueError::new_err(format!(
-                "from_folder: no readable files found under '{path}'. The base install reads \
-                 text/code files; the standard `pip install redhop` also parses PDF/DOCX/PPTX/XLSX."
-            )));
-        }
-        let n_files = files.len();
-        let inner = build_text_doc(
-            files,
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-        )?;
-        Ok(Self {
-            inner,
-            skipped,
-            n_files,
-        })
     }
 
     /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
@@ -1660,14 +1252,14 @@ impl Document {
     /// the readable count for from_folder).
     #[getter]
     fn n_files(&self) -> usize {
-        self.n_files
+        self.inner.n_files()
     }
     /// Files `from_folder` skipped, as `(path, reason)` pairs — unsupported
     /// formats, unreadable bytes, or no extractable text (e.g. scanned PDFs).
     /// Empty for single-document constructors.
     #[getter]
     fn skipped_files(&self) -> Vec<(String, String)> {
-        self.skipped.clone()
+        self.inner.skipped_files().to_vec()
     }
     fn __len__(&self) -> usize {
         self.inner.len()
