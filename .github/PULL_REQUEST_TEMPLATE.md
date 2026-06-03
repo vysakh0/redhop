@@ -5,7 +5,8 @@ What this changes and the motivation.
 
 **How verified**
 - [ ] `cargo test --workspace`
-- [ ] Python tests (`cd python && python -m pytest tests/`) — if bindings touched
+- [ ] Python tests (`cd python && maturin develop --release --features files,semantic && python -m pytest tests/`) — if bindings touched
+- [ ] Node tests (`cd nodejs && npm run build && npm test`) — if bindings touched
 - [ ] examples / benchmark run — if relevant
 
 **Evidence** (if this changes a default, strategy, or a documented behavior)

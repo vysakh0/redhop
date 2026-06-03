@@ -5,7 +5,8 @@ Pre-release sanity for a tagged RedHop version.
 ## Verify
 
 - [ ] `cargo build --workspace` and `cargo test --workspace` pass.
-- [ ] `cd python && maturin develop --release && python -m pytest tests/` passes.
+- [ ] `cd python && maturin develop --release --features files,semantic && python -m pytest tests/` passes. The `files,semantic` features mirror the published wheel; without them the loader_errors and rerank tests can't exercise the right surface.
+- [ ] `cd nodejs && npm run build && npm test` passes.
 - [ ] Examples run: `python python/examples/{basic_rag,compare_strategies,economics_demo}.py`.
 - [ ] Hermetic benchmark regenerates: `cargo run -p redhop-examples --example bench_context_strategies --release`.
 - [ ] CLI smoke: `redhop compare`, `analyze-context`, `benchmark`, `report`.

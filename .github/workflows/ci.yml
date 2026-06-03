@@ -47,12 +47,12 @@ jobs:
         run: cargo fmt -- --check
       - name: Clippy (bindings, warnings = errors)
         working-directory: python
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features files,semantic -- -D warnings
       - name: Install build tooling
         run: pip install maturin pytest pytest-cov
-      - name: Build + install the extension
+      - name: Build + install the extension (mirrors the published wheel — both features ON)
         working-directory: python
-        run: maturin develop --release
+        run: maturin develop --release --features files,semantic
       - name: Unit tests (with coverage)
         working-directory: python
         run: python -m pytest tests/ -q --cov=redhop --cov-report=term-missing
