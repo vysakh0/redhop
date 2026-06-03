@@ -29,11 +29,21 @@ needless_range_loop = "allow"
 [workspace.package]
 version = "0.1.4"
 edition = "2021"
-rust-version = "1.75"
+# Workspace-wide MSRV — set to the highest minimum any member requires.
+# napi-rs 2.x (used by `nodejs/`) needs 1.77; the published `redhop` crate
+# compiles fine on older toolchains, but the workspace as a whole is
+# tested against this floor. Bump in lockstep with what CI actually
+# exercises, not aspirationally.
+rust-version = "1.77"
 license = "Apache-2.0"
 authors = ["Vysakh Sreenivasan", "RedHop Contributors"]
 repository = "https://github.com/vysakh0/redhop"
 homepage = "https://github.com/vysakh0/redhop"
+# Points crates.io readers at docs.rs explicitly so the package page
+# links to the rendered API reference (which includes the `files` and
+# `semantic` items thanks to `[package.metadata.docs.rs] all-features =
+# true` in `crates/redhop/Cargo.toml`).
+documentation = "https://docs.rs/redhop"
 description = "RedHop — a reasoning-preserving retrieval & context runtime for RAG: chunk, retrieve, and allocate the document context an LLM should see, with citations and a Decision Report."
 keywords = ["rag", "retrieval", "llm", "context", "nlp"]
 categories = ["text-processing", "science"]

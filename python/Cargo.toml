@@ -14,7 +14,7 @@ needless_range_loop = "allow"
 name = "redhop-py"
 version = "0.1.4"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.77"
 license = "Apache-2.0"
 description = "Python bindings for RedHop context optimization"
 
