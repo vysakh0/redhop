@@ -212,9 +212,7 @@ def test_python_determinism_repeat_run():
     b = redhop.build_context(query, CORPUS)
     assert a.text() == b.text(), "python build_context text not deterministic"
     assert list(a.chunks) == list(b.chunks), "python chunks order not deterministic"
-    assert a.report.total_tokens == b.report.total_tokens, (
-        "python total_tokens not deterministic"
-    )
+    assert a.report.total_tokens == b.report.total_tokens, "python total_tokens not deterministic"
     assert a.report.auto_decision == b.report.auto_decision
 
 
