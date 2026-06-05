@@ -335,6 +335,7 @@ pub struct ContextReport {
     /// otherwise). The measurable "what reasoning-preservation bought".
     pub reasoning_preservation_delta: usize,
     /// Per-reason removal breakdown.
+    #[serde(default)]
     pub removed: RemovedBreakdown,
     /// Structural chunks added by context expansion (adjacent neighbors and
     /// section headings attached to selected seeds). These are justified by
@@ -354,6 +355,7 @@ pub struct ContextReport {
     #[serde(default)]
     pub low_confidence_threshold: f32,
     /// Token/evidence economics of the assembled context.
+    #[serde(default)]
     pub economics: ContextEconomics,
 }
 
