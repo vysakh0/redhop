@@ -145,7 +145,7 @@ retrieved_chunks=chunks, ...)` for the low-level surface.
 ## Documentation
 
 Full docs, the comparison vs LangChain / LlamaIndex, and the evidence behind every
-default: **https://redhopai.com**
+default: **https://www.redhopai.com**
 
 Apache-2.0. Also available for **Node.js** (`npm install redhop`) and **Rust**
 (`cargo add redhop`).

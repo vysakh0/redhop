@@ -7,7 +7,7 @@
 > Rust core), no vector database, no LLM bundled.
 
 This file is for AI coding agents -- a single self-contained reference for
-writing correct RedHop code. Canonical docs: https://redhopai.com. Source:
+writing correct RedHop code. Canonical docs: https://www.redhopai.com. Source:
 https://github.com/vysakh0/redhop.
 
 ---
@@ -353,11 +353,11 @@ vocabulary.
 
 ## See also
 
-- Quickstart: https://redhopai.com/docs/quickstart/
-- Choosing a configuration: https://redhopai.com/docs/choosing-a-config/
-- Loaders reference: https://redhopai.com/docs/loading/
-- Options reference: https://redhopai.com/docs/options/
-- vs LangChain / LlamaIndex: https://redhopai.com/docs/comparison/
+- Quickstart: https://www.redhopai.com/docs/quickstart/
+- Choosing a configuration: https://www.redhopai.com/docs/choosing-a-config/
+- Loaders reference: https://www.redhopai.com/docs/loading/
+- Options reference: https://www.redhopai.com/docs/options/
+- vs LangChain / LlamaIndex: https://www.redhopai.com/docs/comparison/
 - Evidence layer (every finding): https://github.com/vysakh0/redhop/tree/main/docs/findings
 - Source: https://github.com/vysakh0/redhop
 - License: Apache-2.0
