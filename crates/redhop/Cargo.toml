@@ -76,5 +76,13 @@ tokenizers = { version = "0.20", optional = true, default-features = false, feat
 # (no OpenSSL) for clean Linux/Windows/macOS builds.
 hf-hub     = { version = "0.5", optional = true, default-features = false, features = ["ureq", "rustls-tls"] }
 
+# ── dev only ──
+# Used by integration tests under `tests/` for staging tempfiles + writing
+# adversarial inputs (corrupt DOCX, deep dir trees, symlink loops, etc.).
+# Never linked into release builds.
+[dev-dependencies]
+tempfile = "3"
+zip      = { version = "2", default-features = false, features = ["deflate"] }
+
 [lints]
 workspace = true

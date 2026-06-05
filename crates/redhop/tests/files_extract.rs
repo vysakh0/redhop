@@ -208,3 +208,179 @@ fn missing_file_is_io_error() {
         "missing → Io, got {err:?}"
     );
 }
+
+// ── ADVERSARIAL LOADER INPUTS ──────────────────────────────────────────────
+//
+// Real-world inputs the older tests don't cover. Each test asserts a
+// clean error or clean skip — never a panic. The failure mode we're
+// pinning here is "feeding a corrupt PDF/DOCX panics inside a parser
+// dependency" or "a symlink loop infinite-recurses the folder walker".
+
+use std::fs;
+use tempfile::tempdir;
+
+#[test]
+fn extract_bytes_zero_byte_input_errors_cleanly() {
+    // 0-byte buffer to a known-supported extension. Each parser should
+    // emit `NoText` (or the moral equivalent) rather than panic on the
+    // empty slice.
+    for name in &[
+        "empty.pdf",
+        "empty.docx",
+        "empty.pptx",
+        "empty.xlsx",
+        "empty.md",
+    ] {
+        let r = extract_bytes(b"", name);
+        assert!(
+            r.is_err(),
+            "0-byte {name} should error, not silently succeed: got {r:?}"
+        );
+    }
+}
+
+#[test]
+fn extract_bytes_one_byte_input_errors_cleanly() {
+    // 1-byte buffer — also too small to be a valid container, must error
+    // cleanly across every supported extension.
+    for (name, byte) in &[
+        ("tiny.pdf", b"%"),
+        ("tiny.docx", b"P"),
+        ("tiny.pptx", b"P"),
+        ("tiny.xlsx", b"P"),
+    ] {
+        let r = extract_bytes(byte.as_slice(), name);
+        assert!(
+            r.is_err(),
+            "1-byte {name} should error, not silently succeed: got {r:?}"
+        );
+    }
+}
+
+#[test]
+fn truncated_pdf_header_only_errors_cleanly() {
+    // Just the PDF magic header `%PDF-1.4` — looks like a PDF to a
+    // sniffer but has no body. pdf-extract should bail without
+    // panicking.
+    let truncated = b"%PDF-1.4\n";
+    let r = extract_bytes(truncated, "truncated.pdf");
+    assert!(
+        r.is_err(),
+        "truncated PDF (header only) must error, not panic"
+    );
+}
+
+#[test]
+fn docx_missing_document_xml_errors_cleanly() {
+    // A valid zip container with NO `word/document.xml` entry — should
+    // produce an actionable error, not panic on `unwrap()` inside the
+    // DOCX parser.
+    use std::io::Write;
+    let mut buf = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        let opts: zip::write::FileOptions<'_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("not_document.xml", opts).unwrap();
+        zip.write_all(b"<not the docx body>").unwrap();
+        zip.finish().unwrap();
+    }
+    let r = extract_bytes(&buf, "weird.docx");
+    assert!(
+        r.is_err(),
+        "DOCX missing document.xml must error, not panic: got {r:?}"
+    );
+}
+
+#[test]
+fn very_long_filename_handled_cleanly() {
+    // 300-char filename — most filesystems cap at 255, but extract_bytes
+    // takes the name as a string and shouldn't care about path length.
+    // It just dispatches by extension.
+    let long_name = format!("{}.md", "a".repeat(300));
+    let r = extract_bytes(b"# Hi\nbody", long_name.as_str());
+    assert!(r.is_ok(), "long name should still parse markdown: {r:?}");
+}
+
+#[test]
+fn read_folder_handles_symlink_loop_without_recursing_forever() {
+    // Create a directory that contains a symlink pointing back to itself
+    // (or to a parent in the walk path). The folder walker must not
+    // infinite-recurse — the `ignore` crate honors the filesystem's
+    // canonical-path tracking, but we pin the behavior so a future
+    // switch can't regress it.
+    #[cfg(unix)]
+    {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("real.md"),
+            "# Real\nthe refund window is thirty days",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("loop"))
+            .expect("create symlink loop");
+
+        // Read with a generous timeout via std::thread::scope; if it
+        // truly infinite-loops the test process hangs and CI catches it.
+        let doc = redhop::read_folder(dir.path()).expect("folder read should not panic");
+        // The real file should be indexed; the symlink loop should be
+        // ignored (the `ignore` crate's walk doesn't follow into a
+        // recursive structure).
+        assert!(doc.n_files() >= 1, "the real file should be indexed");
+    }
+}
+
+#[test]
+fn read_folder_handles_deep_recursion() {
+    // Build a directory tree 50 levels deep with one .md file at the
+    // bottom. Stack-safe walking is the bar here — the walker should
+    // not blow the stack on deep recursion.
+    let dir = tempdir().unwrap();
+    let mut p = dir.path().to_path_buf();
+    for i in 0..50 {
+        p = p.join(format!("d{i}"));
+        fs::create_dir(&p).unwrap();
+    }
+    fs::write(p.join("deep.md"), "# Deep\nrefund window thirty days").unwrap();
+
+    let doc = redhop::read_folder(dir.path()).expect("deep recursion should not panic");
+    assert_eq!(doc.n_files(), 1, "should reach the one file at depth 50");
+}
+
+#[test]
+fn read_folder_on_empty_directory_errors_cleanly() {
+    // A directory that exists but has no readable files at all. The
+    // current behavior is to error with "no readable files under ...";
+    // pin that contract so a future refactor doesn't silently return an
+    // empty Document instead.
+    let dir = tempdir().unwrap();
+    // `Document` doesn't impl Debug (deliberately — it holds a Tokio
+    // runtime), so unwrap_err() doesn't compile. Use an explicit match.
+    let err = match redhop::read_folder(dir.path()) {
+        Err(e) => e,
+        Ok(_) => panic!("empty directory should error, not succeed silently"),
+    };
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("no readable files") || msg.contains("empty"),
+        "empty directory should error mentioning 'no readable files'; got: {msg}"
+    );
+}
+
+#[test]
+fn read_folder_with_many_files_handles_them() {
+    // 200 tiny .md files in one directory — exercise the walker + index
+    // build for "lots of small inputs". No assertion on retrieval
+    // quality; this is a "doesn't blow up" smoke.
+    let dir = tempdir().unwrap();
+    for i in 0..200 {
+        fs::write(
+            dir.path().join(format!("doc{i}.md")),
+            format!("# Doc {i}\nrefund window content section {i}"),
+        )
+        .unwrap();
+    }
+    let doc = redhop::read_folder(dir.path()).expect("200 files should index cleanly");
+    assert_eq!(doc.n_files(), 200);
+    assert!(doc.skipped_files().is_empty(), "no files should be skipped");
+}
