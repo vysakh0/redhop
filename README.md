@@ -7,6 +7,14 @@
 <p align="center"><b>A reasoning-preserving context runtime for RAG.</b></p>
 
 <p align="center">
+  <a href="https://pypi.org/project/redhop/"><img alt="PyPI" src="https://img.shields.io/pypi/v/redhop?label=pypi&color=e11d48"></a>
+  <a href="https://crates.io/crates/redhop"><img alt="crates.io" src="https://img.shields.io/crates/v/redhop?label=crates.io&color=e11d48"></a>
+  <a href="https://www.npmjs.com/package/redhop"><img alt="npm" src="https://img.shields.io/npm/v/redhop?label=npm&color=e11d48"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
+  <a href="docs/findings/README.md"><img alt="evidence layer" src="https://img.shields.io/badge/evidence-layer-blue"></a>
+</p>
+
+<p align="center">
 Hand it a document and a question. It chunks, retrieves, and allocates the
 context your model should actually see — then tells you what it kept, what it
 dropped, and why, with citations back to the source. No vector database, no LLM,
@@ -25,6 +33,20 @@ quality.** Transformers tolerate irrelevant context far better than they tolerat
 low-relevance to the query and gets silently pruned. RedHop's default keeps it and
 makes the trade-off visible. The reasoning behind every default — including the
 hypotheses that failed — lives in the [evidence layer](docs/findings/README.md).
+
+## How it compares
+
+Measured on identical documents + budgets + BM25 retrieval, RedHop **beats LangChain
+on multi-hop evidence retention** (77% vs 71%) and **ties LlamaIndex on contracts**
+(82% vs 86%, while beating LangChain at 73%) — without a vector database, an agent
+framework, or model finetuning.
+
+<p align="center">
+  <img src=".github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
+</p>
+
+Methodology + raw runs: [`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md)
+· [`reports/framework_comparison.txt`](reports/framework_comparison.txt).
 
 ## Install
 
