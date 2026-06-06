@@ -55,8 +55,10 @@ fn words(s: &str) -> Vec<String> {
         .collect()
 }
 
+/// Set-based gold-word recall — matches `bench/compare.py`. See
+/// `cuad_query_preprocessing.rs` for the metric-bug context.
 fn span_recall(gold: &str, ctx_words: &HashSet<String>) -> f32 {
-    let g = words(gold);
+    let g: HashSet<String> = words(gold).into_iter().collect();
     if g.is_empty() {
         return 1.0;
     }

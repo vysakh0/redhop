@@ -69,8 +69,15 @@ fn words(s: &str) -> Vec<String> {
         .collect()
 }
 
+/// Set-based gold-word recall, matching `bench/compare.py`'s `span_recall`
+/// exactly: `len(g & ctx) / len(g)` where both g and ctx are SETS of unique
+/// content words. An earlier Vec-based version of this function in this
+/// branch double-counted duplicate gold words and inflated recall by ~2
+/// points on CUAD (gold spans are legal contract clauses with high
+/// repetition). The set-based version is apples-to-apples with the
+/// framework comparison.
 fn span_recall(gold: &str, ctx_words: &HashSet<String>) -> f32 {
-    let g = words(gold);
+    let g: HashSet<String> = words(gold).into_iter().collect();
     if g.is_empty() {
         return 1.0;
     }

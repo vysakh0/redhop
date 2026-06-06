@@ -113,20 +113,64 @@ A few observations from the sweep:
   chunking with their `SentenceSplitter(chunk_size=256, chunk_overlap=0)`
   that hits clause boundaries CUAD's gold spans happen to align with.
 
-### A small Rust/Python discrepancy worth noting
+### The Rust/Python "parity gap" was a METRIC bug, not a runtime bug — investigated and resolved
 
-The Rust sweep (`Document::from_text_with(..., candidate_k=40, ...)`)
-shows RawTopK @ target=128 at 84% ≥0.8 retention. The Python bench
-(`redhop.Document.from_text(..., candidate_k=40, strategy="raw_topk")`)
-shows the same call path at 82%. Both n=300, same metric, same data,
-same explicit parameters. Some default field is wired differently
-between the Rust direct API and the Python binding path — most likely
-`overlap_sentences`, `code_neighbors_default`, or `prose_heading_default`.
+The earlier 84% number reported on the Rust sweep harness vs 82%
+reported by `bench/compare.py` (Python) looked like a 2-point
+Python/Rust runtime parity issue. A surgical probe
+(`cuad_rust_vs_python_path.rs`) compared:
 
-This is a real Python/Rust parity bug that would be worth chasing as
-follow-up work. It doesn't change the central finding (CUAD gap is real,
-LlamaIndex still wins) but it does change which number to quote
-externally — Python users see 82%, Rust users see 84%.
+  - Path A: `Document::from_text_with(source, text, cfg)` (what the
+    Rust sweeps use)
+  - Path B: `Document::from_sources_with(vec![(source, vec![Section{text,
+    ..}])], cfg)` (what the Python binding's `from_text` routes
+    through under the hood)
+
+on the same contract, same 300 questions, same explicit cfg.
+
+| | Path A (Rust direct) | Path B (Python's underlying) |
+| --- | --- | --- |
+| chunk count | 71 | 71 |
+| chunks with different text | 0/71 | (identical) |
+| chunks with different metadata | 71/71 | (Path B adds `kind:"prose"`) |
+| 300-query ≥0.8 retention | 84.3% | 84.3% |
+
+**Identical retention.** The only metadata difference is `kind:"prose"`
+stamped by `chunk_sections`, which never fires `code_neighbors_default`
+or `prose_heading_default` on CUAD (no headings, not code). The runtime
+is byte-equivalent.
+
+The 2-point gap came from **my Rust harnesses using a Vec-based
+`span_recall` while `bench/compare.py` uses set-based**:
+
+```rust
+// my (BUGGY) Rust span_recall:
+fn span_recall(gold, ctx_words_set) -> f32 {
+    let g: Vec<String> = words(gold);  // duplicates kept
+    let hit = g.iter().filter(|w| ctx_words.contains(*w)).count();
+    hit as f32 / g.len() as f32        // divides by |with-dups|
+}
+```
+
+```python
+# bench/compare.py's span_recall:
+def words(s): return {w for w in ...}  # SET — duplicates collapsed
+def span_recall(gold, ctx):
+    g = words(gold)                    # set
+    return len(g & cw) / len(g)        # divides by |unique|
+```
+
+When a CUAD gold answer span has repeated content words (extremely
+common in legal contract clauses — "parties to this agreement, the
+parties..."), the Vec version over-counts both numerator and
+denominator, inflating recall by 2-3 points relative to bench's
+set-based metric.
+
+Fix landed in this commit. All three Rust harnesses
+(`cuad_chunk_strategy_sweep.rs`, `cuad_query_preprocessing.rs`,
+`cuad_perf.rs`) updated to set-based `span_recall`. Re-measured numbers
+above. The Rust runtime requires no change. Closes the "Python/Rust
+parity gap" sub-investigation.
 
 ## The mechanism: template-boilerplate dilution
 
@@ -159,17 +203,28 @@ passed to BM25.
 
 | arm                              | mean recall | ≥0.5 | ≥0.8 | avg tokens |
 | -------------------------------- | -----------:| ----:| ----:| ----------:|
-| original template (24 words)     | 0.912       | 95%  | 84%  | 1890       |
-| **template stripped** (~5 words) | **0.940**   | 96%  | **91%** | **1705**   |
-| Δ                                | +0.028      | +1   | **+6.7** | −185     |
+| original template (24 words)     | 0.905       | 94%  | 81%  | 1890       |
+| **template stripped** (~5 words) | **0.933**   | 96%  | **88%** | **1705**   |
+| Δ                                | +0.028      | +2   | **+6.3** | −185     |
 | **LlamaIndex baseline**          | 0.93        | 96%  | **86%** | 1806     |
 
-**RedHop with template-stripped queries: 91% ≥0.8 vs LlamaIndex's 86%.
-A 5-point lead, not a 4-point deficit.**
+**RedHop with template-stripped queries: 88% ≥0.8 vs LlamaIndex's 86%.
+A 2-point lead instead of a 4-point deficit.**
 
 Notice the assembled context also got *shorter* (1890 → 1705 tokens):
 with a less-diluted query, BM25 picks tighter top-K candidates that fit
 in less budget. The runtime is doing more with less.
+
+> **Metric note.** Earlier versions of this finding (commits before
+> `<metric-fix>`) reported 84% / 91% retention using a Vec-based
+> `span_recall` that double-counted duplicate gold words. The
+> framework comparison's `bench/compare.py` uses a **set-based**
+> `span_recall` (Python `set` semantics: each unique gold word
+> counted once). The numbers above use the corrected set-based metric
+> for apples-to-apples comparison with the framework comparison. The
+> direction and mechanism are unchanged; the magnitudes shifted by
+> ~2-3 points. See `cuad_rust_vs_python_path.rs` for the surgical
+> isolation that found the metric bug.
 
 ### Why HotpotQA improved but CUAD didn't, on the same code change
 
