@@ -145,6 +145,11 @@ name = "ce_escalation_economics"
 path = "examples/ce_escalation_economics.rs"
 required-features = ["onnx"]
 
+[[example]]
+name = "ce_gate_feature_log"
+path = "examples/ce_gate_feature_log.rs"
+required-features = ["onnx"]
+
 [lints]
 workspace = true
 

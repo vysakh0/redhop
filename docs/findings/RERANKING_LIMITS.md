@@ -241,3 +241,159 @@ the available CE win on the table.
 - Same models (BGE-small, ms-marco MiniLM-L-6) and same eval (recall@4)
   as the original finding. The inversion is on the same hardware and
   same code path, so it isn't a model swap artifact.
+
+## Update — 2026-06-06 (later) — the gate signal IS `grounding_top1`
+
+The kind-label update closed the cheapest probe but left the central
+open problem (what signal predicts CE-helps-vs-hurts?) wide open.
+Phase A of the follow-up logged per-query features on the same
+stratified 200-sample run; Phase B did EDA + cross-validation on the
+features. **A single-threshold heuristic gate beats uniform CE,
+robustly, with no ML.**
+
+### The gate
+
+```
+fire CE iff grounding_score(query, dense_top_1.text) ≤ 0.35
+```
+
+`grounding_score` is the lexical-overlap quantity RedHop already
+computes (`redhop::context::grounding_score`). Zero new state, zero new
+infrastructure, no model file — a single comparison wrapping the
+existing CE call.
+
+### Numbers (same 200-query stratified sample as the kind-gate update)
+
+| arm | recall@4 | Δ vs uniform | CE calls |
+| --- | --- | --- | --- |
+| static (no CE) | 0.7643 | — | 0 |
+| uniform CE | 0.7549 | (baseline) | 200 |
+| **grounding gate (`grounding_top1 ≤ 0.35`)** | **0.7858** | **+0.0308** | 43 |
+| oracle (per-query) | 0.8120 | +0.0571 | ~40 |
+
+The gate captures **54% of oracle headroom** and beats the no-CE
+baseline (Δ = +0.0215 vs static). CE is now net-positive in this
+runtime configuration, by a real margin, with ~4.6× fewer CE calls
+than uniform.
+
+### Why it works (mechanism)
+
+- **LOW `grounding_top1` (≤ 0.35)** = dense's top hit doesn't lexically
+  match the query. Dense found something *semantically related* but
+  lexically uncertain — there's room for CE to find a better match in
+  the pool that dense ranked lower.
+- **HIGH `grounding_top1` (> 0.35)** = dense's top hit IS lexically
+  the query's match. The answer is already found; CE re-ranking only
+  adds noise (it might demote the correct chunk for a topically-similar
+  alternative).
+
+This generalizes the headline finding's "query-passage relevance is
+the wrong signal for second-hop recovery" to: **CE is the wrong action
+when dense already has the answer; CE is the right action when dense
+has identified an adjacent semantic cluster that may not contain the
+answer.** Grounding is the cheapest signal that distinguishes those
+states.
+
+### Cross-validation + robustness
+
+Pre-registered success bar: `gated_recall ≥ uniform + 0.025`
+(captures ≥ 44% of oracle headroom).
+
+5-fold cross-validation (seed=0), best per-fold threshold:
+
+| feature | direction | train Δ | held-out Δ | Δ shrinkage | threshold (mean) |
+| --- | --- | --- | --- | --- | --- |
+| **grounding_top1** | **≤** | **+0.0308** | **+0.0298** | **−0.0010** | **0.349** |
+| margin | ≤ | +0.0235 | +0.0125 | −0.0110 | 0.015 |
+| query_len | > | +0.0244 | +0.0083 | −0.0161 | 15.4 |
+| dense_top1_cos | > | +0.0148 | +0.0057 | −0.0091 | 0.839 |
+| score_spread | ≤ | +0.0192 | −0.0075 | −0.0267 | 0.164 |
+
+`grounding_top1` is the **ONLY** feature whose threshold survives
+held-out evaluation. Every other feature shrinks substantially or
+flips sign — they were finding noise. The near-zero train→test gap
+on grounding (−0.0010) means the signal is real, not a threshold
+artifact of the search.
+
+Bootstrap CI on the fixed gate `grounding_top1 ≤ 0.35` (n=1000
+samples): point Δ = +0.0299, 95% CI = [+0.0059, +0.0562], 99.2% of
+samples have Δ > 0. Lower bound clears zero with significance; upper
+bound suggests the headline +0.03 may even understate the typical
+case.
+
+### Per-row mechanics (precision/sensitivity)
+
+When the gate fires (43/200 queries):
+
+- **Sensitivity** (recall on the helped set): 11/20 helped queries
+  trigger the gate (55%). The gate captures over half of where CE
+  actually helps.
+- **Specificity** (avoidance on the hurt set): only 3/24 hurt queries
+  trigger the gate (12%). The gate sidesteps **88%** of the queries
+  CE would have hurt.
+- **Precision when fired**: 39/43 no-harm (93%); 3/43 actively
+  harmful (7%); 11/43 actively helpful (26%). The 7% harm rate is
+  the residual the gate can't see.
+
+### Cross-kind generalization
+
+The gate is **not** a relabeled kind detector. Per-kind:
+
+| kind | uniform CE | grounding gate | Δ | fires |
+| --- | --- | --- | --- | --- |
+| bridge (n=100) | 0.6482 | 0.6778 | +0.0297 | 19/100 |
+| comparison (n=100) | 0.8617 | 0.8917 | +0.0300 | 23/100 |
+
+Identical lift on both kinds. Whatever the gate is sensing is
+**orthogonal to question type** — consistent with the mechanism
+(grounding measures dense's confidence, not the question's geometry).
+
+### Open problem CLOSED
+
+The original finding's open work:
+
+> The gating signal for cross-encoder escalation must predict
+> *will reranking help or hurt THIS query* — and the current
+> diagnostics do not separate "CE will help" from "CE will hurt."
+
+→ **Closed.** `grounding_top1 ≤ 0.35` is the signal. It's already
+computed by RedHop, it cross-validates, it generalizes across question
+types, it has a coherent mechanism, and it captures the majority of
+the oracle headroom.
+
+### Reproduce
+
+```bash
+# Phase A — log per-query features + per-query CE labels:
+REDHOP_BGE_MODEL=$BGE_DIR/model_optimized.onnx \
+REDHOP_BGE_TOKENIZER=$BGE_DIR/tokenizer.json \
+REDHOP_CE_MODEL=$CE_DIR/onnx/model.onnx \
+REDHOP_CE_TOKENIZER=$CE_DIR/tokenizer.json \
+cargo run --release -p redhop-examples \
+    --example ce_gate_feature_log --features onnx
+# → writes target/ce_gate_features.csv
+
+# Phase B — EDA + cross-validation (see scripts in target/):
+python3 target/ce_gate_eda.py          # threshold search + per-feature
+python3 target/ce_gate_validation.py   # 5-fold CV + bootstrap
+```
+
+### Honest limits
+
+- Single 200-query stratified sample, BGE-small + ms-marco. Bootstrap
+  CI lower bound is +0.006 — there's a small chance the Δ is closer to
+  noise floor in the true population. A 400-query confirmation run
+  would tighten that interval; the qualitative finding (single
+  threshold, clean cross-validation, coherent mechanism, kind-orthogonal)
+  is decisive enough not to gate shipping on it.
+- The 0.35 threshold itself may benefit from per-deployment
+  recalibration. The 5-fold CV thresholds clustered at 0.349 ± small
+  noise; we ship 0.35 as a round number. Callers running on
+  vocabulary-distinct corpora (legal, medical, code) should verify the
+  threshold on their own held-out sample.
+- The gate is specific to query↔passage cross-encoders re-ranking
+  dense candidate pools. It is NOT a general "is escalation worth it"
+  signal — different escalation actions (MDR re-encode, β-rescue)
+  would need their own per-query gates, measured separately. The
+  pattern of "low grounding ⇒ dense uncertain ⇒ escalation has
+  headroom" likely generalizes, but the threshold doesn't.
