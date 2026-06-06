@@ -7,23 +7,101 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+The **binding parity + evidence layer** release. No breaking changes for any
+binding's callers. The Node binding gains 14 missing `Report` fields, the
+documentation gets its first visual presentation (badges, charts,
+architecture diagram), and the evidence layer grows by five new findings
+that document what was tried, what worked, and what was falsified honestly.
+
 ### Added
 
-- **Node `Report` field-surface parity with Python.** The Node binding's
-  `Report` object now exposes the full Python `ContextReport` surface —
-  14 fields added in this release: `strategy`, `requestedStrategy`,
-  `inputTokens`, `tokenBudget`, `tokenUtilization`, `nInputChunks`,
-  `nSelected`, `inputDistractorRatio`, `reasoningPreservationDelta`,
-  `distractorsPruned`, `removedTotal`, `evidenceDensity`,
-  `distractorRatio`, `estimatedWasteTokens`, plus the permanent alias
-  `secondHopRescueCount` (== `secondHopRescues`, matching Python's
-  `report.second_hop_rescue_count` name). Before this release Node's
-  `Report` exposed roughly half of Python's surface — programmatic
-  callers using `report.totalTokens` could not read `report.nSelected`
-  or any of the economics fields. All additions are non-breaking; no
-  existing field changed name or shape, and `secondHopRescues` is
-  permanently kept as a shorter alias for the new
-  `secondHopRescueCount`.
+#### Node binding — full `Report` field-surface parity with Python
+
+- **`Report` gains 14 fields** + a permanent alias: `strategy`,
+  `requestedStrategy`, `inputTokens`, `tokenBudget`, `tokenUtilization`,
+  `nInputChunks`, `nSelected`, `inputDistractorRatio`,
+  `reasoningPreservationDelta`, `distractorsPruned`, `removedTotal`,
+  `evidenceDensity`, `distractorRatio`, `estimatedWasteTokens`, plus
+  `secondHopRescueCount` (== `secondHopRescues`, the existing short
+  name; both names will always be present and equal). Before this
+  release Node's `Report` exposed roughly half of Python's surface —
+  programmatic callers using `report.totalTokens` could not read
+  `report.nSelected` or any of the economics fields. All additions are
+  non-breaking; no existing field changed name or shape.
+- **`docs/API_STABILITY.md`** gains a "Known call-shape asymmetries"
+  section documenting the two pre-existing idiomatic differences
+  between the Python and Node bindings (`from_text` positional vs
+  options-bag `source`; `ctx.text()` callable in Python vs `ctx.text`
+  property in Node). These are stable within 0.x — neither will be
+  silently flipped.
+
+#### README + binding-page presentation
+
+- **Multi-registry badges at the top of every README** (root, Python,
+  Node). PyPI / crates.io / npm version numbers, license, and a link
+  to the evidence layer. Brand color (`#e11d48`) on the registry
+  badges.
+- **A retention-vs-frameworks bar chart** (`.github/retention_vs_frameworks.svg`)
+  showing the measured head-to-head numbers from
+  [`FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md):
+  HotpotQA multi-hop (RedHop 77%, LangChain 71%, LlamaIndex 72%) and
+  CUAD contracts (RedHop 82%, LangChain 73%, LlamaIndex 86%). Hand-rolled
+  SVG, no fake screenshots, every number traces to
+  [`reports/framework_comparison.txt`](reports/framework_comparison.txt).
+- **A pipeline architecture diagram** (`.github/architecture.svg`)
+  showing the five stages — Document → Chunking → Retrieval →
+  Allocation → BuiltContext — with the calibrating finding named under
+  each internal stage and a "YOU BRING / REDHOP OWNS / YOU GET" scope
+  label.
+- **A Decision Report visual** (`.github/decision_report.svg`) —
+  terminal-styled SVG rendering of `ctx.report` output. Same content
+  as the ASCII block (which is preserved under a collapsed `<details>`
+  for copy-paste).
+- **A References section** at the bottom of the root README, citing
+  the named work each piece of the runtime leans on: BM25 (Robertson &
+  Zaragoza 2009), Porter2 (Porter 2001), RRF (Cormack et al. 2009),
+  Lost-in-the-Middle (Liu et al. 2023), NQC (Shtok et al. 2012), MDR
+  (Xiong et al. 2021), and the HotpotQA/MuSiQue/CUAD evaluation
+  datasets. Each citation links to the finding doc that uses that
+  work.
+- The binding READMEs (`python/README.md`, `nodejs/README.md`) get
+  the architecture + Decision Report visuals via absolute
+  `raw.githubusercontent.com` URLs so they render on PyPI and npm
+  package pages (not just on GitHub).
+
+#### Structural test suite (`crates/redhop/tests/`)
+
+- **`proptest_invariants.rs`** — 9 property-based invariants
+  pinning `build_context`'s behavior under random valid inputs:
+  `build_context_never_panics`, `resolved_strategy_is_never_auto`,
+  `auto_decision_triangle_holds`, `selection_is_subset_of_input`,
+  `no_duplicate_chunk_ids_in_output`, `token_budget_respected`,
+  `report_counts_match_reality`, `report_ratios_are_finite_and_in_range`,
+  `build_context_is_deterministic`. Adds `proptest = "1"` as a
+  dev-dependency. Catches edge cases hand-written tests miss by
+  construction (empty input, NaN scores, all-stopword query, single-token
+  budget, …) — the bug class structural tests exist to close off.
+- **`default_calibration.rs`** — 9 pins binding each tuned default
+  on `ContextConfig::default()` / `DocumentConfig::default()` to the
+  finding that calibrated it (`token_budget = 8192`,
+  `auto_passthrough_max_tokens = 1500`, `distractor_min_grounding = 0.10`,
+  `redundancy_max_cosine = 0.92`, `link_min_jaccard = 0.12`,
+  `low_confidence_max_grounding ≡ distractor_min_grounding`,
+  `target_tokens = 128`, `candidate_k = 20`, `Document.strategy = Auto`).
+  Silent default drift becomes impossible; intentional drift is
+  documented in the same commit that makes it.
+- **`public_api_snapshot.rs`** — 5 compile-time guards against silent
+  rename/removal of public symbols, plus type-bound signature pins for
+  load-bearing functions and exhaustive-match pins on
+  `ContextStrategy` / `AutoDecision` / `RetrievalMethod` string
+  variants. Caught 4 real signature mistakes during authoring.
+- **`golden_quality.rs`** — 6 end-to-end retrieval-quality canaries
+  on small inline corpora: G01 lexical-keyword match, G02 stemming
+  finds morphological variants, G03 distractor doesn't dominate
+  relevant chunk, G04 second-hop chunk survives default assembly, G05
+  low-confidence signal fires on off-corpus queries, G06 citations
+  carry correct source. The canary that fires between benchmark runs
+  when RedHop "got dumber" on a real query shape.
 - **Three field-set parity tests** (`test_report_field_surface_parity`,
   `test_built_context_field_surface_parity`,
   `test_context_economics_field_surface_parity` in
@@ -31,13 +109,45 @@ minor releases may break; breaking changes are noted here).
   each binding exposes for the named return type. Auto-catches the gap
   class where a new `#[getter]` (Python) or `pub` field (Node) appears
   on one side without the other keeping up — the failure mode that hid
-  the 14-field gap above until a smoke test stumbled on `strategy`.
-  Maintenance: zero ongoing, unless the binding shape itself changes.
-- **`docs/API_STABILITY.md`** gains a "Known call-shape asymmetries"
-  section documenting the two pre-existing idiomatic differences between
-  the Python and Node bindings (`from_text` positional vs options-bag
-  `source`; `ctx.text()` callable in Python vs `ctx.text` property in
-  Node). These are stable within 0.x — neither will be silently flipped.
+  the 14-field Node `Report` gap until a smoke test stumbled on
+  `strategy`.
+
+#### Evidence layer — five new finding documents
+
+- **[`MUSIQUE_RECALL_GAP.md`](docs/findings/MUSIQUE_RECALL_GAP.md)** —
+  decomposes the dense recall gap between HotpotQA (0.76) and MuSiQue
+  (0.28) into five distinct contributors (gold density, retrieval signal
+  type, wide-net coverage, embedder capacity, chunking) and documents an
+  attempted full-pool RRF refactor of `RetrievalMode::Hybrid` that an
+  honest A/B benchmark falsified. Branch `feature/hybrid-full-pool-rrf`
+  on origin holds the working refactor as a research record; main keeps
+  the existing Hybrid behavior. Includes 5 reproducible example
+  harnesses under `crates/examples/examples/musique_*.rs` and
+  `hybrid_old_vs_new.rs` (the A/B that closed the question).
+- **[`RERANKING_LIMITS.md`](docs/findings/RERANKING_LIMITS.md) Update —
+  2026-06-06 (kind-label gate)** — falsifies both directions of the
+  HotpotQA-type-label gate proposed in the original finding's "open
+  problem" section. Closes that probe.
+- **[`RERANKING_LIMITS.md`](docs/findings/RERANKING_LIMITS.md) Update —
+  2026-06-06 (later, grounding gate)** — documents the discovery and
+  cross-corpus falsification of a `grounding_top1 ≤ 0.35` gate that
+  worked on HotpotQA (+0.031 lift, robust to 5-fold CV) but failed to
+  generalize to MuSiQue. Also covers an NQC + WIG cross-corpus probe
+  that didn't port. Closes the CE-gate research direction with a
+  measured negative result. Includes the Phase A feature-logging
+  harness (`crates/examples/examples/ce_gate_feature_log{,_musique}.rs`)
+  for any future probe.
+- **[`DENSE_RERANK_CEILING.md`](docs/findings/DENSE_RERANK_CEILING.md)
+  Update — 2026-06-06** — falsifies MDR single-pass as a uniform policy
+  (−0.05 vs dense baseline) while documenting a real +0.027 lift on the
+  subset of queries where dense had a gold in the pool but missed it.
+  Closes the single-shot MDR probe.
+- **[`LOCAL_RERANK.md`](docs/findings/LOCAL_RERANK.md) Update —
+  2026-06-06** — notes the status of `LocalRerankRetriever` after the
+  MuSiQue investigation: it is now a building block rather than the
+  default `Hybrid`, but the "semantic recall without ANN" contract it
+  established is intact and the working refactor is preserved on
+  `feature/hybrid-full-pool-rrf` for future re-evaluation.
 
 ### Changed
 
@@ -46,10 +156,26 @@ minor releases may break; breaking changes are noted here).
   parity above). The harness previously *normalized away* these fields
   rather than testing them — direct dict-key access means a future
   regression that drops either field on either side fails with a clear
-  KeyError instead of silently passing.
+  `KeyError` instead of silently passing.
 - Documentation polish: `python/README.md`'s `from_text` row shows the
   optional `source=` parameter; `nodejs/README.md` lists the full
-  `report` shape.
+  `report` shape; the top-level README's `"hybrid"` row in the
+  Retrieval tiers table accurately reflects the shipped semantics.
+
+### Notes on the runtime
+
+- **`RetrievalMode::Hybrid` is unchanged** for this release. A full-pool
+  RRF refactor was built end-to-end on `feature/hybrid-full-pool-rrf`
+  (commit `c81ffbe`, all tests passing, fmt + clippy clean) but a direct
+  A/B benchmark falsified the ship decision: at the user-facing
+  `candidate_k = 20` the new composition gave only +0.0074 on MuSiQue
+  and +0.0017 on HotpotQA (both below the +0.02 pre-registered ship bar)
+  and regressed HotpotQA at K=4 by −0.011. The wide-K wins are real
+  (+0.07 MuSiQue@50, +0.034 HotpotQA@50) but not user-facing.
+  `LocalRerankRetriever`'s BM25-prune-then-RRF composition is still
+  what `RetrievalMode::Hybrid` resolves to. Full A/B numbers and the
+  ship-decision audit are in
+  [`MUSIQUE_RECALL_GAP.md`](docs/findings/MUSIQUE_RECALL_GAP.md).
 
 ## [0.2.1] - 2026-06-06
 

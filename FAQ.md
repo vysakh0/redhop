@@ -59,8 +59,9 @@ question and answer share no words. See [Retrieval options](https://www.redhopai
 
 ### Is it production-ready?
 
-Alpha (0.x). Published to PyPI (`pip install redhop`), with npm shipping alongside and
-crates.io to follow. The APIs are stable and the findings reproducible, but it's young
+Alpha (0.x). Published on all three registries — PyPI (`pip install redhop`),
+crates.io (`cargo add redhop`), and npm (`npm install redhop`) — with the same surface
+on each. The APIs are stable within 0.x and the findings reproducible, but it's young
 and not yet battle-tested at scale — use it, file issues, pin versions.
 
 ### Why should I trust the findings?
