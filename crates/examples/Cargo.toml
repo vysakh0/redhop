@@ -180,6 +180,10 @@ name = "cuad_chunk_strategy_sweep"
 path = "examples/cuad_chunk_strategy_sweep.rs"
 
 [[example]]
+name = "cuad_query_preprocessing"
+path = "examples/cuad_query_preprocessing.rs"
+
+[[example]]
 name = "hybrid_old_vs_new"
 path = "examples/hybrid_old_vs_new.rs"
 required-features = ["onnx"]
