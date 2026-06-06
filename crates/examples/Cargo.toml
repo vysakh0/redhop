@@ -165,6 +165,11 @@ name = "musique_hybrid_recall"
 path = "examples/musique_hybrid_recall.rs"
 required-features = ["onnx"]
 
+[[example]]
+name = "musique_chunk_sweep"
+path = "examples/musique_chunk_sweep.rs"
+required-features = ["onnx"]
+
 [lints]
 workspace = true
 
