@@ -83,6 +83,12 @@ hf-hub     = { version = "0.5", optional = true, default-features = false, featu
 [dev-dependencies]
 tempfile = "3"
 zip      = { version = "2", default-features = false, features = ["deflate"] }
+# Property-based testing — each test states a CLAIM about every possible
+# input ("for any random corpus + any random ContextConfig, X holds"),
+# and proptest explores the space until either the claim trips or the
+# budgeted N runs pass. Catches the bug class hand-written tests miss
+# by definition: edge cases the author didn't think of.
+proptest = "1"
 
 [lints]
 workspace = true
