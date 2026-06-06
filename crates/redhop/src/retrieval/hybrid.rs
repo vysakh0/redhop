@@ -65,6 +65,21 @@ impl HybridRetriever {
 
 #[async_trait]
 impl Retriever for HybridRetriever {
+    /// Surface the first sub-retriever's chunk-embedding cache, if any.
+    /// Lets `Document::embedded_chunks()` find embeddings cached inside a
+    /// dense sub-retriever even when the outermost retriever is a
+    /// composition. The convention is "first non-None wins" — in practice
+    /// at most one sub-retriever (the dense one) carries embeddings, so
+    /// the order-sensitivity is academic.
+    fn embeddings(&self) -> Option<&std::collections::HashMap<String, crate::core::Embedding>> {
+        for r in &self.retrievers {
+            if let Some(map) = r.embeddings() {
+                return Some(map);
+            }
+        }
+        None
+    }
+
     async fn index(&mut self, _chunks: &[Chunk]) -> crate::core::Result<()> {
         // Hybrid is a composition; indexing happens on the sub-retrievers
         // directly. We intentionally do not duplicate writes here because

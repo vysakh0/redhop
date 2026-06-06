@@ -54,7 +54,7 @@ use crate::core::{
     Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Reranker, Result,
     RetrievalResult, Retriever, TokenizerBackend,
 };
-use crate::retrieval::{Bm25Retriever, LocalRerankRetriever};
+use crate::retrieval::{Bm25Retriever, HybridRetriever, LocalRerankRetriever};
 use tokio::runtime::{Builder, Runtime};
 
 /// How a [`Document`] retrieves candidates internally.
@@ -71,12 +71,26 @@ use tokio::runtime::{Builder, Runtime};
 pub enum RetrievalMode {
     /// BM25 lexical retrieval. The default; needs no model or embedder.
     Lexical,
-    /// Hybrid: BM25 prunes the corpus to a candidate pool, then a dense model
-    /// reorders **only that pool**. Requires an embedder. Embeds only the
-    /// ~`candidate_pool` candidates per query (not the whole corpus), so it scales
-    /// to **large local corpora without a vector DB** — the agent/folder case.
+    /// Hybrid: BM25 and global dense retrieval both run independently over
+    /// the whole corpus, and their ranked lists are fused via Reciprocal
+    /// Rank Fusion (RRF, k=60).
+    ///
+    /// Requires an embedder. Every chunk gets embedded up front (same as
+    /// [`RetrievalMode::Dense`]), and every query incurs both a BM25 lookup
+    /// and a global cosine pass — but the RRF fusion is the cheapest known
+    /// way to combine the two signals robustly, and on the measured
+    /// workloads it strictly dominates either retriever alone at K ≥ 10
+    /// (HotpotQA +0.014 to +0.024 over best-single; MuSiQue +0.022 to
+    /// +0.069 over best-single; see `docs/findings/MUSIQUE_RECALL_GAP.md`).
+    ///
+    /// For users with corpora large enough that global cosine is
+    /// prohibitive, [`crate::retrieval::LocalRerankRetriever`] remains
+    /// available as a public building block — assemble it manually for the
+    /// BM25-pruned cheap path (the previous `Hybrid` behavior).
     Hybrid {
-        /// BM25 candidate-pool depth the dense stage reorders (e.g. 50).
+        /// Each retriever's candidate-pool depth before fusion. A larger
+        /// pool surfaces more low-rank candidates that RRF can promote;
+        /// the canonical value is 50.
         candidate_pool: usize,
     },
     /// Global dense: cosine the query against **every** chunk embedding (exact
@@ -761,7 +775,15 @@ impl Document {
 
     fn ensure_indexed(&mut self) -> Result<()> {
         if self.retriever.is_none() {
-            let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
+            // For Lexical / Dense the retriever is a single object that
+            // owns its own indexing. For Hybrid we have to index TWO
+            // sub-retrievers (BM25 + global Dense) and then wrap them in
+            // `HybridRetriever`, whose own `index()` returns an error
+            // because composition does not own ingest. The `already_indexed`
+            // flag distinguishes the two cases so the single ingest call
+            // below stays a no-op for Hybrid.
+            let mut already_indexed = false;
+            let r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
                 RetrievalMode::Lexical => {
                     Box::new(Bm25Retriever::with_analyzer(self.analyzer.clone())?)
                 }
@@ -774,15 +796,24 @@ impl Document {
                                 .into(),
                         )
                     })?;
-                    let r = match self.query_embedder.clone() {
-                        Some(q) => LocalRerankRetriever::new_with_query_embedder(
-                            embedder,
-                            q,
-                            candidate_pool,
-                        )?,
-                        None => LocalRerankRetriever::new(embedder, candidate_pool)?,
+                    // BM25 sub-retriever — full-corpus lexical ranking.
+                    let mut bm25 = Bm25Retriever::with_analyzer(self.analyzer.clone())?;
+                    self.rt.block_on(bm25.index(&self.chunks))?;
+                    // Global dense sub-retriever — every chunk gets a
+                    // cosine score per query (no BM25 prune, no ANN).
+                    // candidate_pool is unused inside the global path so we
+                    // pass `1` to satisfy the constructor.
+                    let dense_raw = match self.query_embedder.clone() {
+                        Some(q) => LocalRerankRetriever::new_with_query_embedder(embedder, q, 1)?,
+                        None => LocalRerankRetriever::new(embedder, 1)?,
                     };
-                    Box::new(r.with_analyzer(self.analyzer.clone())?)
+                    let mut dense = dense_raw.with_analyzer(self.analyzer.clone())?.global();
+                    self.rt.block_on(dense.index(&self.chunks))?;
+                    // RRF-fuse the two ranked lists at retrieve time.
+                    let hybrid =
+                        HybridRetriever::rrf(vec![Arc::new(bm25), Arc::new(dense)], candidate_pool);
+                    already_indexed = true;
+                    Box::new(hybrid)
                 }
                 RetrievalMode::Dense => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
@@ -806,8 +837,13 @@ impl Document {
                     Box::new(r.with_analyzer(self.analyzer.clone())?.global())
                 }
             };
-            self.rt.block_on(r.index(&self.chunks))?;
-            self.retriever = Some(r);
+            if !already_indexed {
+                let mut r = r;
+                self.rt.block_on(r.index(&self.chunks))?;
+                self.retriever = Some(r);
+            } else {
+                self.retriever = Some(r);
+            }
         }
         Ok(())
     }

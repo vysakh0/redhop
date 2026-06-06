@@ -145,7 +145,7 @@ with no ANN and no index server.
 | `retrieval=` | What it does | Reach for it when |
 | --- | --- | --- |
 | `"lexical"` *(default)* | BM25 — zero dependencies, fully offline, ~50ms warm | most document QA: code, API refs, runbooks, financial reports, handbooks, mixed folders |
-| `"hybrid"` | BM25 prunes to a pool, a dense model reorders it | the doc has parallel near-duplicate clauses (regional overrides, per-region sub-sections) — pair with `context(include_heading=True, neighbors=1)` |
+| `"hybrid"` | BM25 + global dense run independently, ranked lists RRF-fused | mixed lexical + paraphrase content, compositional multi-hop queries, or any case where neither signal alone is strictly best — best recall on bounded corpora at the cost of a global cosine per query |
 | `"semantic"` | dense over every chunk, exact cosine | queries and answers share no vocabulary at all (rare in practice for document QA) |
 
 Set `rerank="cross-encoder"` to add a second-stage scorer that reads each

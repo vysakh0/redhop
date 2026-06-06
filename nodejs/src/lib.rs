@@ -48,7 +48,8 @@ pub struct Options {
     pub embedder_query_prefix: Option<String>,
     /// Advanced: passage prefix for asymmetric models (E5: `"passage: "`).
     pub embedder_passage_prefix: Option<String>,
-    /// Hybrid BM25 prune depth. Default 50.
+    /// Hybrid candidate-pool depth — each retriever (BM25 + global
+    /// dense) returns this many candidates before RRF fusion. Default 50.
     pub candidate_pool: Option<u32>,
     /// Optional second-stage cross-encoder reranker by name (`"cross-encoder"`,
     /// auto-downloaded). Reorders the candidate pool by jointly scoring each

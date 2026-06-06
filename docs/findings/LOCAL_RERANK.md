@@ -102,3 +102,20 @@ to offer it as a `Document` retrieval mode (BM25 top-K → local dense rerank �
 Treat this as a **measured retrieval-runtime result, not a new algorithm.** The
 full journey that produced it (boundary mapping, the failed escalation triggers)
 is in [SEMANTIC_MISMATCH.md](SEMANTIC_MISMATCH.md).
+
+## Status update — 2026-06-06
+
+The cross-corpus measurement in [MUSIQUE_RECALL_GAP](MUSIQUE_RECALL_GAP.md)
+established that on lexical-favoring corpora (compositional multi-hop), BM25
+*strictly beats* dense at every K — which means a BM25-pruned-then-dense-reranked
+pipeline is capped at BM25's pool recall. Adding a **global** dense retriever
+alongside BM25 and RRF-fusing the two surfaces gold chunks BM25 misses,
+delivering +0.07 RRF@50 on MuSiQue without regressing HotpotQA.
+
+Consequently, **`RetrievalMode::Hybrid` was refactored to do full-pool RRF**
+(BM25 + global dense + RRF) rather than BM25-pruned dense rerank. The
+[`LocalRerankRetriever`](../../crates/redhop/src/retrieval/local_rerank.rs)
+described in this finding remains a fully-public building block — assemble
+it manually when corpus size makes the global cosine prohibitive. The
+"semantic recall without ANN" contract this finding establishes is
+preserved; it's now opt-in rather than the default `Hybrid`.

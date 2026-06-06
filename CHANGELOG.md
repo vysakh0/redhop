@@ -7,6 +7,23 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+### Changed
+
+- **`RetrievalMode::Hybrid` now does full-pool RRF** (BM25 + global dense
+  + Reciprocal Rank Fusion), replacing the previous "BM25 prune → dense
+  rerank → RRF" composition. Measured impact (200-query stratified
+  HotpotQA + 200-query answerable MuSiQue, BGE-small, ms-marco
+  cross-encoder): RRF@50 +0.024 on HotpotQA, +0.069 on MuSiQue with no
+  regression at K=4. Cost: dense becomes O(|corpus|) cosines per query
+  instead of O(|pool|); on million-chunk corpora this is substantial.
+  The previous BM25-pruned composition is preserved as the public
+  building block `crate::retrieval::LocalRerankRetriever` — assemble
+  it manually for the cheap path. Full evidence in
+  `docs/findings/MUSIQUE_RECALL_GAP.md`; status update in
+  `docs/findings/LOCAL_RERANK.md`. **Behavioral change for callers
+  using `RetrievalMode::Hybrid`** — same public API surface, different
+  recall and cost characteristics.
+
 ### Added
 
 - **Node `Report` field-surface parity with Python.** The Node binding's

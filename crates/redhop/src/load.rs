@@ -164,8 +164,8 @@ pub fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Res
         Some(other) => {
             return Err(Error::Other(format!(
                 "unknown retrieval mode '{other}'; use 'lexical' (default, BM25), 'hybrid' \
-                 (BM25 prune → dense rerank — large corpora, no vector DB), or 'semantic' \
-                 (global dense over every chunk — small/bounded corpora)"
+                 (BM25 + global dense, RRF-fused — best recall on bounded corpora), or \
+                 'semantic' (global dense only — paraphrase-heavy queries on bounded corpora)"
             )))
         }
     })

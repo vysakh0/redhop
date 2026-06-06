@@ -58,8 +58,8 @@ Document.fromFile("support.md",
   { retrieval: "hybrid", model: "bge-small", rerank: "cross-encoder" });
 ```
 
-`options.retrieval` is `"lexical"` (default), `"hybrid"` (BM25 → dense rerank),
-or `"semantic"` (dense over every chunk). Dense tiers download a small model
+`options.retrieval` is `"lexical"` (default), `"hybrid"` (BM25 + global dense,
+RRF-fused), or `"semantic"` (dense over every chunk). Dense tiers download a small model
 named by `options.model` (`"bge-small"` / `"bge-base"`). The 60-second
 decision guide:
 [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md).

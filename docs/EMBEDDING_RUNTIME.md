@@ -124,10 +124,19 @@ let _ctx = doc.context("a paraphrased / semantic query")?;
 # Ok(()) }
 ```
 
-BM25 prunes the corpus to `candidate_pool` candidates; the dense model reorders
-only that pool — **no vector DB, no ANN**. Selecting `Hybrid` (or `Dense`)
-without an embedder is a clear error, so the model dependency is explicit,
-never implicit. Runnable example:
+BM25 and global dense retrieve independently over the whole corpus (each
+returning `candidate_pool` candidates), and the two ranked lists are
+**RRF-fused** (k=60). No vector DB, no ANN — exact brute-force cosine over
+every chunk, traded off against the recall lift fusion delivers on bounded
+corpora (`docs/findings/MUSIQUE_RECALL_GAP.md`). Selecting `Hybrid` (or
+`Dense`) without an embedder is a clear error, so the model dependency is
+explicit, never implicit.
+
+For very-large corpora where the global cosine is prohibitive, the previous
+BM25-prune-then-dense-rerank composition is preserved as
+[`LocalRerankRetriever`](../crates/redhop/src/retrieval/local_rerank.rs) and
+can be assembled manually from the public retrieval surface. See
+`docs/findings/LOCAL_RERANK.md`. Runnable example:
 `cargo run -p redhop-examples --example semantic_local_rerank --features onnx`.
 The tier trade-offs (and where the free tiers fall short) are measured in
 `docs/findings/SEMANTIC_ZERO_DEP.md` and `docs/findings/LOCAL_RERANK.md`.
