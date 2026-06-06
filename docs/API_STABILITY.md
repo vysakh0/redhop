@@ -91,7 +91,15 @@ documented below; both are correct, neither will be silently flipped.
 Everything else — `report.strategy`, `report.requested_strategy` (Python) /
 `report.requestedStrategy` (Node), `auto_decision` / `autoDecision`,
 strategy string values, the chunks and citations arrays, etc. — has the
-same shape across both bindings.
+same shape across both bindings, and is structurally pinned by the
+field-set parity tests in `python/tests/test_parity_node.py`.
+
+One **name alias** is in play for back-compat: Python's
+`report.second_hop_rescue_count` is exposed in Node as **both**
+`report.secondHopRescues` (the short name 0.2.0 shipped) and
+`report.secondHopRescueCount` (the long-name alias added in 0.2.2 to
+match Python). Both Node names will always be present and equal; new
+code should prefer `secondHopRescueCount` for cross-binding consistency.
 
 ## Experimental / may change without notice
 

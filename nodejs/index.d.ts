@@ -110,11 +110,63 @@ export interface Report {
   requestedStrategy: string
   /** `"passthrough"` | `"prune"` | `"not_auto"`. */
   autoDecision: string
+  /** Total tokens in the input (retrieved) set, before assembly. */
+  inputTokens: number
+  /** The token-budget cap applied during assembly. */
+  tokenBudget: number
   totalTokens: number
+  /** `total_tokens / token_budget` — how much of the budget was used. */
+  tokenUtilization: number
+  /** How many chunks were in the input (retrieved) set. */
+  nInputChunks: number
+  /** How many chunks survived assembly into the final context. */
+  nSelected: number
+  /** Fraction of input chunks below the grounding bar (distractors). */
+  inputDistractorRatio: number
   retainedEvidenceRatio: number
+  /**
+   * Number of below-bar chunks that were RESCUED as linked second hops
+   * by `reasoning_preserving` (rather than dropped as distractors).
+   */
   secondHopRescues: number
+  /**
+   * Permanent alias for `secondHopRescues`. Both names will always be
+   * present and equal — keeps parity with Python's
+   * `report.second_hop_rescue_count` getter while preserving the
+   * shorter `secondHopRescues` that 0.2.0 shipped.
+   */
+  secondHopRescueCount: number
+  /**
+   * Compared with a relevance-only baseline (DistractorFiltered),
+   * how many MORE chunks did the chosen strategy retain? Positive
+   * values mean rescued reasoning evidence beyond what a relevance
+   * filter would have kept.
+   */
+  reasoningPreservationDelta: number
   /** Structural-expansion chunks added (neighbors / headings). */
   nExpanded: number
+  /**
+   * Chunks dropped because their grounding was below the distractor
+   * bar (a subset of `removedTotal`).
+   */
+  distractorsPruned: number
+  /**
+   * Total chunks dropped during assembly (distractors + redundant +
+   * over-budget).
+   */
+  removedTotal: number
+  /**
+   * Fraction of context tokens that are query-relevant (answer-bearing
+   * density proxy).
+   */
+  evidenceDensity: number
+  /** Fraction of selected chunks below the distractor grounding cutoff. */
+  distractorRatio: number
+  /**
+   * Estimated tokens spent on chunks below the grounding bar (waste,
+   * not evidence).
+   */
+  estimatedWasteTokens: number
   /**
    * `true` when nothing in the assembled context was above the grounding
    * floor — the query may share little vocabulary with the corpus.

@@ -90,7 +90,20 @@ for the full breakdown and a calibration disclaimer.
 - `chunks` — the selected chunk texts, in order
 - `citations` — `{ source, page, heading, line, text }` per chunk (`null`/absent
   fields where a format doesn't provide them)
-- `report` — `{ strategy, requestedStrategy, autoDecision, totalTokens, retainedEvidenceRatio, secondHopRescues, nExpanded, lowConfidenceRetrieval, lowConfidenceThreshold, rendered }` (`strategy` is the resolved concrete strategy; `requestedStrategy` is what you asked for — `"auto"` until Auto resolves)
+- `report` — the Decision Report, with the same field surface as Python's
+  `ctx.report`. Read `strategy` / `requestedStrategy` for the resolved
+  vs requested allocation; `autoDecision` for the Auto gate's verdict
+  (`"passthrough"` | `"prune"` | `"not_auto"`); `inputTokens` /
+  `tokenBudget` / `totalTokens` / `tokenUtilization` for budget
+  accounting; `nInputChunks` / `nSelected` / `nExpanded` for chunk
+  counts; `inputDistractorRatio` / `retainedEvidenceRatio` /
+  `evidenceDensity` / `distractorRatio` / `estimatedWasteTokens` for
+  context economics; `secondHopRescues` (or its longer alias
+  `secondHopRescueCount`) and `reasoningPreservationDelta` for the
+  reasoning-preserving accounting; `lowConfidenceRetrieval` /
+  `lowConfidenceThreshold` for the "did anything actually match"
+  signal; and `rendered` for the human-readable Decision Report
+  string. The full shape is in `index.d.ts`.
 
 `neighbors` / `includeHeading` turn on structural context expansion (adjacent
 chunks / section headings, in document order).

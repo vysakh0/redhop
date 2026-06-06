@@ -9,13 +9,30 @@ minor releases may break; breaking changes are noted here).
 
 ### Added
 
-- **Node `Report.strategy` + `Report.requestedStrategy`.** The resolved
-  concrete strategy and the caller's requested strategy are now exposed
-  on the Node binding's `Report` object (matching the Python binding's
-  `report.strategy` / `report.requested_strategy` getters). Closes a
-  silent Python↔Node parity gap that was surfaced by a smoke test after
-  v0.2.1 — Python and Rust both exposed `strategy` already; Node didn't.
-  Non-breaking additive change.
+- **Node `Report` field-surface parity with Python.** The Node binding's
+  `Report` object now exposes the full Python `ContextReport` surface —
+  14 fields added in this release: `strategy`, `requestedStrategy`,
+  `inputTokens`, `tokenBudget`, `tokenUtilization`, `nInputChunks`,
+  `nSelected`, `inputDistractorRatio`, `reasoningPreservationDelta`,
+  `distractorsPruned`, `removedTotal`, `evidenceDensity`,
+  `distractorRatio`, `estimatedWasteTokens`, plus the permanent alias
+  `secondHopRescueCount` (== `secondHopRescues`, matching Python's
+  `report.second_hop_rescue_count` name). Before this release Node's
+  `Report` exposed roughly half of Python's surface — programmatic
+  callers using `report.totalTokens` could not read `report.nSelected`
+  or any of the economics fields. All additions are non-breaking; no
+  existing field changed name or shape, and `secondHopRescues` is
+  permanently kept as a shorter alias for the new
+  `secondHopRescueCount`.
+- **Three field-set parity tests** (`test_report_field_surface_parity`,
+  `test_built_context_field_surface_parity`,
+  `test_context_economics_field_surface_parity` in
+  `python/tests/test_parity_node.py`). Each compares the SET of fields
+  each binding exposes for the named return type. Auto-catches the gap
+  class where a new `#[getter]` (Python) or `pub` field (Node) appears
+  on one side without the other keeping up — the failure mode that hid
+  the 14-field gap above until a smoke test stumbled on `strategy`.
+  Maintenance: zero ongoing, unless the binding shape itself changes.
 - **`docs/API_STABILITY.md`** gains a "Known call-shape asymmetries"
   section documenting the two pre-existing idiomatic differences between
   the Python and Node bindings (`from_text` positional vs options-bag
@@ -25,9 +42,9 @@ minor releases may break; breaking changes are noted here).
 ### Changed
 
 - **`python/tests/test_parity_node.py`** now pins `strategy` +
-  `requested_strategy` parity between bindings. The harness previously
-  *normalized away* these fields rather than testing them, which is how
-  the gap above slipped through. Direct dict-key access means a future
+  `requested_strategy` data-value parity (in addition to the field-set
+  parity above). The harness previously *normalized away* these fields
+  rather than testing them — direct dict-key access means a future
   regression that drops either field on either side fails with a clear
   KeyError instead of silently passing.
 - Documentation polish: `python/README.md`'s `from_text` row shows the

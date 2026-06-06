@@ -245,3 +245,148 @@ def test_node_determinism_repeat_run():
     assert a["chunks"] == b["chunks"], "node chunks order not deterministic"
     assert a["report"]["totalTokens"] == b["report"]["totalTokens"]
     assert a["report"]["autoDecision"] == b["report"]["autoDecision"]
+
+
+# ── Field-set parity (structural, auto-detects future divergences) ─────────
+#
+# The data-value tests above (`test_build_context_parity` etc.) only check
+# fields that the test author explicitly listed in `_normalize_built`. That
+# is exactly how `Report.strategy` was silently missing from the Node
+# binding before 0.2.2 — the test normalized the field away and nobody
+# noticed. These three tests close that gap class:
+#
+#   For each FFI-crossing return type (Report, BuiltContext, ContextEconomics),
+#   compare the SET of fields each binding exposes. A future field added to
+#   one side without the other catches a clear failure naming the offending
+#   field, without anyone having to remember to extend a manual list.
+#
+# Allowlists below are tiny — they document the handful of intentional
+# shape asymmetries (most importantly the call-shape differences pinned in
+# docs/API_STABILITY.md "Known call-shape asymmetries"). New entries here
+# should reference a finding or design doc; otherwise close the gap.
+
+
+import re  # noqa: E402  (intentionally late — locality with the field-set tests)
+
+
+def _camel_to_snake(name: str) -> str:
+    """`requestedStrategy` → `requested_strategy`."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+def _py_data_fields(obj: Any) -> set[str]:
+    """Names of READABLE data fields on a Python pyclass instance.
+
+    Includes `#[getter]` attributes (they look like properties at the
+    Python level), excludes callable methods and dunders. The point is
+    'what fields can a caller READ' — not the entire dir() surface.
+    """
+    out: set[str] = set()
+    for name in dir(obj):
+        if name.startswith("_"):
+            continue
+        try:
+            val = getattr(obj, name)
+        except Exception:
+            continue
+        if callable(val):
+            continue
+        out.add(name)
+    return out
+
+
+def _node_data_fields(d: dict) -> set[str]:
+    """Snake-cased keys of a Node-side result dict."""
+    return {_camel_to_snake(k) for k in d.keys()}
+
+
+# Intentional shape asymmetries — documented in docs/API_STABILITY.md
+# ("Known call-shape asymmetries"). Adding a new entry requires a comment
+# explaining WHY it's not just a bug to fix on the missing side.
+_REPORT_PY_ONLY: set[str] = set()  # if this grows, add Node fields or document why
+_REPORT_NODE_ONLY = {
+    # Node exposes the rendered Decision Report as a string field;
+    # Python exposes it via `str(report)` / `__str__`. Different idiom,
+    # same intent. Pinned in docs/API_STABILITY.md.
+    "rendered",
+    # `secondHopRescues` is the short name Node has shipped since 0.2.0.
+    # Python's canonical field is `second_hop_rescue_count`. To keep
+    # parity without a breaking rename, 0.2.2 added `secondHopRescueCount`
+    # to Node as a permanent alias (== `secondHopRescues`); both names
+    # are now exposed in Node, only the long name in Python. This entry
+    # documents why the short alias `second_hop_rescues` (snake-cased)
+    # appears in Node only.
+    "second_hop_rescues",
+}
+_BUILT_PY_ONLY: set[str] = set()
+_BUILT_NODE_ONLY = {
+    # Python's `ctx.text()` is a callable method (pyo3 idiom: the
+    # underlying Rust value is borrowed). Node's `ctx.text` is a string
+    # property (napi-rs `#[napi(object)]` idiom). Documented as a stable
+    # 0.x asymmetry — same value, different call shape.
+    "text",
+}
+# ContextEconomics is a dict on BOTH sides (Python wrapper json-decodes
+# the Rust JSON string; Node parity_runner JSON.parses the napi result).
+# Direct dict comparison is meaningful — no intentional asymmetry expected.
+_ECON_PY_ONLY: set[str] = set()
+_ECON_NODE_ONLY: set[str] = set()
+
+
+def _diff_msg(label: str, py_only: set[str], node_only: set[str]) -> str:
+    parts = [f"{label} field surface diverged:"]
+    if py_only:
+        parts.append(f"  present in Python only: {sorted(py_only)}")
+    if node_only:
+        parts.append(f"  present in Node only:   {sorted(node_only)}")
+    parts.append(
+        "  If a divergence is intentional, add it to the corresponding "
+        "_*_PY_ONLY / _*_NODE_ONLY set with a comment explaining why "
+        "(and update docs/API_STABILITY.md if it's a stable asymmetry)."
+    )
+    return "\n".join(parts)
+
+
+def test_report_field_surface_parity():
+    """The set of `Report` fields must match across bindings (modulo the
+    documented `rendered` idiom). Auto-catches the gap class where a new
+    `#[getter]` is added to Python's `ContextReport` but not to Node's
+    `Report` struct — the failure mode that hid `strategy` /
+    `requested_strategy` for months before 0.2.2."""
+    query = "what is the refund window?"
+    py_report = redhop.analyze_context(query, CORPUS)
+    node_report = node_call("analyzeContext", [query, CORPUS])
+    py = _py_data_fields(py_report)
+    node = _node_data_fields(node_report)
+    py_only = py - node - _REPORT_PY_ONLY
+    node_only = node - py - _REPORT_NODE_ONLY
+    assert not (py_only or node_only), _diff_msg("Report", py_only, node_only)
+
+
+def test_built_context_field_surface_parity():
+    """The set of `BuiltContext` fields must match across bindings
+    (modulo the documented `text` callable-vs-property asymmetry)."""
+    query = "what is the refund window?"
+    py_built = redhop.build_context(query, CORPUS)
+    node_built = node_call("buildContext", [query, CORPUS])
+    py = _py_data_fields(py_built)
+    node = _node_data_fields(node_built)
+    py_only = py - node - _BUILT_PY_ONLY
+    node_only = node - py - _BUILT_NODE_ONLY
+    assert not (py_only or node_only), _diff_msg("BuiltContext", py_only, node_only)
+
+
+def test_context_economics_field_surface_parity():
+    """`context_economics` is a dict on both sides — pin that the key set
+    matches. The data-value test above (`test_context_economics_parity`)
+    already asserts `py == node`, which would also catch a key
+    mismatch, but this test names the offending field on failure rather
+    than just reporting a dict inequality."""
+    query = "what is the refund window?"
+    py = redhop.context_economics(query, CORPUS)
+    node = node_call("contextEconomics", [query, CORPUS])
+    py_keys = {_camel_to_snake(k) for k in py.keys()}
+    node_keys = {_camel_to_snake(k) for k in node.keys()}
+    py_only = py_keys - node_keys - _ECON_PY_ONLY
+    node_only = node_keys - py_keys - _ECON_NODE_ONLY
+    assert not (py_only or node_only), _diff_msg("ContextEconomics", py_only, node_only)

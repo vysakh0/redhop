@@ -157,11 +157,49 @@ pub struct Report {
     pub requested_strategy: String,
     /// `"passthrough"` | `"prune"` | `"not_auto"`.
     pub auto_decision: String,
+    /// Total tokens in the input (retrieved) set, before assembly.
+    pub input_tokens: u32,
+    /// The token-budget cap applied during assembly.
+    pub token_budget: u32,
     pub total_tokens: u32,
+    /// `total_tokens / token_budget` — how much of the budget was used.
+    pub token_utilization: f64,
+    /// How many chunks were in the input (retrieved) set.
+    pub n_input_chunks: u32,
+    /// How many chunks survived assembly into the final context.
+    pub n_selected: u32,
+    /// Fraction of input chunks below the grounding bar (distractors).
+    pub input_distractor_ratio: f64,
     pub retained_evidence_ratio: f64,
+    /// Number of below-bar chunks that were RESCUED as linked second hops
+    /// by `reasoning_preserving` (rather than dropped as distractors).
     pub second_hop_rescues: u32,
+    /// Permanent alias for `secondHopRescues`. Both names will always be
+    /// present and equal — keeps parity with Python's
+    /// `report.second_hop_rescue_count` getter while preserving the
+    /// shorter `secondHopRescues` that 0.2.0 shipped.
+    pub second_hop_rescue_count: u32,
+    /// Compared with a relevance-only baseline (DistractorFiltered),
+    /// how many MORE chunks did the chosen strategy retain? Positive
+    /// values mean rescued reasoning evidence beyond what a relevance
+    /// filter would have kept.
+    pub reasoning_preservation_delta: u32,
     /// Structural-expansion chunks added (neighbors / headings).
     pub n_expanded: u32,
+    /// Chunks dropped because their grounding was below the distractor
+    /// bar (a subset of `removedTotal`).
+    pub distractors_pruned: u32,
+    /// Total chunks dropped during assembly (distractors + redundant +
+    /// over-budget).
+    pub removed_total: u32,
+    /// Fraction of context tokens that are query-relevant (answer-bearing
+    /// density proxy).
+    pub evidence_density: f64,
+    /// Fraction of selected chunks below the distractor grounding cutoff.
+    pub distractor_ratio: f64,
+    /// Estimated tokens spent on chunks below the grounding bar (waste,
+    /// not evidence).
+    pub estimated_waste_tokens: u32,
     /// `true` when nothing in the assembled context was above the grounding
     /// floor — the query may share little vocabulary with the corpus.
     pub low_confidence_retrieval: bool,
@@ -212,10 +250,25 @@ fn to_report(r: &redhop::ContextReport) -> Report {
         strategy: strategy_to_str(r.strategy).to_string(),
         requested_strategy: strategy_to_str(r.requested_strategy).to_string(),
         auto_decision,
+        input_tokens: r.input_tokens as u32,
+        token_budget: r.token_budget as u32,
         total_tokens: r.total_tokens as u32,
+        token_utilization: r.token_utilization as f64,
+        n_input_chunks: r.n_input_chunks as u32,
+        n_selected: r.n_selected as u32,
+        input_distractor_ratio: r.input_distractor_ratio as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,
         second_hop_rescues: r.second_hop_rescue_count as u32,
+        // Permanent alias — same value, longer name (matches Python's
+        // `report.second_hop_rescue_count`). See struct doc comment.
+        second_hop_rescue_count: r.second_hop_rescue_count as u32,
+        reasoning_preservation_delta: r.reasoning_preservation_delta as u32,
         n_expanded: r.n_expanded as u32,
+        distractors_pruned: r.removed.distractor as u32,
+        removed_total: r.removed.total as u32,
+        evidence_density: r.economics.evidence_density as f64,
+        distractor_ratio: r.economics.distractor_ratio as f64,
+        estimated_waste_tokens: r.economics.estimated_waste_tokens as u32,
         low_confidence_retrieval: r.low_confidence_retrieval,
         low_confidence_threshold: r.low_confidence_threshold as f64,
         rendered: r.render(None),
