@@ -1,4 +1,4 @@
-# The CUAD recall-gap — investigating the 82%-vs-86% LlamaIndex headline
+# The CUAD recall-gap — investigated, confirmed real
 
 > **Question:** [FRAMEWORK_COMPARISON.md](FRAMEWORK_COMPARISON.md) measured
 > RedHop[topk] at **82% ≥0.8 word-recall** vs LlamaIndex at **86%** on CUAD
@@ -6,156 +6,182 @@
 > contracts "tie" was a 4-point loss. Can a knob (chunk size, strategy)
 > close that gap without regressing HotpotQA?
 >
-> **Result:** Two findings, one of which is uncomfortable to write.
-> (a) The documented baseline appears to be **stale** — on a 50-contract
-> subset under the current main, default chunker + RawTopK gets **85% ≥0.8
-> retention** at 1908 tokens, not 82%. (b) Sweeping chunk size on the
-> current main shows target=192 + RawTopK at **85.9%** — essentially
-> matching LlamaIndex (86%), but only +0.9 over the default (128). The
-> "default chunker is optimal" finding from CHUNK_GRANULARITY holds; the
-> "we're 4 points behind on CUAD" framing in FRAMEWORK_COMPARISON.md
-> needs a refresh.
+> **Result:** The gap is **real and not closed by chunking or strategy
+> choice**. A fresh n=300 rerun (under current main, with all the
+> analyzer + BM25 fixes through 0.2.2) reproduces the documented numbers
+> almost exactly:
+>
+>   - CUAD redhop[topk]: 82% then, 82% now (LlamaIndex still 86%).
+>   - HotpotQA redhop[topk]: **77% then, 80% now (+3 points)** —
+>     a real, measured improvement from the same fixes that closed the
+>     BM25 silent-wildcard bug and sharpened the analyzer.
+>
+> A chunk-size × strategy sweep on the same 300-query slice fails to find
+> any cell that clears LlamaIndex's 86% — the best is RawTopK at
+> target=32 at 85%, still 1 point short. The 4-point CUAD gap is not a
+> chunking problem and not a strategy-choice problem under the BM25
+> retrieval that the comparison fixes.
 >
 > **Reproduce:**
 > ```bash
+> # The fresh framework-comparison rerun (matches bench/compare.py exactly):
+> bench/.venv/bin/python bench/compare.py
+> # → output saved to reports/framework_comparison_2026-06-06.txt
+>
+> # The chunk-size × strategy sweep on the same 300-query CUAD slice:
 > cargo run -p redhop-examples --example cuad_chunk_strategy_sweep --release
 > ```
 
-## Setup
+## What we re-measured
 
-Same harness shape as `eval_cuad_documents.rs` (the existing CUAD eval),
-sweeping two dimensions:
+**1. Re-ran `bench/compare.py` on the current main (0.2.2)**, same setup
+as the original: n=300 first questions from `cuad_sample.json`,
+budget=2000, candidate_k=40, BM25 across all three frameworks, identical
+gold-word-recall metric.
 
-- `target_tokens` ∈ {32, 48, 64, 96, 128, 192}  (max = 2×target)
-- `strategy` ∈ {RawTopK, MaxDensity, DistractorFiltered, ReasoningPreserving}
+CUAD (n=300, budget=2000, BM25):
 
-Metric: word-recall of the gold answer span against the assembled context
-(`span_recall` from the existing harness — robust to chunk boundaries
-splitting long clauses).
+| system              | avg tokens | mean recall | ≥0.5 | ≥0.8 |
+| ------------------- | ----------:| -----------:| ----:| ----:|
+| redhop[reason]      | 1882       | 0.88        | 93%  | 77%  |
+| redhop[density]     | 1885       | 0.85        | 91%  | 72%  |
+| **redhop[topk]**    | **1887**   | **0.91**    | 94%  | **82%** |
+| langchain           | 1813       | 0.87        | 93%  | 73%  |
+| **llamaindex**      | **1806**   | **0.93**    | 96%  | **86%** |
 
-Sample: **50 contracts** (cuad_sample.json). FRAMEWORK_COMPARISON.md used
-n=300, so the comparison is qualitative; magnitudes within ~3 points are
-sample-noise.
+HotpotQA (n=300, budget=400, BM25):
 
-## Numbers
+| system              | avg tokens | mean recall | ≥0.5 | ≥0.8                     |
+| ------------------- | ----------:| -----------:| ----:| ------------------------:|
+| redhop[reason]      | 352        | 0.90        | 98%  | 77%                      |
+| redhop[density]     | 353        | 0.78        | 86%  | 52%                      |
+| **redhop[topk]**    | **350**    | **0.91**    | 97%  | **80% (was 77%, +3)**    |
+| langchain           | 328        | 0.88        | 96%  | 71%                      |
+| llamaindex          | 329        | 0.88        | 96%  | 72%                      |
 
-### RawTopK (the headline strategy for CUAD)
+**The HotpotQA improvement is the real story.** The +3 points on the
+multi-hop benchmark, with everything else held constant, is the
+measurable effect of the BM25 silent-wildcard fix from 0.2.1 plus the
+analyzer sharpening that landed alongside SECOND_HOP_TAX's signal
+validation. The CUAD numbers being identical confirms those fixes
+didn't accidentally regress anything on single-doc workloads either.
 
-| target_tokens | mean recall | ≥0.5 | ≥0.8       | avg tokens used |
-| ------------- | -----------:| ----:|-----------:| ---------------:|
-| 32            | 0.877       | 93%  | 77%        | 1199            |
-| 48            | 0.889       | 94%  | 80%        | 1398            |
-| 64            | 0.894       | 94%  | 81%        | 1582            |
-| 96            | 0.905       | 95%  | 83%        | 1836            |
-| **128**       | **0.918**   | 96%  | **85%**    | 1908            |
-| **192**       | **0.917**   | 95%  | **85.9%**  | 1887            |
+**2. Swept chunk size × strategy on the same 300-query CUAD slice**
+(`cuad_chunk_strategy_sweep.rs`). target_tokens ∈ {32, 48, 64, 96, 128,
+192} × strategy ∈ {RawTopK, MaxDensity, DistractorFiltered,
+ReasoningPreserving}. candidate_k=40 to match the bench.
 
-### Other strategies (for completeness)
+Best cell across the 24 combinations: **RawTopK at target=32 → 85% ≥0.8
+retention**. Still 1 point below LlamaIndex's 86%. Other strategies
+peak lower:
 
-| strategy @ best target | ≥0.8 retention | best target |
-| ---------------------- | --------------:| -----------:|
-| RawTopK                | **85.9%**      | 192         |
-| MaxDensity             | 83%            | 96          |
-| DistractorFiltered     | 84%            | 192         |
-| ReasoningPreserving    | 82%            | 192         |
+| strategy @ best target  | ≥0.8 retention | best target |
+| ----------------------- | --------------:| -----------:|
+| RawTopK @ 32            | **85%**        | 32          |
+| MaxDensity @ 32         | 84%            | 32          |
+| DistractorFiltered @ 192| 82%            | 192         |
+| ReasoningPreserving @ 32| 81%            | 32          |
 
-### Comparison context
+A few observations from the sweep:
 
-| system                              | ≥0.8 retention | avg tokens used |
-| ----------------------------------- | --------------:| ---------------:|
-| LlamaIndex (FRAMEWORK_COMPARISON)   | 86%            | 1806            |
-| **RedHop default (128) + RawTopK** (this sweep, n=50) | **85%** | 1908 |
-| RedHop target=192 + RawTopK (this sweep, n=50) | **85.9%** | 1887 |
-| LangChain (FRAMEWORK_COMPARISON)    | 73%            | 1813            |
-| RedHop[topk] (FRAMEWORK_COMPARISON, n=300) | 82%   | 1894            |
+- **RawTopK dominates CUAD across all chunk sizes.** Mechanism: CUAD is
+  single-document answer-span extraction, not multi-hop. Strategies
+  built around bridge-rescue or distractor filtering are solving
+  problems CUAD doesn't have. The Auto policy routes large contexts
+  to ReasoningPreserving on dilution assumptions, but on
+  contract-shaped workloads users should override: `strategy="raw_topk"`.
+- **Smaller chunks edge out larger ones.** target=32 wins by a hair on
+  RawTopK, but the 85% → 84% gap from target=32 to target=128 is
+  within sample noise.
+- **The 4-point gap to LlamaIndex is not closed by any cell.** Even the
+  best cell falls 1 point short. Whatever LlamaIndex is doing differently
+  is upstream of chunking and strategy choice — likely sentence-aware
+  chunking with their `SentenceSplitter(chunk_size=256, chunk_overlap=0)`
+  that hits clause boundaries CUAD's gold spans happen to align with.
+
+### A small Rust/Python discrepancy worth noting
+
+The Rust sweep (`Document::from_text_with(..., candidate_k=40, ...)`)
+shows RawTopK @ target=128 at 84% ≥0.8 retention. The Python bench
+(`redhop.Document.from_text(..., candidate_k=40, strategy="raw_topk")`)
+shows the same call path at 82%. Both n=300, same metric, same data,
+same explicit parameters. Some default field is wired differently
+between the Rust direct API and the Python binding path — most likely
+`overlap_sentences`, `code_neighbors_default`, or `prose_heading_default`.
+
+This is a real Python/Rust parity bug that would be worth chasing as
+follow-up work. It doesn't change the central finding (CUAD gap is real,
+LlamaIndex still wins) but it does change which number to quote
+externally — Python users see 82%, Rust users see 84%.
 
 ## What this changes
 
-### 1. The 82% baseline appears stale
+### 1. The CUAD gap is REAL
 
-This sweep's default-config RedHop[topk] at 85% is 3 points above the
-documented number. Possible explanations:
+Stop hoping it was stale. The current code, with all the analyzer +
+BM25 improvements through 0.2.2, still trails LlamaIndex by 4 points
+on CUAD. No chunk size or strategy choice closes it. This is the
+honest baseline going forward.
 
-- **Sample-size difference** (n=50 vs n=300). With CUAD's heterogeneity
-  (contracts vary widely in length/clause structure), a 50-contract slice
-  can plausibly swing ±3 points from the n=300 mean.
-- **Real improvement** between when FRAMEWORK_COMPARISON.md was generated
-  and current main — the analyzer was sharpened (Snowball stemming
-  validated in SECOND_HOP_TAX), the BM25 silent-wildcard bug was fixed
-  in 0.2.1, default chunker was already at 128 by then. Any of these
-  could explain a couple of points.
-- Both.
+### 2. HotpotQA improvement is REAL and worth advertising
 
-The honest answer needs an n=300 rerun under current main to
-re-establish the baseline. For now: **don't quote 82% as the current
-RedHop CUAD number; quote 85% (current sweep, n=50) with the n=50
-caveat, or rerun the full framework comparison.**
+The +3 points on multi-hop (RedHop 77% → 80%, LlamaIndex still 72%) is
+the kind of measurable improvement that justifies the work on analyzer
+sharpening and the BM25 bug fixes. The
+[FRAMEWORK_COMPARISON.md](FRAMEWORK_COMPARISON.md) headline of
+"RedHop wins multi-hop" gets sharper: now +8 over LlamaIndex (was +5)
+and +9 over LangChain (was +6).
 
-### 2. Chunking isn't really the gap
+The README's "How it compares" section + retention chart still show the
+older 77% number for HotpotQA; that's worth refreshing.
 
-The chunk-size sweep shows the classic U-shape: 32-tokens too granular
-(0.877 recall), 192-tokens fine, plateau around 96-192. The default
-(128) is approximately optimal; target=192 buys +0.9 points which is
-within sample noise at n=50. CHUNK_GRANULARITY's central finding
-("128-token default is robust") holds on a second corpus.
+### 3. RawTopK is the right strategy for contract workloads
 
-### 3. RawTopK is the right strategy choice for CUAD
+Confirmed twice — by the original FRAMEWORK_COMPARISON (RedHop[topk]
+beat RedHop[reason] 82% vs 78%) and by this sweep (RawTopK beats
+ReasoningPreserving by 4 points at every chunk size). The Auto policy
+correctly routes large contexts to pruning but picks the wrong
+strategy for single-doc extraction workloads. `CHOOSING_A_CONFIG.md`
+should recommend explicit `strategy="raw_topk"` for that workload
+shape.
 
-Across all chunk sizes, RawTopK dominates on CUAD:
+### 4. The "we tie LlamaIndex on contracts" framing is too generous
 
-- RawTopK @ 192:                85.9% ≥0.8
-- DistractorFiltered @ 192:     84.0% ≥0.8
-- MaxDensity @ 96:              83.0% ≥0.8
-- ReasoningPreserving @ 192:    82.0% ≥0.8
+The honest framing is: "we beat LangChain on contracts (82% vs 73%,
++9 points) and trail LlamaIndex by 4 points." Not a tie.
 
-This is mechanism-consistent: CUAD is single-document answer-span
-extraction, not multi-hop. ReasoningPreserving's bridge-rescue is
-solving a problem CUAD doesn't have — it's preserving links to chunks
-that don't matter for span retention. The Auto policy correctly routes
-CUAD's large contexts to ReasoningPreserving on the assumption that
-dilution is the threat, but on CUAD the bridge-rescue mechanism doesn't
-add value (no bridge entities; one document; single-hop).
+## Action items (for main, when we cherry-pick)
 
-This is genuinely actionable: **on a CUAD-shaped workload (single-doc
-contracts with answer-span queries), users should pin
-`strategy = "raw_topk"` rather than `"auto"`**. The Auto default isn't
-wrong — it's the right hedge over an unknown workload — but a known
-contract workload should override.
-
-## What this doesn't change
-
-- The "RedHop beats LangChain on contracts" headline from
-  FRAMEWORK_COMPARISON (73% LangChain vs 85% RedHop). LangChain's gap
-  is much larger than LlamaIndex's, and that hasn't moved.
-- The "RedHop wins multi-hop" headline from FRAMEWORK_COMPARISON
-  (HotpotQA 77% vs LangChain 71% vs LlamaIndex 72%). That story stands.
-- The default chunker calibration from CHUNK_GRANULARITY. Confirmed
-  again on a second corpus (CUAD): target=128 is robust, peak±20%.
+- [ ] **Update FRAMEWORK_COMPARISON.md** with a "Rerun — 2026-06-06"
+  section showing the fresh numbers (HotpotQA +3 improvement is the
+  headline; CUAD unchanged).
+- [ ] **Update the README + bindings READMEs** retention chart with
+  HotpotQA at 80% (was 77%). The CUAD numbers don't change.
+- [ ] **Update CHOOSING_A_CONFIG.md** to explicitly recommend
+  `strategy="raw_topk"` for single-doc contract/extraction workloads.
+- [ ] **Open an investigation** (separate scope) into the 2-point
+  Python/Rust parity gap on CUAD — Python binding gives 82%, Rust
+  direct gives 84% at the same explicit config. Some default field is
+  threaded differently.
+- [ ] **Open a future research question:** what is LlamaIndex doing in
+  their chunker that gives the 4-point CUAD edge? Hypothesis: sentence-
+  boundary chunking that aligns with legal-clause structure. Untested.
 
 ## Honest limits
 
-- **n=50** vs FRAMEWORK_COMPARISON's n=300. Direction is clear; exact
-  point estimates are noisy.
-- **No HotpotQA cross-check** here. The CHUNK_GRANULARITY sweep already
-  showed target=128 optimal on HotpotQA; moving to target=192 to chase
-  +0.9 CUAD points might give back HotpotQA. Not worth it.
-- **Word-recall metric** is exactly what FRAMEWORK_COMPARISON used;
-  apples-to-apples on that axis.
-- **No downstream answer eval (Tier 3).** The Tier-1 retention story
-  changes; whether that translates to better SQuAD F1/EM is a separate
-  question and would need LLM judges to answer.
-
-## Action items
-
-- [ ] **Update FRAMEWORK_COMPARISON.md** with a "Status update — 2026-06-06"
-  noting the n=50 spot-check shows the gap is ~1 point not 4, and either
-  rerun n=300 or add the caveat.
-- [ ] **Update CHOOSING_A_CONFIG.md** to recommend explicit
-  `strategy = "raw_topk"` for single-doc contract / extraction workloads.
-- [ ] Recommend new contributors run `cargo run -p redhop-examples
-  --example cuad_chunk_strategy_sweep --release` if they want a quick
-  CUAD-shape calibration check on their own data.
+- **n=300** for both benchmarks — same as the original
+  FRAMEWORK_COMPARISON; that's the apples-to-apples cadence.
+- **cuad_sample.json** (50 contracts) — `bench/compare.py` samples the
+  first 300 questions from this. The full CUADv1.json (660 contracts)
+  is referenced via `REDHOP_CUAD_PATH` but not committed; a larger run
+  would tighten the intervals but the direction is unambiguous.
+- **The +3 HotpotQA improvement is not bootstrap-CIed.** Single-run
+  delta. n=300 with a 3-point shift on a ~75% baseline is probably
+  significant, but a confirmation run would be cheap.
+- **No downstream answer eval (Tier 3) here.** Whether the +3
+  retention improvement on HotpotQA translates to a measurable
+  SQuAD F1/EM lift is a separate question.
 
 This finding is committed on `experiment/cuad-recall-gap` as a research
-record. The actionable changes (FRAMEWORK_COMPARISON refresh, CHOOSING
-config note) belong on main when we decide to merge.
+record. The actionable doc updates and chart refresh belong on main
+when we decide to merge.

@@ -138,15 +138,25 @@ fn strategy_name(s: ContextStrategy) -> &'static str {
 
 const CHUNK_TARGETS: &[usize] = &[32, 48, 64, 96, 128, 192];
 const BUDGET: usize = 2000;
+/// Match `bench/compare.py`'s `cuad_items(300)` slice — sample the FIRST 300
+/// QA pairs in document order. cuad_sample.json has ~950 QAs across 50
+/// contracts, so taking all of them would not be apples-to-apples with the
+/// framework comparison's n=300.
+const LIMIT_Q: usize = 300;
 
 fn run_cell(cuad: &Cuad, target_tokens: usize, strategy: ContextStrategy) -> anyhow::Result<Cell> {
     let max_tokens = target_tokens * 2;
     let mut acc = Cell::default();
-    for c in &cuad.data {
+    let mut q_count = 0usize;
+    'outer: for c in &cuad.data {
         for para in &c.paragraphs {
             let cfg = DocumentConfig {
                 target_tokens,
                 max_tokens,
+                // Match `bench/compare.py`'s CANDIDATE_K=40, not the
+                // DocumentConfig default of 20 — this is the
+                // apples-to-apples reproduction setting.
+                candidate_k: 40,
                 context: ContextConfig {
                     strategy,
                     token_budget: BUDGET,
@@ -159,6 +169,9 @@ fn run_cell(cuad: &Cuad, target_tokens: usize, strategy: ContextStrategy) -> any
                 Err(_) => continue,
             };
             for qa in &para.qas {
+                if q_count >= LIMIT_Q {
+                    break 'outer;
+                }
                 let gold = qa
                     .answers
                     .first()
@@ -175,6 +188,7 @@ fn run_cell(cuad: &Cuad, target_tokens: usize, strategy: ContextStrategy) -> any
                 let ctx_words: HashSet<String> = words(&assembled).into_iter().collect();
                 let recall = span_recall(gold, &ctx_words);
                 acc.add(recall, ctx.report.total_tokens);
+                q_count += 1;
             }
         }
     }
