@@ -89,3 +89,115 @@ pool* but missed by dense@3 (confirming the cap is ranking, not pool recall):
 - Frames the only remaining levers honestly (per-query adaptivity or iterative
   conditioning) so the trade-off against the no-architecture constraint is
   explicit. The lightweight-tier counterpart: [SEMANTIC_ZERO_DEP](SEMANTIC_ZERO_DEP.md).
+
+## Update — 2026-06-06 — MDR single-pass falsified as a uniform policy, but the per-query signal is real
+
+The finding flagged ONE remaining single-shot probe that stays inside the
+no-iteration constraint:
+
+> The single most promising single-shot idea left — re-encoding
+> `[query + dense-top-1]` once with the existing BGE (MDR's conditioning
+> minus the loop) — is **untested** and is the natural next probe.
+
+We measured it on the SAME setup as the headline (3957 paragraphs, 400
+queries, BM25 top-50 → BGE-small dense, recall@3). The augmented text
+was the literal "MDR minus the loop": `[query] [dense_top_1.text]`,
+re-embedded once with the same BGE call, then cosine over the same
+BM25 pool to produce a new top-3. Two variants:
+
+- `mdr_pure` — take the top-3 of the MDR ranking outright.
+- `mdr_seed` — anchor-preserving: keep dense's top-1 in slot 1, fill
+  slots 2-3 from the MDR ranking (skipping the anchor). Never gives up
+  dense's reliable first hit.
+
+### Headline numbers
+
+| arm        | lexical | semantic |     ALL |
+| ---------- | ------: | -------: | ------: |
+| dense      |   0.804 |    0.803 | **0.804** |
+| mdr_pure   |   0.764 |    0.741 | **0.752** |
+| mdr_seed   |   0.764 |    0.741 | **0.752** |
+
+The dense baseline reproduces the headline finding's 0.801 (here 0.804;
+within sampling noise; same code path, same model, same data).
+
+**Both MDR variants regress dense by Δ ≈ −0.05.** Single-pass re-encode
+is not shippable as a uniform policy.
+
+### But the per-query diagnostic tells a richer story
+
+On the **147 queries** with a gold *in the pool but missed by dense@3*
+(the recoverable set — same diagnostic the headline used):
+
+- `mdr_pure` recovered **35 (24%)**, hurt **9 (6%)**, net **+26**.
+- `mdr_seed` recovered **35 (24%)**, hurt **9 (6%)**, net **+26**.
+
+That **24% recovery rate exceeds the oracle linkage-rescue's 18%** from
+the headline finding's table. The MDR re-encode IS finding second-hop
+chunks the linkage Jaccard signal can't, and the false-positive rate on
+this subset (9/147 = 6%) is genuinely low.
+
+### Why the global recall drops anyway
+
+The +26 net on the recoverable subset is overwhelmed by **collateral
+damage on the easy queries**. The 253 queries dense@3 already hit
+correctly (400 − 147 = 253) are where the augmented embedding
+`[query + dense_top_1]` drifts AWAY from "what the query was asking" —
+the seed text dilutes the query intent, so the MDR ranking can drop a
+correct chunk out of slot 1-3 in favor of seed-related-but-irrelevant
+material.
+
+Crudely: 0.752 vs 0.804 globally = ~21 queries lost on aggregate; +26
+recovered on the recoverable subset; ~47 hurt on the easy subset (each
+losing one of two gold slots). Numbers match the pattern.
+
+### What this means: the THIRD same-shaped result in a row
+
+This is the same per-query gating pattern that:
+
+- [RERANKING_LIMITS](RERANKING_LIMITS.md): CE helps 12% / hurts 17% — uniform CE is
+  net-negative, oracle gate would extract +0.051. (And the
+  2026-06-06 update there falsified the kind-label gate in both
+  directions.)
+- This finding's β-rescue: linkage rescue oracle recovers 18% of
+  recoverable-but-missed queries at zero hurt — but no fixed global β
+  extracts it.
+- **MDR single-pass (here): recovers 24% of recoverable misses, but
+  uniform application costs more on the easy subset than it gains on
+  the hard one.**
+
+Three different mechanisms (cross-encoder, linkage, MDR re-encode),
+three different oracle headrooms (12-24% of recoverable), one universal
+failure mode: **the policy gate that decides "fire on this query, skip
+on that one" doesn't exist, and the question-type / static-knob
+substitutes don't work.** The information is there; the routing isn't.
+
+### What this opens / closes
+
+- **Closes** MDR single-pass as a *uniform* runtime feature. The
+  −0.05 global cost is unambiguous; this isn't sample noise.
+- **Strongly reinforces** the open problem: the actual bottleneck on
+  every escalation lever measured to date is per-query gating, not
+  the lever's mechanism.
+- **Opens** the possibility of MDR re-encode as the action on the
+  "fire on this one" branch of a future gate — but that's contingent
+  on the gate existing and predicting the right queries, which is
+  the open work. Building MDR-as-policy without that gate is strictly
+  worse than not building it.
+
+### Honest limits
+
+- Single 400-item run, no CI. The −0.05 delta is large enough not to
+  be noise at this n; the +24% subset recovery is large enough to be
+  signal (vs the linkage oracle's 18%, both n≈148). Magnitudes are
+  approximate but directions are decisive.
+- Augmented text is literal concatenation; we did NOT try structured
+  prompting (`[query] [SEP] [hop1]`, asymmetric "query:" / "passage:"
+  prefixes, etc.). BGE-small-en-v1.5 wasn't trained on those, so a
+  large lift from prompting is unlikely — but worth a brief A/B if
+  CE-gating ever becomes a priority again, since the marginal cost is
+  the same single re-encode.
+- BGE-small only. A bigger encoder (`bge-base`, larger context) might
+  use the augmented text more productively — but that's an encoder
+  upgrade, not a fix to the gating problem this finding repeatedly
+  surfaces.
