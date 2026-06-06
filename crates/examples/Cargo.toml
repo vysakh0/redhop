@@ -237,5 +237,9 @@ name = "cuad_prf"
 path = "examples/cuad_prf.rs"
 
 [[example]]
+name = "cuad_chunk_fragmentation"
+path = "examples/cuad_chunk_fragmentation.rs"
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"
