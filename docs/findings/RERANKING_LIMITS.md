@@ -397,3 +397,72 @@ python3 target/ce_gate_validation.py   # 5-fold CV + bootstrap
   would need their own per-query gates, measured separately. The
   pattern of "low grounding ⇒ dense uncertain ⇒ escalation has
   headroom" likely generalizes, but the threshold doesn't.
+
+### Cross-corpus check — the gate is HotpotQA-specific (the threshold is, possibly the mechanism is)
+
+Re-ran Phase A on **MuSiQue dev** (200 answerable 2-hop examples; same
+BGE + ms-marco; same wide-net / k_final) to test the "ship as global
+default" claim. **The fixed `grounding_top1 ≤ 0.35` gate fails on
+MuSiQue**, and the failure is corpus-property-shaped:
+
+| metric | HotpotQA | MuSiQue |
+| --- | --- | --- |
+| dense baseline recall@4 | 0.7643 | 0.2806 |
+| uniform CE recall@4 | 0.7549 | 0.2976 |
+| **CE direction vs dense** | **−0.0094** | **+0.0170** |
+| oracle headroom over uniform | +0.0571 | +0.0162 |
+| **fixed 0.35 gate Δ vs uniform** | **+0.0308** | **−0.0130** |
+| refit-on-MuSiQue best Δ | (same +0.0308) | +0.0008 |
+| 95% bootstrap CI on fixed gate | [+0.006, +0.056] | [−0.024, −0.003] |
+
+Three things are true on MuSiQue that are false on HotpotQA:
+
+1. **Dense recall is 3× lower** (0.28 vs 0.76). MuSiQue's questions
+   are harder; dense rarely lands on the gold chunks at all.
+2. **CE direction flips**: CE *helps* uniformly on MuSiQue (+0.017),
+   the opposite of HotpotQA where CE *hurts* uniformly (−0.009). When
+   dense is uncertain everywhere, even imperfect CE rerank is a net
+   positive.
+3. **Even a per-corpus refit barely beats uniform on MuSiQue**
+   (+0.0008). The oracle headroom is only +0.016; there's almost
+   nothing for ANY single-feature gate to capture.
+
+What the threshold was actually keying on, then: not "is CE the right
+action for this query" but "what regime is the corpus in." HotpotQA
+sits in a regime where dense usually wins but occasionally fails on
+multi-hop — the `grounding_top1` threshold separates the rare CE-helps
+cases from the dense-already-correct majority. MuSiQue sits in a
+regime where dense usually loses — there is no "dense already
+correct" majority to protect from CE, so the gate skips queries CE
+would have helped.
+
+### What this changes
+
+**The gate is NOT shippable as a global default for
+`RetrievalMode::Hybrid`.** Shipping `grounding_top1 ≤ 0.35` as the
+default would improve HotpotQA-shaped workloads and *regress*
+MuSiQue-shaped ones — at this point we can't predict from the
+public API call which regime a given user is in.
+
+What remains true:
+
+- Within a single corpus, the threshold-search-and-validate
+  methodology works. A per-corpus calibration utility (take a small
+  labeled sample, learn the right threshold) IS a shippable feature.
+  Caveat: even refit, MuSiQue's gate Δ is +0.0008 — calibration helps
+  high-headroom corpora and is roughly a no-op on low-headroom ones.
+- The mechanism story (CE helps when dense is uncertain) is
+  consistent across both corpora. What changes is the *base rate* of
+  dense uncertainty, which shifts where the threshold should live —
+  and on MuSiQue, the base rate is so high there's no useful
+  threshold to find.
+
+### Where this leaves the open problem
+
+Closed for the HotpotQA workload; reopened for the general case. The
+right next probe is a signal that's **invariant to the corpus's base
+retrieval difficulty** — Normalized Query Commitment (NQC, Shtok et
+al. 2012) is the canonical candidate: std-dev of top-k scores
+*normalized by the corpus mean*. Unlike raw grounding, NQC is meant
+to be portable across collection difficulties. Whether it actually
+ports here is the next measurement, not this one.
