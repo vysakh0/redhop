@@ -466,3 +466,101 @@ al. 2012) is the canonical candidate: std-dev of top-k scores
 *normalized by the corpus mean*. Unlike raw grounding, NQC is meant
 to be portable across collection difficulties. Whether it actually
 ports here is the next measurement, not this one.
+
+### NQC + WIG cross-corpus probe — also fails to port
+
+Re-ran Phase A on both HotpotQA and MuSiQue with NQC and WIG variants
+added: `nqc3`, `nqc5`, `nqc10` (std of top-k cosine / pool mean) and
+`wig3`, `wig5` (mean of top-k cosine / pool mean). Both are
+post-retrieval QPP signals explicitly designed to be portable across
+collection difficulties.
+
+Per-corpus best gates (the in-sample upper bound on what each feature
+can do):
+
+| feature | HotpotQA best Δ | MuSiQue best Δ |
+| --- | --- | --- |
+| grounding_top1 ≤ t | **+0.0308** | +0.0008 |
+| nqc5 ≤ t | +0.0257 | +0.0000 |
+| query_len > t | +0.0238 | +0.0007 |
+| margin ≤ t | +0.0225 | −0.0013 |
+| nqc3 ≤ t | +0.0208 | +0.0000 |
+| wig3 ≤ t | +0.0217 | +0.0000 |
+| dense_top1_cos > t | +0.0140 | +0.0007 |
+
+No feature — NQC included — finds a meaningful threshold on MuSiQue.
+The reason is structural and visible in the headline numbers, not in
+the gate signal:
+
+| metric | HotpotQA | MuSiQue |
+| --- | --- | --- |
+| static (no CE) recall@4 | 0.7643 | 0.2806 |
+| uniform CE recall@4 | 0.7549 | 0.2976 |
+| CE direction vs static | **−0.0094** | **+0.0170** |
+| oracle (per-query upper bound) | 0.8120 | 0.3137 |
+| **oracle headroom vs uniform CE** | **+0.0571** | **+0.0162** |
+
+On MuSiQue the oracle headroom over uniform CE is only +0.016 — a
+perfect gate gets at most that much more on top of "always apply CE."
+And "always apply CE" already adds +0.017 over static. **There's
+almost nothing for a gate to extract on MuSiQue** because uniform CE
+is approximately the right policy.
+
+### What the cross-corpus story actually establishes
+
+The investigation reveals a **two-level corpus dependency** the search
+for a single universal heuristic cannot solve:
+
+1. **Direction** — whether CE is net-positive or net-negative on the
+   corpus depends on the corpus's base rate of dense success. High-base
+   corpora (HotpotQA, 0.76 dense recall) need a gate: uniform CE
+   hurts. Low-base corpora (MuSiQue, 0.28 dense recall) don't need
+   a gate: uniform CE helps. *No per-query signal can read this; it's
+   a property of the corpus.*
+
+2. **Threshold** — within a "needs gate" corpus, the right threshold
+   on a per-query feature *is* learnable (we did learn it on HotpotQA:
+   `grounding_top1 ≤ 0.35`, +0.031 lift, robust to 5-fold CV). But
+   the threshold itself depends on where the corpus's confidence
+   distribution sits.
+
+Neither raw signals (grounding, margin, top1_cos) nor normalized
+signals (NQC, WIG) bridge the regime gap. The mechanism story holds —
+CE helps when dense is uncertain — but the *base rate of uncertainty*
+varies by corpus, and no per-query feature carries that base-rate
+information.
+
+### Honest verdict: no shippable global heuristic exists
+
+The "ship `grounding_top1 ≤ 0.35` as the default for Hybrid" path is
+closed. So is the "swap to NQC for portability" path. Three things
+remain on the table, none as exciting as the original HotpotQA
+finding suggested:
+
+1. **Ship NOTHING; keep documentation honest.** The HotpotQA gate
+   stays in the evidence layer as a workload-specific result that
+   doesn't generalize. The runtime keeps uniform Hybrid behavior. The
+   honest framing is: "RedHop's Hybrid mode is uniform-CE because no
+   universal gate has been found; users with HotpotQA-shaped workloads
+   can experiment with `grounding_top1` post-hoc."
+
+2. **Ship per-corpus calibration as opt-in.** Expose a utility that
+   takes a small labeled sample (e.g. 50 queries with known gold) and
+   returns `(policy, threshold)` — either "always-CE", "never-CE", or
+   "gate-CE-at-t". Real engineering work; bounded scope; respects the
+   no-ML constraint. Honest caveat: on low-headroom corpora (MuSiQue
+   shape) it returns "always-CE" and adds nothing.
+
+3. **Build a corpus-level regime detector.** From a small sample,
+   estimate the corpus's CE-direction (helps vs hurts uniformly) and
+   ship the right uniform policy. Mathematically equivalent to (2) but
+   structurally a smaller surface — one decision per corpus, not
+   per-query. Still needs the labeled sample.
+
+The CE-helps-vs-hurts gating problem, as a research direction, is
+closed by these results. We've measured enough to know: the answer is
+two-level (direction + threshold), both levels are corpus-specific,
+and no per-query feature in either the raw or QPP-normalized family
+extracts the direction signal. Further measurement on different
+corpora would refine the picture but is unlikely to discover a
+universal heuristic the existing measurements ruled out.
