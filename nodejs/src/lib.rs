@@ -146,6 +146,15 @@ pub struct Citation {
 /// The Decision Report: what the assembly did, and why.
 #[napi(object)]
 pub struct Report {
+    /// The strategy actually used — the resolved concrete strategy after
+    /// `auto` (if requested) was decided. One of `"raw_topk"`,
+    /// `"distractor_filtered"`, `"redundancy_pruned"`, `"max_density"`,
+    /// `"reasoning_preserving"`. Never `"auto"` (Auto is always resolved
+    /// before assembly).
+    pub strategy: String,
+    /// What the caller requested — may be `"auto"`. Differs from `strategy`
+    /// when the Auto policy resolved to a concrete action.
+    pub requested_strategy: String,
     /// `"passthrough"` | `"prune"` | `"not_auto"`.
     pub auto_decision: String,
     pub total_tokens: u32,
@@ -160,6 +169,17 @@ pub struct Report {
     pub low_confidence_threshold: f64,
     /// The human-readable Decision Report.
     pub rendered: String,
+}
+
+fn strategy_to_str(s: redhop::ContextStrategy) -> &'static str {
+    match s {
+        redhop::ContextStrategy::RawTopK => "raw_topk",
+        redhop::ContextStrategy::DistractorFiltered => "distractor_filtered",
+        redhop::ContextStrategy::RedundancyPruned => "redundancy_pruned",
+        redhop::ContextStrategy::MaxDensity => "max_density",
+        redhop::ContextStrategy::ReasoningPreserving => "reasoning_preserving",
+        redhop::ContextStrategy::Auto => "auto",
+    }
 }
 
 /// A file that `Document.fromFolder` skipped, with the reason why.
@@ -189,6 +209,8 @@ fn to_report(r: &redhop::ContextReport) -> Report {
     }
     .to_string();
     Report {
+        strategy: strategy_to_str(r.strategy).to_string(),
+        requested_strategy: strategy_to_str(r.requested_strategy).to_string(),
         auto_decision,
         total_tokens: r.total_tokens as u32,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,

@@ -78,7 +78,7 @@ for c in ctx.citations:
 
 | On-ramp | For |
 | --- | --- |
-| `Document.from_text(text)` | text you already have |
+| `Document.from_text(text, source="document")` | text you already have |
 | `Document.from_chunks([...])` | content you already chunked |
 | `Document.from_file("x.pdf")` | a file — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
 | `Document.from_bytes(data, source="x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) |

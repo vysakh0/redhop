@@ -95,6 +95,19 @@ export interface Citation {
 }
 /** The Decision Report: what the assembly did, and why. */
 export interface Report {
+  /**
+   * The strategy actually used — the resolved concrete strategy after
+   * `auto` (if requested) was decided. One of `"raw_topk"`,
+   * `"distractor_filtered"`, `"redundancy_pruned"`, `"max_density"`,
+   * `"reasoning_preserving"`. Never `"auto"` (Auto is always resolved
+   * before assembly).
+   */
+  strategy: string
+  /**
+   * What the caller requested — may be `"auto"`. Differs from `strategy`
+   * when the Auto policy resolved to a concrete action.
+   */
+  requestedStrategy: string
   /** `"passthrough"` | `"prune"` | `"not_auto"`. */
   autoDecision: string
   totalTokens: number

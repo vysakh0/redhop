@@ -7,8 +7,32 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
-Nothing yet. Open work lands here, then graduates into a release
-section on the next `v*` tag.
+### Added
+
+- **Node `Report.strategy` + `Report.requestedStrategy`.** The resolved
+  concrete strategy and the caller's requested strategy are now exposed
+  on the Node binding's `Report` object (matching the Python binding's
+  `report.strategy` / `report.requested_strategy` getters). Closes a
+  silent Python↔Node parity gap that was surfaced by a smoke test after
+  v0.2.1 — Python and Rust both exposed `strategy` already; Node didn't.
+  Non-breaking additive change.
+- **`docs/API_STABILITY.md`** gains a "Known call-shape asymmetries"
+  section documenting the two pre-existing idiomatic differences between
+  the Python and Node bindings (`from_text` positional vs options-bag
+  `source`; `ctx.text()` callable in Python vs `ctx.text` property in
+  Node). These are stable within 0.x — neither will be silently flipped.
+
+### Changed
+
+- **`python/tests/test_parity_node.py`** now pins `strategy` +
+  `requested_strategy` parity between bindings. The harness previously
+  *normalized away* these fields rather than testing them, which is how
+  the gap above slipped through. Direct dict-key access means a future
+  regression that drops either field on either side fails with a clear
+  KeyError instead of silently passing.
+- Documentation polish: `python/README.md`'s `from_text` row shows the
+  optional `source=` parameter; `nodejs/README.md` lists the full
+  `report` shape.
 
 ## [0.2.1] - 2026-06-06
 

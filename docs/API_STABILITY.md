@@ -20,8 +20,8 @@ These are the supported entry points. Within 0.x we avoid breaking them, and any
 breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 
 **Python (`redhop`)**
-- `Document.from_text(text, chunk_size=…, chunk_overlap=…, strategy=…,
-  language=…, …)`, `Document.from_chunks(chunks, …, language=…)`,
+- `Document.from_text(text, source="document", chunk_size=…, chunk_overlap=…,
+  strategy=…, language=…, …)`, `Document.from_chunks(chunks, …, language=…)`,
   `Document.from_file(path, …, language=…)`, `Document.from_bytes(data,
   source, …, language=…)`, `Document.from_folder(path, …, language=…)`
   — `chunk_size`/`chunk_overlap` are index-time; `language=` selects
@@ -69,6 +69,29 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
   `redundancy_pruned`, `max_density`, `reasoning_preserving`, `auto`).
 - `AutoDecision` values (`passthrough`, `prune`, `not_auto`).
 - The structured `ContextReport` fields above (parse these for telemetry).
+
+## Known call-shape asymmetries (Python vs Node)
+
+The Python and Node bindings expose the same *fields* and the same *string
+values* (parity is actively tested at the data level), but two call shapes
+differ for idiomatic reasons. They are stable within 0.x — call them as
+documented below; both are correct, neither will be silently flipped.
+
+1. **`from_text` arguments.**
+   - Python: `Document.from_text(text, source="document", …)` — `source`
+     is the second positional argument (with a default).
+   - Node: `Document.fromText(text, options?)` — `source` lives inside the
+     options bag: `Document.fromText(text, { source: "policy.md" })`.
+2. **`BuiltContext.text`.**
+   - Python: `ctx.text()` — callable method (idiomatic for the pyo3 binding
+     since the underlying Rust value is borrowed).
+   - Node: `ctx.text` — string property on the returned object (idiomatic
+     napi-rs `#[napi(object)]` shape).
+
+Everything else — `report.strategy`, `report.requested_strategy` (Python) /
+`report.requestedStrategy` (Node), `auto_decision` / `autoDecision`,
+strategy string values, the chunks and citations arrays, etc. — has the
+same shape across both bindings.
 
 ## Experimental / may change without notice
 

@@ -120,6 +120,13 @@ def _normalize_built(ctx_or_dict: Any, side: str) -> dict[str, Any]:
             "chunks": list(ctx_or_dict.chunks),
             "n_citations": len(ctx_or_dict.citations),
             "report": {
+                # `strategy` + `requested_strategy` are explicitly compared
+                # because they were once silently absent from the Node
+                # binding (0.2.1 added them). Direct dict-key access here
+                # means a future regression that drops either field on
+                # either side raises KeyError instead of silently passing.
+                "strategy": ctx_or_dict.report.strategy,
+                "requested_strategy": ctx_or_dict.report.requested_strategy,
                 "auto_decision": ctx_or_dict.report.auto_decision,
                 "total_tokens": ctx_or_dict.report.total_tokens,
                 "retained_evidence_ratio": ctx_or_dict.report.retained_evidence_ratio,
@@ -136,6 +143,8 @@ def _normalize_built(ctx_or_dict: Any, side: str) -> dict[str, Any]:
         "chunks": d["chunks"],
         "n_citations": len(d["citations"]),
         "report": {
+            "strategy": d["report"]["strategy"],
+            "requested_strategy": d["report"]["requestedStrategy"],
             "auto_decision": d["report"]["autoDecision"],
             "total_tokens": d["report"]["totalTokens"],
             "retained_evidence_ratio": d["report"]["retainedEvidenceRatio"],
@@ -177,10 +186,20 @@ def test_build_context_parity(query, expect_on_topic):
 
 def test_analyze_context_parity():
     """`analyze_context` returns just a report. Verify both sides agree on
-    decision + tokens + retention."""
+    decision + tokens + retention + the resolved strategy."""
     query = "what is the refund window?"
     py = redhop.analyze_context(query, CORPUS)
     node = node_call("analyzeContext", [query, CORPUS])
+    # `strategy` + `requested_strategy` were missing from the Node binding
+    # before 0.2.2 — pin them here so a regression that drops either field
+    # fails with a clear message instead of silently degrading.
+    assert py.strategy == node["strategy"], (
+        f"strategy diverged: python={py.strategy!r} node={node['strategy']!r}"
+    )
+    assert py.requested_strategy == node["requestedStrategy"], (
+        f"requested_strategy diverged: python={py.requested_strategy!r} "
+        f"node={node['requestedStrategy']!r}"
+    )
     assert py.auto_decision == node["autoDecision"], (
         f"auto_decision diverged: python={py.auto_decision!r} node={node['autoDecision']!r}"
     )

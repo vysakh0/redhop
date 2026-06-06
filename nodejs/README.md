@@ -90,7 +90,7 @@ for the full breakdown and a calibration disclaimer.
 - `chunks` — the selected chunk texts, in order
 - `citations` — `{ source, page, heading, line, text }` per chunk (`null`/absent
   fields where a format doesn't provide them)
-- `report` — `{ autoDecision, totalTokens, retainedEvidenceRatio, nExpanded, rendered }`
+- `report` — `{ strategy, requestedStrategy, autoDecision, totalTokens, retainedEvidenceRatio, secondHopRescues, nExpanded, lowConfidenceRetrieval, lowConfidenceThreshold, rendered }` (`strategy` is the resolved concrete strategy; `requestedStrategy` is what you asked for — `"auto"` until Auto resolves)
 
 `neighbors` / `includeHeading` turn on structural context expansion (adjacent
 chunks / section headings, in document order).
