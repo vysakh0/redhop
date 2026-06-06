@@ -71,6 +71,50 @@ fn pool_entropy(scores: &[f32]) -> f32 {
         .sum::<f32>()
 }
 
+fn mean(xs: &[f32]) -> f32 {
+    if xs.is_empty() {
+        return 0.0;
+    }
+    xs.iter().sum::<f32>() / xs.len() as f32
+}
+
+fn std(xs: &[f32]) -> f32 {
+    if xs.len() < 2 {
+        return 0.0;
+    }
+    let m = mean(xs);
+    let var = xs.iter().map(|x| (x - m).powi(2)).sum::<f32>() / xs.len() as f32;
+    var.sqrt()
+}
+
+/// NQC (Normalized Query Commitment, Shtok et al. 2012): std-dev of the
+/// top-k retrieval scores divided by the corpus-mean retrieval score.
+/// Designed to be portable across collection difficulties — the
+/// normalization absorbs the corpus's baseline relevance signal so the
+/// metric measures whether the top-k *stands out* against background,
+/// regardless of how high or low the background is. The classical
+/// formulation uses the WHOLE corpus mean; we use the wide-net pool
+/// mean as a cheap, in-loop proxy (~20 chunks instead of all docs).
+fn nqc(scores: &[f32], k: usize) -> f32 {
+    if scores.is_empty() {
+        return 0.0;
+    }
+    let pool_mean = mean(scores).max(1e-6);
+    let top_k: Vec<f32> = scores.iter().take(k.min(scores.len())).cloned().collect();
+    std(&top_k) / pool_mean
+}
+
+/// WIG (Weighted Information Gain): mean of top-k scores divided by
+/// corpus-mean score. Cousin of NQC; uses mean instead of std-dev.
+fn wig(scores: &[f32], k: usize) -> f32 {
+    if scores.is_empty() {
+        return 0.0;
+    }
+    let pool_mean = mean(scores).max(1e-6);
+    let top_k: Vec<f32> = scores.iter().take(k.min(scores.len())).cloned().collect();
+    mean(&top_k) / pool_mean
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     println!("Phase A: feature log for CE-helps-vs-hurts gate investigation\n");
@@ -139,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
     let mut f = File::create(path)?;
     writeln!(
         f,
-        "id,kind,dense_top1_cos,margin,score_spread,grounding_top1,query_len,pool_entropy,dense_r4,ce_r4,delta,helped,hurt"
+        "id,kind,dense_top1_cos,margin,score_spread,grounding_top1,query_len,pool_entropy,nqc3,nqc5,nqc10,wig3,wig5,dense_r4,ce_r4,delta,helped,hurt"
     )?;
 
     let mut n_logged = 0;
@@ -175,6 +219,11 @@ async fn main() -> anyhow::Result<()> {
 
         let grounding_top1 = grounding_score(&lq.text, &wide[0].chunk.text);
         let query_len = lq.text.split_whitespace().count();
+        let nqc3 = nqc(&scores, 3);
+        let nqc5 = nqc(&scores, 5);
+        let nqc10 = nqc(&scores, 10);
+        let wig3 = wig(&scores, 3);
+        let wig5 = wig(&scores, 5);
 
         let delta = rec_ce - rec_static;
         let helped = (delta > 1e-6) as u8;
@@ -182,7 +231,7 @@ async fn main() -> anyhow::Result<()> {
 
         writeln!(
             f,
-            "{},{},{:.6},{:.6},{:.6},{:.6},{},{:.6},{:.4},{:.4},{:.4},{},{}",
+            "{},{},{:.6},{:.6},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.4},{:.4},{:.4},{},{}",
             lq.id,
             kind,
             top1,
@@ -191,6 +240,11 @@ async fn main() -> anyhow::Result<()> {
             grounding_top1,
             query_len,
             pool_e,
+            nqc3,
+            nqc5,
+            nqc10,
+            wig3,
+            wig5,
             rec_static,
             rec_ce,
             delta,
