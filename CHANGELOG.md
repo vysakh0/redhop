@@ -10,6 +10,76 @@ minor releases may break; breaking changes are noted here).
 Nothing yet. Open work lands here, then graduates into a release
 section on the next `v*` tag.
 
+## [0.2.1] - 2026-06-06
+
+The **robustness + bugfix** patch release. Two real bugs fixed (one BM25
+edge case, one cross-binding serde-compat break), one new Python helper,
+and ~30 new tests pinning load-bearing contracts across the codebase.
+
+### Fixed
+
+- **BM25: silent wildcard fallback on no-signal queries.** Queries whose
+  every term was filtered out (stopwords only, or all-out-of-vocab)
+  silently fell back to a match-all wildcard, returning the corpus's
+  top-BM25 chunks as if the query had matched something. Now returns
+  an empty result set with a clear signal.
+- **`ContextReport.removed` and `.economics` missing `#[serde(default)]`.**
+  A binding payload from an older RedHop binary missing these fields
+  would error on deserialize — a silent cross-version compatibility break
+  for Python/Node callers shuttling `ContextReport` across the FFI as
+  JSON. Both target types already derive `Default`; the fix is a no-op
+  for fresh payloads and gracefully fills in zeros for old ones.
+
+### Added
+
+- **`redhop.context_with_timeout` (Python).** Thin `ThreadPoolExecutor`
+  watchdog around `Document.context()` for agent integrations that need
+  to bail on slow queries:
+
+  ```python
+  try:
+      ctx = redhop.context_with_timeout(doc, q, timeout_ms=5000)
+  except TimeoutError:
+      ...
+  ```
+
+  Forwards `budget` / `neighbors` / `include_heading`. Scope is
+  deliberately Python-only — true Rust-side cancellation needs hooks in
+  Tantivy/ONNX that don't exist yet, and the docstring + `TimeoutError`
+  message document the limitation.
+
+- **`docs/DEFAULT_PROVENANCE.md`** — every tuned default in
+  `ContextConfig` / `DocumentConfig` linked back to the finding that
+  justifies it (so callers can audit which numbers are calibrated vs
+  arbitrary).
+
+### Internal — robustness tests
+
+Seven new test passes (~30 tests) pinning load-bearing contracts that
+were previously informal:
+
+- **Determinism** — same input → same output, Rust + cross-binding parity.
+- **Internal invariants** — 7+ consistency invariants across the strategy
+  matrix (selected ⊆ input, `removed.total` matches drop count, etc.).
+- **Concurrency** — `Send + Sync` audit + 1024-call parallel stress.
+- **Adversarial loaders** — 9 tests covering corrupt PDFs, symlink loops,
+  deep recursion, malformed DOCX/PPTX/XLSX.
+- **Auto-gate boundary** — pins the inclusive `<=` semantics at
+  1499/1500/1501 input tokens + the custom-gate path.
+- **Serde round-trip** — every cross-FFI type (`Chunk`, `Score`,
+  `ContextReport`, ...) survives JSON round-trip; forward-compat
+  exercised via a minimal pre-0.1.3 payload.
+- **Strategy semantics** — 7 differential tests pinning the contrasts
+  between all 5 `ContextStrategy` variants on a shared corpus
+  (catches accidental strategy convergence).
+- **Persisted cache** — incremental cache hit/miss contract for
+  `read_folder_with(persist=true)`: per-file `(mtime, size)` skip,
+  no-op reload doesn't rewrite, fingerprint invalidation on config
+  change, deleted-file cleanup.
+
+No public API changes. Python and Node callers are unaffected aside
+from the new `context_with_timeout` helper.
+
 ## [0.2.0] - 2026-06-03
 
 The **binding-parity + non-English** release. Three months of incremental
