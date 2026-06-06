@@ -140,6 +140,28 @@ where hybrid returns empty — but the result may still not be the right
 clause. There's a [known bug](https://github.com/vysakh0/redhop/issues/1)
 where hybrid sometimes returns fewer candidates than lexical alone.
 
+### 3. Templated queries with heavy boilerplate
+
+When every query in your workload follows a fixed template — *"Highlight
+the parts (if any) of this contract related to X that should be reviewed
+by a lawyer. Details: …"*, *"Help me with X, my account is Y, the error
+is Z"*, form-filled queries from structured UIs — BM25 weights each term
+in the query by corpus IDF, not query-set frequency. So the 19 boilerplate
+words **dilute** the 5 real signal words.
+
+**For contract-style single-doc extraction workloads:** override the Auto
+strategy and use `strategy="raw_topk"`. The Auto policy routes large
+contexts to `reasoning_preserving`, which solves a multi-hop problem CUAD
+doesn't have. RawTopK beats ReasoningPreserving by ~4 points on CUAD at
+every chunk size.
+
+**Fix the query at your boundary, not in RedHop:** preprocess each query
+to strip the template, leaving only the discriminating terms. Example:
+extract the quoted clause name plus the `Details:` elaboration before
+calling `context()`. On CUAD this moves ≥0.8 retention from 81% to 88%
+(+6.3 points, overtaking LlamaIndex's 86% by 2). Measured;
+see [findings/CUAD_RECALL_GAP.md](findings/CUAD_RECALL_GAP.md).
+
 ---
 
 ## Trade-offs at a glance

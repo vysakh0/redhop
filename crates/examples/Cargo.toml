@@ -215,3 +215,19 @@ required-features = ["onnx"]
 name = "semantic_reasoning_rerank"
 path = "examples/semantic_reasoning_rerank.rs"
 required-features = ["onnx"]
+
+[[example]]
+name = "cuad_chunk_strategy_sweep"
+path = "examples/cuad_chunk_strategy_sweep.rs"
+
+[[example]]
+name = "cuad_query_preprocessing"
+path = "examples/cuad_query_preprocessing.rs"
+
+[[example]]
+name = "cuad_perf"
+path = "examples/cuad_perf.rs"
+
+[[example]]
+name = "cuad_rust_vs_python_path"
+path = "examples/cuad_rust_vs_python_path.rs"

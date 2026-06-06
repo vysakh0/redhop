@@ -27,17 +27,20 @@ console.log(ctx.report.rendered); // the Decision Report — what it kept, and w
 
 ## How it compares
 
-Measured on identical documents + budgets + BM25 retrieval, RedHop **beats LangChain
-on multi-hop evidence retention** (77% vs 71%) and **ties LlamaIndex on contracts**
-(82% vs 86%, while beating LangChain at 73%) — without a vector database, an agent
-framework, or model finetuning.
+Measured on identical documents + budgets + BM25 retrieval, RedHop **beats both
+frameworks on multi-hop evidence retention** (80% vs LangChain 71%, LlamaIndex 72%)
+and **beats LangChain on contracts** (82% vs 73%). It trails LlamaIndex by 4 points
+on CUAD's raw-template query — that gap is mechanism-known and closeable with a
+6-line query preprocessor (RedHop reaches 88%, +2 over LlamaIndex); see
+[CUAD_RECALL_GAP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md).
+All without a vector database, an agent framework, or model finetuning.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
 </p>
 
 Methodology + raw runs: [FRAMEWORK_COMPARISON.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/FRAMEWORK_COMPARISON.md)
-· [framework_comparison.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison.txt).
+· [framework_comparison_2026-06-06.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison_2026-06-06.txt).
 
 ## How it works
 

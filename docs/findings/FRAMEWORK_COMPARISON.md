@@ -11,13 +11,27 @@
 > Tier-1: gold-evidence word-recall (free). Tier-3: gpt-4o-mini answers each
 > system's context, scored SQuAD-style (F1/EM). Harnesses in `bench/`.
 
+> **Rerun — 2026-06-06 (current main, 0.2.2).** Fresh run of `bench/compare.py`
+> on the current main. **HotpotQA RedHop[topk] +3 points: 77% → 80%** ≥0.8
+> retention, opening the multi-hop lead from +5 to +8 over LlamaIndex (LangChain
+> and LlamaIndex unchanged). CUAD numbers are identical. The improvement is
+> attributable to the BM25 silent-wildcard fix + analyzer sharpening from 0.2.1;
+> it landed cleanly on multi-hop and didn't regress anything else. The CUAD
+> 4-point gap to LlamaIndex was investigated separately — see
+> [CUAD_RECALL_GAP.md](CUAD_RECALL_GAP.md): mechanism is BM25 template-boilerplate
+> dilution, closeable with a 6-line query preprocessor that takes RedHop to
+> 88% ≥0.8 (overtaking LlamaIndex by 2 points). Raw output:
+> [`reports/framework_comparison_2026-06-06.txt`](../../reports/framework_comparison_2026-06-06.txt).
+> The Tier-1 table below is the updated 2026-06-06 numbers; Tier 3 has not been
+> rerun.
+
 ---
 
 ## Tier 1 — evidence retention (≥0.8 word-recall, no LLM, n=300)
 
 | dataset | redhop (best) | LangChain | LlamaIndex |
 | ------- | ------------- | --------- | ---------- |
-| HotpotQA multi-hop | **77%** | 71% | 72% |
+| HotpotQA multi-hop | **80%** (was 77%) | 71% | 72% |
 | CUAD contracts | 82% | 73% | **86%** |
 
 ## Tier 3 — downstream answer quality (gpt-4o-mini, n=150)
