@@ -1,9 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" role="img" aria-label="Evidence retention: RedHop vs LangChain vs LlamaIndex">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 480" role="img" aria-label="Evidence retention: RedHop vs LangChain vs LlamaIndex">
   <title>Evidence retention (≥0.8 word-recall, n=300) — RedHop vs LangChain vs LlamaIndex</title>
-  <desc>Bar chart comparing evidence-retention rates across three RAG context runtimes on HotpotQA multi-hop and CUAD contracts.</desc>
+  <desc>Bar chart comparing evidence-retention rates across three RAG context runtimes on HotpotQA multi-hop and CUAD contracts; CUAD group includes a fourth, striped bar for RedHop with a 6-line CUAD template-stripping query preprocessor applied.</desc>
+
+  <!-- Hatched fill pattern for the "RedHop + preprocessor" bar -->
+  <defs>
+    <pattern id="redhopStrip" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+      <rect width="8" height="8" fill="#fecdd3"/>
+      <rect width="4" height="8" fill="#e11d48"/>
+    </pattern>
+  </defs>
 
   <!-- Background -->
-  <rect width="760" height="460" fill="#ffffff"/>
+  <rect width="760" height="480" fill="#ffffff"/>
 
   <!-- Title + subtitle -->
   <text x="380" y="34" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#0f172a">
@@ -15,22 +23,16 @@
 
   <!-- Y axis grid lines + labels -->
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#64748b">
-    <!-- 0% -->
     <line x1="90" y1="380" x2="720" y2="380" stroke="#cbd5e1" stroke-width="1"/>
     <text x="80" y="384" text-anchor="end">0%</text>
-    <!-- 20% -->
     <line x1="90" y1="320" x2="720" y2="320" stroke="#e2e8f0" stroke-width="1"/>
     <text x="80" y="324" text-anchor="end">20%</text>
-    <!-- 40% -->
     <line x1="90" y1="260" x2="720" y2="260" stroke="#e2e8f0" stroke-width="1"/>
     <text x="80" y="264" text-anchor="end">40%</text>
-    <!-- 60% -->
     <line x1="90" y1="200" x2="720" y2="200" stroke="#e2e8f0" stroke-width="1"/>
     <text x="80" y="204" text-anchor="end">60%</text>
-    <!-- 80% -->
     <line x1="90" y1="140" x2="720" y2="140" stroke="#e2e8f0" stroke-width="1"/>
     <text x="80" y="144" text-anchor="end">80%</text>
-    <!-- 100% -->
     <line x1="90" y1="80" x2="720" y2="80" stroke="#e2e8f0" stroke-width="1"/>
     <text x="80" y="84" text-anchor="end">100%</text>
   </g>
@@ -39,24 +41,24 @@
   <line x1="90" y1="80" x2="90" y2="380" stroke="#94a3b8" stroke-width="1.5"/>
 
   <!--
-    Bars. Each bar is 70px wide. Group of 3 bars is 70*3 + 2*8 spacing = 226px.
-    Group 1 (HotpotQA multi-hop) starts at x=160, group 2 (CUAD contracts) starts at x=470.
+    Bars 56px wide, 6px spacing.
     Y: 80 = 100%, 380 = 0%. Each percentage point = 3px.
-    Values (current as of 2026-06-06):
+    Values (as of 2026-06-06):
       HotpotQA multi-hop:    RedHop 80%, LangChain 71%, LlamaIndex 72%
-      CUAD contracts:        RedHop 82%, LangChain 73%, LlamaIndex 86%
+      CUAD contracts (raw):  RedHop 82%, LangChain 73%, LlamaIndex 86%
+      CUAD contracts (+template-strip preprocessor): RedHop 88%
   -->
 
-  <!-- Group 1: HotpotQA multi-hop -->
+  <!-- Group 1: HotpotQA multi-hop (3 bars, starts at x=183) -->
   <!-- RedHop 80% -->
-  <rect x="160" y="140" width="70" height="240" fill="#e11d48" rx="2"/>
-  <text x="195" y="133" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">80%</text>
+  <rect x="183" y="140" width="56" height="240" fill="#e11d48" rx="2"/>
+  <text x="211" y="133" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">80%</text>
   <!-- LangChain 71% -->
-  <rect x="238" y="167" width="70" height="213" fill="#94a3b8" rx="2"/>
-  <text x="273" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">71%</text>
+  <rect x="245" y="167" width="56" height="213" fill="#94a3b8" rx="2"/>
+  <text x="273" y="160" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">71%</text>
   <!-- LlamaIndex 72% -->
-  <rect x="316" y="164" width="70" height="216" fill="#64748b" rx="2"/>
-  <text x="351" y="157" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">72%</text>
+  <rect x="307" y="164" width="56" height="216" fill="#64748b" rx="2"/>
+  <text x="335" y="157" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">72%</text>
 
   <!-- Group 1 label -->
   <text x="273" y="408" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="500" fill="#0f172a">
@@ -66,16 +68,19 @@
     budget 400 tok · supporting sentence retention
   </text>
 
-  <!-- Group 2: CUAD contracts -->
-  <!-- RedHop 82% -->
-  <rect x="470" y="134" width="70" height="246" fill="#e11d48" rx="2"/>
-  <text x="505" y="127" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">82%</text>
+  <!-- Group 2: CUAD contracts (4 bars, starts at x=462) -->
+  <!-- RedHop 82% (raw template) -->
+  <rect x="462" y="134" width="56" height="246" fill="#e11d48" rx="2"/>
+  <text x="490" y="127" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">82%</text>
   <!-- LangChain 73% -->
-  <rect x="548" y="161" width="70" height="219" fill="#94a3b8" rx="2"/>
-  <text x="583" y="154" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">73%</text>
-  <!-- LlamaIndex 86% (best in group) -->
-  <rect x="626" y="122" width="70" height="258" fill="#64748b" rx="2"/>
-  <text x="661" y="115" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#0f172a">86%</text>
+  <rect x="524" y="161" width="56" height="219" fill="#94a3b8" rx="2"/>
+  <text x="552" y="154" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">73%</text>
+  <!-- LlamaIndex 86% -->
+  <rect x="586" y="122" width="56" height="258" fill="#64748b" rx="2"/>
+  <text x="614" y="115" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">86%</text>
+  <!-- RedHop 88% (template stripped — best in group) -->
+  <rect x="648" y="116" width="56" height="264" fill="url(#redhopStrip)" stroke="#e11d48" stroke-width="1.5" rx="2"/>
+  <text x="676" y="109" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#0f172a">88%</text>
 
   <!-- Group 2 label -->
   <text x="583" y="408" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="500" fill="#0f172a">
@@ -86,17 +91,22 @@
   </text>
 
   <!-- Legend (top right) -->
-  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#0f172a">
-    <rect x="560" y="64" width="14" height="14" fill="#e11d48" rx="2"/>
-    <text x="580" y="75">RedHop</text>
-    <rect x="625" y="64" width="14" height="14" fill="#94a3b8" rx="2"/>
-    <text x="645" y="75">LangChain</text>
-    <rect x="699" y="64" width="14" height="14" fill="#64748b" rx="2"/>
-    <text x="719" y="75">LlamaIndex</text>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#0f172a">
+    <rect x="380" y="65" width="12" height="12" fill="#e11d48" rx="2"/>
+    <text x="398" y="75">RedHop</text>
+    <rect x="448" y="65" width="12" height="12" fill="#94a3b8" rx="2"/>
+    <text x="466" y="75">LangChain</text>
+    <rect x="525" y="65" width="12" height="12" fill="#64748b" rx="2"/>
+    <text x="543" y="75">LlamaIndex</text>
+    <rect x="606" y="65" width="12" height="12" fill="url(#redhopStrip)" stroke="#e11d48" stroke-width="1" rx="2"/>
+    <text x="624" y="75">RedHop + template-strip preprocessor</text>
   </g>
 
   <!-- Footer note -->
   <text x="380" y="450" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">
+    Striped bar = RedHop on CUAD with a 6-line query preprocessor (strips the fixed 24-word template); not the same condition as the other three bars.
+  </text>
+  <text x="380" y="465" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8">
     Source: docs/findings/FRAMEWORK_COMPARISON.md + docs/findings/CUAD_RECALL_GAP.md · raw: reports/framework_comparison_2026-06-06.txt
   </text>
 </svg>
