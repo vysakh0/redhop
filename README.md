@@ -28,7 +28,7 @@ hypotheses that failed — lives in the [evidence layer](docs/findings/README.md
 
 ## Install
 
-> **Alpha — 0.1.x.** Published on PyPI, crates.io, and npm.
+> **Alpha — 0.2.x.** Published on PyPI, crates.io, and npm.
 
 ```bash
 pip install redhop                            # Python  — on PyPI
