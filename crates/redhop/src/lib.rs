@@ -73,6 +73,9 @@ pub use crate::context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
     link_strength, AutoDecision, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
 };
+// In-process evaluation — score a `BuiltContext` against optional gold signals,
+// no LLM judge required. See `crate::context::eval` for the rationale.
+pub use crate::context::eval::{evaluate, EvalGold, EvalReport};
 
 // Core types you handle directly.
 pub use crate::core::{
