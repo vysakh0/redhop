@@ -289,10 +289,16 @@ if report.is_templated:
     # 2 — Strip. Use the boilerplate the analyzer found.
     def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3 — A/B. Run a small sample with and without strip + raw_topk
-    #    against your gold spans to confirm the lift on YOUR data.
+    # 3 — A/B. Run with and without strip on your gold sample;
+    #    redhop.evaluate gives you a deterministic score, no LLM judge.
     doc = redhop.Document.from_file("contract.pdf")
-    ctx = doc.context(strip(user_query), strategy="raw_topk")
+    eval_a = redhop.evaluate(user_query,
+                             doc.context(user_query, strategy="raw_topk"),
+                             gold_chunks=your_gold_chunk_ids)
+    eval_b = redhop.evaluate(strip(user_query),
+                             doc.context(strip(user_query), strategy="raw_topk"),
+                             gold_chunks=your_gold_chunk_ids)
+    print(eval_b.overall - eval_a.overall)   # the lift, deterministically
 ```
 
 A few things worth being explicit about:
@@ -318,6 +324,8 @@ Decision rule + the recipe in full:
 [`docs/CHOOSING_A_CONFIG.md` → "Templated queries with heavy boilerplate"](docs/CHOOSING_A_CONFIG.md).
 Cross-workload probe that validated the analyzer:
 [`docs/findings/QUERY_SET_ANALYZER.md`](docs/findings/QUERY_SET_ANALYZER.md).
+Design rationale + tradeoffs for `evaluate`:
+[`docs/findings/EVALUATE_API.md`](docs/findings/EVALUATE_API.md).
 
 ## Documentation
 

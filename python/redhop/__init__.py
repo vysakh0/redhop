@@ -47,10 +47,12 @@ from ._redhop import (
     BuiltContext,
     ContextReport,
     Document,
+    EvalReport,
     QuerySetReport,
     __version__,
     analyze_query_set,
     drop_template_terms,
+    evaluate,
     grounding_score,
     link_strength,
 )
@@ -243,8 +245,10 @@ __all__ = [
     "report_to_dict",
     "analyze_query_set",
     "drop_template_terms",
+    "evaluate",
     "BuiltContext",
     "ContextReport",
+    "EvalReport",
     "QuerySetReport",
     "__version__",
 ]

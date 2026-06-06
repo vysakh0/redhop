@@ -37,11 +37,26 @@ process.stdin.on("end", () => {
     return;
   }
 
+  // BuiltContext became a `#[napi]` class (not a plain object) when
+  // `redhop.evaluate(...)` was added — it now carries the underlying Rust
+  // struct in addition to the four exposed properties. Class getters
+  // aren't enumerable, so JSON.stringify(ctx) yields `{}`. Project to a
+  // plain object here so the Python parity diff sees the same shape it
+  // always did.
+  function projectBuiltContext(ctx) {
+    return {
+      text: ctx.text,
+      chunks: ctx.chunks,
+      citations: ctx.citations,
+      report: ctx.report,
+    };
+  }
+
   try {
     let result;
     switch (req.fn) {
-      case "buildContext":     result = buildContext(...req.args); break;
-      case "filterContext":    result = filterContext(...req.args); break;
+      case "buildContext":     result = projectBuiltContext(buildContext(...req.args)); break;
+      case "filterContext":    result = projectBuiltContext(filterContext(...req.args)); break;
       case "analyzeContext":   result = analyzeContext(...req.args); break;
       case "contextEconomics":
         // Returns a JSON string; reparse so the python diff compares the same

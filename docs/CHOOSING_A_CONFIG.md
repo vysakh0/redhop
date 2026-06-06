@@ -171,11 +171,22 @@ else:
     def strip(q):
         return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3. A/B — confirm the lift on YOUR gold-evidence sample before shipping.
+    # 3. A/B — redhop.evaluate scores both arms deterministically; no
+    #          LLM judge, no extra dependencies. The composite `overall`
+    #          plus the components let you compare arms across a sample
+    #          of queries. See findings/EVALUATE_API.md for design.
     doc = redhop.Document.from_text(your_document)
-    arm_a = doc.context(user_query, strategy="raw_topk")
-    arm_b = doc.context(strip(user_query), strategy="raw_topk")
-    # ... measure recall against your gold spans on a sample of queries.
+    eval_a = redhop.evaluate(
+        user_query,
+        doc.context(user_query, strategy="raw_topk"),
+        gold_chunks=your_gold_chunk_ids,
+    )
+    eval_b = redhop.evaluate(
+        strip(user_query),
+        doc.context(strip(user_query), strategy="raw_topk"),
+        gold_chunks=your_gold_chunk_ids,
+    )
+    # eval_b.overall - eval_a.overall is the per-query lift.
 ```
 
 The analyzer measures the *shape* of your queries; it does **not**

@@ -396,4 +396,126 @@ mod tests {
         // a caller doesn't accidentally treat 0 as a real precision number.
         assert!(r.context_precision.is_none());
     }
+
+    #[test]
+    fn answer_only_gold_leaves_chunk_metrics_none() {
+        // EvalGold::Answer alone must populate `answer_token_recall` and
+        // leave context_recall / context_precision as None — the caller
+        // didn't give us chunk-level gold so we have nothing to compute
+        // those from. Guards against a refactor that accidentally treats
+        // "answer present" as "chunks present too".
+        let ctx = build(
+            "refund window",
+            &[rr("a", "the refund window is thirty days")],
+        );
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            EvalGold::Answer("thirty days"),
+        );
+        assert!(r.context_recall.is_none());
+        assert!(r.context_precision.is_none());
+        let atr = r
+            .answer_token_recall
+            .expect("answer_token_recall should be populated when Answer gold is given");
+        assert!(atr > 0.0, "stemmed gold answer terms appear in context; got {atr}");
+    }
+
+    #[test]
+    fn both_gold_signals_populate_all_three_metrics() {
+        // EvalGold::Both must populate ALL three gold-relative metrics.
+        // Catches a refactor that splits the gold extraction wrong (e.g.,
+        // reads `gold_chunk_ids` but forgets `gold_answer` from the same
+        // variant).
+        let ctx = build(
+            "refund window",
+            &[
+                rr("hit", "the refund window is thirty days"),
+                rr("noise", "shipping policy details"),
+            ],
+        );
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            EvalGold::Both {
+                gold_chunk_ids: &["hit"],
+                gold_answer: "thirty days",
+            },
+        );
+        assert_eq!(r.context_recall, Some(1.0)); // "hit" is in the selection
+        assert!(r.context_precision.is_some());
+        let atr = r
+            .answer_token_recall
+            .expect("answer_token_recall should be populated under Both");
+        assert!(atr > 0.0);
+        // overall should reflect all three signals being available.
+        assert!(r.overall > 0.0);
+        assert!(r.overall <= 1.0);
+    }
+
+    #[test]
+    fn precision_distinct_from_recall_with_asymmetric_sets() {
+        // 3 selected, 2 gold, 1 hit → recall=0.5, precision≈0.33. The
+        // earlier tests had |selected| == |gold| so both metrics coincided;
+        // this one exercises the asymmetric case.
+        let ctx = build(
+            "policy",
+            &[
+                rr("hit", "policy section about refunds"),
+                rr("noise_a", "totally unrelated cooking recipe"),
+                rr("noise_b", "more cooking instructions"),
+            ],
+        );
+        let r = evaluate(
+            &Query::new("policy"),
+            &ctx,
+            EvalGold::Chunks(&["hit", "missing"]),
+        );
+        assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold present
+        let p = r.context_precision.expect("precision populated");
+        // 1 of 3 selected is gold → 1/3.
+        assert!(
+            (p - (1.0 / 3.0)).abs() < 1e-5,
+            "expected precision ≈ 1/3; got {p}"
+        );
+    }
+
+    #[test]
+    fn empty_built_context_is_handled_gracefully() {
+        // If the strategy / budget produced an empty selection, every
+        // self-eval metric must be defined (no NaN, no panic). With chunk
+        // gold provided, recall = 0/|gold|. Without gold, the function
+        // must still produce a sensible report.
+        let cfg = ContextConfig {
+            // Zero budget forces an empty selection.
+            token_budget: 0,
+            strategy: ContextStrategy::RawTopK,
+            ..Default::default()
+        };
+        let chunks = vec![rr("a", "some text")];
+        let ctx = build_context(&Query::new("query"), &chunks, &cfg);
+        assert!(
+            ctx.chunks.is_empty(),
+            "test premise: zero-budget should empty the selection; got {} chunks",
+            ctx.chunks.len()
+        );
+
+        // No gold — every self-eval field must be finite.
+        let r = evaluate(&Query::new("query"), &ctx, EvalGold::None);
+        assert!(r.mean_grounding.is_finite());
+        assert!(r.overall.is_finite());
+        assert!((0.0..=1.0).contains(&r.overall));
+
+        // Chunk-gold provided — recall must be 0 (nothing selected), not NaN.
+        let r = evaluate(
+            &Query::new("query"),
+            &ctx,
+            EvalGold::Chunks(&["expected"]),
+        );
+        assert_eq!(r.context_recall, Some(0.0));
+        // precision on an empty selection is reported as 0.0 (not NaN) so
+        // callers can treat the field as always-finite when chunk gold is
+        // present.
+        assert_eq!(r.context_precision, Some(0.0));
+    }
 }

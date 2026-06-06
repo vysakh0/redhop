@@ -292,6 +292,10 @@ struct BuiltContext {
     chunks: Vec<String>,
     cites: Vec<CiteData>,
     report: ContextReport,
+    // Underlying Rust BuiltContext, kept for in-process operations like
+    // `redhop.evaluate(...)` that need chunk IDs, score breakdowns, or the
+    // full report shape. Never exposed to Python directly.
+    inner: redhop::context::BuiltContext,
 }
 
 #[pymethods]
@@ -364,9 +368,10 @@ fn build_context(
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
         cites: cites_of(&ctx.chunks),
         report: ContextReport {
-            inner: ctx.report,
+            inner: ctx.report.clone(),
             rendered,
         },
+        inner: ctx,
     })
 }
 
@@ -402,9 +407,10 @@ fn filter_context(
         chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
         cites: cites_of(&ctx.chunks),
         report: ContextReport {
-            inner: ctx.report,
+            inner: ctx.report.clone(),
             rendered,
         },
+        inner: ctx,
     })
 }
 
@@ -486,9 +492,10 @@ fn py_built(ctx: redhop::context::BuiltContext) -> BuiltContext {
         chunks,
         cites,
         report: ContextReport {
-            inner: ctx.report,
+            inner: ctx.report.clone(),
             rendered,
         },
+        inner: ctx,
     }
 }
 
@@ -1361,6 +1368,141 @@ fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
     }
 }
 
+// ─── In-process evaluation (no LLM judge) ───────────────────────────────────
+// Backed by `redhop::evaluate`. The Rust enum `EvalGold` is hidden behind
+// idiomatic Python kwargs (`gold_chunks=`, `gold_answer=`) — both optional,
+// any combination supported. See `docs/findings/EVALUATE_API.md` for the
+// design rationale ("refraction, not independent measurement").
+
+/// In-process evaluation report for one (query, BuiltContext) pair.
+///
+/// Self-eval fields are always populated; gold-relative fields are `None`
+/// unless the corresponding `gold_*` kwarg was supplied to `evaluate`. The
+/// composite `overall` blends whichever fields are present. Read fields off
+/// the object as attributes.
+#[pyclass(module = "redhop")]
+#[derive(Clone)]
+struct EvalReport {
+    inner: redhop::EvalReport,
+}
+
+#[pymethods]
+impl EvalReport {
+    /// Fraction of gold chunks that survived assembly. `None` unless
+    /// `gold_chunks=` was supplied.
+    #[getter]
+    fn context_recall(&self) -> Option<f32> {
+        self.inner.context_recall
+    }
+    /// Fraction of selected chunks that were gold. `None` unless
+    /// `gold_chunks=` was supplied.
+    #[getter]
+    fn context_precision(&self) -> Option<f32> {
+        self.inner.context_precision
+    }
+    /// Fraction of stemmed content terms in the gold answer that appear in
+    /// the assembled context. `None` unless `gold_answer=` was supplied.
+    #[getter]
+    fn answer_token_recall(&self) -> Option<f32> {
+        self.inner.answer_token_recall
+    }
+    /// Mean grounding score over selected chunks, in `[0, 1]`. Same scorer
+    /// the runtime uses for `ContextStrategy::DistractorFiltered`.
+    #[getter]
+    fn mean_grounding(&self) -> f32 {
+        self.inner.mean_grounding
+    }
+    /// Fraction of context tokens that are query-relevant.
+    #[getter]
+    fn evidence_density(&self) -> f32 {
+        self.inner.evidence_density
+    }
+    /// Fraction of input evidence that made it through assembly.
+    #[getter]
+    fn retained_evidence_ratio(&self) -> f32 {
+        self.inner.retained_evidence_ratio
+    }
+    /// Number of bridge passages the reasoning-preserving rescue saved.
+    #[getter]
+    fn second_hop_rescues(&self) -> usize {
+        self.inner.second_hop_rescues
+    }
+    /// True when every selected chunk is at-or-below the grounding ceiling
+    /// — i.e. the retrieval itself was weak.
+    #[getter]
+    fn low_confidence(&self) -> bool {
+        self.inner.low_confidence
+    }
+    /// Tokens spent on below-bar chunks.
+    #[getter]
+    fn estimated_waste_tokens(&self) -> usize {
+        self.inner.estimated_waste_tokens
+    }
+    /// Composite score in `[0, 1]` blending whichever fields above are
+    /// available. Use as the headline; use individual fields to debug.
+    #[getter]
+    fn overall(&self) -> f32 {
+        self.inner.overall
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "EvalReport(overall={:.3}, mean_grounding={:.3}, recall={}, precision={}, answer_recall={}, low_confidence={})",
+            self.inner.overall,
+            self.inner.mean_grounding,
+            self.inner
+                .context_recall
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "None".into()),
+            self.inner
+                .context_precision
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "None".into()),
+            self.inner
+                .answer_token_recall
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "None".into()),
+            self.inner.low_confidence,
+        )
+    }
+}
+
+/// Evaluate an assembled `BuiltContext` against optional ground truth.
+///
+/// Self-eval (mean_grounding, evidence_density, second_hop_rescues,
+/// low_confidence, …) is always populated. Pass `gold_chunks=` to unlock
+/// `context_recall` / `context_precision`; pass `gold_answer=` to unlock
+/// `answer_token_recall`. Both optional, any combination supported.
+///
+/// Zero LLM calls — every metric is computed from the same primitives the
+/// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
+/// the "refraction not independent measurement" design choice.
+#[pyfunction]
+#[pyo3(signature = (query, context, *, gold_chunks=None, gold_answer=None))]
+fn evaluate(
+    query: &str,
+    context: &BuiltContext,
+    gold_chunks: Option<Vec<String>>,
+    gold_answer: Option<&str>,
+) -> EvalReport {
+    let q = Query::new(query);
+    // Borrow gold_chunks as &[&str] so it matches the redhop::EvalGold borrowed shape.
+    let chunk_refs: Option<Vec<&str>> = gold_chunks
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
+    let gold = match (chunk_refs.as_deref(), gold_answer) {
+        (None, None) => redhop::EvalGold::None,
+        (Some(c), None) => redhop::EvalGold::Chunks(c),
+        (None, Some(a)) => redhop::EvalGold::Answer(a),
+        (Some(c), Some(a)) => redhop::EvalGold::Both {
+            gold_chunk_ids: c,
+            gold_answer: a,
+        },
+    };
+    EvalReport {
+        inner: redhop::evaluate(&q, &context.inner, gold),
+    }
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -1368,6 +1510,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ContextReport>()?;
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;
+    m.add_class::<EvalReport>()?;
     m.add_function(wrap_pyfunction!(build_context, m)?)?;
     m.add_function(wrap_pyfunction!(filter_context, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_context, m)?)?;
@@ -1376,5 +1519,6 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
     m.add_function(wrap_pyfunction!(drop_template_terms, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
+    m.add_function(wrap_pyfunction!(evaluate, m)?)?;
     Ok(())
 }

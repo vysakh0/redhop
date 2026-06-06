@@ -192,10 +192,16 @@ if report.is_templated:
     # 2 — Strip. Use the boilerplate the analyzer found.
     def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3 — A/B. Run a small sample with and without strip + raw_topk
-    #     against your gold spans to confirm the lift on YOUR data.
+    # 3 — A/B. redhop.evaluate scores both arms deterministically,
+    #     no LLM judge — see EVALUATE_API.md for the design.
     doc = redhop.Document.from_file("contract.pdf")
-    ctx = doc.context(strip(user_query), strategy="raw_topk")
+    eval_a = redhop.evaluate(user_query,
+                             doc.context(user_query, strategy="raw_topk"),
+                             gold_chunks=your_gold_chunk_ids)
+    eval_b = redhop.evaluate(strip(user_query),
+                             doc.context(strip(user_query), strategy="raw_topk"),
+                             gold_chunks=your_gold_chunk_ids)
+    print(eval_b.overall - eval_a.overall)   # the lift, deterministically
 ```
 
 - **Only matters if your queries are templated.** `analyze_query_set` is
@@ -219,6 +225,8 @@ Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
 Cross-workload probe that validated the analyzer:
 [QUERY_SET_ANALYZER.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md).
+Design rationale + tradeoffs for `evaluate`:
+[EVALUATE_API.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
 
 ## Documentation
 

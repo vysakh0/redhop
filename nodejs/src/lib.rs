@@ -135,6 +135,7 @@ impl FolderOptions {
 
 /// Where one selected chunk came from — for citing the evidence.
 #[napi(object)]
+#[derive(Clone)]
 pub struct Citation {
     pub source: String,
     pub page: Option<u32>,
@@ -145,6 +146,7 @@ pub struct Citation {
 
 /// The Decision Report: what the assembly did, and why.
 #[napi(object)]
+#[derive(Clone)]
 pub struct Report {
     /// The strategy actually used — the resolved concrete strategy after
     /// `auto` (if requested) was decided. One of `"raw_topk"`,
@@ -231,12 +233,44 @@ pub struct SkippedFile {
 }
 
 /// The assembled context: prompt string, selected chunks, citations, report.
-#[napi(object)]
+///
+/// Class (not plain object) so it can hold the underlying Rust `BuiltContext`
+/// for in-process operations like [`evaluate`]. All four existing fields
+/// (`text`, `chunks`, `citations`, `report`) remain accessible as JS
+/// properties via getters.
+#[napi]
 pub struct BuiltContext {
-    pub text: String,
-    pub chunks: Vec<String>,
-    pub citations: Vec<Citation>,
-    pub report: Report,
+    text_: String,
+    chunks_: Vec<String>,
+    citations_: Vec<Citation>,
+    report_: Report,
+    // Hidden: carries the full Rust struct so `redhop.evaluate(...)` can
+    // read chunk IDs and the complete report shape.
+    inner: redhop::context::BuiltContext,
+}
+
+#[napi]
+impl BuiltContext {
+    /// The assembled context as a single prompt string (drop-in for `llm.generate`).
+    #[napi(getter)]
+    pub fn text(&self) -> String {
+        self.text_.clone()
+    }
+    /// Selected chunks in presentation order, as plain strings.
+    #[napi(getter)]
+    pub fn chunks(&self) -> Vec<String> {
+        self.chunks_.clone()
+    }
+    /// Per-chunk provenance — source, page, heading, line, text.
+    #[napi(getter)]
+    pub fn citations(&self) -> Vec<Citation> {
+        self.citations_.clone()
+    }
+    /// The Decision Report: what was kept, what was dropped, why.
+    #[napi(getter)]
+    pub fn report(&self) -> Report {
+        self.report_.clone()
+    }
 }
 
 fn to_report(r: &redhop::ContextReport) -> Report {
@@ -288,10 +322,11 @@ fn to_built(ctx: redhop::BuiltContext) -> BuiltContext {
         .collect();
     let report = to_report(&ctx.report);
     BuiltContext {
-        text: ctx.text(),
-        chunks: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
-        citations,
-        report,
+        text_: ctx.text(),
+        chunks_: ctx.chunks.iter().map(|c| c.text.clone()).collect(),
+        citations_: citations,
+        report_: report,
+        inner: ctx,
     }
 }
 
@@ -513,6 +548,110 @@ pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
         boilerplate_terms: r.boilerplate_terms,
         estimated_dilution_cost: cost_str(r.estimated_dilution_cost),
         suggested_action: r.suggested_action,
+    }
+}
+
+// ── In-process evaluation (no LLM judge) ────────────────────────────────────
+// Backed by `redhop::evaluate`. See `docs/findings/EVALUATE_API.md`.
+
+/// Optional gold signals for [`evaluate`]. Any combination of fields is
+/// supported — pass `goldChunks` to unlock `contextRecall` /
+/// `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
+/// pass both for all three. Omit both for self-eval only.
+#[napi(object)]
+pub struct EvaluateOptions {
+    /// IDs of chunks that should appear in the assembled context.
+    pub gold_chunks: Option<Vec<String>>,
+    /// Ground-truth answer text.
+    pub gold_answer: Option<String>,
+}
+
+/// In-process evaluation report for one (query, BuiltContext) pair.
+///
+/// Self-eval fields are always populated; gold-relative fields are
+/// `null`/`undefined` unless the corresponding option was supplied. The
+/// composite `overall` blends whichever fields are present.
+#[napi(object)]
+pub struct EvalReport {
+    /// `selected ∩ gold / |gold|`. `null` unless `goldChunks` was supplied.
+    pub context_recall: Option<f64>,
+    /// `selected ∩ gold / |selected|`. `null` unless `goldChunks` was supplied.
+    pub context_precision: Option<f64>,
+    /// Fraction of stemmed content terms in the gold answer that appear in
+    /// the assembled context. `null` unless `goldAnswer` was supplied.
+    pub answer_token_recall: Option<f64>,
+    /// Mean grounding over selected chunks, in `[0, 1]`.
+    pub mean_grounding: f64,
+    /// Fraction of context tokens that are query-relevant.
+    pub evidence_density: f64,
+    /// Fraction of input evidence that made it through assembly.
+    pub retained_evidence_ratio: f64,
+    /// Bridge passages saved by the reasoning-preserving rescue.
+    pub second_hop_rescues: u32,
+    /// `true` when every selected chunk is at-or-below the grounding ceiling.
+    pub low_confidence: bool,
+    /// Tokens spent on below-bar chunks.
+    pub estimated_waste_tokens: u32,
+    /// Composite score in `[0, 1]` — the headline, blended.
+    pub overall: f64,
+}
+
+/// Evaluate an assembled `BuiltContext` against optional ground truth.
+///
+/// Self-eval (meanGrounding, evidenceDensity, secondHopRescues,
+/// lowConfidence, …) is always populated. Pass `options.goldChunks` to
+/// unlock `contextRecall` / `contextPrecision`; pass `options.goldAnswer`
+/// to unlock `answerTokenRecall`. Both optional, any combination
+/// supported.
+///
+/// Zero LLM calls — every metric is computed from the same primitives the
+/// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
+/// the "refraction not independent measurement" design choice.
+///
+/// ```js
+/// const ctx = doc.context("refund window");
+/// const report = redhop.evaluate("refund window", ctx, {
+///   goldChunks: ["§3.4"],
+///   goldAnswer: "thirty days",
+/// });
+/// console.log(report.overall, report.contextRecall);
+/// ```
+#[napi]
+pub fn evaluate(
+    query: String,
+    context: &BuiltContext,
+    options: Option<EvaluateOptions>,
+) -> EvalReport {
+    let opts = options.unwrap_or(EvaluateOptions {
+        gold_chunks: None,
+        gold_answer: None,
+    });
+    let q = redhop::core::Query::new(&query);
+    let chunk_refs: Option<Vec<&str>> = opts
+        .gold_chunks
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
+    let gold = match (chunk_refs.as_deref(), opts.gold_answer.as_deref()) {
+        (None, None) => redhop::EvalGold::None,
+        (Some(c), None) => redhop::EvalGold::Chunks(c),
+        (None, Some(a)) => redhop::EvalGold::Answer(a),
+        (Some(c), Some(a)) => redhop::EvalGold::Both {
+            gold_chunk_ids: c,
+            gold_answer: a,
+        },
+    };
+    let r = redhop::evaluate(&q, &context.inner, gold);
+    EvalReport {
+        context_recall: r.context_recall.map(|v| v as f64),
+        context_precision: r.context_precision.map(|v| v as f64),
+        answer_token_recall: r.answer_token_recall.map(|v| v as f64),
+        mean_grounding: r.mean_grounding as f64,
+        evidence_density: r.evidence_density as f64,
+        retained_evidence_ratio: r.retained_evidence_ratio as f64,
+        second_hop_rescues: r.second_hop_rescues as u32,
+        low_confidence: r.low_confidence,
+        estimated_waste_tokens: r.estimated_waste_tokens as u32,
+        overall: r.overall as f64,
     }
 }
 

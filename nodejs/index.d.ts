@@ -187,13 +187,6 @@ export interface SkippedFile {
    */
   reason: string
 }
-/** The assembled context: prompt string, selected chunks, citations, report. */
-export interface BuiltContext {
-  text: string
-  chunks: Array<string>
-  citations: Array<Citation>
-  report: Report
-}
 /**
  * Query grounding of a chunk's text: stopword-removed, Snowball-stemmed
  * query-term overlap, in `[0, 1]`. The same relevance signal the strategies
@@ -264,6 +257,73 @@ export declare function dropTemplateTerms(query: string, boilerplate: Array<stri
  * ```
  */
 export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
+/**
+ * Optional gold signals for [`evaluate`]. Any combination of fields is
+ * supported — pass `goldChunks` to unlock `contextRecall` /
+ * `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
+ * pass both for all three. Omit both for self-eval only.
+ */
+export interface EvaluateOptions {
+  /** IDs of chunks that should appear in the assembled context. */
+  goldChunks?: Array<string>
+  /** Ground-truth answer text. */
+  goldAnswer?: string
+}
+/**
+ * In-process evaluation report for one (query, BuiltContext) pair.
+ *
+ * Self-eval fields are always populated; gold-relative fields are
+ * `null`/`undefined` unless the corresponding option was supplied. The
+ * composite `overall` blends whichever fields are present.
+ */
+export interface EvalReport {
+  /** `selected ∩ gold / |gold|`. `null` unless `goldChunks` was supplied. */
+  contextRecall?: number
+  /** `selected ∩ gold / |selected|`. `null` unless `goldChunks` was supplied. */
+  contextPrecision?: number
+  /**
+   * Fraction of stemmed content terms in the gold answer that appear in
+   * the assembled context. `null` unless `goldAnswer` was supplied.
+   */
+  answerTokenRecall?: number
+  /** Mean grounding over selected chunks, in `[0, 1]`. */
+  meanGrounding: number
+  /** Fraction of context tokens that are query-relevant. */
+  evidenceDensity: number
+  /** Fraction of input evidence that made it through assembly. */
+  retainedEvidenceRatio: number
+  /** Bridge passages saved by the reasoning-preserving rescue. */
+  secondHopRescues: number
+  /** `true` when every selected chunk is at-or-below the grounding ceiling. */
+  lowConfidence: boolean
+  /** Tokens spent on below-bar chunks. */
+  estimatedWasteTokens: number
+  /** Composite score in `[0, 1]` — the headline, blended. */
+  overall: number
+}
+/**
+ * Evaluate an assembled `BuiltContext` against optional ground truth.
+ *
+ * Self-eval (meanGrounding, evidenceDensity, secondHopRescues,
+ * lowConfidence, …) is always populated. Pass `options.goldChunks` to
+ * unlock `contextRecall` / `contextPrecision`; pass `options.goldAnswer`
+ * to unlock `answerTokenRecall`. Both optional, any combination
+ * supported.
+ *
+ * Zero LLM calls — every metric is computed from the same primitives the
+ * runtime uses to make its Decision Report. See `EVALUATE_API.md` for
+ * the "refraction not independent measurement" design choice.
+ *
+ * ```js
+ * const ctx = doc.context("refund window");
+ * const report = redhop.evaluate("refund window", ctx, {
+ *   goldChunks: ["§3.4"],
+ *   goldAnswer: "thirty days",
+ * });
+ * console.log(report.overall, report.contextRecall);
+ * ```
+ */
+export declare function evaluate(query: string, context: BuiltContext, options?: EvaluateOptions | undefined | null): EvalReport
 /**
  * A single retrieved chunk for the low-level `buildContext` / `filterContext`
  * / `analyzeContext` / `contextEconomics` functions.
@@ -345,6 +405,24 @@ export declare function analyzeContext(query: string, retrievedChunks: Array<Chu
  * "pure analysis, no filtering, no truncation" intent.
  */
 export declare function contextEconomics(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): string
+/**
+ * The assembled context: prompt string, selected chunks, citations, report.
+ *
+ * Class (not plain object) so it can hold the underlying Rust `BuiltContext`
+ * for in-process operations like [`evaluate`]. All four existing fields
+ * (`text`, `chunks`, `citations`, `report`) remain accessible as JS
+ * properties via getters.
+ */
+export declare class BuiltContext {
+  /** The assembled context as a single prompt string (drop-in for `llm.generate`). */
+  get text(): string
+  /** Selected chunks in presentation order, as plain strings. */
+  get chunks(): Array<string>
+  /** Per-chunk provenance — source, page, heading, line, text. */
+  get citations(): Array<Citation>
+  /** The Decision Report: what was kept, what was dropped, why. */
+  get report(): Report
+}
 /**
  * A document you reason over. RedHop owns chunking, internal retrieval, and
  * reasoning-preserving context allocation; you think in documents and queries.

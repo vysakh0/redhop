@@ -210,10 +210,20 @@ if (report.isTemplated) {
   // 2 — Strip. Use the boilerplate the analyzer found.
   const strip = (q) => redhop.dropTemplateTerms(q, report.boilerplateTerms);
 
-  // 3 — A/B. Run a small sample with and without strip + raw_topk
-  //     against your gold spans to confirm the lift on YOUR data.
+  // 3 — A/B. redhop.evaluate scores both arms deterministically,
+  //     no LLM judge — see EVALUATE_API.md for the design.
   const doc = await redhop.Document.fromFile("contract.pdf");
-  const ctx = doc.context(strip(userQuery), { strategy: "raw_topk" });
+  const evalA = redhop.evaluate(
+    userQuery,
+    doc.context(userQuery, { strategy: "raw_topk" }),
+    { goldChunks: yourGoldChunkIds },
+  );
+  const evalB = redhop.evaluate(
+    strip(userQuery),
+    doc.context(strip(userQuery), { strategy: "raw_topk" }),
+    { goldChunks: yourGoldChunkIds },
+  );
+  console.log(evalB.overall - evalA.overall);  // the lift, deterministically
 }
 ```
 
@@ -238,6 +248,8 @@ Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
 Cross-workload probe that validated the analyzer:
 [QUERY_SET_ANALYZER.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md).
+Design rationale + tradeoffs for `evaluate`:
+[EVALUATE_API.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
 
 ## Build from source
 
