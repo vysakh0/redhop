@@ -152,3 +152,92 @@ conservative controller's job is to refuse to spend compute on
 misaligned actions.** That refusal is exactly what a correctly-gated
 selective escalator would do here (fire on the 12%, skip the 88%); the
 open work is building the gate that can tell them apart.
+
+## Update — 2026-06-06 — the kind-label gate is falsified (in both directions)
+
+The original finding flagged the cheapest probe for the open gating
+problem:
+
+> The cheapest next probe: do the HotpotQA `type` (comparison vs bridge)
+> / `level` labels predict CE benefit? Comparison/single-hop questions
+> are where the gold *is* query-relevant and CE should help;
+> bridge/multi-hop is where CE hurts.
+
+We measured it on a **stratified 100 bridge + 100 comparison sample**
+(vs the original 60 mixed), same dense BGE retrieval, same wide-net
+top-20, same k_final=4, same ms-marco MiniLM-L-6 cross-encoder. Each
+strategy's recall (averaged across queries in scope) and CE-call count:
+
+| sample           | strategy         | recall@4 | CE calls | helped | hurt |
+| ---------------- | ---------------- | -------: | -------: | -----: | ---: |
+| all (n=200)      | static (no CE)   |   0.7643 |        0 |      — |    — |
+| all (n=200)      | uniform CE       |   0.7549 |      200 |     20 |   24 |
+| all (n=200)      | kind-gate (CE on comparison) | 0.7460 | 100 | — | — |
+| all (n=200)      | oracle           |   0.8120 |       20 |      — |    — |
+| bridge (n=100)   | static           |   0.6303 |        0 |      — |    — |
+| bridge (n=100)   | uniform CE       |   0.6482 |      100 |     17 |   14 |
+| bridge (n=100)   | oracle           |   0.7123 |       17 |      — |    — |
+| comparison (n=100) | static         |   0.8983 |        0 |      — |    — |
+| comparison (n=100) | uniform CE     |   0.8617 |      100 |      3 |   10 |
+| comparison (n=100) | oracle         |   0.9117 |        3 |      — |    — |
+
+### Three findings
+
+**1. The proposed kind-gate (fire CE on `kind == comparison`) FAILS.**
+It loses to uniform CE by Δrecall = −0.0089 and loses to no-CE static
+by Δrecall = −0.0183. Not shippable in this direction.
+
+**2. The original mechanistic story is DIRECTIONALLY INVERTED on this
+sample.** Per-type helped-vs-hurt:
+
+- **Bridge** (predicted CE-hurts): helped 17, hurt 14 — CE is net
+  *positive* (+0.018), not negative.
+- **Comparison** (predicted CE-helps): helped 3, hurt 10 — CE is net
+  *negative* (−0.037), not positive.
+
+The cleanest mechanistic re-read: comparison questions in HotpotQA
+already have such strong surface-term overlap with their gold (both
+named entities appear in the query) that BM25/dense crushes them
+without help — there's no headroom for CE to recover, only ceiling to
+lose. Bridge questions have actual headroom because dense alone
+struggles, leaving room CE can sometimes fill. The "comparison gold IS
+query-relevant" intuition was correct; the implication that "CE should
+therefore help" missed that CE only helps when **there is headroom to
+recover** — and zero headroom is exactly what easy comparison cases
+have.
+
+**3. The INVERSE kind-gate (fire CE on `kind == bridge`) WOULD recover
+a small positive signal** — combining bridge CE (0.6482) with
+comparison static (0.8983) gives 0.7733, beating uniform CE (+0.018)
+and no-CE static (+0.009). But: even this inverse gate captures only
+**~18% of the oracle headroom** (the oracle's +0.048 vs the inverse
+gate's +0.009). The kind label, in either direction, leaves most of
+the available CE win on the table.
+
+### What this closes
+
+- **The kind label is NOT a sufficient gate signal — full stop.**
+  Neither direction is shippable. Stop testing kind-based variants.
+- **The intuition "comparison ⇒ CE helps" is wrong.** The correct
+  mechanism rule is "CE only helps where dense leaves headroom" —
+  which doesn't map cleanly onto question-type labels.
+- **The open problem is RICHER signal.** Margin, dense-score spread,
+  query-pool entropy, and other per-query diagnostics RedHop already
+  computes are the next probe — those track dense headroom directly,
+  not as a proxy through question type. That's a measurement
+  follow-up if/when CE-gate becomes a priority again; for now it is
+  closed.
+
+### Honest limits of this update
+
+- Single 200-item run, no bootstrap CI. The directional inversion is
+  large enough (CE helps bridge net +0.018, hurts comparison net
+  −0.037) to be unambiguous against the original 60-sample finding's
+  noise, but the per-strategy deltas at this n are ±0.03-level
+  significance at best. A two-side stratified rerun at n≥400 would
+  settle exact magnitudes — we did not invest that compute because the
+  qualitative finding ("kind label is not the signal") is already
+  decisive.
+- Same models (BGE-small, ms-marco MiniLM-L-6) and same eval (recall@4)
+  as the original finding. The inversion is on the same hardware and
+  same code path, so it isn't a model swap artifact.
