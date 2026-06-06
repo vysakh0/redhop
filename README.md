@@ -255,6 +255,55 @@ the others are there when you want a different trade-off.
 | `raw_topk` | keep retrieval order until the budget fills | baseline / no optimization |
 | `auto` | size-gated: pass small contexts through untouched, prune large/diluted ones | when you don't want to choose |
 
+## Templated workloads — the +6 retention lift
+
+If every query in your workload follows a fixed template — legal QA
+("*Highlight the parts (if any) of this contract related to X. Details: …*"),
+support-ticket triage ("*Help me with X, my account is Y, the error is Z*"),
+form-filled queries from a structured UI — **BM25 weights every query term
+by corpus IDF, not by how often the term repeats across your query set**.
+The boilerplate words dilute the real signal words, and retention suffers.
+This is the mechanism that costs RedHop 4 points to LlamaIndex on the raw
+CUAD bench. Stripping the template at *your* boundary closes it.
+
+**Measured.** On the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
+≥0.8 evidence retention goes **82% → 88%** with a six-line stripper, overtaking
+LlamaIndex's 86% by 2 points. Full mechanism + numbers in
+[`docs/findings/CUAD_RECALL_GAP.md`](docs/findings/CUAD_RECALL_GAP.md).
+
+```python
+import re, redhop
+
+def strip_cuad_template(q: str) -> str:
+    # Pull the quoted clause name and the "Details:" elaboration; drop the rest.
+    clause  = re.search(r'"([^"]+)"', q)
+    details = re.search(r'Details?:\s*(.+?)\s*$', q, re.S)
+    parts = [clause.group(1) if clause else "", details.group(1) if details else ""]
+    return " ".join(p for p in parts if p).strip() or q
+
+doc = redhop.Document.from_file("contract.pdf")
+ctx = doc.context(strip_cuad_template(user_query),
+                  strategy="raw_topk")          # see note below
+```
+
+A few things worth being explicit about:
+
+- **Only matters if your queries are templated.** For variable
+  natural-language queries it's a no-op — skip this section.
+- **Your boilerplate isn't CUAD's**, so your stripper isn't this one. The
+  pattern stays the same: figure out what's templated, drop it before
+  calling `context()`.
+- **For single-doc extraction workloads also set `strategy="raw_topk"`.**
+  The `auto` policy routes large contexts to `reasoning_preserving`, which
+  solves a multi-hop problem contract extraction doesn't have. RawTopK
+  beats it by ~4 points at every chunk size on CUAD.
+- **We deliberately don't ship a built-in `strip_template()` helper.**
+  Templates are workload-specific; baking one in would make the wrong
+  call for the next workload. Better to keep this six lines on your side.
+
+Decision rule + runnable recipe in the bindings:
+[docs/CHOOSING_A_CONFIG.md → "Templated queries with heavy boilerplate"](docs/CHOOSING_A_CONFIG.md).
+
 ## Documentation
 
 - **Choosing a configuration**: [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md) — 60-second decision guide

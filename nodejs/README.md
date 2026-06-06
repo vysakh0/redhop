@@ -176,6 +176,53 @@ couldn't be parsed: unsupported formats, unreadable bytes, scanned PDFs
 without OCR, etc.). Single-source constructors default to `nFiles=1`
 and `skippedFiles=[]`.
 
+## Templated workloads — the +6 retention lift
+
+If every query in your workload follows a fixed template — legal QA
+(`"Highlight the parts (if any) of this contract related to X. Details: …"`),
+support-ticket triage (`"Help me with X, my account is Y, the error is Z"`),
+form-filled queries from a structured UI — **BM25 weights every query term
+by corpus IDF, not by how often the term repeats across your query set**.
+The boilerplate words dilute the real signal words, and retention suffers.
+This is the mechanism behind the 4-point CUAD gap on the head-to-head;
+stripping the template at *your* boundary closes it.
+
+**Measured** on the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
+≥0.8 evidence retention goes **82% → 88%** with a six-line stripper,
+overtaking LlamaIndex's 86% by 2 points. Full mechanism + numbers:
+[CUAD_RECALL_GAP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md).
+
+```javascript
+const redhop = require("redhop");
+
+function stripCuadTemplate(q) {
+  // Pull the quoted clause name and the "Details:" elaboration; drop the rest.
+  const clause  = q.match(/"([^"]+)"/);
+  const details = q.match(/Details?:\s*([\s\S]+?)\s*$/);
+  return [clause?.[1] ?? "", details?.[1] ?? ""]
+    .filter(Boolean).join(" ").trim() || q;
+}
+
+const doc = await redhop.Document.fromFile("contract.pdf");
+const ctx = doc.context(stripCuadTemplate(userQuery),
+                        { strategy: "raw_topk" });   // see notes below
+```
+
+- **Only matters if your queries are templated.** For variable
+  natural-language queries it's a no-op.
+- **Your boilerplate isn't CUAD's** — figure out what's templated in
+  your workload, drop it before calling `context()`.
+- **For single-doc extraction workloads also set `strategy: "raw_topk"`.**
+  `auto` routes large contexts to `reasoning_preserving`, which solves a
+  multi-hop problem contract extraction doesn't have. RawTopK beats it
+  by ~4 points at every chunk size on CUAD.
+- **We deliberately don't ship a built-in `stripTemplate()` helper.**
+  Templates are workload-specific; baking one in would make the wrong
+  call for the next workload.
+
+Decision rule + the same recipe on the docs site:
+[Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
+
 ## Build from source
 
 ```sh
