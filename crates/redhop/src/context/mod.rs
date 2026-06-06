@@ -67,6 +67,8 @@ use std::collections::HashSet;
 use crate::core::{Chunk, Embedding, Query, RetrievalResult};
 use serde::{Deserialize, Serialize};
 
+pub mod eval;
+
 /// Term-set Jaccard at/above which two chunks are treated as near-exact
 /// lexical duplicates by `RedundancyPruned` when embeddings are absent (the
 /// local/BM25 path). High by design — only near-identical chunks are dropped.
