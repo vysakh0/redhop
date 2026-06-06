@@ -7,8 +7,16 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
-Nothing yet. Open work lands here, then graduates into a release
-section on the next `v*` tag.
+### Changed
+
+- **Package registry URLs now point at `https://www.redhopai.com`** as
+  the canonical `Homepage`, with the GitHub repo kept as `Repository`
+  (PyPI) / `repository` (npm) / `repository` (crates.io). Before this,
+  PyPI displayed two identical "Homepage" and "Repository" links both
+  pointing at GitHub; npm displayed neither. PyPI also gains
+  `Documentation`, `Changelog`, `Issues`, and `Evidence layer` link
+  entries; npm gains `homepage`, `repository`, `bugs`, and an
+  expanded `keywords` array (`reasoning`, `embeddings` added).
 
 ## [0.2.2] - 2026-06-06
 

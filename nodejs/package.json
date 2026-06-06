@@ -3,6 +3,23 @@
   "version": "0.2.2",
   "description": "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate document context, with citations and a Decision Report. No vector DB, in-process.",
   "license": "Apache-2.0",
+  "homepage": "https://www.redhopai.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vysakh0/redhop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vysakh0/redhop/issues"
+  },
+  "keywords": [
+    "rag",
+    "retrieval",
+    "llm",
+    "context",
+    "nlp",
+    "reasoning",
+    "embeddings"
+  ],
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {

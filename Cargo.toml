@@ -38,7 +38,7 @@ rust-version = "1.77"
 license = "Apache-2.0"
 authors = ["Vysakh Sreenivasan", "RedHop Contributors"]
 repository = "https://github.com/vysakh0/redhop"
-homepage = "https://github.com/vysakh0/redhop"
+homepage = "https://www.redhopai.com"
 # Points crates.io readers at docs.rs explicitly so the package page
 # links to the rendered API reference (which includes the `files` and
 # `semantic` items thanks to `[package.metadata.docs.rs] all-features =

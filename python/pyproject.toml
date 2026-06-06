@@ -27,8 +27,12 @@ classifiers = [
 # can't gate native code anyway.
 
 [project.urls]
-Homepage = "https://github.com/vysakh0/redhop"
+Homepage = "https://www.redhopai.com"
 Repository = "https://github.com/vysakh0/redhop"
+Documentation = "https://github.com/vysakh0/redhop/tree/main/docs"
+Changelog = "https://github.com/vysakh0/redhop/blob/main/CHANGELOG.md"
+Issues = "https://github.com/vysakh0/redhop/issues"
+"Evidence layer" = "https://github.com/vysakh0/redhop/tree/main/docs/findings"
 
 [tool.maturin]
 module-name = "redhop._redhop"
