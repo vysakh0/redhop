@@ -175,6 +175,11 @@ name = "musique_embedder_swap"
 path = "examples/musique_embedder_swap.rs"
 required-features = ["onnx"]
 
+[[example]]
+name = "hybrid_old_vs_new"
+path = "examples/hybrid_old_vs_new.rs"
+required-features = ["onnx"]
+
 [lints]
 workspace = true
 
