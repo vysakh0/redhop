@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360" role="img" aria-label="RedHop pipeline architecture">
+  <title>RedHop pipeline architecture</title>
+  <desc>From documents through chunking, retrieval, and context allocation to a BuiltContext with assembled prompt, citations, and a Decision Report.</desc>
+
+  <rect width="980" height="360" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="490" y="34" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#0f172a">
+    RedHop pipeline
+  </text>
+  <text x="490" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#475569">
+    in-process · no vector DB · no LLM in the loop · every decision is explained
+  </text>
+
+  <!--
+    Five stages, each in a 160-wide box (with 32px gap):
+      x positions: 28, 220, 412, 604, 796
+    All boxes: y=110, height=120.
+    Arrows between boxes.
+  -->
+
+  <!-- Stage 1: Document(s) (input — outlined) -->
+  <g>
+    <rect x="28" y="110" width="160" height="120" rx="10" fill="#fff7f9" stroke="#e11d48" stroke-width="2"/>
+    <text x="108" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">Document(s)</text>
+    <text x="108" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">PDF · DOCX · PPTX</text>
+    <text x="108" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">XLSX · MD · code</text>
+    <text x="108" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">bytes · folder</text>
+  </g>
+
+  <!-- Stage 2: Chunking -->
+  <g>
+    <rect x="220" y="110" width="160" height="120" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+    <text x="300" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">Chunking</text>
+    <text x="300" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">sentence-budgeted</text>
+    <text x="300" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">128-token default</text>
+    <text x="300" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-style="italic" fill="#64748b">CHUNK_GRANULARITY</text>
+  </g>
+
+  <!-- Stage 3: Retrieval -->
+  <g>
+    <rect x="412" y="110" width="160" height="120" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+    <text x="492" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">Retrieval</text>
+    <text x="492" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">BM25 · Hybrid · Dense</text>
+    <text x="492" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">no ANN · no vector DB</text>
+    <text x="492" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-style="italic" fill="#64748b">LOCAL_RERANK</text>
+  </g>
+
+  <!-- Stage 4: Context allocation -->
+  <g>
+    <rect x="604" y="110" width="160" height="120" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+    <text x="684" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">Allocation</text>
+    <text x="684" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">ContextStrategy</text>
+    <text x="684" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">size-gated Auto</text>
+    <text x="684" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-style="italic" fill="#64748b">SECOND_HOP_TAX</text>
+  </g>
+
+  <!-- Stage 5: Output -->
+  <g>
+    <rect x="796" y="110" width="160" height="120" rx="10" fill="#fff7f9" stroke="#e11d48" stroke-width="2"/>
+    <text x="876" y="140" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">BuiltContext</text>
+    <text x="876" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">prompt + chunks</text>
+    <text x="876" y="178" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#475569">citations</text>
+    <text x="876" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#e11d48">Decision Report</text>
+  </g>
+
+  <!--
+    Arrows between boxes. Each arrow goes from x=180+30 (or end of prev box, x = 28+160 = 188 +1 for stroke)
+    to start of next (x = 220 - 1) approximately. Y center = 170.
+    Arrow tip at the end via marker.
+  -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <g stroke="#94a3b8" stroke-width="2" fill="none">
+    <!-- arrow 1: stage1 (x=188) → stage2 (x=220) -->
+    <line x1="188" y1="170" x2="218" y2="170" marker-end="url(#arrow)"/>
+    <!-- arrow 2: stage2 (x=380) → stage3 (x=412) -->
+    <line x1="380" y1="170" x2="410" y2="170" marker-end="url(#arrow)"/>
+    <!-- arrow 3: stage3 (x=572) → stage4 (x=604) -->
+    <line x1="572" y1="170" x2="602" y2="170" marker-end="url(#arrow)"/>
+    <!-- arrow 4: stage4 (x=764) → stage5 (x=796) -->
+    <line x1="764" y1="170" x2="794" y2="170" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- "You bring" / "RedHop owns" labels under the boxes -->
+  <text x="108" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#e11d48">YOU BRING</text>
+  <text x="490" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#475569">REDHOP OWNS</text>
+  <text x="876" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#e11d48">YOU GET</text>
+
+  <!-- Bracket lines under the labels to indicate scope -->
+  <g stroke="#cbd5e1" stroke-width="1" fill="none">
+    <line x1="28" y1="245" x2="188" y2="245"/>
+    <line x1="220" y1="245" x2="764" y2="245"/>
+    <line x1="796" y1="245" x2="956" y2="245"/>
+  </g>
+
+  <!-- Footer note -->
+  <text x="490" y="320" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#64748b">
+    Each stage has an evidence-backed default; italic labels point at the calibrating finding in docs/findings/.
+  </text>
+  <text x="490" y="338" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#64748b">
+    The runtime is the same in Rust, Python, and Node — bindings, not separate stacks.
+  </text>
+</svg>

@@ -95,14 +95,35 @@ Already have chunks from your own retriever? Hand them straight in with
 `Document.from_chunks([...])` (or the lower-level `redhop.build_context(...)`),
 and everything below still applies.
 
+## How it works
+
+<p align="center">
+  <img src=".github/architecture.svg" alt="RedHop pipeline" width="100%">
+</p>
+
+Five stages, in order: **you bring documents and a query**, RedHop owns parsing,
+chunking, retrieval, and context allocation, and **you get a `BuiltContext`** with
+the assembled prompt, citations, and a Decision Report. Each stage has an
+evidence-backed default that traces to a finding in
+[`docs/findings/`](docs/findings/) — italic labels in the diagram name the
+calibrating one for each stage.
+
 ## It explains every decision
 
 Every call returns a **Decision Report** — what it kept, what it dropped, and *why*,
 including when it deliberately leaves a small context untouched.
 
-```python
-print(ctx.report)
-```
+<p align="center">
+  <img src=".github/decision_report.svg" alt="Sample Decision Report" width="100%">
+</p>
+
+The same fields are available programmatically — `ctx.report.auto_decision`,
+`ctx.report.total_tokens`, `ctx.report.retained_evidence_ratio` — or call
+`doc.analyze(query)` to get the report **without** assembling a context (pure
+diagnostics).
+
+<details>
+<summary>Raw text form (what <code>print(ctx.report)</code> emits)</summary>
 
 ```text
 RedHop Decision Report
@@ -122,9 +143,7 @@ Diagnostics
   Second-hop rescues: 1
 ```
 
-You can also read the fields directly — `ctx.report.auto_decision`,
-`total_tokens`, `retained_evidence_ratio` — or call `doc.analyze(query)` to get the
-report **without** assembling a context (pure diagnostics).
+</details>
 
 ## Cite the evidence
 
@@ -243,6 +262,55 @@ the others are there when you want a different trade-off.
 - **Python**: [python/README.md](python/README.md) · **Node**: [nodejs/README.md](nodejs/README.md)
 - **API stability**: [docs/API_STABILITY.md](docs/API_STABILITY.md) ·
   **FAQ**: [FAQ.md](FAQ.md) · **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+
+## References
+
+RedHop is engineering, not a research paper — but the pieces it leans on are
+each grounded in named, citable work. The findings under
+[`docs/findings/`](docs/findings/) document where each piece earned its place.
+
+**Retrieval primitives**
+
+- **BM25.** Robertson, S. & Zaragoza, H. (2009). *The Probabilistic Relevance
+  Framework: BM25 and Beyond.* Foundations and Trends in IR.
+  → drives `RetrievalMode::Lexical` and the lexical leg of `RetrievalMode::Hybrid`.
+- **Snowball Porter2 stemming.** Porter, M. F. (2001). *Snowball: A language for
+  stemming algorithms.* → the default `crate::analyzer::SnowballAnalyzer` (18
+  languages); one analyzer drives BM25 *and* the grounding scorer so the two
+  layers can't drift.
+- **Reciprocal Rank Fusion (RRF).** Cormack, G., Clarke, C. & Büttcher, S. (2009).
+  *Reciprocal Rank Fusion outperforms Condorcet and individual rank learning
+  methods.* SIGIR. → `crate::retrieval::fusion::reciprocal_rank_fusion`, used
+  by `LocalRerankRetriever` and `HybridRetriever`.
+
+**Failure modes we observed and adopted from the literature**
+
+- **Lost-in-the-middle context dilution.** Liu, N. et al. (2023). *Lost in the
+  Middle: How Language Models Use Long Contexts.* arXiv:2307.03172. → motivates
+  the size-gated `ContextStrategy::Auto`; the measured crossover lives in
+  [`docs/findings/CONTEXT_DILUTION.md`](docs/findings/CONTEXT_DILUTION.md).
+- **Query Performance Prediction (QPP) & NQC.** Shtok, A., Kurland, O. & Carmel,
+  D. (2012). *Predicting Query Performance by Query-Drift Estimation.* ACM TOIS.
+  → probed as a candidate cross-encoder gate signal in
+  [`docs/findings/RERANKING_LIMITS.md`](docs/findings/RERANKING_LIMITS.md)
+  (negative result, documented honestly).
+- **Multi-hop Dense Retrieval (MDR).** Xiong, W. et al. (2021). *Answering
+  Complex Open-Domain Questions with Multi-Hop Dense Retrieval.* ICLR. →
+  the single-pass re-encode variant we tested and falsified in
+  [`docs/findings/DENSE_RERANK_CEILING.md`](docs/findings/DENSE_RERANK_CEILING.md).
+
+**Evaluation datasets**
+
+- **HotpotQA.** Yang, Z. et al. (2018). *HotpotQA: A Dataset for Diverse,
+  Explainable Multi-hop Question Answering.* EMNLP. → primary multi-hop benchmark
+  in nearly every finding here.
+- **MuSiQue.** Trivedi, H. et al. (2022). *MuSiQue: Multi-hop Questions via
+  Single-hop Question Composition.* TACL. → the harder multi-hop corpus where
+  several "obvious" improvements were measured to NOT generalize
+  ([`docs/findings/MUSIQUE_RECALL_GAP.md`](docs/findings/MUSIQUE_RECALL_GAP.md)).
+- **CUAD.** Hendrycks, D. et al. (2021). *CUAD: An Expert-Annotated NLP Dataset
+  for Legal Contract Review.* NeurIPS. → the contracts workload in the
+  framework comparison and document-eval findings.
 
 ## License
 

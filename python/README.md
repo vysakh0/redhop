@@ -41,6 +41,18 @@ framework, or model finetuning.
 Methodology + raw runs: [FRAMEWORK_COMPARISON.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/FRAMEWORK_COMPARISON.md)
 · [framework_comparison.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison.txt).
 
+## How it works
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/architecture.svg" alt="RedHop pipeline" width="100%">
+</p>
+
+Five stages: you bring documents and a query, RedHop owns parsing, chunking,
+retrieval, and context allocation, and you get a `BuiltContext` with the
+assembled prompt, citations, and a Decision Report. Each stage has an
+evidence-backed default that traces to a finding in
+[`docs/findings/`](https://github.com/vysakh0/redhop/tree/main/docs/findings).
+
 ## The idea
 
 **Retrieval quality is not the same as reasoning quality.** Transformers tolerate
@@ -56,27 +68,9 @@ decision.
 Every call returns a **Decision Report** — what it kept, what it dropped, and *why*,
 including when it deliberately leaves a small context untouched.
 
-```python
-print(ctx.report)
-```
-
-```text
-RedHop Decision Report
-══════════════════════
-
-Decision: Auto → pruning (intervened on a diluted context)
-
-  Why:
-    - large/diluted contexts dilute attention; pruning recovers signal density
-  Result:
-    - removed distractor chunks, kept all query-relevant evidence
-    - preserved a second-hop link a plain relevance filter would drop
-
-Diagnostics
-───────────
-  Chunks:             24 → 3
-  Second-hop rescues: 1
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/decision_report.svg" alt="Sample Decision Report" width="100%">
+</p>
 
 Read the fields directly via `ctx.report.auto_decision`, `total_tokens`,
 `retained_evidence_ratio`, or call `doc.analyze(query)` for the report **without**

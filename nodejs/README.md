@@ -39,6 +39,29 @@ framework, or model finetuning.
 Methodology + raw runs: [FRAMEWORK_COMPARISON.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/FRAMEWORK_COMPARISON.md)
 · [framework_comparison.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison.txt).
 
+## How it works
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/architecture.svg" alt="RedHop pipeline" width="100%">
+</p>
+
+Five stages: you bring documents and a query, RedHop owns parsing, chunking,
+retrieval, and context allocation, and you get a `BuiltContext` with the
+assembled prompt, citations, and a Decision Report. Each stage has an
+evidence-backed default that traces to a finding in
+[`docs/findings/`](https://github.com/vysakh0/redhop/tree/main/docs/findings).
+
+## The Decision Report
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/decision_report.svg" alt="Sample Decision Report" width="100%">
+</p>
+
+`ctx.report.rendered` carries the human-readable text above; individual fields
+(`autoDecision`, `totalTokens`, `retainedEvidenceRatio`, etc.) are on
+`ctx.report` directly. `Document.analyze(query)` returns the same `Report`
+shape without paying assembly cost.
+
 ## Loaders
 
 ```js
