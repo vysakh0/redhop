@@ -211,6 +211,60 @@ export declare function groundingScore(query: string, text: string): number
  */
 export declare function linkStrength(a: string, b: string): number
 /**
+ * Diagnostic report over a representative sample of a workload's queries.
+ *
+ * Returned by `analyzeQuerySet`. Fields:
+ * - `nQueries` — how many queries were analyzed
+ * - `isTemplated` — `true` if share ≥ 0.50 AND ≥ 2 boilerplate terms
+ * - `templateWordShare` — mean fraction of each query that's shared (0..1)
+ * - `boilerplateTerms` — words in ≥ 80% of queries, sorted by frequency desc
+ * - `estimatedDilutionCost` — `"high"` | `"medium"` | `"low"` | `"none"`
+ * - `suggestedAction` — workload-shape recommendation
+ */
+export interface QuerySetReport {
+  nQueries: number
+  isTemplated: boolean
+  templateWordShare: number
+  boilerplateTerms: Array<string>
+  estimatedDilutionCost: string
+  suggestedAction: string
+}
+/**
+ * Drop boilerplate tokens from a query before retrieval.
+ *
+ * Token matching is case-insensitive on alphanumeric tokens; surviving
+ * tokens are rejoined with single spaces, with punctuation preserved.
+ * Mechanism: docs/findings/CUAD_RECALL_GAP.md.
+ *
+ * ```js
+ * const { dropTemplateTerms } = require("redhop");
+ * const stripped = dropTemplateTerms(
+ *   'Highlight the parts related to "Change of Control".',
+ *   ["highlight", "the", "parts", "related", "to"],
+ * );
+ * // stripped === '"Change of Control".'
+ * ```
+ */
+export declare function dropTemplateTerms(query: string, boilerplate: Array<string>): string
+/**
+ * Diagnostic over a representative sample of queries — detects
+ * templated-workload dilution and reports which terms are doing it.
+ *
+ * Returns a [`QuerySetReport`]. Read `.isTemplated`, `.boilerplateTerms`,
+ * `.suggestedAction`. See `docs/findings/QUERY_SET_ANALYZER.md` for the
+ * cross-workload probe that validated the heuristic.
+ *
+ * ```js
+ * const { analyzeQuerySet, dropTemplateTerms } = require("redhop");
+ * const r = analyzeQuerySet(myQueries);
+ * if (r.isTemplated) {
+ *   const stripped = dropTemplateTerms(query, r.boilerplateTerms);
+ *   const ctx = doc.context(stripped, { strategy: "raw_topk" });
+ * }
+ * ```
+ */
+export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
+/**
  * A single retrieved chunk for the low-level `buildContext` / `filterContext`
  * / `analyzeContext` / `contextEconomics` functions.
  */

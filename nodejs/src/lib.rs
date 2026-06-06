@@ -434,6 +434,88 @@ pub fn link_strength(a: String, b: String) -> f64 {
     redhop::context::link_strength(&a, &b) as f64
 }
 
+// ── Query-side diagnostics (templated workloads) ────────────────────────────
+//
+// Backed by `redhop::analyze_query_set` and `redhop::drop_template_terms`.
+// See docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe.
+
+/// Diagnostic report over a representative sample of a workload's queries.
+///
+/// Returned by `analyzeQuerySet`. Fields:
+/// - `nQueries` — how many queries were analyzed
+/// - `isTemplated` — `true` if share ≥ 0.50 AND ≥ 2 boilerplate terms
+/// - `templateWordShare` — mean fraction of each query that's shared (0..1)
+/// - `boilerplateTerms` — words in ≥ 80% of queries, sorted by frequency desc
+/// - `estimatedDilutionCost` — `"high"` | `"medium"` | `"low"` | `"none"`
+/// - `suggestedAction` — workload-shape recommendation
+#[napi(object)]
+pub struct QuerySetReport {
+    pub n_queries: u32,
+    pub is_templated: bool,
+    pub template_word_share: f64,
+    pub boilerplate_terms: Vec<String>,
+    pub estimated_dilution_cost: String,
+    pub suggested_action: String,
+}
+
+fn cost_str(c: redhop::DilutionCost) -> String {
+    match c {
+        redhop::DilutionCost::High => "high",
+        redhop::DilutionCost::Medium => "medium",
+        redhop::DilutionCost::Low => "low",
+        redhop::DilutionCost::None => "none",
+    }
+    .to_string()
+}
+
+/// Drop boilerplate tokens from a query before retrieval.
+///
+/// Token matching is case-insensitive on alphanumeric tokens; surviving
+/// tokens are rejoined with single spaces, with punctuation preserved.
+/// Mechanism: docs/findings/CUAD_RECALL_GAP.md.
+///
+/// ```js
+/// const { dropTemplateTerms } = require("redhop");
+/// const stripped = dropTemplateTerms(
+///   'Highlight the parts related to "Change of Control".',
+///   ["highlight", "the", "parts", "related", "to"],
+/// );
+/// // stripped === '"Change of Control".'
+/// ```
+#[napi]
+pub fn drop_template_terms(query: String, boilerplate: Vec<String>) -> String {
+    let bp: Vec<&str> = boilerplate.iter().map(|s| s.as_str()).collect();
+    redhop::drop_template_terms(&query, &bp)
+}
+
+/// Diagnostic over a representative sample of queries — detects
+/// templated-workload dilution and reports which terms are doing it.
+///
+/// Returns a [`QuerySetReport`]. Read `.isTemplated`, `.boilerplateTerms`,
+/// `.suggestedAction`. See `docs/findings/QUERY_SET_ANALYZER.md` for the
+/// cross-workload probe that validated the heuristic.
+///
+/// ```js
+/// const { analyzeQuerySet, dropTemplateTerms } = require("redhop");
+/// const r = analyzeQuerySet(myQueries);
+/// if (r.isTemplated) {
+///   const stripped = dropTemplateTerms(query, r.boilerplateTerms);
+///   const ctx = doc.context(stripped, { strategy: "raw_topk" });
+/// }
+/// ```
+#[napi]
+pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
+    let r = redhop::analyze_query_set(&queries);
+    QuerySetReport {
+        n_queries: r.n_queries as u32,
+        is_templated: r.is_templated,
+        template_word_share: r.template_word_share as f64,
+        boilerplate_terms: r.boilerplate_terms,
+        estimated_dilution_cost: cost_str(r.estimated_dilution_cost),
+        suggested_action: r.suggested_action,
+    }
+}
+
 // ── Low-level context functions (caller brings their own chunks) ────────────
 //
 // `Document.fromChunks(...)` is the high-level path: hand RedHop a list of

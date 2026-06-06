@@ -47,7 +47,10 @@ from ._redhop import (
     BuiltContext,
     ContextReport,
     Document,
+    QuerySetReport,
     __version__,
+    analyze_query_set,
+    drop_template_terms,
     grounding_score,
     link_strength,
 )
@@ -238,7 +241,10 @@ __all__ = [
     "grounding_score",
     "link_strength",
     "report_to_dict",
+    "analyze_query_set",
+    "drop_template_terms",
     "BuiltContext",
     "ContextReport",
+    "QuerySetReport",
     "__version__",
 ]

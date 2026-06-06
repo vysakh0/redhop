@@ -149,18 +149,59 @@ is Z"*, form-filled queries from structured UIs — BM25 weights each term
 in the query by corpus IDF, not query-set frequency. So the 19 boilerplate
 words **dilute** the 5 real signal words.
 
-**For contract-style single-doc extraction workloads:** override the Auto
-strategy and use `strategy="raw_topk"`. The Auto policy routes large
-contexts to `reasoning_preserving`, which solves a multi-hop problem CUAD
-doesn't have. RawTopK beats ReasoningPreserving by ~4 points on CUAD at
-every chunk size.
+**Recommended workflow: detect → strip → A/B.** The first two steps ship
+as helpers in the public API (`analyze_query_set`, `drop_template_terms`);
+the third is up to you with your own gold-evidence sample. Decision rule:
 
-**Fix the query at your boundary, not in RedHop:** preprocess each query
-to strip the template, leaving only the discriminating terms. Example:
-extract the quoted clause name plus the `Details:` elaboration before
-calling `context()`. On CUAD this moves ≥0.8 retention from 81% to 88%
-(+6.3 points, overtaking LlamaIndex's 86% by 2). Measured;
-see [findings/CUAD_RECALL_GAP.md](findings/CUAD_RECALL_GAP.md).
+```python
+import redhop
+
+# 1. Detect — hand a representative sample of your queries to the analyzer.
+report = redhop.analyze_query_set(my_queries[:300])
+# Cross-workload probe (findings/QUERY_SET_ANALYZER.md):
+#   CUAD     → is_templated=True,  share=0.66, cost="high"
+#   HotpotQA → is_templated=False, share=0.00, cost="none"
+#   MuSiQue  → is_templated=False, share=0.12, cost="none"
+
+if not report.is_templated:
+    # Diverse natural-language queries — no template to strip. Skip the rest.
+    pass
+else:
+    # 2. Strip — use the boilerplate the analyzer found, at your boundary.
+    def strip(q):
+        return redhop.drop_template_terms(q, report.boilerplate_terms)
+
+    # 3. A/B — confirm the lift on YOUR gold-evidence sample before shipping.
+    doc = redhop.Document.from_text(your_document)
+    arm_a = doc.context(user_query, strategy="raw_topk")
+    arm_b = doc.context(strip(user_query), strategy="raw_topk")
+    # ... measure recall against your gold spans on a sample of queries.
+```
+
+The analyzer measures the *shape* of your queries; it does **not**
+promise a specific retention lift. On CUAD the lift was measured
+directly at +6 points ≥0.8 retention (82% → 88%, overtaking LlamaIndex
+at 86%; see [findings/CUAD_RECALL_GAP.md](findings/CUAD_RECALL_GAP.md)).
+On a different templated workload the magnitude depends on how much of
+your real query signal was being drowned, which is why step 3 matters.
+
+**For contract-style single-doc extraction workloads also override the
+Auto strategy and use `strategy="raw_topk"`.** The Auto policy routes
+large contexts to `reasoning_preserving`, which solves a multi-hop
+problem CUAD doesn't have. RawTopK beats ReasoningPreserving by ~4 points
+on CUAD at every chunk size.
+
+> **Why we don't ship a built-in `strip_template()` helper.** Templates
+> are workload-specific — CUAD's boilerplate isn't your boilerplate.
+> Baking one in would make the wrong call for the next workload.
+> `drop_template_terms` takes *your* boilerplate so the call stays on
+> your side. See the design rationale in
+> [findings/CUAD_RECALL_GAP.md](findings/CUAD_RECALL_GAP.md).
+>
+> **What about PRF / query expansion?** Tested twice on RedHop with two
+> different failure mechanisms; null on both. See
+> [findings/CUAD_PRF_NULL.md](findings/CUAD_PRF_NULL.md) — the dilution
+> win here is *subtraction* at the query boundary, not *addition*.
 
 ---
 

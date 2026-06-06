@@ -1267,17 +1267,114 @@ impl Document {
     }
 }
 
+// ─── Query-set analyzer (templated-workload diagnostics) ─────────────────────
+// Backed by `redhop::analyze_query_set` + `redhop::drop_template_terms`. See
+// docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe that
+// validated the heuristic.
+
+fn cost_to_str(c: redhop::DilutionCost) -> &'static str {
+    match c {
+        redhop::DilutionCost::High => "high",
+        redhop::DilutionCost::Medium => "medium",
+        redhop::DilutionCost::Low => "low",
+        redhop::DilutionCost::None => "none",
+    }
+}
+
+/// Diagnostic report over a representative sample of a workload's queries.
+///
+/// Returned by [`analyze_query_set`]. Fields surface as read-only Python
+/// attributes so the report can be passed across pickle / IPC boundaries
+/// without losing structure.
+#[pyclass(module = "redhop")]
+#[derive(Clone)]
+struct QuerySetReport {
+    inner: redhop::QuerySetReport,
+}
+
+#[pymethods]
+impl QuerySetReport {
+    /// How many queries were analyzed.
+    #[getter]
+    fn n_queries(&self) -> usize {
+        self.inner.n_queries
+    }
+    /// `True` when the workload looks templated (share ≥ 0.50 AND ≥ 2
+    /// boilerplate terms).
+    #[getter]
+    fn is_templated(&self) -> bool {
+        self.inner.is_templated
+    }
+    /// Mean fraction of each query that's shared boilerplate, 0.0–1.0.
+    #[getter]
+    fn template_word_share(&self) -> f32 {
+        self.inner.template_word_share
+    }
+    /// Words appearing in ≥ 80% of the query set, sorted by frequency desc.
+    /// Pass to [`drop_template_terms`].
+    #[getter]
+    fn boilerplate_terms(&self) -> Vec<String> {
+        self.inner.boilerplate_terms.clone()
+    }
+    /// One of: `"high"`, `"medium"`, `"low"`, `"none"`.
+    #[getter]
+    fn estimated_dilution_cost(&self) -> &'static str {
+        cost_to_str(self.inner.estimated_dilution_cost)
+    }
+    /// Human-readable recommendation describing what (if anything) to do.
+    #[getter]
+    fn suggested_action(&self) -> String {
+        self.inner.suggested_action.clone()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "QuerySetReport(n={}, is_templated={}, share={:.3}, cost={}, terms={})",
+            self.inner.n_queries,
+            self.inner.is_templated,
+            self.inner.template_word_share,
+            cost_to_str(self.inner.estimated_dilution_cost),
+            self.inner.boilerplate_terms.len(),
+        )
+    }
+}
+
+/// Drop boilerplate tokens from a query string before retrieval.
+///
+/// Token matching is case-insensitive on alphanumeric tokens; surviving
+/// tokens are rejoined with single spaces, with punctuation preserved.
+/// See `docs/findings/CUAD_RECALL_GAP.md` for the mechanism.
+#[pyfunction]
+fn drop_template_terms(query: &str, boilerplate: Vec<String>) -> String {
+    let bp: Vec<&str> = boilerplate.iter().map(|s| s.as_str()).collect();
+    redhop::drop_template_terms(query, &bp)
+}
+
+/// Diagnostic over a representative sample of queries — detects
+/// templated-workload dilution and reports which terms are doing it.
+///
+/// Returns a [`QuerySetReport`]; read `.is_templated`, `.boilerplate_terms`,
+/// `.suggested_action`. See `docs/findings/QUERY_SET_ANALYZER.md`.
+#[pyfunction]
+fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
+    QuerySetReport {
+        inner: redhop::analyze_query_set(&queries),
+    }
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<BuiltContext>()?;
     m.add_class::<ContextReport>()?;
     m.add_class::<Document>()?;
+    m.add_class::<QuerySetReport>()?;
     m.add_function(wrap_pyfunction!(build_context, m)?)?;
     m.add_function(wrap_pyfunction!(filter_context, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_context, m)?)?;
     m.add_function(wrap_pyfunction!(context_economics, m)?)?;
     m.add_function(wrap_pyfunction!(grounding_score, m)?)?;
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(drop_template_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     Ok(())
 }

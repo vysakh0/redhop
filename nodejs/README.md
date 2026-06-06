@@ -192,36 +192,52 @@ stripping the template at *your* boundary closes it.
 overtaking LlamaIndex's 86% by 2 points. Full mechanism + numbers:
 [CUAD_RECALL_GAP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md).
 
+Recommended workflow: **detect → strip → A/B**, with two helpers in the
+public API:
+
 ```javascript
 const redhop = require("redhop");
 
-function stripCuadTemplate(q) {
-  // Pull the quoted clause name and the "Details:" elaboration; drop the rest.
-  const clause  = q.match(/"([^"]+)"/);
-  const details = q.match(/Details?:\s*([\s\S]+?)\s*$/);
-  return [clause?.[1] ?? "", details?.[1] ?? ""]
-    .filter(Boolean).join(" ").trim() || q;
-}
+// 1 — Detect. Hand a representative sample of your queries to the analyzer.
+const report = redhop.analyzeQuerySet(myQueries.slice(0, 300));
+// report.isTemplated            → true / false
+// report.templateWordShare      → e.g. 0.66 on CUAD
+// report.boilerplateTerms       → ["highlight", "contract", "lawyer", …]
+// report.estimatedDilutionCost  → "high" | "medium" | "low" | "none"
+// report.suggestedAction        → human-readable recommendation
 
-const doc = await redhop.Document.fromFile("contract.pdf");
-const ctx = doc.context(stripCuadTemplate(userQuery),
-                        { strategy: "raw_topk" });   // see notes below
+if (report.isTemplated) {
+  // 2 — Strip. Use the boilerplate the analyzer found.
+  const strip = (q) => redhop.dropTemplateTerms(q, report.boilerplateTerms);
+
+  // 3 — A/B. Run a small sample with and without strip + raw_topk
+  //     against your gold spans to confirm the lift on YOUR data.
+  const doc = await redhop.Document.fromFile("contract.pdf");
+  const ctx = doc.context(strip(userQuery), { strategy: "raw_topk" });
+}
 ```
 
-- **Only matters if your queries are templated.** For variable
-  natural-language queries it's a no-op.
-- **Your boilerplate isn't CUAD's** — figure out what's templated in
-  your workload, drop it before calling `context()`.
+- **Only matters if your queries are templated.** `analyzeQuerySet` is
+  conservative by design — HotpotQA and MuSiQue both register quiet
+  (`isTemplated: false`) in the cross-workload probe; CUAD fires. If
+  yours doesn't fire, skip this section.
+- **The analyzer measures the *shape* of your query set, not your
+  retention.** It says "this *looks* like a templated workload" with
+  the boilerplate terms it found; it does **not** promise a specific
+  lift. Always A/B on your gold-evidence sample before committing.
 - **For single-doc extraction workloads also set `strategy: "raw_topk"`.**
   `auto` routes large contexts to `reasoning_preserving`, which solves a
   multi-hop problem contract extraction doesn't have. RawTopK beats it
   by ~4 points at every chunk size on CUAD.
-- **We deliberately don't ship a built-in `stripTemplate()` helper.**
-  Templates are workload-specific; baking one in would make the wrong
-  call for the next workload.
+- **We deliberately don't ship a CUAD-specific `stripTemplate()`
+  helper.** Templates are workload-specific; baking one in would make
+  the wrong call for the next workload. `dropTemplateTerms` takes
+  *your* boilerplate so the call stays on your side.
 
-Decision rule + the same recipe on the docs site:
+Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
+Cross-workload probe that validated the analyzer:
+[QUERY_SET_ANALYZER.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md).
 
 ## Build from source
 

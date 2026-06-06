@@ -310,11 +310,13 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { Document, groundingScore, linkStrength, buildContext, filterContext, analyzeContext, contextEconomics } = nativeBinding
+const { Document, groundingScore, linkStrength, dropTemplateTerms, analyzeQuerySet, buildContext, filterContext, analyzeContext, contextEconomics } = nativeBinding
 
 module.exports.Document = Document
 module.exports.groundingScore = groundingScore
 module.exports.linkStrength = linkStrength
+module.exports.dropTemplateTerms = dropTemplateTerms
+module.exports.analyzeQuerySet = analyzeQuerySet
 module.exports.buildContext = buildContext
 module.exports.filterContext = filterContext
 module.exports.analyzeContext = analyzeContext
