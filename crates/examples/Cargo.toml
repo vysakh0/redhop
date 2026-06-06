@@ -170,6 +170,11 @@ name = "musique_chunk_sweep"
 path = "examples/musique_chunk_sweep.rs"
 required-features = ["onnx"]
 
+[[example]]
+name = "musique_embedder_swap"
+path = "examples/musique_embedder_swap.rs"
+required-features = ["onnx"]
+
 [lints]
 workspace = true
 
