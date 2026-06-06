@@ -184,6 +184,10 @@ name = "cuad_query_preprocessing"
 path = "examples/cuad_query_preprocessing.rs"
 
 [[example]]
+name = "cuad_perf"
+path = "examples/cuad_perf.rs"
+
+[[example]]
 name = "hybrid_old_vs_new"
 path = "examples/hybrid_old_vs_new.rs"
 required-features = ["onnx"]

@@ -193,6 +193,42 @@ fixes should never be claimed without knowing the failure mode they
 target. The 0.2.1 fix targeted a specific bug, and that's the only thing
 it improved.
 
+## Performance — what the Rust API path delivers
+
+The CUAD investigation in this branch ran through the `redhop` crate
+directly (`Document::from_text_with(...) → doc.context(query)`), pure
+Rust, single-threaded, release build. The `bench/compare.py` head-to-head
+is the only Python in the loop, and only because LangChain and
+LlamaIndex are Python-only — the comparison has to live there. The
+recall sweeps and the template-stripping diagnostic are Rust.
+
+Measured on Apple M5 (10-core, 16 GB), `cuad_perf` example, 300 queries
+across 27 contracts (the first 300 questions in `cuad_sample.json`):
+
+| arm                                  | recall @ ≥0.8 | mean context() | p95 context() | throughput |
+| ------------------------------------ | -------------:| --------------:| -------------:| ----------:|
+| original template (24 words)         | 84.3%         | 2.61 ms        | 3.42 ms       | 384 qps    |
+| **template stripped (~5 words)**     | **91.0%**     | **2.05 ms**    | **3.13 ms**   | **488 qps** |
+
+Document build (one ~9k-token contract, including chunking + BM25
+indexing + first-query warmup): **2.9 ms median, 8.0 ms p95**.
+
+Stripping the boilerplate moves both axes in the right direction:
++6.7 points retention AND +27% throughput. The "less work" intuition
+holds — with a tighter query, BM25 does less work, the candidate pool
+is more discriminative, the assembled context is smaller (~185 fewer
+tokens used on average), and the runtime delivers faster *and* better.
+
+This is **BM25 lexical retrieval, no embedding models, no LLM calls,
+fully in-process**. The 488 qps single-thread number means a modern
+laptop can saturate roughly 4-5k qps with all cores in parallel for
+this workload class, without any service or vector DB.
+
+Reproduce:
+```bash
+cargo run -p redhop-examples --example cuad_perf --release
+```
+
 ## A general principle (not a CUAD-specific fix)
 
 The deeper point is general, and worth pulling out: **whenever your
