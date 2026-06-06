@@ -235,3 +235,7 @@ path = "examples/cuad_rust_vs_python_path.rs"
 [[example]]
 name = "cuad_prf"
 path = "examples/cuad_prf.rs"
+
+[[example]]
+name = "query_set_analyzer_probe"
+path = "examples/query_set_analyzer_probe.rs"

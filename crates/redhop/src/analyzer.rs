@@ -367,6 +367,272 @@ fn snowball_language_name(a: Algorithm) -> &'static str {
     }
 }
 
+// ─── Query-side diagnostics (templated workloads) ───────────────────────────
+//
+// Two helpers grounded in `docs/findings/CUAD_RECALL_GAP.md` + `CUAD_PRF_NULL.md`:
+//
+//   * [`drop_template_terms`] — token-level boilerplate removal. You supply
+//     the boilerplate list (typically from [`analyze_query_set`] or domain
+//     knowledge); this does the mechanical strip.
+//   * [`analyze_query_set`] — diagnostic over a representative sample of
+//     your queries: detects whether they share a high-boilerplate template
+//     and, if so, which terms are doing the dilution.
+//
+// Status note: `analyze_query_set` was probed across CUAD / HotpotQA /
+// MuSiQue before landing; see `docs/findings/QUERY_SET_ANALYZER.md` for the
+// true-positive / false-positive measurements that justify the heuristic
+// thresholds and the `suggested_action` copy.
+
+use std::collections::HashSet as StdHashSet;
+
+/// Drop boilerplate tokens from a query before retrieval.
+///
+/// Token matching is **case-insensitive on alphanumeric tokens**: each
+/// whitespace-separated chunk of the query is compared (lowercased, with
+/// leading/trailing non-alphanumerics trimmed) against the lowercased
+/// boilerplate set. Surviving tokens are rejoined with a single space.
+/// Non-alphanumeric punctuation embedded inside a token is preserved on
+/// the surviving side and stripped on the matching side.
+///
+/// This is intentionally a thin helper — it does **not** decide what is
+/// boilerplate (that's workload-specific; use [`analyze_query_set`] or your
+/// domain knowledge) and it does **not** stem, lemmatize, or rewrite. The
+/// goal is to leave the discriminating tokens visually intact while
+/// removing the words you told it are noise.
+///
+/// ```
+/// use redhop::analyzer::drop_template_terms;
+/// let q = "Highlight the parts of this contract related to \"Change of Control\".";
+/// let stripped = drop_template_terms(
+///     q,
+///     &["highlight", "the", "parts", "of", "this", "contract", "related", "to"],
+/// );
+/// assert_eq!(stripped, "\"Change Control\".");
+/// ```
+///
+/// Pair with `strategy="raw_topk"` on single-doc extraction workloads —
+/// the Auto policy's `reasoning_preserving` solves a multi-hop problem
+/// that contract-shape workloads don't have. See
+/// `docs/CHOOSING_A_CONFIG.md` for the decision rule.
+pub fn drop_template_terms(query: &str, boilerplate: &[&str]) -> String {
+    if boilerplate.is_empty() {
+        return query.to_string();
+    }
+    let stop: StdHashSet<String> = boilerplate.iter().map(|s| s.to_lowercase()).collect();
+    query
+        .split_whitespace()
+        .filter(|tok| {
+            let key: String = tok
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(|c| c.to_lowercase())
+                .collect();
+            !stop.contains(&key)
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// How heavy the template-boilerplate dilution looks on a query set.
+///
+/// Mapped from [`QuerySetReport::template_word_share`] using thresholds
+/// chosen from the cross-workload probe (see
+/// `docs/findings/QUERY_SET_ANALYZER.md`). The bands are deliberately
+/// coarse — what matters is the **direction**, not a precise fraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DilutionCost {
+    /// `template_word_share >= 0.70` — the template dominates the query.
+    /// On CUAD, the source workload, this band corresponds to a
+    /// measured 4–6 point ≥0.8 retention lift from template-stripping.
+    High,
+    /// `0.40 <= template_word_share < 0.70` — meaningful shared
+    /// boilerplate but not dominant.
+    Medium,
+    /// `0.20 <= template_word_share < 0.40` — some shared filler;
+    /// stripping is unlikely to move the needle.
+    Low,
+    /// `template_word_share < 0.20` — natural-language diversity.
+    /// No template to strip; the analyzer recommends no action.
+    None,
+}
+
+/// Diagnostic report over a representative sample of a workload's queries.
+///
+/// Returned by [`analyze_query_set`]. Fields are intentionally simple
+/// (no nested types) so they survive cleanly across the Python and Node
+/// bindings.
+#[derive(Debug, Clone)]
+pub struct QuerySetReport {
+    /// How many queries were analyzed (informational; thresholds aren't
+    /// trustworthy below ~30 queries — see [`Self::is_templated`]).
+    pub n_queries: usize,
+    /// `true` when [`Self::template_word_share`] >= 0.50 **and** at least
+    /// two boilerplate terms were detected. Conservative by design:
+    /// false positives are worse than false negatives because they push
+    /// users toward a workaround that won't help.
+    pub is_templated: bool,
+    /// Mean over queries of `(boilerplate-token count) / (total token
+    /// count)`. 0.0 means no shared boilerplate; 1.0 means every token
+    /// in every query is shared. CUAD measures ~0.79 here.
+    pub template_word_share: f32,
+    /// Words appearing in at least 80% of the query set, sorted by
+    /// document-frequency descending. These are the candidates you would
+    /// pass to [`drop_template_terms`].
+    pub boilerplate_terms: Vec<String>,
+    /// Coarse band derived from `template_word_share`.
+    pub estimated_dilution_cost: DilutionCost,
+    /// Human-readable recommendation describing what (if anything) to
+    /// do next. Suitable for printing in a CLI or surfacing in a
+    /// notebook.
+    pub suggested_action: String,
+}
+
+/// Detect templated-workload dilution on a representative sample of queries.
+///
+/// Mechanism: for every alphanumeric token in the query set we compute its
+/// **query-set document frequency** (how many queries contain it).
+/// Tokens with df / n_queries >= 0.80 are called "boilerplate". The
+/// `template_word_share` is the average fraction of each query that is
+/// boilerplate. A workload is `is_templated` when the share is >= 0.50
+/// *and* the boilerplate list has at least two entries.
+///
+/// Designed for the early-2026 RAG-pipeline pattern documented in
+/// `docs/findings/CUAD_RECALL_GAP.md`. **Read that finding before acting
+/// on the report** — the report tells you whether the *shape* matches;
+/// it does not measure your actual retention numbers.
+///
+/// ```
+/// use redhop::analyzer::analyze_query_set;
+/// let queries = [
+///     "Highlight the parts of this contract related to X",
+///     "Highlight the parts of this contract related to Y",
+///     "Highlight the parts of this contract related to Z",
+/// ];
+/// let report = analyze_query_set(&queries);
+/// assert!(report.is_templated);
+/// assert!(report.boilerplate_terms.contains(&"highlight".to_string()));
+/// ```
+pub fn analyze_query_set<S: AsRef<str>>(queries: &[S]) -> QuerySetReport {
+    let n = queries.len();
+    if n == 0 {
+        return QuerySetReport {
+            n_queries: 0,
+            is_templated: false,
+            template_word_share: 0.0,
+            boilerplate_terms: vec![],
+            estimated_dilution_cost: DilutionCost::None,
+            suggested_action: "empty query set — nothing to analyze".to_string(),
+        };
+    }
+
+    // Tokenize each query → vector of distinct alphanumeric tokens.
+    let per_query: Vec<Vec<String>> = queries
+        .iter()
+        .map(|q| analyzer_tokens(q.as_ref()))
+        .collect();
+
+    // Document frequency in the query set.
+    let mut df: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for tokens in &per_query {
+        let distinct: StdHashSet<&String> = tokens.iter().collect();
+        for t in distinct {
+            *df.entry(t.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Boilerplate: appears in >= 80% of queries.
+    let threshold = ((n as f32) * 0.80).ceil() as usize;
+    let mut boilerplate_pairs: Vec<(String, usize)> = df
+        .iter()
+        .filter(|(_, c)| **c >= threshold)
+        .map(|(w, c)| (w.clone(), *c))
+        .collect();
+    boilerplate_pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let boilerplate_terms: Vec<String> = boilerplate_pairs.iter().map(|(w, _)| w.clone()).collect();
+    let bp_set: StdHashSet<&String> = boilerplate_terms.iter().collect();
+
+    // template_word_share = mean over queries of (boilerplate tokens / total tokens).
+    let mut shares = 0.0f64;
+    let mut counted = 0usize;
+    for tokens in &per_query {
+        if tokens.is_empty() {
+            continue;
+        }
+        let bp = tokens.iter().filter(|t| bp_set.contains(t)).count();
+        shares += bp as f64 / tokens.len() as f64;
+        counted += 1;
+    }
+    let share = if counted == 0 {
+        0.0
+    } else {
+        (shares / counted as f64) as f32
+    };
+
+    let cost = if share >= 0.70 {
+        DilutionCost::High
+    } else if share >= 0.40 {
+        DilutionCost::Medium
+    } else if share >= 0.20 {
+        DilutionCost::Low
+    } else {
+        DilutionCost::None
+    };
+
+    let is_templated = share >= 0.50 && boilerplate_terms.len() >= 2;
+
+    let suggested_action = match (is_templated, cost) {
+        (true, DilutionCost::High) => format!(
+            "Highly templated workload (~{:.0}% boilerplate). Expected lift on CUAD-shape \
+             cases was +6 points ≥0.8 retention. Recommended: write a thin preprocessor \
+             that drops the {} shared terms before calling `context()`; pair with \
+             `strategy=\"raw_topk\"` for single-doc extraction. See \
+             docs/CHOOSING_A_CONFIG.md and docs/findings/CUAD_RECALL_GAP.md.",
+            share * 100.0,
+            boilerplate_terms.len(),
+        ),
+        (true, _) => format!(
+            "Templated workload (~{:.0}% boilerplate). Lift from stripping is uncertain at \
+             this share; consider running an A/B with `drop_template_terms` before \
+             committing. See docs/findings/CUAD_RECALL_GAP.md.",
+            share * 100.0,
+        ),
+        (false, DilutionCost::Medium) => format!(
+            "Some shared filler ({:.0}% of tokens), but not dominant. Stripping is \
+             unlikely to move retention measurably; skip unless an A/B says otherwise.",
+            share * 100.0,
+        ),
+        (false, _) => format!(
+            "Diverse natural-language queries (~{:.0}% shared filler). No template to \
+             strip. Standard defaults apply.",
+            share * 100.0,
+        ),
+    };
+
+    QuerySetReport {
+        n_queries: n,
+        is_templated,
+        template_word_share: share,
+        boilerplate_terms,
+        estimated_dilution_cost: cost,
+        suggested_action,
+    }
+}
+
+/// Plain tokenizer for the query-set analyzer.
+///
+/// Deliberately matches the harness tokenization used by the CUAD findings
+/// (lowercase, alphanumeric split, drop tokens with len < 2). Does NOT
+/// stem — we want to detect shared *surface* tokens that BM25 will see.
+/// Does NOT drop stopwords — if `the` appears in every query, that is
+/// still boilerplate and worth surfacing.
+fn analyzer_tokens(s: &str) -> Vec<String> {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 1)
+        .map(|w| w.to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,5 +833,115 @@ mod tests {
                 "{name}: build_text_analyzer() stream should emit at least one token"
             );
         }
+    }
+
+    // ─── drop_template_terms ────────────────────────────────────────────────
+
+    #[test]
+    fn drop_template_terms_basic_case_insensitive() {
+        let q = "Highlight the parts of this Contract related to Change of Control";
+        let got = drop_template_terms(
+            q,
+            &["highlight", "the", "parts", "of", "this", "contract", "related", "to"],
+        );
+        assert_eq!(got, "Change Control");
+    }
+
+    #[test]
+    fn drop_template_terms_preserves_punctuation_on_surviving_tokens() {
+        let q = "Highlight the parts related to \"Change of Control\".";
+        let got = drop_template_terms(
+            q,
+            &["highlight", "the", "parts", "of", "related", "to"],
+        );
+        assert_eq!(got, "\"Change Control\".");
+    }
+
+    #[test]
+    fn drop_template_terms_empty_boilerplate_is_identity() {
+        let q = "Highlight the parts of this contract";
+        assert_eq!(drop_template_terms(q, &[]), q);
+    }
+
+    #[test]
+    fn drop_template_terms_no_match_is_identity_token_set() {
+        let q = "find document name";
+        // Boilerplate doesn't appear in the query at all.
+        let got = drop_template_terms(q, &["foo", "bar"]);
+        assert_eq!(got, "find document name");
+    }
+
+    #[test]
+    fn drop_template_terms_all_filtered_returns_empty() {
+        let q = "the the the";
+        assert_eq!(drop_template_terms(q, &["the"]), "");
+    }
+
+    // ─── analyze_query_set ──────────────────────────────────────────────────
+
+    #[test]
+    fn analyze_query_set_detects_cuad_shape() {
+        // 6 CUAD-flavored queries, only the quoted clause name varies.
+        let queries = [
+            "Highlight the parts (if any) of this contract related to \"Document Name\" that should be reviewed by a lawyer.",
+            "Highlight the parts (if any) of this contract related to \"Parties\" that should be reviewed by a lawyer.",
+            "Highlight the parts (if any) of this contract related to \"Agreement Date\" that should be reviewed by a lawyer.",
+            "Highlight the parts (if any) of this contract related to \"Effective Date\" that should be reviewed by a lawyer.",
+            "Highlight the parts (if any) of this contract related to \"Expiration Date\" that should be reviewed by a lawyer.",
+            "Highlight the parts (if any) of this contract related to \"Renewal Term\" that should be reviewed by a lawyer.",
+        ];
+        let report = analyze_query_set(&queries);
+        assert!(report.is_templated, "CUAD-shape queries should be flagged");
+        assert!(
+            report.template_word_share > 0.6,
+            "share should reflect the heavy template; got {:.3}",
+            report.template_word_share
+        );
+        assert_eq!(report.estimated_dilution_cost, DilutionCost::High);
+        // Spot-check a couple of the obvious boilerplate words.
+        for expected in ["highlight", "contract", "lawyer"] {
+            assert!(
+                report.boilerplate_terms.iter().any(|w| w == expected),
+                "expected {expected:?} in boilerplate_terms; got {:?}",
+                report.boilerplate_terms
+            );
+        }
+    }
+
+    #[test]
+    fn analyze_query_set_does_not_fire_on_diverse_queries() {
+        let queries = [
+            "Who is the current president of France?",
+            "When was the Eiffel Tower built?",
+            "What language do they speak in Brazil?",
+            "How tall is Mount Everest?",
+            "Which planet is closest to the sun?",
+            "When did World War II end?",
+            "Who wrote Pride and Prejudice?",
+            "What is the capital of Japan?",
+        ];
+        let report = analyze_query_set(&queries);
+        assert!(
+            !report.is_templated,
+            "diverse natural-language queries should not be flagged (share={:.3}, terms={:?})",
+            report.template_word_share, report.boilerplate_terms
+        );
+    }
+
+    #[test]
+    fn analyze_query_set_handles_empty_and_singleton() {
+        let empty: [&str; 0] = [];
+        let r = analyze_query_set(&empty);
+        assert_eq!(r.n_queries, 0);
+        assert!(!r.is_templated);
+
+        let one = ["one query is not a workload"];
+        let r = analyze_query_set(&one);
+        assert_eq!(r.n_queries, 1);
+        // Every word is shared trivially across a 1-query set; the
+        // ">=2 boilerplate terms" guard prevents most pathological flags,
+        // but the share will be 1.0 because all tokens are "shared" in a
+        // single-query set. That's a known edge — `n_queries` is the
+        // signal callers should check first.
     }
 }

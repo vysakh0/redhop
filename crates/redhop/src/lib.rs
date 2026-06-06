@@ -68,6 +68,14 @@ pub mod reranking;
 // ── High-level surface re-exports ───────────────────────────────────────────
 pub use crate::document::{Document, DocumentConfig, RetrievalMode, Section};
 
+// Query-side diagnostics for templated workloads. Grounded in
+// docs/findings/CUAD_RECALL_GAP.md (the mechanism), docs/findings/CUAD_PRF_NULL.md
+// (what doesn't help), and docs/findings/QUERY_SET_ANALYZER.md (the
+// cross-workload probe that validated the heuristic thresholds).
+pub use crate::analyzer::{
+    analyze_query_set, drop_template_terms, DilutionCost, QuerySetReport,
+};
+
 // The built context + its telemetry, and the lower-level context entry points.
 pub use crate::context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
