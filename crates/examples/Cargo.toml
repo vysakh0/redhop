@@ -231,3 +231,7 @@ path = "examples/cuad_perf.rs"
 [[example]]
 name = "cuad_rust_vs_python_path"
 path = "examples/cuad_rust_vs_python_path.rs"
+
+[[example]]
+name = "cuad_prf"
+path = "examples/cuad_prf.rs"
