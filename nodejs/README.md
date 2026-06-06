@@ -1,5 +1,10 @@
 # redhop (Node.js)
 
+[![npm](https://img.shields.io/npm/v/redhop?label=npm&color=e11d48)](https://www.npmjs.com/package/redhop)
+[![Node](https://img.shields.io/node/v/redhop?color=e11d48)](https://www.npmjs.com/package/redhop)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/vysakh0/redhop/blob/main/LICENSE)
+[![Evidence layer](https://img.shields.io/badge/evidence-layer-blue)](https://github.com/vysakh0/redhop/tree/main/docs/findings)
+
 Reasoning-aware context runtime for RAG — hand it a document and a question, get
 back the context the model should actually see, with citations and a Decision
 Report. No vector database, no LLM, in-process. A native addon (napi-rs) over the
@@ -19,6 +24,20 @@ for (const c of ctx.citations) { // where the answer's context came from
 }
 console.log(ctx.report.rendered); // the Decision Report — what it kept, and why
 ```
+
+## How it compares
+
+Measured on identical documents + budgets + BM25 retrieval, RedHop **beats LangChain
+on multi-hop evidence retention** (77% vs 71%) and **ties LlamaIndex on contracts**
+(82% vs 86%, while beating LangChain at 73%) — without a vector database, an agent
+framework, or model finetuning.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
+</p>
+
+Methodology + raw runs: [FRAMEWORK_COMPARISON.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/FRAMEWORK_COMPARISON.md)
+· [framework_comparison.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison.txt).
 
 ## Loaders
 

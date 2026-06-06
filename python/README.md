@@ -2,6 +2,11 @@
 
 **A reasoning-preserving context runtime for RAG.**
 
+[![PyPI](https://img.shields.io/pypi/v/redhop?label=pypi&color=e11d48)](https://pypi.org/project/redhop/)
+[![Python](https://img.shields.io/pypi/pyversions/redhop?color=e11d48)](https://pypi.org/project/redhop/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/vysakh0/redhop/blob/main/LICENSE)
+[![Evidence layer](https://img.shields.io/badge/evidence-layer-blue)](https://github.com/vysakh0/redhop/tree/main/docs/findings)
+
 Hand it a document and a question. RedHop chunks, retrieves, and allocates the
 context your model should actually see — then tells you what it kept, what it dropped,
 and why, with citations back to the source. No vector database, no LLM, all in-process.
@@ -21,6 +26,20 @@ pip install redhop
 
 One self-contained wheel — no Python dependencies. The default lexical tier needs no
 model at all; the semantic/rerank tiers download a small model on first use (cached).
+
+## How it compares
+
+Measured on identical documents + budgets + BM25 retrieval, RedHop **beats LangChain
+on multi-hop evidence retention** (77% vs 71%) and **ties LlamaIndex on contracts**
+(82% vs 86%, while beating LangChain at 73%) — without a vector database, an agent
+framework, or model finetuning.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
+</p>
+
+Methodology + raw runs: [FRAMEWORK_COMPARISON.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/FRAMEWORK_COMPARISON.md)
+· [framework_comparison.txt](https://github.com/vysakh0/redhop/blob/main/reports/framework_comparison.txt).
 
 ## The idea
 
