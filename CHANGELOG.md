@@ -7,6 +7,11 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased]
 
+Nothing yet. Open work lands here, then graduates into a release
+section on the next `v*` tag.
+
+## [0.2.2] - 2026-06-06
+
 The **binding parity + evidence layer** release. No breaking changes for any
 binding's callers. The Node binding gains 14 missing `Report` fields, the
 documentation gets its first visual presentation (badges, charts,
