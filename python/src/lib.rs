@@ -5,9 +5,11 @@
 //! Pythonic inputs (dicts/lists/strings) to the Rust types and wraps the
 //! results in small Python classes.
 
+use std::collections::HashMap;
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 use redhop::context::{
     analyze_context as rh_analyze, build_context as rh_build, context_economics as rh_economics,
@@ -40,69 +42,269 @@ fn strategy_to_str(s: ContextStrategy) -> &'static str {
     }
 }
 
-/// Convert one Python chunk (a str, or a dict with at least `text`) into a
-/// `RetrievalResult`.
-fn chunk_from_py(item: &Bound<'_, PyAny>, idx: usize) -> PyResult<RetrievalResult> {
-    let (id, text, source, token_count, embedding, score) = if let Ok(s) = item.extract::<String>()
-    {
-        (format!("c{idx}"), s, None, None, None, None)
-    } else if let Ok(d) = item.downcast::<PyDict>() {
-        let text: String = d
-            .get_item("text")?
-            .ok_or_else(|| PyValueError::new_err(format!("chunk {idx} missing 'text'")))?
-            .extract()?;
-        let id: String = match d.get_item("id")? {
-            Some(v) => v.extract()?,
-            None => format!("c{idx}"),
-        };
-        let source: Option<String> = match d.get_item("source")? {
-            Some(v) => Some(v.extract()?),
-            None => None,
-        };
-        let token_count: Option<usize> = match d.get_item("token_count")? {
-            Some(v) => Some(v.extract()?),
-            None => None,
-        };
-        let embedding: Option<Vec<f32>> = match d.get_item("embedding")? {
-            Some(v) => Some(v.extract()?),
-            None => None,
-        };
-        let score: Option<f32> = match d.get_item("score")? {
-            Some(v) => Some(v.extract()?),
-            None => None,
-        };
-        (id, text, source, token_count, embedding, score)
+/// Convert a Python value to a `serde_json::Value` for chunk metadata.
+///
+/// Accepts: `None`, `bool`, `int`, `float`, `str`, `list`, `dict` (any
+/// nesting). Rejects unsupported types with a clear error so users
+/// see which key carried bad data.
+fn py_to_json(v: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    if v.is_none() {
+        Ok(serde_json::Value::Null)
+    } else if let Ok(b) = v.extract::<bool>() {
+        Ok(serde_json::Value::Bool(b))
+    } else if let Ok(i) = v.extract::<i64>() {
+        Ok(serde_json::Value::Number(serde_json::Number::from(i)))
+    } else if let Ok(f) = v.extract::<f64>() {
+        serde_json::Number::from_f64(f)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| PyValueError::new_err("non-finite float in chunk metadata"))
+    } else if let Ok(s) = v.extract::<String>() {
+        Ok(serde_json::Value::String(s))
+    } else if let Ok(list) = v.downcast::<PyList>() {
+        let mut arr = Vec::with_capacity(list.len());
+        for item in list.iter() {
+            arr.push(py_to_json(&item)?);
+        }
+        Ok(serde_json::Value::Array(arr))
+    } else if let Ok(d) = v.downcast::<PyDict>() {
+        let mut map = serde_json::Map::new();
+        for (k, val) in d.iter() {
+            let key: String = k.extract()?;
+            map.insert(key, py_to_json(&val)?);
+        }
+        Ok(serde_json::Value::Object(map))
     } else {
-        return Err(PyValueError::new_err(format!(
-            "chunk {idx} must be a string or a dict with a 'text' field"
-        )));
-    };
-
-    let tok = token_count.unwrap_or_else(|| text.split_whitespace().count().max(1));
-    let mut chunk = Chunk::new(
-        ChunkId::new(id),
-        text,
-        source.unwrap_or_else(|| "input".into()),
-        TokenCount(tok),
-    );
-    if let Some(e) = embedding {
-        chunk = chunk.with_embedding(Embedding::from(e));
+        Err(PyValueError::new_err(format!(
+            "unsupported chunk metadata value: {} (allowed: None, bool, int, float, str, list, dict)",
+            v.get_type().name()?,
+        )))
     }
-    Ok(RetrievalResult {
-        chunk,
-        score: Score {
-            value: score.unwrap_or(1.0),
-            method: RetrievalMethod::Dense,
-        },
-        breakdown: ScoreBreakdown::default(),
+}
+
+/// Inverse of [`py_to_json`]: convert a `serde_json::Value` back to a
+/// Python object for the metadata getter.
+fn json_to_py(py: Python<'_>, v: &serde_json::Value) -> PyResult<PyObject> {
+    use pyo3::IntoPy;
+    Ok(match v {
+        serde_json::Value::Null => py.None(),
+        serde_json::Value::Bool(b) => b.into_py(py),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into_py(py)
+            } else if let Some(f) = n.as_f64() {
+                f.into_py(py)
+            } else {
+                py.None()
+            }
+        }
+        serde_json::Value::String(s) => s.clone().into_py(py),
+        serde_json::Value::Array(arr) => {
+            let mut items: Vec<PyObject> = Vec::with_capacity(arr.len());
+            for x in arr {
+                items.push(json_to_py(py, x)?);
+            }
+            items.into_py(py)
+        }
+        serde_json::Value::Object(map) => {
+            let d = PyDict::new(py);
+            for (k, val) in map {
+                d.set_item(k, json_to_py(py, val)?)?;
+            }
+            d.into()
+        }
     })
 }
 
+/// One unit of content in a [`Document`] — the construction primitive
+/// for callers who pre-chunked their corpus elsewhere (schema rows,
+/// API endpoints, code symbols, defined contract terms, pre-segmented
+/// paragraphs).
+///
+/// Two concepts are kept distinct:
+/// - **`source`** — *provenance*: where the chunk came from (file
+///   path, URL, logical handle). This is what `ctx.citations[*].source`
+///   displays. Defaults to `"input"` if omitted.
+/// - **`id`** — the chunk's *identity*: a stable identifier used for
+///   dedup and gold-chunk evaluation. Defaults to `"c0"`, `"c1"`, …
+///   based on position in the list passed to `Document.from_chunks`.
+///
+/// `metadata` is an open dict (`{str: Any}`, JSON-compatible values).
+/// The citations machinery picks up known keys — currently `page`
+/// (int), `heading` (str), `line` (int). Anything else is preserved
+/// but not surfaced by the built-in citations contract.
+///
+/// ```python
+/// chunks = [
+///     redhop.Chunk(
+///         "orders.amt (decimal) — order amount / revenue / spend in USD",
+///         source="schema.sql",
+///         id="orders.amt",
+///         metadata={"table": "orders", "column": "amt", "type": "decimal"},
+///     ),
+///     redhop.Chunk(
+///         "9.1 Governing Law. This Agreement shall be governed by …",
+///         source="contract.pdf",
+///         metadata={"page": 12, "heading": "9.1 Governing Law"},
+///     ),
+/// ]
+/// doc = redhop.Document.from_chunks(chunks)
+/// ```
+#[pyclass(name = "Chunk", module = "redhop")]
+#[derive(Clone)]
+struct PyChunk {
+    text: String,
+    source: Option<String>,
+    id: Option<String>,
+    metadata: HashMap<String, serde_json::Value>,
+    token_count: Option<usize>,
+    embedding: Option<Vec<f32>>,
+}
+
+impl PyChunk {
+    /// Materialize this Python-side chunk into a Rust core
+    /// [`redhop::core::Chunk`], using `idx` to fill in an auto-id when
+    /// the user didn't supply one.
+    fn to_core(&self, idx: usize) -> redhop::core::Chunk {
+        let id = self.id.clone().unwrap_or_else(|| format!("c{idx}"));
+        let source = self.source.clone().unwrap_or_else(|| "input".into());
+        let tok = self
+            .token_count
+            .unwrap_or_else(|| self.text.split_whitespace().count().max(1));
+        let mut chunk = redhop::core::Chunk::new(
+            ChunkId::new(id),
+            self.text.clone(),
+            source,
+            TokenCount(tok),
+        );
+        chunk.metadata = self.metadata.clone();
+        if let Some(e) = &self.embedding {
+            chunk = chunk.with_embedding(Embedding::from(e.clone()));
+        }
+        chunk
+    }
+}
+
+#[pymethods]
+impl PyChunk {
+    #[new]
+    #[pyo3(signature = (text, *, source=None, id=None, metadata=None, token_count=None, embedding=None))]
+    fn py_new(
+        text: String,
+        source: Option<String>,
+        id: Option<String>,
+        metadata: Option<&Bound<'_, PyDict>>,
+        token_count: Option<usize>,
+        embedding: Option<Vec<f32>>,
+    ) -> PyResult<Self> {
+        let mut meta = HashMap::new();
+        if let Some(m) = metadata {
+            for (k, v) in m.iter() {
+                let key: String = k.extract()?;
+                meta.insert(key, py_to_json(&v)?);
+            }
+        }
+        Ok(Self {
+            text,
+            source,
+            id,
+            metadata: meta,
+            token_count,
+            embedding,
+        })
+    }
+
+    /// The chunk's text content.
+    #[getter]
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// The chunk's provenance (file path, URL, logical handle). `None`
+    /// if not supplied — defaults to `"input"` when materialized.
+    #[getter]
+    fn source(&self) -> Option<&str> {
+        self.source.as_deref()
+    }
+
+    /// The chunk's stable identifier. `None` if not supplied — defaults
+    /// to `c0`, `c1`, … based on position when materialized.
+    #[getter]
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    /// Token count (whitespace-counted if not supplied).
+    #[getter]
+    fn token_count(&self) -> Option<usize> {
+        self.token_count
+    }
+
+    /// Open metadata dict. Citations pick up known keys (`page`,
+    /// `heading`, `line`); anything else is preserved.
+    #[getter]
+    fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let d = PyDict::new(py);
+        for (k, v) in &self.metadata {
+            d.set_item(k, json_to_py(py, v)?)?;
+        }
+        Ok(d)
+    }
+
+    fn __repr__(&self) -> String {
+        let snippet: String = self.text.chars().take(40).collect();
+        let ellipsis = if self.text.chars().count() > 40 {
+            "…"
+        } else {
+            ""
+        };
+        let src = self
+            .source
+            .as_deref()
+            .map(|s| format!("{s:?}"))
+            .unwrap_or_else(|| "None".into());
+        let id = self
+            .id
+            .as_deref()
+            .map(|s| format!("{s:?}"))
+            .unwrap_or_else(|| "None".into());
+        format!(
+            "Chunk(text={:?}{}, source={}, id={})",
+            snippet, ellipsis, src, id,
+        )
+    }
+}
+
+/// Iterate a Python sequence of [`Chunk`] objects into the
+/// `RetrievalResult` shape the Rust core expects. Rejects strings,
+/// dicts, and anything else with a clear migration message — as of
+/// 0.3.0, `Document.from_chunks` and the low-level
+/// `build_context` / `filter_context` / `analyze_context` entry
+/// points all require typed `redhop.Chunk` instances.
 fn chunks_from_py(chunks: &Bound<'_, PyAny>) -> PyResult<Vec<RetrievalResult>> {
-    let list = chunks.try_iter()?;
     let mut out = Vec::new();
-    for (i, item) in list.enumerate() {
-        out.push(chunk_from_py(&item?, i)?);
+    for (i, item) in chunks.try_iter()?.enumerate() {
+        let item = item?;
+        let chunk: PyRef<'_, PyChunk> = item.extract().map_err(|_| {
+            let got = item
+                .get_type()
+                .name()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|_| "?".to_string());
+            PyValueError::new_err(format!(
+                "chunk {i}: expected redhop.Chunk(text, source=..., ...); got {got}. \
+                 As of 0.3.0, strings and dicts are no longer accepted — wrap your input as \
+                 `redhop.Chunk(text, source='myfile.txt')`."
+            ))
+        })?;
+        let core = chunk.to_core(i);
+        out.push(RetrievalResult {
+            chunk: core,
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Dense,
+            },
+            breakdown: ScoreBreakdown::default(),
+        });
     }
     Ok(out)
 }
@@ -1798,6 +2000,7 @@ fn evaluate(
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<BuiltContext>()?;
+    m.add_class::<PyChunk>()?;
     m.add_class::<ContextReport>()?;
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;

@@ -95,7 +95,7 @@ for c in ctx.citations:
 | On-ramp | For |
 | --- | --- |
 | `Document.from_text(text, source="document")` | text you already have |
-| `Document.from_chunks([...])` | content you already chunked |
+| `Document.from_chunks([redhop.Chunk(...), ...])` | content you already chunked — pass typed `redhop.Chunk(text, source=..., id=..., metadata={...})` instances |
 | `Document.from_file("x.pdf")` | a file — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
 | `Document.from_bytes(data, source="x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) |
 | `Document.from_folder("./docs", persist=True)` | a whole directory, with an optional incremental on-disk index |
@@ -155,8 +155,10 @@ user's call).
 | `raw_topk` | keep retrieval order until the budget fills |
 | `auto` | size-gated: pass small contexts through, prune large/diluted ones |
 
-Already have chunks from your own retriever? Use `redhop.build_context(query,
-retrieved_chunks=chunks, ...)` for the low-level surface.
+Already have chunks from your own retriever? Wrap each as `redhop.Chunk(text,
+source=..., id=..., metadata={...})` and pass into
+`redhop.build_context(query, retrieved_chunks=chunks, ...)` (low-level) or
+`redhop.Document.from_chunks(chunks)` (full indexing).
 
 ## Templated workloads — the +9 retention lift (BM25, no model needed)
 

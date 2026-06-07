@@ -18,7 +18,7 @@ import redhop
 
 def _chunks_for(text: str, chunk_id: str = "a"):
     """Helper: build a single-chunk retrieved list for build_context."""
-    return [{"id": chunk_id, "text": text}]
+    return [redhop.Chunk(text, id=chunk_id)]
 
 
 # ─── evaluate without any gold ──────────────────────────────────────────────
@@ -48,8 +48,8 @@ def test_gold_chunks_perfect_recall():
     ctx = redhop.build_context(
         "refund window",
         [
-            {"id": "hit1", "text": "the refund window is thirty days"},
-            {"id": "hit2", "text": "refund policy details and timing"},
+            redhop.Chunk("the refund window is thirty days", id="hit1"),
+            redhop.Chunk("refund policy details and timing", id="hit2"),
         ],
         strategy="raw_topk",
     )
@@ -63,9 +63,9 @@ def test_gold_chunks_partial_recall_precision_distinct():
     ctx = redhop.build_context(
         "policy",
         [
-            {"id": "hit", "text": "policy section about refunds"},
-            {"id": "noise_a", "text": "totally unrelated cooking recipe"},
-            {"id": "noise_b", "text": "more cooking instructions"},
+            redhop.Chunk("policy section about refunds", id="hit"),
+            redhop.Chunk("totally unrelated cooking recipe", id="noise_a"),
+            redhop.Chunk("more cooking instructions", id="noise_b"),
         ],
         strategy="raw_topk",
     )
@@ -125,8 +125,8 @@ def test_both_gold_signals_populate_all_three_metrics():
     ctx = redhop.build_context(
         "refund window",
         [
-            {"id": "hit", "text": "the refund window is thirty days"},
-            {"id": "noise", "text": "shipping policy details"},
+            redhop.Chunk("the refund window is thirty days", id="hit"),
+            redhop.Chunk("shipping policy details", id="noise"),
         ],
         strategy="raw_topk",
     )
@@ -150,8 +150,8 @@ def test_off_topic_query_flags_low_confidence_and_caps_overall():
     ctx = redhop.build_context(
         "quantum chromodynamics gluon coupling",
         [
-            {"id": "a", "text": "the refund window is thirty days"},
-            {"id": "b", "text": "shipping policy and delivery times"},
+            redhop.Chunk("the refund window is thirty days", id="a"),
+            redhop.Chunk("shipping policy and delivery times", id="b"),
         ],
         strategy="raw_topk",
     )

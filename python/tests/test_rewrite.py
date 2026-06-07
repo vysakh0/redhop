@@ -196,7 +196,7 @@ def test_enrich_use_pattern_with_document_from_chunks():
         "fn calcAmt(items: &[Item]) -> Cents { /* billing math */ }",
         "fn dbInit() -> Db { /* database setup */ }",
     ]
-    enriched = [vocab.enrich(c)[0] for c in raw_chunks]
+    enriched = [redhop.Chunk(vocab.enrich(c)[0]) for c in raw_chunks]
     doc = redhop.Document.from_chunks(enriched)
     # The natural-language query has no overlap with `usrSvc` directly;
     # the enrichment is what makes the chunk findable.

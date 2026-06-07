@@ -20,8 +20,18 @@ retrieval. Worked example, hand-curated CUAD clause-name dictionary, and a
 6-arm probe contrasting the workflow vs hybrid+cross-encoder live in
 `docs/findings/CUAD_CLAUSE_EXPANSION.md` and `docs/findings/CUAD_HYBRID_RERANK.md`.
 
-One small breaking change on the Node binding (see Breaking below); Python
-and Rust callers are unaffected.
+**Breaking on the manual-chunks path (Python + Node):** the typed
+`redhop.Chunk(text, *, source=None, id=None, metadata=None, ...)` constructor
+becomes the *only* accepted input shape for `Document.from_chunks` and the
+low-level `build_context` / `filter_context` / `analyze_context` /
+`context_economics` entry points. Bare strings and dicts both raise
+`ValueError` with a migration hint pointing at the new constructor. The
+trade-off is intentional: the dict path didn't expose chunk metadata at all,
+so manually-constructed chunks couldn't carry `page` / `heading` / `line`
+into citations — a real functional gap, not just ergonomics. The typed
+`Chunk` closes that gap and surfaces `source` (provenance) and `id`
+(identity) as the two distinct concepts they already are in the Rust core
+(see Breaking below for the migration).
 
 ### Added
 
@@ -193,6 +203,54 @@ Eleven new harnesses under `crates/examples/examples/`:
   Framework comparison row updated: the CUAD headline is now
   `90.7%` via `Stripper` + `Vocabulary` (was `88%` via strip alone),
   beating LlamaIndex by 4 points.
+
+### Breaking — `redhop.Chunk` is now the only accepted manual-chunks shape
+
+- **`Document.from_chunks` + `build_context` + `filter_context` +
+  `analyze_context` + `context_economics` now require typed
+  `redhop.Chunk(...)` instances.** Bare strings and plain dicts both
+  raise `ValueError` with a migration hint:
+  ```
+  chunk 0: expected redhop.Chunk(text, source=..., ...); got str. As of
+  0.3.0, strings and dicts are no longer accepted — wrap your input as
+  `redhop.Chunk(text, source='myfile.txt')`.
+  ```
+- **What the new constructor looks like:**
+  ```python
+  redhop.Chunk(
+      text,
+      source=None,       # provenance: file path / URL / logical handle
+      id=None,            # identity: stable id, defaults to c0, c1, …
+      metadata=None,      # open dict; citations read page/heading/line
+      token_count=None,   # auto from whitespace if omitted
+      embedding=None,     # for pre-computed dense vectors
+  )
+  ```
+  Node mirrors with `new redhop.Chunk(text, { source, id, metadata, tokenCount, embedding })`.
+- **Why this is now a breaking change instead of a backward-compat additive:**
+  the dict path didn't accept `metadata` at all, so manually-supplied
+  chunks couldn't carry page/heading/line into citations. The two-ways-
+  to-do-it cleanup is incidental; closing the metadata gap is the real
+  reason. Strict typing also surfaces `source` (provenance) and `id`
+  (identity) as distinct concepts the way the Rust core has always
+  treated them — the dict path conflated them in practice.
+- **Migration:**
+  | Before | After |
+  | --- | --- |
+  | `from_chunks(["a", "b"])` | `from_chunks([redhop.Chunk("a"), redhop.Chunk("b")])` |
+  | `from_chunks([{"text": "a", "source": "x.md"}])` | `from_chunks([redhop.Chunk("a", source="x.md")])` |
+  | `from_chunks([{"text": "a", "id": "x", "source": "y.md"}])` | `from_chunks([redhop.Chunk("a", id="x", source="y.md")])` |
+  | `buildContext(q, [{ id, text }, ...])` (Node) | `buildContext(q, [new Chunk(text, { id }), ...])` |
+- **What's new on the typed-chunks path:** citations now pick up `page`,
+  `heading`, and `line` from `metadata={...}` on chunks the user built
+  themselves. Before 0.3.0 those fields were always `None` on the
+  manual-chunks path — only the file loaders populated them.
+- **Rust callers unaffected.** The `redhop::core::Chunk` struct hasn't
+  changed shape. `Document::from_chunks(Vec<Chunk>)` still takes
+  `Vec<redhop::core::Chunk>` exactly as it did. A new public facade
+  `redhop::chunks_typed(Vec<Chunk>, &LoadOptions)` was added so the
+  bindings can route pre-formed chunks through the indexing pipeline
+  without going through the chunker (preserving 1-to-1 chunk identity).
 
 ### Breaking (Node only — Python and Rust callers unaffected)
 

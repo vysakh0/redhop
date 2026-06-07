@@ -357,22 +357,33 @@ export interface EvalReport {
  */
 export declare function evaluate(query: string, context: BuiltContext, options?: EvaluateOptions | undefined | null): EvalReport
 /**
- * A single retrieved chunk for the low-level `buildContext` / `filterContext`
- * / `analyzeContext` / `contextEconomics` functions.
+ * Optional fields for the [`Chunk`] constructor's options bag.
+ *
+ * `metadata` is an open object (JSON-compatible values). Known keys are
+ * picked up by the citations machinery — currently `page` (int),
+ * `heading` (string), `line` (int). Anything else is preserved but
+ * not surfaced by the built-in citations contract.
  */
-export interface ChunkInput {
-  /** The chunk text. Required. */
-  text: string
-  /** Stable identifier. Defaults to `c<index>`. */
+export interface ChunkOptions {
+  /**
+   * The chunk's stable identifier. Defaults to `c0`, `c1`, …
+   * based on position in the array passed to `Document.fromChunks`.
+   */
   id?: string
-  /** Source path / label. Defaults to `"input"`. */
+  /**
+   * The chunk's provenance: file path, URL, logical handle. Defaults
+   * to `"input"`. This is what `ctx.citations[*].source` displays.
+   */
   source?: string
+  /**
+   * Open metadata object (JSON-compatible values). Known keys
+   * (`page`, `heading`, `line`) are picked up by citations.
+   */
+  metadata?: Record<string, any>
   /** Token count (defaults to whitespace word count). */
   tokenCount?: number
-  /** Optional dense vector (for embedding-based scoring downstream). */
+  /** Optional precomputed dense vector for embedding-based scoring. */
   embedding?: Array<number>
-  /** Retrieval score from the upstream retriever. Defaults to `1.0`. */
-  score?: number
 }
 /**
  * Optional knobs for the low-level context functions. Every field is
@@ -416,13 +427,13 @@ export interface ContextOptions {
  * allocation step). Returns the same `BuiltContext` shape as
  * `Document.context()`.
  */
-export declare function buildContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): BuiltContext
+export declare function buildContext(query: string, retrievedChunks: Array<Chunk>, options?: ContextOptions | undefined | null): BuiltContext
 /**
  * Distractor-only filter (no budget truncation): keep everything above the
  * grounding bar, drop only the off-topic chunks. Returns a `BuiltContext`
  * whose `text` / `chunks` / `citations` reflect the filtered set.
  */
-export declare function filterContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): BuiltContext
+export declare function filterContext(query: string, retrievedChunks: Array<Chunk>, options?: ContextOptions | undefined | null): BuiltContext
 /**
  * Pure diagnostics over caller-supplied chunks: what would RedHop do, and
  * why, without paying the assembly cost. Returns the same `Report` shape
@@ -433,7 +444,7 @@ export declare function filterContext(query: string, retrievedChunks: Array<Chun
  * `budget_utilization` reflects pure-analysis semantics (all chunks
  * counted) and stays consistent across bindings.
  */
-export declare function analyzeContext(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): Report
+export declare function analyzeContext(query: string, retrievedChunks: Array<Chunk>, options?: ContextOptions | undefined | null): Report
 /**
  * Token economics over caller-supplied chunks (evidence density, distractor
  * ratio, redundancy, estimated wasted tokens). Returns a JSON string —
@@ -444,7 +455,7 @@ export declare function analyzeContext(query: string, retrievedChunks: Array<Chu
  * computed against an unbounded budget (essentially 0), matching the
  * "pure analysis, no filtering, no truncation" intent.
  */
-export declare function contextEconomics(query: string, retrievedChunks: Array<ChunkInput>, options?: ContextOptions | undefined | null): string
+export declare function contextEconomics(query: string, retrievedChunks: Array<Chunk>, options?: ContextOptions | undefined | null): string
 /**
  * The assembled context: prompt string, selected chunks, citations, report.
  *
@@ -470,8 +481,13 @@ export declare class BuiltContext {
 export declare class Document {
   /** Build from raw text you already have. */
   static fromText(text: string, options?: Options | undefined | null): Document
-  /** Build from chunks you already produced (array of strings). */
-  static fromChunks(chunks: Array<string>, options?: Options | undefined | null): Document
+  /**
+   * Build from typed `Chunk` instances you already produced.
+   * Bypasses the chunker — the caller's chunks are preserved 1-to-1
+   * (no resplitting) with their `source` / `id` / `metadata` all
+   * surviving into the index.
+   */
+  static fromChunks(chunks: Array<Chunk>, options?: Options | undefined | null): Document
   /** Build straight from a file on disk — PDF, DOCX, PPTX, XLSX, or text/code. */
   static fromFile(path: string, options?: Options | undefined | null): Document
   /**
@@ -623,4 +639,39 @@ export declare class Vocabulary {
   enrich(chunk: string): EnrichResult
   /** Number of equivalence classes compiled. */
   get length(): number
+}
+/**
+ * One unit of content in a [`Document`] — the construction primitive
+ * for callers who pre-chunked their corpus elsewhere (schema rows,
+ * API endpoints, code symbols, defined contract terms, pre-segmented
+ * paragraphs).
+ *
+ * Two concepts are kept distinct:
+ * - **`source`** — *provenance*: where the chunk came from.
+ * - **`id`** — *identity*: a stable identifier for dedup and gold-chunk
+ *   evaluation.
+ *
+ * ```js
+ * const chunks = [
+ *   new redhop.Chunk(
+ *     "orders.amt (decimal) — order amount / revenue / spend in USD",
+ *     { source: "schema.sql", id: "orders.amt",
+ *       metadata: { table: "orders", column: "amt", type: "decimal" } },
+ *   ),
+ *   new redhop.Chunk(
+ *     "9.1 Governing Law. This Agreement shall be governed by …",
+ *     { source: "contract.pdf", metadata: { page: 12, heading: "9.1 Governing Law" } },
+ *   ),
+ * ];
+ * const doc = redhop.Document.fromChunks(chunks);
+ * ```
+ */
+export declare class Chunk {
+  /** Construct a chunk from text plus optional fields. */
+  constructor(text: string, options?: ChunkOptions | undefined | null)
+  get text(): string
+  get source(): string | null
+  get id(): string | null
+  get tokenCount(): number | null
+  get metadata(): Record<string, any>
 }

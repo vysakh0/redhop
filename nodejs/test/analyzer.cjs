@@ -8,16 +8,16 @@
 // default test script).
 
 const assert = require("node:assert");
-const { Document } = require("../index.js");
+const { Chunk, Document } = require("../index.js");
 
 const germanCorpus = () => [
-  "ich habe viele Bücher im Regal stehen",
-  "ein Kind spielt fröhlich im Garten",
+  new Chunk("ich habe viele Bücher im Regal stehen"),
+  new Chunk("ein Kind spielt fröhlich im Garten"),
 ];
 
 const frenchCorpus = () => [
-  "il aime manger des pommes chaque matin",
-  "le chien court dans la rue très vite",
+  new Chunk("il aime manger des pommes chaque matin"),
+  new Chunk("le chien court dans la rue très vite"),
 ];
 
 // ── Per-language behavior (mirrors Rust T41/T42) ─────────────────────────
@@ -104,7 +104,7 @@ const ALL_18 = [
   "romanian", "hungarian", "turkish", "arabic", "greek", "tamil",
 ];
 for (const language of ALL_18) {
-  const ctx = Document.fromChunks(["the quick brown fox jumps over the lazy dog"], { language }).context("fox");
+  const ctx = Document.fromChunks([new Chunk("the quick brown fox jumps over the lazy dog")], { language }).context("fox");
   assert.ok(typeof ctx.text === "string", `language="${language}" should round-trip`);
 }
 

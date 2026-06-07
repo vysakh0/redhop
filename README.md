@@ -94,9 +94,24 @@ let mut doc = redhop::read_file("contract.pdf")?;
 let ctx = doc.context("What is the governing law?")?;
 ```
 
-Already have chunks from your own retriever? Hand them straight in with
-`Document.from_chunks([...])` (or the lower-level `redhop.build_context(...)`),
-and everything below still applies.
+Already have chunks from your own retriever? Wrap them in `redhop.Chunk`
+(typed, kwargs for `source` / `id` / open `metadata`) and hand them
+straight in with `Document.from_chunks([...])` — or the lower-level
+`redhop.build_context(...)`. Everything below still applies.
+
+```python
+chunks = [
+    redhop.Chunk(
+        "orders.amt (decimal) — order amount / revenue / spend in USD",
+        source="schema.sql",
+        id="orders.amt",
+        metadata={"table": "orders", "column": "amt"},
+    ),
+    # …one Chunk per row of your data dictionary
+]
+doc = redhop.Document.from_chunks(chunks)
+ctx = doc.context("how much did paying users spend last month")
+```
 
 ## How it works
 
@@ -170,7 +185,7 @@ Several on-ramps, all returning a `Document` with the same options:
 | On-ramp | For |
 | --- | --- |
 | `from_text` | text you already have (your own parser/OCR, a DB field) |
-| `from_chunks` | content you already chunked |
+| `from_chunks` | content you already chunked — pass `redhop.Chunk(text, source=..., id=..., metadata={...})` instances |
 | `from_file` | a file on disk — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
 | `from_bytes` | bytes you fetched yourself — S3 / Azure Blob / GCS / HTTP / DB blobs |
 | `from_folder` | a whole directory in one index, with an optional incremental on-disk cache |

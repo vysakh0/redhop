@@ -69,7 +69,7 @@ shape without paying assembly cost.
 
 ```js
 Document.fromText(text, options?)
-Document.fromChunks(["…", "…"], options?)
+Document.fromChunks([new Chunk(text, { source, id, metadata }), ...], options?)
 Document.fromFile(path, options?)                 // PDF/DOCX/PPTX/XLSX + text/code
 Document.fromBytes(buffer, "key.pdf", options?)   // S3 / GCS / Azure / HTTP / DB blobs
 Document.fromFolder(path, folderOptions?)         // one combined index over a dir

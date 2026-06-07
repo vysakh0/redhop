@@ -12,7 +12,7 @@
 // Run with: node test/rewrite.cjs (or `npm test`).
 
 const assert = require("node:assert");
-const { Document, Stripper, Vocabulary } = require("../index.js");
+const { Chunk, Document, Stripper, Vocabulary } = require("../index.js");
 
 // ── Stripper ───────────────────────────────────────────────────────────────
 
@@ -226,7 +226,7 @@ const { Document, Stripper, Vocabulary } = require("../index.js");
     "fn calcAmt(items: &[Item]) -> Cents { /* billing math */ }",
     "fn dbInit() -> Db { /* database setup */ }",
   ];
-  const enriched = rawChunks.map((c) => vocab.enrich(c).text);
+  const enriched = rawChunks.map((c) => new Chunk(vocab.enrich(c).text));
   const doc = Document.fromChunks(enriched);
   const ctx = doc.context("how do we handle account creation");
   assert.ok(

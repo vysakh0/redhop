@@ -40,11 +40,12 @@ truth; no logic is duplicated here.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from ._redhop import (
     BuiltContext,
+    Chunk,
     ContextReport,
     Document,
     EvalReport,
@@ -71,9 +72,6 @@ from ._redhop import (
     filter_context as _filter_context,
 )
 
-Chunk = Mapping[str, Any] | str
-"""A retrieved chunk: a string, or a dict with at least ``text`` (and optional
-``id``, ``source``, ``token_count``, ``embedding``, ``score``)."""
 
 
 def build_context(
@@ -236,23 +234,24 @@ def context_with_timeout(
 
 
 __all__ = [
-    "Document",
-    "build_context",
-    "filter_context",
-    "analyze_context",
-    "context_economics",
-    "context_with_timeout",
-    "grounding_score",
-    "link_strength",
-    "report_to_dict",
-    "analyze_query_set",
-    "evaluate",
     "BuiltContext",
+    "Chunk",
     "ContextReport",
+    "Document",
     "EvalReport",
     "QuerySetReport",
     "RewriteRecord",
     "Stripper",
     "Vocabulary",
     "__version__",
+    "analyze_context",
+    "analyze_query_set",
+    "build_context",
+    "context_economics",
+    "context_with_timeout",
+    "evaluate",
+    "filter_context",
+    "grounding_score",
+    "link_strength",
+    "report_to_dict",
 ]

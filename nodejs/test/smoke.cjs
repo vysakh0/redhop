@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { Document, groundingScore, linkStrength } = require("../index.js");
+const { Chunk, Document, groundingScore, linkStrength } = require("../index.js");
 
 // from_text → context → citations + report
 let ctx = Document.fromText("the refund window is thirty days from purchase").context("refund window");
@@ -13,8 +13,11 @@ assert.ok(ctx.citations[0].page == null); // None -> undefined in JS
 assert.strictEqual(ctx.report.autoDecision, "passthrough");
 assert.ok(ctx.report.rendered.includes("RedHop Decision Report"));
 
-// from_chunks
-assert.ok(Document.fromChunks(["alpha one", "beta two refund"]).context("refund").chunks.length >= 1);
+// from_chunks (typed Chunk only)
+assert.ok(
+  Document.fromChunks([new Chunk("alpha one"), new Chunk("beta two refund")])
+    .context("refund").chunks.length >= 1,
+);
 
 // analyze: returns a Report without assembling the prompt; same shape as ctx.report
 {
@@ -107,9 +110,9 @@ fs.rmSync(pdir, { recursive: true, force: true });
   const { buildContext, filterContext, analyzeContext, contextEconomics } = require("../index.js");
   const query = "what is the refund window?";
   const chunks = [
-    { id: "g1", text: "The refund window is thirty days from the purchase date." },
-    { id: "g2", text: "Customers may return items within 30 days for a full refund." },
-    { id: "d1", text: "Photosynthesis converts sunlight into glucose in plants." },
+    new Chunk("The refund window is thirty days from the purchase date.", { id: "g1" }),
+    new Chunk("Customers may return items within 30 days for a full refund.", { id: "g2" }),
+    new Chunk("Photosynthesis converts sunlight into glucose in plants.", { id: "d1" }),
   ];
 
   // buildContext: assembles + filters + reports

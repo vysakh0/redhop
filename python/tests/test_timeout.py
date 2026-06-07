@@ -20,8 +20,8 @@ import redhop
 
 def _tiny_corpus():
     return [
-        {"id": "a", "text": "the refund window is thirty days from purchase"},
-        {"id": "b", "text": "customers may return items within 30 days"},
+        redhop.Chunk("the refund window is thirty days from purchase", id="a"),
+        redhop.Chunk("customers may return items within 30 days", id="b"),
     ]
 
 

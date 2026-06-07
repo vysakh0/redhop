@@ -74,12 +74,16 @@ def node_call(fn: str, args: list[Any]) -> Any:
 
 # A small fixed corpus exercising both the on-topic and off-topic paths so
 # the parity tests cover real branches (filtering, assembly, scoring).
-CORPUS = [
+_CORPUS_WIRE = [
     {"id": "g1", "text": "The refund window is thirty days from the purchase date."},
     {"id": "g2", "text": "Customers may return items within thirty days for a full refund."},
     {"id": "d1", "text": "Photosynthesis converts sunlight into glucose in plants."},
     {"id": "d2", "text": "The capital of France is Paris."},
 ]
+# Typed for the Python side; the Node side's parity_runner wraps the
+# wire-format dicts into typed Chunk on its side too.
+CORPUS = [redhop.Chunk(d["text"], id=d["id"]) for d in _CORPUS_WIRE]
+CORPUS_WIRE = _CORPUS_WIRE
 
 
 # ── Scalar parity (no float fuzz: same Rust source, deterministic) ─────────
@@ -167,7 +171,7 @@ def test_build_context_parity(query, expect_on_topic):
     """`build_context` end-to-end: same query + same chunks should produce
     identical assembled text, identical chunk count, identical totals."""
     py = redhop.build_context(query, CORPUS)
-    node = node_call("buildContext", [query, CORPUS])
+    node = node_call("buildContext", [query, CORPUS_WIRE])
     py_norm = _normalize_built(py, "python")
     node_norm = _normalize_built(node, "node")
     assert py_norm["text"] == node_norm["text"], (
@@ -189,7 +193,7 @@ def test_analyze_context_parity():
     decision + tokens + retention + the resolved strategy."""
     query = "what is the refund window?"
     py = redhop.analyze_context(query, CORPUS)
-    node = node_call("analyzeContext", [query, CORPUS])
+    node = node_call("analyzeContext", [query, CORPUS_WIRE])
     # `strategy` + `requested_strategy` were missing from the Node binding
     # before 0.2.2 — pin them here so a regression that drops either field
     # fails with a clear message instead of silently degrading.
@@ -215,7 +219,7 @@ def test_context_economics_parity():
     arrive at a dict of the same shape and we compare directly."""
     query = "what is the refund window?"
     py = redhop.context_economics(query, CORPUS)
-    node = node_call("contextEconomics", [query, CORPUS])
+    node = node_call("contextEconomics", [query, CORPUS_WIRE])
     assert py == node, f"context_economics diverged:\n  python: {py!r}\n  node:   {node!r}"
 
 
@@ -239,8 +243,8 @@ def test_node_determinism_repeat_run():
     """Same buildContext call twice on the Node side must produce
     byte-identical results."""
     query = "what is the refund window?"
-    a = node_call("buildContext", [query, CORPUS])
-    b = node_call("buildContext", [query, CORPUS])
+    a = node_call("buildContext", [query, CORPUS_WIRE])
+    b = node_call("buildContext", [query, CORPUS_WIRE])
     assert a["text"] == b["text"], "node buildContext text not deterministic"
     assert a["chunks"] == b["chunks"], "node chunks order not deterministic"
     assert a["report"]["totalTokens"] == b["report"]["totalTokens"]
@@ -355,7 +359,7 @@ def test_report_field_surface_parity():
     `requested_strategy` for months before 0.2.2."""
     query = "what is the refund window?"
     py_report = redhop.analyze_context(query, CORPUS)
-    node_report = node_call("analyzeContext", [query, CORPUS])
+    node_report = node_call("analyzeContext", [query, CORPUS_WIRE])
     py = _py_data_fields(py_report)
     node = _node_data_fields(node_report)
     py_only = py - node - _REPORT_PY_ONLY
@@ -368,7 +372,7 @@ def test_built_context_field_surface_parity():
     (modulo the documented `text` callable-vs-property asymmetry)."""
     query = "what is the refund window?"
     py_built = redhop.build_context(query, CORPUS)
-    node_built = node_call("buildContext", [query, CORPUS])
+    node_built = node_call("buildContext", [query, CORPUS_WIRE])
     py = _py_data_fields(py_built)
     node = _node_data_fields(node_built)
     py_only = py - node - _BUILT_PY_ONLY
@@ -384,7 +388,7 @@ def test_context_economics_field_surface_parity():
     than just reporting a dict inequality."""
     query = "what is the refund window?"
     py = redhop.context_economics(query, CORPUS)
-    node = node_call("contextEconomics", [query, CORPUS])
+    node = node_call("contextEconomics", [query, CORPUS_WIRE])
     py_keys = {_camel_to_snake(k) for k in py.keys()}
     node_keys = {_camel_to_snake(k) for k in node.keys()}
     py_only = py_keys - node_keys - _ECON_PY_ONLY

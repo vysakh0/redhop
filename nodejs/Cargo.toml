@@ -14,7 +14,7 @@ description = "Node.js bindings for RedHop context optimization"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", default-features = false, features = ["napi6"] }
+napi = { version = "2", default-features = false, features = ["napi6", "serde-json"] }
 napi-derive = "2"
 redhop = { path = "../crates/redhop", features = ["files", "semantic"] }
 # Used by `context_economics` to serialize the report as a JSON string for

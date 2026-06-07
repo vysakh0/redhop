@@ -162,7 +162,7 @@ vocab = redhop.Vocabulary({
 enriched_chunks = []
 for chunk in raw_chunks:
     text, record = vocab.enrich(chunk)
-    enriched_chunks.append(text)
+    enriched_chunks.append(redhop.Chunk(text, source=chunk_source(chunk)))
     # record.stage == "enrich"; record.matched / .added describe the change.
 
 doc = redhop.Document.from_chunks(enriched_chunks)
@@ -176,7 +176,7 @@ const vocab = new redhop.Vocabulary({
   calcAmt: ["calculate amount", "billing total"],
 });
 
-const enriched = rawChunks.map((c) => vocab.enrich(c).text);
+const enriched = rawChunks.map((c) => new redhop.Chunk(vocab.enrich(c).text));
 const doc = redhop.Document.fromChunks(enriched);
 ```
 

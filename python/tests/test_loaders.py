@@ -43,24 +43,55 @@ files_only = pytest.mark.skipif(not HAS_FILES, reason="needs redhop[files] parsi
 # --------------------------------------------------------------------------- #
 # from_chunks
 # --------------------------------------------------------------------------- #
-def test_from_chunks_strings():
+def test_from_chunks_typed():
     doc = redhop.Document.from_chunks(
-        ["the refund window is thirty days", "shipping takes two days"]
+        [
+            redhop.Chunk("the refund window is thirty days"),
+            redhop.Chunk("shipping takes two days"),
+        ]
     )
     assert len(doc) == 2
     ctx = doc.context("refund window")
     assert "refund" in ctx.text().lower()
 
 
-def test_from_chunks_dicts_carry_source():
+def test_from_chunks_source_carries_to_citations():
     doc = redhop.Document.from_chunks(
         [
-            {"text": "the refund window is thirty days", "source": "refunds.md"},
-            {"text": "shipping takes two business days", "source": "shipping.md"},
+            redhop.Chunk("the refund window is thirty days", source="refunds.md"),
+            redhop.Chunk("shipping takes two business days", source="shipping.md"),
         ]
     )
     cites = doc.context("refund window thirty").citations
     assert cites and cites[0]["source"] == "refunds.md"
+
+
+def test_from_chunks_metadata_carries_to_citations():
+    """Open metadata: citations machinery picks up `page`/`heading`/`line`."""
+    doc = redhop.Document.from_chunks(
+        [
+            redhop.Chunk(
+                "9.1 Governing Law: This Agreement shall be governed by NY law.",
+                source="contract.pdf",
+                metadata={"page": 12, "heading": "9.1 Governing Law"},
+            ),
+        ]
+    )
+    cite = doc.context("governing law").citations[0]
+    assert cite["page"] == 12
+    assert cite["heading"] == "9.1 Governing Law"
+
+
+def test_from_chunks_rejects_strings():
+    """Strict typed Chunk only — strings raise ValueError with migration hint."""
+    with pytest.raises(ValueError, match="redhop.Chunk"):
+        redhop.Document.from_chunks(["just a string"])
+
+
+def test_from_chunks_rejects_dicts():
+    """Strict typed Chunk only — dicts also rejected (pre-0.3.0 syntax)."""
+    with pytest.raises(ValueError, match="redhop.Chunk"):
+        redhop.Document.from_chunks([{"text": "a dict", "source": "x.md"}])
 
 
 def test_from_chunks_empty_raises():

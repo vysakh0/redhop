@@ -18,15 +18,15 @@ import redhop
 
 def _german_corpus():
     return [
-        {"id": "a", "text": "ich habe viele Bücher im Regal stehen"},
-        {"id": "b", "text": "ein Kind spielt fröhlich im Garten"},
+        redhop.Chunk("ich habe viele Bücher im Regal stehen", id="a"),
+        redhop.Chunk("ein Kind spielt fröhlich im Garten", id="b"),
     ]
 
 
 def _french_corpus():
     return [
-        {"id": "a", "text": "il aime manger des pommes chaque matin"},
-        {"id": "b", "text": "le chien court dans la rue très vite"},
+        redhop.Chunk("il aime manger des pommes chaque matin", id="a"),
+        redhop.Chunk("le chien court dans la rue très vite", id="b"),
     ]
 
 
@@ -131,7 +131,7 @@ def test_all_18_snowball_builtins_accepted(language):
     actually be a valid `language=` value — a typo in either list would
     leave a builtin unreachable from Python while looking supported."""
     doc = redhop.Document.from_chunks(
-        [{"id": "a", "text": "the quick brown fox jumps over the lazy dog"}],
+        [redhop.Chunk("the quick brown fox jumps over the lazy dog", id="a")],
         language=language,
     )
     # Just need it to round-trip without raising.

@@ -5,6 +5,8 @@
 
 #![deny(clippy::all)]
 
+use std::collections::HashMap;
+
 use napi::bindgen_prelude::{Buffer, Either};
 use napi_derive::napi;
 
@@ -391,11 +393,19 @@ impl Document {
         Ok(Document { inner })
     }
 
-    /// Build from chunks you already produced (array of strings).
+    /// Build from typed `Chunk` instances you already produced.
+    /// Bypasses the chunker — the caller's chunks are preserved 1-to-1
+    /// (no resplitting) with their `source` / `id` / `metadata` all
+    /// surviving into the index.
     #[napi(factory)]
-    pub fn from_chunks(chunks: Vec<String>, options: Option<Options>) -> napi::Result<Document> {
-        let inner =
-            redhop::chunks(chunks, &options.unwrap_or_default().into_load()).map_err(err)?;
+    pub fn from_chunks(chunks: Vec<&Chunk>, options: Option<Options>) -> napi::Result<Document> {
+        let core_chunks: Vec<redhop::core::Chunk> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| c.to_core(i))
+            .collect();
+        let inner = redhop::chunks_typed(core_chunks, &options.unwrap_or_default().into_load())
+            .map_err(err)?;
         Ok(Document { inner })
     }
 
@@ -910,22 +920,132 @@ pub fn evaluate(
 // who do their own retrieval (vector DB, BM25 outside RedHop, hybrid stacks)
 // and want RedHop just for the final assembly + diagnostics step.
 
-/// A single retrieved chunk for the low-level `buildContext` / `filterContext`
-/// / `analyzeContext` / `contextEconomics` functions.
+/// Optional fields for the [`Chunk`] constructor's options bag.
+///
+/// `metadata` is an open object (JSON-compatible values). Known keys are
+/// picked up by the citations machinery — currently `page` (int),
+/// `heading` (string), `line` (int). Anything else is preserved but
+/// not surfaced by the built-in citations contract.
 #[napi(object)]
-pub struct ChunkInput {
-    /// The chunk text. Required.
-    pub text: String,
-    /// Stable identifier. Defaults to `c<index>`.
+#[derive(Default)]
+pub struct ChunkOptions {
+    /// The chunk's stable identifier. Defaults to `c0`, `c1`, …
+    /// based on position in the array passed to `Document.fromChunks`.
     pub id: Option<String>,
-    /// Source path / label. Defaults to `"input"`.
+    /// The chunk's provenance: file path, URL, logical handle. Defaults
+    /// to `"input"`. This is what `ctx.citations[*].source` displays.
     pub source: Option<String>,
+    /// Open metadata object (JSON-compatible values). Known keys
+    /// (`page`, `heading`, `line`) are picked up by citations.
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
     /// Token count (defaults to whitespace word count).
     pub token_count: Option<u32>,
-    /// Optional dense vector (for embedding-based scoring downstream).
+    /// Optional precomputed dense vector for embedding-based scoring.
     pub embedding: Option<Vec<f64>>,
-    /// Retrieval score from the upstream retriever. Defaults to `1.0`.
-    pub score: Option<f64>,
+}
+
+/// One unit of content in a [`Document`] — the construction primitive
+/// for callers who pre-chunked their corpus elsewhere (schema rows,
+/// API endpoints, code symbols, defined contract terms, pre-segmented
+/// paragraphs).
+///
+/// Two concepts are kept distinct:
+/// - **`source`** — *provenance*: where the chunk came from.
+/// - **`id`** — *identity*: a stable identifier for dedup and gold-chunk
+///   evaluation.
+///
+/// ```js
+/// const chunks = [
+///   new redhop.Chunk(
+///     "orders.amt (decimal) — order amount / revenue / spend in USD",
+///     { source: "schema.sql", id: "orders.amt",
+///       metadata: { table: "orders", column: "amt", type: "decimal" } },
+///   ),
+///   new redhop.Chunk(
+///     "9.1 Governing Law. This Agreement shall be governed by …",
+///     { source: "contract.pdf", metadata: { page: 12, heading: "9.1 Governing Law" } },
+///   ),
+/// ];
+/// const doc = redhop.Document.fromChunks(chunks);
+/// ```
+#[napi]
+#[derive(Clone)]
+pub struct Chunk {
+    text_: String,
+    source_: Option<String>,
+    id_: Option<String>,
+    metadata_: HashMap<String, serde_json::Value>,
+    token_count_: Option<u32>,
+    embedding_: Option<Vec<f64>>,
+}
+
+#[napi]
+impl Chunk {
+    /// Construct a chunk from text plus optional fields.
+    #[napi(constructor)]
+    pub fn new(text: String, options: Option<ChunkOptions>) -> Self {
+        let opts = options.unwrap_or_default();
+        Self {
+            text_: text,
+            source_: opts.source,
+            id_: opts.id,
+            metadata_: opts.metadata.unwrap_or_default(),
+            token_count_: opts.token_count,
+            embedding_: opts.embedding,
+        }
+    }
+
+    #[napi(getter)]
+    pub fn text(&self) -> String {
+        self.text_.clone()
+    }
+
+    #[napi(getter)]
+    pub fn source(&self) -> Option<String> {
+        self.source_.clone()
+    }
+
+    #[napi(getter)]
+    pub fn id(&self) -> Option<String> {
+        self.id_.clone()
+    }
+
+    #[napi(getter)]
+    pub fn token_count(&self) -> Option<u32> {
+        self.token_count_
+    }
+
+    #[napi(getter)]
+    pub fn metadata(&self) -> HashMap<String, serde_json::Value> {
+        self.metadata_.clone()
+    }
+}
+
+impl Chunk {
+    /// Materialize this typed chunk to a Rust core `Chunk`. `idx`
+    /// fills in an auto-id (`c0`, `c1`, …) when the user didn't
+    /// supply one.
+    fn to_core(&self, idx: usize) -> redhop::core::Chunk {
+        use redhop::core::{Chunk as CoreChunk, ChunkId, Embedding, TokenCount};
+        let id = self.id_.clone().unwrap_or_else(|| format!("c{idx}"));
+        let source = self.source_.clone().unwrap_or_else(|| "input".into());
+        let token_count = self
+            .token_count_
+            .map(|n| n as usize)
+            .unwrap_or_else(|| self.text_.split_whitespace().count().max(1));
+        let mut chunk = CoreChunk::new(
+            ChunkId::new(id),
+            &self.text_,
+            source,
+            TokenCount(token_count),
+        );
+        chunk.metadata = self.metadata_.clone();
+        if let Some(e) = &self.embedding_ {
+            let v: Vec<f32> = e.iter().map(|x| *x as f32).collect();
+            chunk = chunk.with_embedding(Embedding::from(v));
+        }
+        chunk
+    }
 }
 
 /// Optional knobs for the low-level context functions. Every field is
@@ -957,26 +1077,12 @@ pub struct ContextOptions {
     pub preserve_order: Option<bool>,
 }
 
-fn build_chunk_input(c: ChunkInput, idx: usize) -> redhop::core::RetrievalResult {
-    use redhop::core::{
-        Chunk, ChunkId, Embedding, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
-        TokenCount,
-    };
-    let id = c.id.unwrap_or_else(|| format!("c{idx}"));
-    let source = c.source.unwrap_or_else(|| "input".to_string());
-    let token_count = c
-        .token_count
-        .map(|n| n as usize)
-        .unwrap_or_else(|| c.text.split_whitespace().count().max(1));
-    let mut chunk = Chunk::new(ChunkId::new(id), &c.text, source, TokenCount(token_count));
-    if let Some(e) = c.embedding {
-        let v: Vec<f32> = e.into_iter().map(|x| x as f32).collect();
-        chunk = chunk.with_embedding(Embedding::from(v));
-    }
+fn chunk_to_retrieval_result(c: &Chunk, idx: usize) -> redhop::core::RetrievalResult {
+    use redhop::core::{RetrievalMethod, RetrievalResult, Score, ScoreBreakdown};
     RetrievalResult {
-        chunk,
+        chunk: c.to_core(idx),
         score: Score {
-            value: c.score.unwrap_or(1.0) as f32,
+            value: 1.0,
             method: RetrievalMethod::Dense,
         },
         breakdown: ScoreBreakdown::default(),
@@ -1024,7 +1130,7 @@ fn build_context_config(opts: Option<ContextOptions>) -> napi::Result<redhop::Co
 #[napi]
 pub fn build_context(
     query: String,
-    retrieved_chunks: Vec<ChunkInput>,
+    retrieved_chunks: Vec<&Chunk>,
     options: Option<ContextOptions>,
 ) -> napi::Result<BuiltContext> {
     let cfg = build_context_config(options)?;
@@ -1032,7 +1138,7 @@ pub fn build_context(
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()
         .enumerate()
-        .map(|(i, c)| build_chunk_input(c, i))
+        .map(|(i, c)| chunk_to_retrieval_result(c, i))
         .collect();
     let ctx = redhop::context::build_context(&q, &retrieved, &cfg);
     Ok(to_built(ctx))
@@ -1044,7 +1150,7 @@ pub fn build_context(
 #[napi]
 pub fn filter_context(
     query: String,
-    retrieved_chunks: Vec<ChunkInput>,
+    retrieved_chunks: Vec<&Chunk>,
     options: Option<ContextOptions>,
 ) -> napi::Result<BuiltContext> {
     let mut cfg = build_context_config(options)?;
@@ -1054,7 +1160,7 @@ pub fn filter_context(
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()
         .enumerate()
-        .map(|(i, c)| build_chunk_input(c, i))
+        .map(|(i, c)| chunk_to_retrieval_result(c, i))
         .collect();
     let ctx = redhop::context::filter_context(&q, &retrieved, &cfg);
     Ok(to_built(ctx))
@@ -1071,7 +1177,7 @@ pub fn filter_context(
 #[napi]
 pub fn analyze_context(
     query: String,
-    retrieved_chunks: Vec<ChunkInput>,
+    retrieved_chunks: Vec<&Chunk>,
     options: Option<ContextOptions>,
 ) -> napi::Result<Report> {
     let mut cfg = build_context_config(options)?;
@@ -1080,7 +1186,7 @@ pub fn analyze_context(
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()
         .enumerate()
-        .map(|(i, c)| build_chunk_input(c, i))
+        .map(|(i, c)| chunk_to_retrieval_result(c, i))
         .collect();
     let report = redhop::context::analyze_context(&q, &retrieved, &cfg);
     Ok(to_report(&report))
@@ -1097,7 +1203,7 @@ pub fn analyze_context(
 #[napi]
 pub fn context_economics(
     query: String,
-    retrieved_chunks: Vec<ChunkInput>,
+    retrieved_chunks: Vec<&Chunk>,
     options: Option<ContextOptions>,
 ) -> napi::Result<String> {
     let mut cfg = build_context_config(options)?;
@@ -1106,7 +1212,7 @@ pub fn context_economics(
     let retrieved: Vec<redhop::core::RetrievalResult> = retrieved_chunks
         .into_iter()
         .enumerate()
-        .map(|(i, c)| build_chunk_input(c, i))
+        .map(|(i, c)| chunk_to_retrieval_result(c, i))
         .collect();
     let econ = redhop::context::context_economics(&q, &retrieved, &cfg);
     serde_json::to_string(&econ).map_err(err)

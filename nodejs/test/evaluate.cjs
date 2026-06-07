@@ -14,11 +14,12 @@ const assert = require("node:assert");
 const {
   analyzeQuerySet,
   buildContext,
+  Chunk,
   Stripper,
   evaluate,
 } = require("../index.js");
 
-const chunksFor = (text, id = "a") => [{ id, text }];
+const chunksFor = (text, id = "a") => [new Chunk(text, { id })];
 
 // ─── evaluate without any gold ──────────────────────────────────────────────
 
@@ -43,8 +44,8 @@ const chunksFor = (text, id = "a") => [{ id, text }];
   const ctx = buildContext(
     "refund window",
     [
-      { id: "hit1", text: "the refund window is thirty days" },
-      { id: "hit2", text: "refund policy details and timing" },
+      new Chunk("the refund window is thirty days", { id: "hit1" }),
+      new Chunk("refund policy details and timing", { id: "hit2" }),
     ],
     { strategy: "raw_topk" },
   );
@@ -59,9 +60,9 @@ const chunksFor = (text, id = "a") => [{ id, text }];
   const ctx = buildContext(
     "policy",
     [
-      { id: "hit", text: "policy section about refunds" },
-      { id: "noise_a", text: "totally unrelated cooking recipe" },
-      { id: "noise_b", text: "more cooking instructions" },
+      new Chunk("policy section about refunds", { id: "hit" }),
+      new Chunk("totally unrelated cooking recipe", { id: "noise_a" }),
+      new Chunk("more cooking instructions", { id: "noise_b" }),
     ],
     { strategy: "raw_topk" },
   );
@@ -117,8 +118,8 @@ const chunksFor = (text, id = "a") => [{ id, text }];
   const ctx = buildContext(
     "refund window",
     [
-      { id: "hit", text: "the refund window is thirty days" },
-      { id: "noise", text: "shipping policy details" },
+      new Chunk("the refund window is thirty days", { id: "hit" }),
+      new Chunk("shipping policy details", { id: "noise" }),
     ],
     { strategy: "raw_topk" },
   );
@@ -138,8 +139,8 @@ const chunksFor = (text, id = "a") => [{ id, text }];
   const ctx = buildContext(
     "quantum chromodynamics gluon coupling",
     [
-      { id: "a", text: "the refund window is thirty days" },
-      { id: "b", text: "shipping policy and delivery times" },
+      new Chunk("the refund window is thirty days", { id: "a" }),
+      new Chunk("shipping policy and delivery times", { id: "b" }),
     ],
     { strategy: "raw_topk" },
   );

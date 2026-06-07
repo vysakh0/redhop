@@ -4,7 +4,7 @@
 //! same surface the Python and Node bindings expose, in Rust.
 
 use crate::{
-    BuiltContext, ContextConfig, ContextStrategy, Document, DocumentConfig, Error, Result,
+    BuiltContext, Chunk, ContextConfig, ContextStrategy, Document, DocumentConfig, Error, Result,
     RetrievalMode, Section,
 };
 
@@ -352,6 +352,22 @@ pub fn chunks(chunks: Vec<String>, o: &LoadOptions) -> Result<Document> {
         })
         .collect();
     build(vec![("chunks".to_string(), sections)], o)
+}
+
+/// Build a [`Document`] from pre-formed [`Chunk`]s with the supplied
+/// retrieval/embedder/reranker options applied.
+///
+/// Bypasses the chunker — the caller's chunks are preserved 1-to-1
+/// (no resplitting), with their `source` / `id` / `metadata` all
+/// surviving into the index. Used by the typed-binding paths
+/// (`redhop.Chunk` in Python, `new redhop.Chunk(...)` in Node) where
+/// the user has already chunked their corpus elsewhere and wants the
+/// retrieval/diagnostics layer over the result.
+pub fn chunks_typed(chunks: Vec<Chunk>, o: &LoadOptions) -> Result<Document> {
+    let mode = retrieval_from_str(o.retrieval.as_deref(), o.candidate_pool.unwrap_or(50))?;
+    let cfg = doc_config(o, mode)?;
+    let doc = Document::from_chunks_with(chunks, cfg)?;
+    finish_models(doc, o, mode)
 }
 
 // ── File / bytes / folder loaders (require the `files` feature) ──────────────

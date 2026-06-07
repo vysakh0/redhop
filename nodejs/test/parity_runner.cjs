@@ -23,7 +23,34 @@ const {
   contextEconomics,
   groundingScore,
   linkStrength,
+  Chunk,
 } = require("../index.js");
+
+// The Python side ships JSON-wire chunks: `[{ id, text }, ...]`. As of
+// 0.3.0 the typed `Chunk` class is required on both bindings, so the
+// runner wraps each wire-format dict back into a `new Chunk(...)` before
+// handing it to the binding function. Other arg positions pass through
+// unchanged.
+function rewrapArgs(fn, args) {
+  const chunkAware = new Set([
+    "buildContext",
+    "filterContext",
+    "analyzeContext",
+    "contextEconomics",
+  ]);
+  if (!chunkAware.has(fn)) return args;
+  // Convention from python/tests/test_parity_node.py: args[1] is the chunk list.
+  return args.map((a, i) => {
+    if (i !== 1 || !Array.isArray(a)) return a;
+    return a.map((c) => {
+      if (c && typeof c === "object" && typeof c.text === "string") {
+        const { text, id, source, metadata, tokenCount, embedding } = c;
+        return new Chunk(text, { id, source, metadata, tokenCount, embedding });
+      }
+      return c;
+    });
+  });
+}
 
 let buf = "";
 process.stdin.setEncoding("utf8");
@@ -54,17 +81,18 @@ process.stdin.on("end", () => {
 
   try {
     let result;
+    const args = rewrapArgs(req.fn, req.args);
     switch (req.fn) {
-      case "buildContext":     result = projectBuiltContext(buildContext(...req.args)); break;
-      case "filterContext":    result = projectBuiltContext(filterContext(...req.args)); break;
-      case "analyzeContext":   result = analyzeContext(...req.args); break;
+      case "buildContext":     result = projectBuiltContext(buildContext(...args)); break;
+      case "filterContext":    result = projectBuiltContext(filterContext(...args)); break;
+      case "analyzeContext":   result = analyzeContext(...args); break;
       case "contextEconomics":
         // Returns a JSON string; reparse so the python diff compares the same
         // typed shape on both sides.
-        result = JSON.parse(contextEconomics(...req.args));
+        result = JSON.parse(contextEconomics(...args));
         break;
-      case "groundingScore":   result = groundingScore(...req.args); break;
-      case "linkStrength":     result = linkStrength(...req.args); break;
+      case "groundingScore":   result = groundingScore(...args); break;
+      case "linkStrength":     result = linkStrength(...args); break;
       default:
         process.stdout.write(JSON.stringify({ ok: false, error: `unknown fn '${req.fn}'` }));
         return;

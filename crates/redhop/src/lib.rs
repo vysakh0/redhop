@@ -109,8 +109,8 @@ pub mod traits {
 
 mod load;
 pub use load::{
-    chunks, citations, retrieval_from_str, strategy_from_str, text, Citation, FolderOptions,
-    LoadOptions,
+    chunks, chunks_typed, citations, retrieval_from_str, strategy_from_str, text, Citation,
+    FolderOptions, LoadOptions,
 };
 #[cfg(feature = "files")]
 pub use load::{
