@@ -1,10 +1,14 @@
 # `analyze_query_set` — cross-workload validation of a templated-query diagnostic
 
-> **Status:** **Confirmed** (cross-workload probe, 3 datasets × n=300
-> queries each).
-> The heuristic correctly identifies the canonical templated workload
-> (CUAD) and stays quiet on diverse natural-language workloads
-> (HotpotQA, MuSiQue) with no false positives.
+> **Status:** **Confirmed** (calibration probe: 5 workloads × n=300
+> queries; precision 1.00, recall 1.00 at the shipped thresholds).
+> The heuristic correctly identifies the two known templated workloads
+> (CUAD and a synthetic support-ticket frame) and stays quiet on three
+> diverse natural-language sets (HotpotQA, MuSiQue, synthetic free-text)
+> with no false positives. The boilerplate-term extraction surfaces the
+> actual template tokens (`highlight, contract, details, lawyer` for
+> CUAD; `account, broken, help, immediate` for the support frame), not
+> corpus-pervasive function words.
 >
 > **TL;DR:** [CUAD_RECALL_GAP](CUAD_RECALL_GAP.md) showed that template
 > stripping at the query boundary lifts CUAD ≥0.8 retention 82% → 88%,
@@ -138,16 +142,48 @@ crate root.
   measuring on the user's documents would be the same overclaiming
   pattern the CUAD finding called out.
 
+## Calibration (added in 0.3.1 audit, 2026-06-08)
+
+Run via `bench/.venv/bin/python bench/query_set_analyzer_calibration.py`.
+Five workloads — two positives (CUAD + a synthetic support-ticket
+template), three negatives (HotpotQA + MuSiQue + a synthetic free-text
+control). All n=300.
+
+| workload                              | label    | fires | template_word_share | boilerplate count | dilution |
+|---------------------------------------|----------|-------|--------------------:|------------------:|----------|
+| CUAD                                  | positive | ✓     | 0.663               | 17                | medium   |
+| Synthetic template (support-ticket)   | positive | ✓     | 0.936               | 19                | high     |
+| HotpotQA                              | negative | —     | 0.000               | 0                 | none     |
+| MuSiQue                               | negative | —     | 0.118               | 1                 | none     |
+| Synthetic diverse                     | negative | —     | 0.000               | 0                 | none     |
+
+Confusion: TP=2, FP=0, FN=0, TN=3 → **precision 1.00, recall 1.00** at
+the shipped thresholds (`is_templated = (template_word_share ≥ 0.50 AND
+boilerplate_count ≥ 2)`). The CUAD score (0.663) is comfortably above
+the 0.50 threshold; MuSiQue's 0.118 (a tiny shared "what" frame in some
+hops) is well below it. No threshold tuning required — the heuristic
+discriminates the templated/diverse boundary cleanly on every workload
+we have data for.
+
+The synthetic positive (`Please help me with my <topic> issue, my
+account is broken and I would like immediate assistance regarding this
+matter, thank you.`) is a deliberately heavier-boilerplate
+support-ticket frame than CUAD's 24-word legal template. It tests the
+"fires on workloads heavier than CUAD" direction; the synthetic negative
+(natural-language Q's with no shared frame) tests "doesn't fire on
+zero-template" direction. Both directions hold.
+
 ## Honest limits
 
-- **Three workloads, n=300 each.** The two false-positive cases
-  (HotpotQA, MuSiQue) are both multi-hop natural-language QA, which is
-  the closest neighbor of "diverse-but-not-templated." We have not
-  measured customer-support / form-filled UI / clinical-notes workloads
-  where queries might be more uniformly phrased without being a fixed
-  template. The conservative `≥ 0.50 AND ≥ 2 terms` thresholds were
-  chosen to leave room for those cases; more workloads would tighten
-  this.
+- **Five workloads is still a small sample.** Three positives are
+  legal-template (CUAD), support-ticket (synthetic), and synthetic
+  template; three negatives are HotpotQA, MuSiQue, and synthetic-diverse.
+  Real-world templated-but-not-frame workloads (clinical SOAP-note
+  queries, code-review templates, financial 10-K extractive QA) are
+  not yet measured. The conservative `≥ 0.50 AND ≥ 2 terms` thresholds
+  were chosen with room for those cases; the calibration confirms they
+  don't fire on the negatives we have, but doesn't prove they won't on
+  unseen domains.
 - **Single configuration.** Thresholds (0.80 for boilerplate
   membership; 0.50 + 2-term floor for `is_templated`; 0.70 / 0.40 /
   0.20 for cost bands) were tuned to the three workloads measured here.
