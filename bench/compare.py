@@ -176,9 +176,49 @@ def hotpot_items(limit: int):
             yield doc, ex["question"], gold
 
 
+# ── Fair-preprocessing comparison ────────────────────────────────────────
+# The default `evaluate` run above compares "RedHop with its assembly
+# strategies" vs "LangChain/LlamaIndex with their defaults" — the raw
+# CUAD template lands on every system unmodified, and the public 90.7%
+# claim ends up apples-to-oranges (RedHop's published recipe applies
+# Stripper + Vocabulary to the query, the other two don't).
+#
+# This second run applies the EXACT same query-side preprocessing that
+# RedHop ships in its Stripper to all three systems before retrieval.
+# It answers a different and more useful question: "given the same
+# preprocessing budget, which system retrieves best?"
+
+# Boilerplate list matches crates/examples/examples/cuad_clause_expansion.rs
+# (the source of the published 87.7% / 90.7% numbers).
+CUAD_BOILERPLATE = [
+    "highlight", "the", "parts", "if", "any", "of", "this", "contract",
+    "related", "to", "that", "should", "be", "reviewed", "by", "a",
+    "lawyer", "details",
+]
+
+
+def cuad_stripped_items(limit_q: int):
+    """Same CUAD items as `cuad_items` but with each query template-stripped
+    via redhop.Stripper. All three systems see identical preprocessed queries
+    — the comparison is then apples-to-apples on the assembly side."""
+    stripper = redhop.Stripper(CUAD_BOILERPLATE)
+    for doc_text, query, gold in cuad_items(limit_q):
+        stripped = stripper.apply(query)
+        yield doc_text, stripped, gold
+
+
 def main() -> None:
     # CUAD: long contracts, budget well below doc size → forces selection.
-    evaluate(cuad_items(300), budget=2000, label="CUAD (contracts) — answer-span retention")
+    evaluate(cuad_items(300), budget=2000, label="CUAD (contracts) — raw template, all systems default")
+    # FAIR-PREPROCESSING ARM: same Stripper applied to the query before all 3 systems.
+    # Lets the reader see "what RedHop's preprocessing gains independent of
+    # which retrieval engine carries it" vs the misleading
+    # "RedHop+preprocessing vs others+default" framing.
+    evaluate(
+        cuad_stripped_items(300),
+        budget=2000,
+        label="CUAD (contracts) — Stripper applied to query for ALL systems (fair preprocessing)",
+    )
     # HotpotQA: multi-hop; tight budget forces dropping paragraphs → tests whether
     # the gold supporting (incl. low-relevance bridge) sentences survive.
     evaluate(hotpot_items(300), budget=400, label="HotpotQA (multi-hop) — supporting-sentence retention")
