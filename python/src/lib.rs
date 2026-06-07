@@ -1569,6 +1569,40 @@ impl Vocabulary {
         use redhop::QueryRewrite;
         self.inner.apply(query).query
     }
+    /// Chunk-side enrichment — the symmetric to `apply`. Same compiled
+    /// vocabulary, applied at ingest time to a chunk's text so opaque
+    /// coded units (column names, error codes, API symbols, defined
+    /// terms) become matchable for natural-language queries that don't
+    /// share surface forms with them.
+    ///
+    /// Returns `(enriched_text, RewriteRecord)` so the caller can
+    /// collect the per-chunk audit trail. Use pattern:
+    ///
+    /// ```python
+    /// vocab = redhop.Vocabulary({
+    ///     "usrSvc":  ["user service", "signup", "account creation"],
+    ///     "calcAmt": ["calculate amount", "billing total"],
+    /// })
+    /// enriched_chunks = []
+    /// audit = []
+    /// for chunk in raw_chunks:
+    ///     text, rec = vocab.enrich(chunk)
+    ///     enriched_chunks.append(text)
+    ///     if rec.matched:
+    ///         audit.append(rec)
+    /// doc = redhop.Document.from_chunks(enriched_chunks)
+    /// ```
+    ///
+    /// **When this earns its keep.** `value ∝ shortness × opacity ×
+    /// dictionary-exists`. Schema columns, API symbols, error codes,
+    /// defined contract terms, clinical abbreviations — all extreme
+    /// cases. Long descriptive prose is redundant. Bolting the same
+    /// boilerplate onto every chunk re-creates the low-IDF dilution
+    /// from CUAD_PRF_NULL. See `docs/findings/VOCABULARY_ENRICH.md`.
+    fn enrich(&self, chunk: &str) -> (String, RewriteRecord) {
+        let r = self.inner.enrich(chunk);
+        (r.query, RewriteRecord { inner: r.record })
+    }
     fn __len__(&self) -> usize {
         self.inner.len()
     }

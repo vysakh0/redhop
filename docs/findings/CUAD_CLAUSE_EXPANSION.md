@@ -195,6 +195,17 @@ Adding the synonyms to the query:
   vocabulary → A/B.** `analyze_query_set` still detects the templated
   pattern; `Stripper` removes the boilerplate; `Vocabulary` adds the
   discriminative terms; `evaluate` still scores the lift.
+- **Chunk-side mirror.** `Vocabulary::enrich(chunk)` ships as the
+  ingest-time symmetric to query-side `apply`. Same compiled vocab,
+  applied to chunk text rather than queries — useful when the chunks
+  themselves are short and opaque (schema columns, API symbols, error
+  codes, defined contract terms) and a natural-language query can't
+  match them by surface form. The two sides are *different jobs*:
+  `apply` patches gaps you anticipated; `enrich` raises content's
+  semantic floor for queries you can't anticipate. Regime rule, use
+  cases, and failure modes (especially the "same boilerplate on every
+  chunk" parallel to CUAD_PRF_NULL) in
+  [VOCABULARY_ENRICH](VOCABULARY_ENRICH.md).
 
 ## Honest limits
 

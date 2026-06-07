@@ -68,9 +68,26 @@ and Rust callers are unaffected.
     `QueryRewrite` implementations; user code can ship its own (e.g. a
     workload-specific normalizer) and chain it alongside the built-ins.
     The trait is exported on the public API surface.
-  - **Future-queued:** a `Vocabulary::enrich()` operation (chunk-side
-    definitions injection, the symmetric to query-side appending) sits
-    behind a CUAD-defined-terms probe and will land on a follow-up branch.
+  - **`Vocabulary::enrich(chunk) → RewriteResult`** — chunk-side
+    mirror of `apply`. Same compiled vocabulary, applied at ingest time
+    to raise the semantic floor of short, opaque, coded retrieval
+    units (schema columns, API symbols, error codes, defined contract
+    terms, clinical abbreviations). The shipping rule:
+    *value ∝ shortness × opacity × dictionary-exists*. Different job
+    from query-side `apply` — `apply` patches anticipated query
+    reformulations; `enrich` makes opaque content matchable for
+    queries you can't anticipate. Ships on mechanism + regime
+    reasoning + IR-literature parallel (the doc2query family);
+    measured probes (Spider/BIRD for schemas) queued, not run. The
+    chunk-side failure mode is documented: bolting identical
+    boilerplate onto every chunk re-creates the low-IDF dilution
+    falsified by CUAD_PRF_NULL — enrichment must add *term-specific*
+    signal, not repeated filler. Audit trail (per-chunk
+    `RewriteRecord` with `stage: "enrich"`) returned to the caller so
+    users can A/B on their own corpus. Worked example:
+    `crates/examples/examples/enrich_code_search.rs`. Full regime
+    rule + ranked use cases + failure modes in
+    `docs/findings/VOCABULARY_ENRICH.md`.
 - **`evaluate(query, ctx, gold) → EvalReport`** — in-process retrieval-eval
   scorer, no LLM judge. Self-eval (`mean_grounding`, `evidence_density`,
   `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`,

@@ -258,6 +258,20 @@ export interface QuerySetReport {
   suggestedAction: string
 }
 /**
+ * Result of [`Vocabulary.enrich`] — the enriched chunk text plus the
+ * per-chunk audit record. The record's `stage` is `"enrich"` (vs
+ * `"vocabulary"` for the query-side `apply`).
+ */
+export interface EnrichResult {
+  /** The chunk text with any matched vocabulary's synonyms appended. */
+  text: string
+  /**
+   * The audit record for this enrichment: what was matched, what
+   * surface forms were added, and the before/after text.
+   */
+  record: RewriteRecord
+}
+/**
  * Diagnostic over a representative sample of queries — detects
  * templated-workload dilution and reports which terms are doing it.
  *
@@ -575,6 +589,38 @@ export declare class Vocabulary {
    * trail in the Decision Report.
    */
   apply(query: string): string
+  /**
+   * Chunk-side enrichment — the symmetric to `apply`. Same compiled
+   * vocabulary, applied at ingest time to a chunk's text so opaque
+   * coded units (column names, error codes, API symbols, defined
+   * terms) become matchable for natural-language queries that don't
+   * share surface forms with them.
+   *
+   * Returns `{ text, record }` so the caller can collect the per-chunk
+   * audit trail. Use pattern:
+   *
+   * ```js
+   * const vocab = new redhop.Vocabulary({
+   *   usrSvc:  ["user service", "signup", "account creation"],
+   *   calcAmt: ["calculate amount", "billing total"],
+   * });
+   * const enrichedChunks = [];
+   * for (const chunk of rawChunks) {
+   *   const { text, record } = vocab.enrich(chunk);
+   *   enrichedChunks.push(text);
+   *   // if (record.matched.length) audit.push(record);
+   * }
+   * const doc = redhop.Document.fromChunks(enrichedChunks);
+   * ```
+   *
+   * **When this earns its keep.** `value ∝ shortness × opacity ×
+   * dictionary-exists`. Schema columns, API symbols, error codes,
+   * defined contract terms, clinical abbreviations — all extreme
+   * cases. Long descriptive prose is redundant. Bolting the same
+   * boilerplate onto every chunk re-creates the low-IDF dilution
+   * from CUAD_PRF_NULL. See `docs/findings/VOCABULARY_ENRICH.md`.
+   */
+  enrich(chunk: string): EnrichResult
   /** Number of equivalence classes compiled. */
   get length(): number
 }

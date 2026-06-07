@@ -401,25 +401,27 @@ impl Vocabulary {
     }
 }
 
-impl QueryRewrite for Vocabulary {
-    fn name(&self) -> &str {
-        "vocabulary"
-    }
-
-    fn apply(&self, query: &str) -> RewriteResult {
+impl Vocabulary {
+    /// Shared matching+appending logic used by both query-side
+    /// [`QueryRewrite::apply`] (stage `"vocabulary"`) and chunk-side
+    /// [`Vocabulary::enrich`] (stage `"enrich"`). Same algorithm, same
+    /// audit-record shape — only the `stage` name differs so consumers
+    /// can tell at-a-glance which side of the pipeline a record came
+    /// from.
+    fn run(&self, text: &str, stage: &'static str) -> RewriteResult {
         if self.classes.is_empty() {
             return RewriteResult {
-                query: query.to_string(),
+                query: text.to_string(),
                 record: RewriteRecord {
-                    stage: "vocabulary".to_string(),
-                    from: query.to_string(),
-                    to: query.to_string(),
+                    stage: stage.to_string(),
+                    from: text.to_string(),
+                    to: text.to_string(),
                     ..Default::default()
                 },
             };
         }
 
-        let query_tokens = self.analyzer.tokens(query);
+        let text_tokens = self.analyzer.tokens(text);
 
         let mut matched: Vec<String> = Vec::new();
         let mut added: Vec<String> = Vec::new();
@@ -445,7 +447,7 @@ impl QueryRewrite for Vocabulary {
                 if key_tokens.is_empty() {
                     continue;
                 }
-                if token_subsequence_match(&query_tokens, key_tokens) {
+                if token_subsequence_match(&text_tokens, key_tokens) {
                     hit_indices.push(i);
                 }
             }
@@ -472,23 +474,92 @@ impl QueryRewrite for Vocabulary {
             }
         }
 
-        let new_query = if added.is_empty() {
-            query.to_string()
+        let new_text = if added.is_empty() {
+            text.to_string()
         } else {
-            format!("{} {}", query, added.join(" "))
+            format!("{} {}", text, added.join(" "))
         };
 
         RewriteResult {
-            query: new_query.clone(),
+            query: new_text.clone(),
             record: RewriteRecord {
-                stage: "vocabulary".to_string(),
-                from: query.to_string(),
-                to: new_query,
+                stage: stage.to_string(),
+                from: text.to_string(),
+                to: new_text,
                 matched,
                 added,
                 removed: vec![],
             },
         }
+    }
+
+    /// Chunk-side enrichment — the symmetric to [`QueryRewrite::apply`].
+    /// Same compiled vocabulary, same matching, but applied at **ingest
+    /// time** to the chunk text so opaque coded units (column names,
+    /// error codes, API symbols, defined terms) become matchable for
+    /// natural-language queries that don't share surface forms with
+    /// them.
+    ///
+    /// **When this earns its keep.** Enrich's value scales with how
+    /// short and opaque the retrieval unit is and whether a decoding
+    /// dictionary exists:
+    ///
+    /// ```text
+    /// value ∝ (chunk shortness) × (chunk opacity) × (dictionary exists)
+    /// ```
+    ///
+    /// Schema columns (`emp_compensation` → `monthly base salary`), API
+    /// symbols, error codes (`ERR_4012` → `payment declined`), defined
+    /// terms in contracts, clinical abbreviations (`MI` → `myocardial
+    /// infarction`) — all extreme cases of the rule. On long descriptive
+    /// prose the operation is redundant (matching already works) and
+    /// can dilute if the same boilerplate gets bolted onto every
+    /// chunk — same low-IDF failure mode as
+    /// [`CUAD_PRF_NULL`](../../docs/findings/CUAD_PRF_NULL.md). See
+    /// [`VOCABULARY_ENRICH`](../../docs/findings/VOCABULARY_ENRICH.md)
+    /// for the regime rule, use-case ranking, and failure modes.
+    ///
+    /// **expand vs enrich, the axis.** Query-side
+    /// [`QueryRewrite::apply`] patches gaps you *anticipated* (you list
+    /// the synonyms). Chunk-side `enrich` raises the content's semantic
+    /// floor for queries you *can't* anticipate. The two are different
+    /// jobs; pick by whether you can enumerate user phrasings or only
+    /// describe what your content is.
+    ///
+    /// Typical use is at ingest time, before
+    /// [`crate::Document::from_chunks`]:
+    ///
+    /// ```no_run
+    /// # use redhop::{Document, Vocabulary};
+    /// # fn main() -> redhop::Result<()> {
+    /// let vocab = Vocabulary::new(&[
+    ///     ("usrSvc", &["user service", "account creation", "signup"][..]),
+    ///     ("calcAmt", &["calculate amount", "billing total"]),
+    /// ]);
+    /// let raw_chunks = vec![
+    ///     "fn usrSvc(req: Req) -> Resp { … }".to_string(),
+    ///     "fn calcAmt(items: &[Item]) -> Cents { … }".to_string(),
+    /// ];
+    /// let enriched: Vec<String> = raw_chunks
+    ///     .into_iter()
+    ///     .map(|c| vocab.enrich(&c).query)
+    ///     .collect();
+    /// let mut doc = Document::from_chunks(enriched, None)?;
+    /// // Now "how do we create accounts?" lights up usrSvc's chunk.
+    /// # Ok(()) }
+    /// ```
+    pub fn enrich(&self, chunk: &str) -> RewriteResult {
+        self.run(chunk, "enrich")
+    }
+}
+
+impl QueryRewrite for Vocabulary {
+    fn name(&self) -> &str {
+        "vocabulary"
+    }
+
+    fn apply(&self, query: &str) -> RewriteResult {
+        self.run(query, "vocabulary")
     }
 }
 
@@ -733,6 +804,92 @@ mod tests {
         assert_eq!(r.query, "any query at all");
         assert!(r.record.matched.is_empty());
         assert!(r.record.added.is_empty());
+    }
+
+    // ─── Vocabulary.enrich (chunk-side mirror of apply) ────────────────────
+
+    #[test]
+    fn enrich_appends_synonyms_to_chunk_text_when_key_matches() {
+        let vocab = Vocabulary::new(&[(
+            "change of control",
+            &["merger", "successor", "acquisition"][..],
+        )]);
+        let chunk = "Change of Control means the consummation of a transaction.";
+        let r = vocab.enrich(chunk);
+        assert!(r.query.starts_with(chunk));
+        for syn in ["merger", "successor", "acquisition"] {
+            assert!(
+                r.query.contains(syn),
+                "expected {syn} appended; got {}",
+                r.query
+            );
+        }
+        assert_eq!(r.record.stage, "enrich");
+        assert_eq!(r.record.from, chunk);
+        assert_eq!(r.record.to, r.query);
+        assert!(r
+            .record
+            .matched
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case("change of control")));
+        assert!(r.record.added.contains(&"merger".to_string()));
+    }
+
+    #[test]
+    fn enrich_is_identity_when_no_key_matches() {
+        let vocab = Vocabulary::new(&[("pto", &["paid time off"][..])]);
+        let chunk = "Distinct text with no vocabulary triggers.";
+        let r = vocab.enrich(chunk);
+        assert_eq!(r.query, chunk);
+        assert!(r.record.matched.is_empty());
+        assert!(r.record.added.is_empty());
+        assert_eq!(r.record.stage, "enrich");
+    }
+
+    #[test]
+    fn enrich_short_acronym_token_level_safe() {
+        // `"ip"` must NOT enrich `"recipient"` chunks via substring fire.
+        let vocab = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
+        let r = vocab.enrich("the recipient shall execute this agreement");
+        assert!(!r.query.contains("intellectual property"));
+        assert!(r.record.matched.is_empty());
+    }
+
+    #[test]
+    fn enrich_short_acronym_matches_real_token() {
+        let vocab = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
+        let r = vocab.enrich("Section 8: IP assignment");
+        assert!(r.query.contains("intellectual property"));
+    }
+
+    #[test]
+    fn enrich_empty_vocab_is_identity_with_enrich_stage() {
+        let vocab = Vocabulary::new::<&str, &str>(&[]);
+        let chunk = "anything at all";
+        let r = vocab.enrich(chunk);
+        assert_eq!(r.query, chunk);
+        assert_eq!(r.record.stage, "enrich");
+        assert!(r.record.matched.is_empty());
+        assert!(r.record.added.is_empty());
+    }
+
+    #[test]
+    fn enrich_and_apply_share_logic_but_record_different_stage() {
+        // Same vocabulary + same text should produce the same output
+        // string from apply() and enrich() — only the `stage` field of
+        // the audit record differs. This is the contract the binding
+        // tests will lean on.
+        let vocab = Vocabulary::new(&[("merger", &["acquisition"][..])]);
+        let text = "a merger clause";
+        let a = vocab.apply(text);
+        let e = vocab.enrich(text);
+        assert_eq!(a.query, e.query);
+        assert_eq!(a.record.from, e.record.from);
+        assert_eq!(a.record.to, e.record.to);
+        assert_eq!(a.record.matched, e.record.matched);
+        assert_eq!(a.record.added, e.record.added);
+        assert_eq!(a.record.stage, "vocabulary");
+        assert_eq!(e.record.stage, "enrich");
     }
 
     // ─── chain runner ──────────────────────────────────────────────────────

@@ -165,4 +165,74 @@ const { Document, Stripper, Vocabulary } = require("../index.js");
   assert.deepStrictEqual(ctx.report.queryRewrites, []);
 }
 
+// ── Vocabulary.enrich (chunk-side mirror) ─────────────────────────────────
+
+{
+  // Match → synonyms appended, audit record produced with stage "enrich".
+  const vocab = new Vocabulary({
+    usrSvc: ["user service", "signup", "account creation"],
+  });
+  const chunk = "fn usrSvc(req: Req) -> Resp { /* … */ }";
+  const { text, record } = vocab.enrich(chunk);
+  assert.ok(text.startsWith(chunk), `expected prefix preserved; got: ${text}`);
+  for (const syn of ["user service", "signup", "account creation"]) {
+    assert.ok(text.includes(syn), `expected ${syn} appended; got: ${text}`);
+  }
+  assert.strictEqual(record.stage, "enrich");
+  assert.strictEqual(record.fromQuery, chunk);
+  assert.strictEqual(record.toQuery, text);
+}
+
+{
+  // No match → identity, empty record.
+  const vocab = new Vocabulary({ pto: ["paid time off"] });
+  const chunk = "fn calcAmt(items: &[Item]) -> Cents { /* … */ }";
+  const { text, record } = vocab.enrich(chunk);
+  assert.strictEqual(text, chunk);
+  assert.deepStrictEqual(record.matched, []);
+  assert.deepStrictEqual(record.added, []);
+  assert.strictEqual(record.stage, "enrich");
+}
+
+{
+  // Short acronym is token-level safe (must NOT enrich "recipient").
+  const vocab = new Vocabulary({ ip: ["intellectual property"] });
+  const { text, record } = vocab.enrich("the recipient shall execute this agreement");
+  assert.ok(
+    !text.includes("intellectual property"),
+    `expected no substring fire on 'ip' inside 'recipient'; got: ${text}`,
+  );
+  assert.deepStrictEqual(record.matched, []);
+}
+
+{
+  // enrich and apply share logic but differ in `stage`.
+  const vocab = new Vocabulary({ merger: ["acquisition"] });
+  const t = "a merger clause";
+  const a = vocab.apply(t);
+  const e = vocab.enrich(t);
+  assert.strictEqual(a, e.text, "apply and enrich should agree on output text");
+  assert.strictEqual(e.record.stage, "enrich");
+}
+
+{
+  // End-to-end use pattern: enrich at ingest, then retrieval.
+  const vocab = new Vocabulary({
+    usrSvc:  ["user service", "signup", "account creation"],
+    calcAmt: ["calculate amount", "billing total"],
+  });
+  const rawChunks = [
+    "fn usrSvc(req: Req) -> Resp { /* user-service handler */ }",
+    "fn calcAmt(items: &[Item]) -> Cents { /* billing math */ }",
+    "fn dbInit() -> Db { /* database setup */ }",
+  ];
+  const enriched = rawChunks.map((c) => vocab.enrich(c).text);
+  const doc = Document.fromChunks(enriched);
+  const ctx = doc.context("how do we handle account creation");
+  assert.ok(
+    ctx.chunks.some((c) => c.includes("usrSvc")),
+    `expected usrSvc chunk surfaced via enrichment; got: ${ctx.chunks}`,
+  );
+}
+
 console.log("rewrite: OK");

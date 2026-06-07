@@ -695,11 +695,60 @@ impl Vocabulary {
         use redhop::QueryRewrite;
         self.inner.apply(&query).query
     }
+    /// Chunk-side enrichment — the symmetric to `apply`. Same compiled
+    /// vocabulary, applied at ingest time to a chunk's text so opaque
+    /// coded units (column names, error codes, API symbols, defined
+    /// terms) become matchable for natural-language queries that don't
+    /// share surface forms with them.
+    ///
+    /// Returns `{ text, record }` so the caller can collect the per-chunk
+    /// audit trail. Use pattern:
+    ///
+    /// ```js
+    /// const vocab = new redhop.Vocabulary({
+    ///   usrSvc:  ["user service", "signup", "account creation"],
+    ///   calcAmt: ["calculate amount", "billing total"],
+    /// });
+    /// const enrichedChunks = [];
+    /// for (const chunk of rawChunks) {
+    ///   const { text, record } = vocab.enrich(chunk);
+    ///   enrichedChunks.push(text);
+    ///   // if (record.matched.length) audit.push(record);
+    /// }
+    /// const doc = redhop.Document.fromChunks(enrichedChunks);
+    /// ```
+    ///
+    /// **When this earns its keep.** `value ∝ shortness × opacity ×
+    /// dictionary-exists`. Schema columns, API symbols, error codes,
+    /// defined contract terms, clinical abbreviations — all extreme
+    /// cases. Long descriptive prose is redundant. Bolting the same
+    /// boilerplate onto every chunk re-creates the low-IDF dilution
+    /// from CUAD_PRF_NULL. See `docs/findings/VOCABULARY_ENRICH.md`.
+    #[napi]
+    pub fn enrich(&self, chunk: String) -> EnrichResult {
+        let r = self.inner.enrich(&chunk);
+        EnrichResult {
+            text: r.query,
+            record: to_record(&r.record),
+        }
+    }
     /// Number of equivalence classes compiled.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
         self.inner.len() as u32
     }
+}
+
+/// Result of [`Vocabulary.enrich`] — the enriched chunk text plus the
+/// per-chunk audit record. The record's `stage` is `"enrich"` (vs
+/// `"vocabulary"` for the query-side `apply`).
+#[napi(object)]
+pub struct EnrichResult {
+    /// The chunk text with any matched vocabulary's synonyms appended.
+    pub text: String,
+    /// The audit record for this enrichment: what was matched, what
+    /// surface forms were added, and the before/after text.
+    pub record: RewriteRecord,
 }
 
 /// Internal: a heterogeneous rewrite stage holding an owned Rust copy of

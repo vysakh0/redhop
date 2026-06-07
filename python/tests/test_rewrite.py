@@ -138,6 +138,74 @@ def test_vocabulary_repr_and_len():
     assert "Vocabulary" in repr(vocab)
 
 
+# ─── Vocabulary.enrich (chunk-side mirror) ──────────────────────────────────
+
+
+def test_enrich_appends_synonyms_to_chunk_when_key_matches():
+    vocab = redhop.Vocabulary({"usrSvc": ["user service", "signup", "account creation"]})
+    chunk = "fn usrSvc(req: Req) -> Resp { /* … */ }"
+    text, record = vocab.enrich(chunk)
+    assert text.startswith(chunk)
+    for syn in ("user service", "signup", "account creation"):
+        assert syn in text, f"expected {syn!r} appended; got {text!r}"
+    assert record.stage == "enrich"
+    assert record.from_query == chunk
+    assert record.to_query == text
+    assert any(m.lower() == "usrsvc" for m in record.matched)
+
+
+def test_enrich_is_identity_when_no_key_matches():
+    vocab = redhop.Vocabulary({"pto": ["paid time off"]})
+    chunk = "fn calcAmt(items: &[Item]) -> Cents { /* … */ }"
+    text, record = vocab.enrich(chunk)
+    assert text == chunk
+    assert record.matched == []
+    assert record.added == []
+    assert record.stage == "enrich"
+
+
+def test_enrich_short_acronym_token_level_safe():
+    """A vocab key `"ip"` must NOT enrich the `"ip"` inside `"recipient"`."""
+    vocab = redhop.Vocabulary({"ip": ["intellectual property"]})
+    text, record = vocab.enrich("the recipient shall execute this agreement")
+    assert "intellectual property" not in text
+    assert record.matched == []
+
+
+def test_enrich_and_apply_share_logic_but_differ_in_stage():
+    """Contract pinned by the Rust test of the same name. The output
+    strings + matched/added lists must match; only `stage` differs."""
+    vocab = redhop.Vocabulary({"merger": ["acquisition"]})
+    text = "a merger clause"
+    a_out = vocab.apply(text)
+    e_text, e_rec = vocab.enrich(text)
+    assert a_out == e_text
+    assert e_rec.stage == "enrich"
+
+
+def test_enrich_use_pattern_with_document_from_chunks():
+    """End-to-end: enrich the chunks at ingest time, then index. A
+    query that doesn't share surface forms with the cryptic symbol
+    now finds it via the appended synonyms."""
+    vocab = redhop.Vocabulary({
+        "usrSvc":  ["user service", "signup", "account creation"],
+        "calcAmt": ["calculate amount", "billing total"],
+    })
+    raw_chunks = [
+        "fn usrSvc(req: Req) -> Resp { /* user-service handler */ }",
+        "fn calcAmt(items: &[Item]) -> Cents { /* billing math */ }",
+        "fn dbInit() -> Db { /* database setup */ }",
+    ]
+    enriched = [vocab.enrich(c)[0] for c in raw_chunks]
+    doc = redhop.Document.from_chunks(enriched)
+    # The natural-language query has no overlap with `usrSvc` directly;
+    # the enrichment is what makes the chunk findable.
+    ctx = doc.context("how do we handle account creation")
+    assert any("usrSvc" in c for c in ctx.chunks), (
+        f"expected usrSvc chunk surfaced via enrichment; got: {ctx.chunks}"
+    )
+
+
 # ─── Document.context_with_rewrites + audit trail ──────────────────────────
 
 
