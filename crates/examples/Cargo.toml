@@ -266,5 +266,9 @@ name = "enrich_code_search"
 path = "examples/enrich_code_search.rs"
 
 [[example]]
+name = "cuad_enrich_definitions"
+path = "examples/cuad_enrich_definitions.rs"
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"
