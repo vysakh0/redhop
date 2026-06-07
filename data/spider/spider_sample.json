@@ -1,0 +1,255 @@
+{
+  "_note": "Spider-format sample: 5 databases × 6 questions = 30 questions, hand-labeled gold column sets. Each column has an optional `synonyms` array — high-IDF natural-language terms a workload's data-dictionary would provide for columns where the bare name doesn't tokenize to terms the queries would use. Schemas modeled on well-known Spider databases (concert_singer, pets_1, world_1, employee_hire_evaluation, car_1). Set REDHOP_SPIDER_PATH to swap in the full Spider distribution.",
+  "databases": [
+    {
+      "db_id": "concert_singer",
+      "tables": [
+        {
+          "name": "stadium",
+          "columns": [
+            {"name": "Stadium_ID", "type": "int", "synonyms": ["count", "number"]},
+            {"name": "Location", "type": "text", "synonyms": ["where", "place", "city"]},
+            {"name": "Name", "type": "text", "synonyms": []},
+            {"name": "Capacity", "type": "int", "synonyms": ["max", "seats", "holds", "size"]},
+            {"name": "Highest", "type": "int", "synonyms": ["max", "attendance"]},
+            {"name": "Lowest", "type": "int", "synonyms": ["min", "attendance"]},
+            {"name": "Average", "type": "int", "synonyms": ["mean", "attendance"]}
+          ]
+        },
+        {
+          "name": "singer",
+          "columns": [
+            {"name": "Singer_ID", "type": "int", "synonyms": ["count", "number", "performers"]},
+            {"name": "Name", "type": "text", "synonyms": ["performer", "vocalist"]},
+            {"name": "Country", "type": "text", "synonyms": ["origin", "from"]},
+            {"name": "Song_Name", "type": "text", "synonyms": ["track", "title"]},
+            {"name": "Song_release_year", "type": "text", "synonyms": ["released", "when"]},
+            {"name": "Age", "type": "int", "synonyms": ["old", "young", "years"]},
+            {"name": "Is_male", "type": "bool", "synonyms": ["gender", "sex", "male", "female"]}
+          ]
+        },
+        {
+          "name": "concert",
+          "columns": [
+            {"name": "concert_ID", "type": "int", "synonyms": ["count", "number"]},
+            {"name": "concert_Name", "type": "text", "synonyms": ["title", "event", "show"]},
+            {"name": "Theme", "type": "text", "synonyms": ["topic", "subject", "about"]},
+            {"name": "Stadium_ID", "type": "int", "synonyms": ["venue", "where"]},
+            {"name": "Year", "type": "text", "synonyms": ["when", "date"]}
+          ]
+        }
+      ]
+    },
+    {
+      "db_id": "pets_1",
+      "tables": [
+        {
+          "name": "Student",
+          "columns": [
+            {"name": "StuID", "type": "int", "synonyms": ["count", "number"]},
+            {"name": "LName", "type": "text", "synonyms": ["last name", "surname"]},
+            {"name": "Fname", "type": "text", "synonyms": ["first name", "given name"]},
+            {"name": "Age", "type": "int", "synonyms": ["old", "young", "years"]},
+            {"name": "Sex", "type": "text", "synonyms": ["gender", "male", "female"]},
+            {"name": "Major", "type": "int", "synonyms": ["study", "field"]},
+            {"name": "Advisor", "type": "int", "synonyms": ["mentor", "supervisor"]},
+            {"name": "city_code", "type": "text", "synonyms": ["city", "place", "from"]}
+          ]
+        },
+        {
+          "name": "Has_Pet",
+          "columns": [
+            {"name": "StuID", "type": "int", "synonyms": ["count"]},
+            {"name": "PetID", "type": "int", "synonyms": ["count"]}
+          ]
+        },
+        {
+          "name": "Pets",
+          "columns": [
+            {"name": "PetID", "type": "int", "synonyms": ["count"]},
+            {"name": "PetType", "type": "text", "synonyms": ["kind", "animal", "species", "dog", "cat"]},
+            {"name": "pet_age", "type": "int", "synonyms": ["old", "young", "years"]},
+            {"name": "weight", "type": "real", "synonyms": ["heavy", "light", "weighs", "kilograms", "pounds"]}
+          ]
+        }
+      ]
+    },
+    {
+      "db_id": "world_1",
+      "tables": [
+        {
+          "name": "country",
+          "columns": [
+            {"name": "Code", "type": "text", "synonyms": ["abbreviation", "iso"]},
+            {"name": "Name", "type": "text", "synonyms": ["nation"]},
+            {"name": "Continent", "type": "text", "synonyms": ["region"]},
+            {"name": "Region", "type": "text", "synonyms": ["area"]},
+            {"name": "SurfaceArea", "type": "real", "synonyms": ["size", "area", "land", "big", "geographic"]},
+            {"name": "IndepYear", "type": "int", "synonyms": ["independence", "freedom", "when", "year", "gained"]},
+            {"name": "Population", "type": "int", "synonyms": ["people", "residents", "inhabitants"]},
+            {"name": "LifeExpectancy", "type": "real", "synonyms": ["live", "lifespan", "longevity", "long"]},
+            {"name": "GNP", "type": "real", "synonyms": ["economy", "wealth", "money", "gdp", "income"]},
+            {"name": "GovernmentForm", "type": "text", "synonyms": ["politics", "rule", "regime", "type"]},
+            {"name": "HeadOfState", "type": "text", "synonyms": ["leader", "president", "prime minister", "ruler"]},
+            {"name": "Capital", "type": "int", "synonyms": ["main city"]}
+          ]
+        },
+        {
+          "name": "city",
+          "columns": [
+            {"name": "ID", "type": "int", "synonyms": ["count"]},
+            {"name": "Name", "type": "text", "synonyms": []},
+            {"name": "CountryCode", "type": "text", "synonyms": ["nation", "country"]},
+            {"name": "District", "type": "text", "synonyms": ["region", "area", "neighborhood", "state"]},
+            {"name": "Population", "type": "int", "synonyms": ["people", "residents", "inhabitants"]}
+          ]
+        },
+        {
+          "name": "countrylanguage",
+          "columns": [
+            {"name": "CountryCode", "type": "text", "synonyms": ["nation", "country"]},
+            {"name": "Language", "type": "text", "synonyms": ["spoken", "tongue", "official"]},
+            {"name": "IsOfficial", "type": "bool", "synonyms": ["official", "formal", "recognized"]},
+            {"name": "Percentage", "type": "real", "synonyms": ["share", "fraction", "rate", "proportion"]}
+          ]
+        }
+      ]
+    },
+    {
+      "db_id": "employee_hire_evaluation",
+      "tables": [
+        {
+          "name": "employee",
+          "columns": [
+            {"name": "Employee_ID", "type": "int", "synonyms": ["count", "number"]},
+            {"name": "Name", "type": "text", "synonyms": ["worker", "staff"]},
+            {"name": "Age", "type": "int", "synonyms": ["old", "young", "years"]},
+            {"name": "City", "type": "text", "synonyms": ["where", "located"]}
+          ]
+        },
+        {
+          "name": "shop",
+          "columns": [
+            {"name": "Shop_ID", "type": "int", "synonyms": ["count", "number", "store"]},
+            {"name": "Name", "type": "text", "synonyms": ["store"]},
+            {"name": "Location", "type": "text", "synonyms": ["where"]},
+            {"name": "District", "type": "text", "synonyms": ["region", "neighborhood"]},
+            {"name": "Number_products", "type": "int", "synonyms": ["how many", "products", "items", "sells", "inventory"]},
+            {"name": "Manager_name", "type": "text", "synonyms": ["boss", "supervisor", "manages"]}
+          ]
+        },
+        {
+          "name": "hiring",
+          "columns": [
+            {"name": "Shop_ID", "type": "int", "synonyms": ["where", "store"]},
+            {"name": "Employee_ID", "type": "int", "synonyms": ["who", "worker", "works"]},
+            {"name": "Start_from", "type": "text", "synonyms": ["began", "joined", "start", "when"]},
+            {"name": "Is_full_time", "type": "bool", "synonyms": ["full time", "part time"]}
+          ]
+        },
+        {
+          "name": "evaluation",
+          "columns": [
+            {"name": "Employee_ID", "type": "int", "synonyms": ["who", "worker"]},
+            {"name": "Year_awarded", "type": "text", "synonyms": ["when", "year"]},
+            {"name": "Bonus", "type": "real", "synonyms": ["reward", "extra pay", "money", "awarded"]}
+          ]
+        }
+      ]
+    },
+    {
+      "db_id": "car_1",
+      "tables": [
+        {
+          "name": "continents",
+          "columns": [
+            {"name": "ContId", "type": "int", "synonyms": ["count"]},
+            {"name": "Continent", "type": "text", "synonyms": ["region"]}
+          ]
+        },
+        {
+          "name": "countries",
+          "columns": [
+            {"name": "CountryId", "type": "int", "synonyms": ["count"]},
+            {"name": "CountryName", "type": "text", "synonyms": ["nation", "country"]},
+            {"name": "Continent", "type": "int", "synonyms": ["region"]}
+          ]
+        },
+        {
+          "name": "car_makers",
+          "columns": [
+            {"name": "Id", "type": "int", "synonyms": ["count"]},
+            {"name": "Maker", "type": "text", "synonyms": ["manufacturer", "brand"]},
+            {"name": "FullName", "type": "text", "synonyms": ["company"]},
+            {"name": "Country", "type": "text", "synonyms": ["nation", "from"]}
+          ]
+        },
+        {
+          "name": "model_list",
+          "columns": [
+            {"name": "ModelId", "type": "int", "synonyms": ["count"]},
+            {"name": "Maker", "type": "int", "synonyms": ["manufacturer", "brand"]},
+            {"name": "Model", "type": "text", "synonyms": ["type"]}
+          ]
+        },
+        {
+          "name": "car_names",
+          "columns": [
+            {"name": "MakeId", "type": "int", "synonyms": ["count"]},
+            {"name": "Model", "type": "text", "synonyms": ["type"]},
+            {"name": "Make", "type": "text", "synonyms": ["brand", "manufacturer"]}
+          ]
+        },
+        {
+          "name": "cars_data",
+          "columns": [
+            {"name": "Id", "type": "int", "synonyms": ["count"]},
+            {"name": "MPG", "type": "text", "synonyms": ["fuel", "efficiency", "miles per gallon", "consumption", "mileage"]},
+            {"name": "Cylinders", "type": "int", "synonyms": ["engine"]},
+            {"name": "Edispl", "type": "real", "synonyms": ["engine displacement", "engine size"]},
+            {"name": "Horsepower", "type": "text", "synonyms": ["power", "engine", "hp"]},
+            {"name": "Weight", "type": "int", "synonyms": ["heavy", "mass", "kilograms"]},
+            {"name": "Accelerate", "type": "real", "synonyms": ["acceleration", "fast"]},
+            {"name": "Year", "type": "int", "synonyms": ["when", "released", "produced"]}
+          ]
+        }
+      ]
+    }
+  ],
+  "examples": [
+    {"question": "How many singers are there?", "db_id": "concert_singer", "gold_columns": ["singer.Singer_ID"]},
+    {"question": "Show name and theme for all concerts.", "db_id": "concert_singer", "gold_columns": ["concert.concert_Name", "concert.Theme"]},
+    {"question": "What is the maximum capacity of stadiums?", "db_id": "concert_singer", "gold_columns": ["stadium.Capacity"]},
+    {"question": "List the locations of all stadiums.", "db_id": "concert_singer", "gold_columns": ["stadium.Location"]},
+    {"question": "Find singers older than 40 and their country of origin.", "db_id": "concert_singer", "gold_columns": ["singer.Age", "singer.Country"]},
+    {"question": "Which year was the song released?", "db_id": "concert_singer", "gold_columns": ["singer.Song_release_year"]},
+
+    {"question": "Find the average age of pets.", "db_id": "pets_1", "gold_columns": ["Pets.pet_age"]},
+    {"question": "What types of pets do students have?", "db_id": "pets_1", "gold_columns": ["Pets.PetType"]},
+    {"question": "List the last names of students with pets.", "db_id": "pets_1", "gold_columns": ["Student.LName", "Has_Pet.StuID"]},
+    {"question": "Show major and advisor for each student.", "db_id": "pets_1", "gold_columns": ["Student.Major", "Student.Advisor"]},
+    {"question": "What is the heaviest pet's weight?", "db_id": "pets_1", "gold_columns": ["Pets.weight"]},
+    {"question": "List students older than 20.", "db_id": "pets_1", "gold_columns": ["Student.Age", "Student.Fname", "Student.LName"]},
+
+    {"question": "What is the population of each country?", "db_id": "world_1", "gold_columns": ["country.Name", "country.Population"]},
+    {"question": "Which country has the highest life expectancy?", "db_id": "world_1", "gold_columns": ["country.Name", "country.LifeExpectancy"]},
+    {"question": "What languages are spoken officially in India?", "db_id": "world_1", "gold_columns": ["countrylanguage.Language", "countrylanguage.IsOfficial"]},
+    {"question": "List the head of state of each country.", "db_id": "world_1", "gold_columns": ["country.Name", "country.HeadOfState"]},
+    {"question": "Find cities with population over one million in district California.", "db_id": "world_1", "gold_columns": ["city.Name", "city.Population", "city.District"]},
+    {"question": "When did each country gain independence?", "db_id": "world_1", "gold_columns": ["country.Name", "country.IndepYear"]},
+
+    {"question": "How many employees work at each shop?", "db_id": "employee_hire_evaluation", "gold_columns": ["shop.Name", "hiring.Employee_ID"]},
+    {"question": "List the names of all the shops and their managers.", "db_id": "employee_hire_evaluation", "gold_columns": ["shop.Name", "shop.Manager_name"]},
+    {"question": "Find the bonus awarded to each employee.", "db_id": "employee_hire_evaluation", "gold_columns": ["employee.Name", "evaluation.Bonus"]},
+    {"question": "Which shop sells the most products?", "db_id": "employee_hire_evaluation", "gold_columns": ["shop.Name", "shop.Number_products"]},
+    {"question": "When did each employee start working?", "db_id": "employee_hire_evaluation", "gold_columns": ["employee.Name", "hiring.Start_from"]},
+    {"question": "Show full-time employees only.", "db_id": "employee_hire_evaluation", "gold_columns": ["hiring.Is_full_time", "employee.Name"]},
+
+    {"question": "What is the fuel efficiency of each car?", "db_id": "car_1", "gold_columns": ["cars_data.MPG"]},
+    {"question": "List car maker names and their countries.", "db_id": "car_1", "gold_columns": ["car_makers.Maker", "car_makers.Country"]},
+    {"question": "What is the horsepower of car models from Japan?", "db_id": "car_1", "gold_columns": ["cars_data.Horsepower", "car_makers.Country"]},
+    {"question": "Find cars with 4 cylinders and their weight.", "db_id": "car_1", "gold_columns": ["cars_data.Cylinders", "cars_data.Weight"]},
+    {"question": "Which continent has the most car makers?", "db_id": "car_1", "gold_columns": ["continents.Continent", "car_makers.Country"]},
+    {"question": "What year was each car model released?", "db_id": "car_1", "gold_columns": ["cars_data.Year", "car_names.Make"]}
+  ]
+}
