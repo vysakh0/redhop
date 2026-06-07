@@ -15,7 +15,8 @@ def test_empty_file_errors_with_no_text(tmp_path):
     p.write_text("")
     with pytest.raises(Exception) as e:
         redhop.Document.from_file(str(p))
-    assert "no text" in str(e.value).lower()
+    msg = str(e.value).lower()
+    assert "no chunks" in msg or "empty" in msg
 
 
 def test_no_text_message_mentions_ocr(tmp_path):

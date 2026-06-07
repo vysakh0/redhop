@@ -530,7 +530,7 @@ impl Vocabulary {
     /// describe what your content is.
     ///
     /// Typical use is at ingest time, before
-    /// [`crate::Document::from_chunks`]:
+    /// [`crate::Document::from_text`]:
     ///
     /// ```no_run
     /// # use redhop::{Document, Vocabulary};
@@ -539,15 +539,9 @@ impl Vocabulary {
     ///     ("usrSvc", &["user service", "account creation", "signup"][..]),
     ///     ("calcAmt", &["calculate amount", "billing total"]),
     /// ]);
-    /// let raw_chunks = vec![
-    ///     "fn usrSvc(req: Req) -> Resp { … }".to_string(),
-    ///     "fn calcAmt(items: &[Item]) -> Cents { … }".to_string(),
-    /// ];
-    /// let enriched: Vec<String> = raw_chunks
-    ///     .into_iter()
-    ///     .map(|c| vocab.enrich(&c).text)
-    ///     .collect();
-    /// let mut doc = Document::from_chunks(enriched, None)?;
+    /// let raw = "fn usrSvc(req: Req) -> Resp { … }";
+    /// let enriched = vocab.enrich(raw).text;
+    /// let mut doc = Document::from_text("svc.rs", enriched)?;
     /// // Now "how do we create accounts?" lights up usrSvc's chunk.
     /// # Ok(()) }
     /// ```
