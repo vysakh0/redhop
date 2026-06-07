@@ -241,5 +241,9 @@ name = "cuad_chunk_fragmentation"
 path = "examples/cuad_chunk_fragmentation.rs"
 
 [[example]]
+name = "multilingual_query_set_probe"
+path = "examples/multilingual_query_set_probe.rs"
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"

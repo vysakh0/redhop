@@ -57,6 +57,25 @@ def test_drop_template_terms_all_filtered_returns_empty():
     assert redhop.drop_template_terms("the the the", ["the"]) == ""
 
 
+def test_drop_template_terms_chinese_phrase_boilerplate():
+    """CJK queries have no whitespace, so the analyzer surfaces boilerplate
+    as punctuation-bounded phrases. drop_template_terms must do substring
+    removal on those (script-aware), not whitespace-token matching."""
+    q = "请标注本合同中与「文档名称」相关的、应由律师审核的部分（如有）。"
+    boilerplate = ["请标注本合同中与", "应由律师审核的部分", "相关的", "如有"]
+    stripped = redhop.drop_template_terms(q, boilerplate)
+    for noise in boilerplate:
+        assert noise not in stripped, f"expected {noise!r} stripped; got {stripped!r}"
+    assert "文档名称" in stripped, f"discriminator should survive; got {stripped!r}"
+
+
+def test_drop_template_terms_latin_word_boundary_safe():
+    """The Latin-script path must not regress under the script-aware
+    refactor: a single-word "of" must NOT erase "of" inside "office"."""
+    stripped = redhop.drop_template_terms("the office is open", ["of", "the"])
+    assert stripped == "office is open"
+
+
 # ─── analyze_query_set ───────────────────────────────────────────────────────
 
 

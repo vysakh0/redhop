@@ -61,6 +61,25 @@ const { analyzeQuerySet, dropTemplateTerms } = require("../index.js");
   assert.strictEqual(out, "", "all-filtered returns empty string");
 }
 
+// CJK queries have no whitespace; analyzer surfaces boilerplate as
+// punctuation-bounded phrases. dropTemplateTerms must do substring
+// removal (script-aware), not whitespace-token matching.
+{
+  const q = "请标注本合同中与「文档名称」相关的、应由律师审核的部分（如有）。";
+  const boilerplate = ["请标注本合同中与", "应由律师审核的部分", "相关的", "如有"];
+  const stripped = dropTemplateTerms(q, boilerplate);
+  for (const noise of boilerplate) {
+    assert.ok(!stripped.includes(noise), `expected ${noise} stripped; got ${stripped}`);
+  }
+  assert.ok(stripped.includes("文档名称"), `discriminator should survive; got ${stripped}`);
+}
+
+// Latin-script word-boundary safety: "of" should not erase "office".
+{
+  const out = dropTemplateTerms("the office is open", ["of", "the"]);
+  assert.strictEqual(out, "office is open", "word boundary preserved on Latin script");
+}
+
 // ── analyzeQuerySet ──────────────────────────────────────────────────────
 
 const cuadShape = () => [

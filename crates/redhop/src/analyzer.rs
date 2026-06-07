@@ -418,8 +418,42 @@ pub fn drop_template_terms(query: &str, boilerplate: &[&str]) -> String {
     if boilerplate.is_empty() {
         return query.to_string();
     }
-    let stop: StdHashSet<String> = boilerplate.iter().map(|s| s.to_lowercase()).collect();
-    query
+
+    // Partition boilerplate terms by the script they came from.
+    //   - **Whitespace-separated scripts** (Latin, Cyrillic, Greek, Arabic
+    //     letters, etc.): the term is a single word; match at whitespace-
+    //     tokenize granularity so a boilerplate "of" doesn't erase the
+    //     "of" inside "office".
+    //   - **No-space scripts** (Han, Hiragana, Katakana, Hangul, Thai,
+    //     Lao): the term came from `analyze_query_set` via punctuation-
+    //     bounded segmentation — it's a phrase, not a word, and the
+    //     surrounding query has no whitespace to tokenize on. Match by
+    //     case-insensitive substring removal.
+    let (phrase_terms, token_terms): (Vec<&str>, Vec<&str>) = boilerplate
+        .iter()
+        .copied()
+        .partition(|t| t.chars().any(is_no_space_script));
+
+    // Phase 1: substring removal for phrase-style terms. Longest-first so a
+    // shorter substring doesn't consume part of a longer phrase.
+    let mut result = query.to_string();
+    if !phrase_terms.is_empty() {
+        let mut sorted = phrase_terms.clone();
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.len()));
+        for term in &sorted {
+            // CJK/no-space scripts don't have case; direct match is fine.
+            result = result.replace(term, "");
+        }
+    }
+
+    // Phase 2: whitespace-tokenize filter for word-style terms (the
+    // original behavior). If there's nothing word-style to filter, just
+    // collapse whitespace from Phase 1's output.
+    if token_terms.is_empty() {
+        return result.split_whitespace().collect::<Vec<_>>().join(" ");
+    }
+    let stop: StdHashSet<String> = token_terms.iter().map(|s| s.to_lowercase()).collect();
+    result
         .split_whitespace()
         .filter(|tok| {
             let key: String = tok
@@ -431,6 +465,30 @@ pub fn drop_template_terms(query: &str, boilerplate: &[&str]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// True iff `c` belongs to a Unicode script that has no whitespace between
+/// words (so word-boundary matching doesn't apply). Used by
+/// [`drop_template_terms`] to decide whether to substring-remove or
+/// whitespace-tokenize the term.
+fn is_no_space_script(c: char) -> bool {
+    let n = c as u32;
+    // Han (CJK Unified Ideographs) — Chinese, kanji
+    (0x4E00..=0x9FFF).contains(&n) ||
+    (0x3400..=0x4DBF).contains(&n) ||   // CJK Extension A
+    // Hiragana / Katakana — Japanese
+    (0x3040..=0x309F).contains(&n) ||
+    (0x30A0..=0x30FF).contains(&n) ||
+    // Hangul — Korean
+    (0xAC00..=0xD7AF).contains(&n) ||
+    // Thai
+    (0x0E00..=0x0E7F).contains(&n) ||
+    // Lao
+    (0x0E80..=0x0EFF).contains(&n) ||
+    // Khmer
+    (0x1780..=0x17FF).contains(&n) ||
+    // Myanmar (Burmese)
+    (0x1000..=0x109F).contains(&n)
 }
 
 /// How heavy the template-boilerplate dilution looks on a query set.
@@ -875,6 +933,66 @@ mod tests {
     fn drop_template_terms_all_filtered_returns_empty() {
         let q = "the the the";
         assert_eq!(drop_template_terms(q, &["the"]), "");
+    }
+
+    #[test]
+    fn drop_template_terms_handles_chinese_phrase_boilerplate() {
+        // CJK queries have no whitespace, so the analyzer surfaces boilerplate
+        // as punctuation-bounded phrases. drop_template_terms must do
+        // substring removal on those, not whitespace-token matching, or it
+        // can't find any of them.
+        let q = "请标注本合同中与「文档名称」相关的、应由律师审核的部分（如有）。";
+        let stripped = drop_template_terms(
+            q,
+            &["请标注本合同中与", "应由律师审核的部分", "相关的", "如有"],
+        );
+        // All four boilerplate phrases should be gone.
+        for noise in &["请标注本合同中与", "应由律师审核的部分", "相关的", "如有"] {
+            assert!(
+                !stripped.contains(noise),
+                "expected {noise} to be stripped; got {stripped:?}"
+            );
+        }
+        // The discriminator (the quoted clause name) should still be present.
+        assert!(stripped.contains("文档名称"), "expected 文档名称 to survive; got {stripped:?}");
+    }
+
+    #[test]
+    fn drop_template_terms_japanese_phrase_boilerplate() {
+        // Mirror of the Chinese test for Japanese, which mixes Hiragana,
+        // Katakana, and Han characters in the boilerplate.
+        let q = "本契約のうち「文書名」に関連する、弁護士の確認が必要な部分（もしあれば）を示してください。";
+        let stripped = drop_template_terms(
+            q,
+            &[
+                "本契約のうち",
+                "に関連する",
+                "弁護士の確認が必要な部分",
+                "もしあれば",
+                "を示してください",
+            ],
+        );
+        for noise in &[
+            "本契約のうち",
+            "に関連する",
+            "弁護士の確認が必要な部分",
+            "もしあれば",
+            "を示してください",
+        ] {
+            assert!(!stripped.contains(noise), "expected {noise} stripped; got {stripped:?}");
+        }
+        assert!(stripped.contains("文書名"), "expected discriminator preserved; got {stripped:?}");
+    }
+
+    #[test]
+    fn drop_template_terms_latin_word_boundary_safe() {
+        // The original Latin behavior must not regress: a boilerplate
+        // single-word "of" should NOT erase the "of" inside "office".
+        let q = "the office is open";
+        let stripped = drop_template_terms(q, &["of", "the"]);
+        // "of" appears inside "office" but as a Latin token term it's
+        // matched at whitespace-boundary granularity, so "office" survives.
+        assert_eq!(stripped, "office is open");
     }
 
     // ─── analyze_query_set ──────────────────────────────────────────────────
