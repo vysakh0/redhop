@@ -30,10 +30,15 @@ console.log(ctx.report.rendered); // the Decision Report — what it kept, and w
 Measured on identical documents + budgets + BM25 retrieval, RedHop **beats both
 frameworks on multi-hop evidence retention** (80% vs LangChain 71%, LlamaIndex 72%)
 and **beats LangChain on contracts** (82% vs 73%). It trails LlamaIndex by 4 points
-on CUAD's raw-template query — that gap is mechanism-known and closeable with a
-`Stripper` + `Vocabulary` chain (RedHop reaches **90.7%**, +4.7 over LlamaIndex);
-see [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
-All without a vector database, an agent framework, or model finetuning.
+on CUAD's raw-template query — that gap is mechanism-known and closeable in two
+steps: `Stripper(boilerplate)` alone reaches **87.7%** (+1.7 over LlamaIndex,
+near-zero-effort: ~12 stopword-like terms); adding a workload-curated
+`Vocabulary` dictionary (34 keys, 121 synonyms hand-authored against CUAD's
+clause names) reaches **90.7%** (+4.7). The +4.7 is "RedHop with workload-curated
+preprocessing" vs "LlamaIndex with its default retriever" — the same preprocessing
+is not applied to LlamaIndex; see [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md)
+for the controlled three-arm run. All without a vector database, an agent
+framework, or model finetuning.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
