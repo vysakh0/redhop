@@ -219,7 +219,7 @@ fn main() -> anyhow::Result<()> {
                     r.record.matched, r.record.added
                 );
             }
-            chunk(&format!("fn-{i:02}"), &r.query)
+            chunk(&format!("fn-{i:02}"), &r.text)
         })
         .collect();
     println!();

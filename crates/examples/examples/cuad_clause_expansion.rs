@@ -336,9 +336,9 @@ fn run(cuad: &Cuad, arm: Arm, vocabulary: &Vocabulary) -> anyhow::Result<Cell> {
                     Arm::Stripped => extract_cuad_signal(&qa.question),
                     Arm::StrippedExpanded => {
                         let stripped = extract_cuad_signal(&qa.question);
-                        vocabulary.apply(&stripped).query
+                        vocabulary.apply(&stripped).text
                     }
-                    Arm::RawExpanded => vocabulary.apply(&qa.question).query,
+                    Arm::RawExpanded => vocabulary.apply(&qa.question).text,
                 };
                 // (`extract_cuad_signal` is the canonical CUAD template
                 // strip — matches the prior CUAD harnesses' definitions.
@@ -407,7 +407,7 @@ fn main() -> anyhow::Result<()> {
     println!("sample query:");
     println!("  raw:      {sample_q}");
     println!("  stripped: {sample_stripped}");
-    println!("  expanded: {}", sample_result.query);
+    println!("  expanded: {}", sample_result.text);
     println!(
         "  trail:    matched={:?} added={:?}",
         sample_result.record.matched, sample_result.record.added

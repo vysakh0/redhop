@@ -103,13 +103,13 @@ fn main() -> anyhow::Result<()> {
                 entry.code, result.record.matched, result.record.added
             );
         }
-        let token_count = result.query.split_whitespace().count();
+        let token_count = result.text.split_whitespace().count();
         let mut metadata = HashMap::new();
         metadata.insert("heading".to_string(), serde_json::json!(entry.title));
         let _ = i;
         let chunk = Chunk::new(
             ChunkId::new(entry.code),
-            result.query,
+            result.text,
             format!("runbook/{}.md", entry.code),
             TokenCount(token_count),
         )

@@ -446,7 +446,7 @@ fn build_doc(
         .chunks()
         .iter()
         .map(|c| {
-            let new_text = vocab.enrich(&c.text).query;
+            let new_text = vocab.enrich(&c.text).text;
             let new_tok = new_text.split_whitespace().count().max(1);
             let mut nc = Chunk::new(
                 ChunkId::new(c.id.0.clone()),
@@ -510,7 +510,7 @@ fn run(cuad: &Cuad, arm: Arm, query_vocab: &Vocabulary) -> anyhow::Result<Cell> 
                     Arm::Stripped => extract_cuad_signal(&qa.question),
                     Arm::StrippedExpanded | Arm::StrippedExpandedEnriched => {
                         let stripped = extract_cuad_signal(&qa.question);
-                        query_vocab.apply(&stripped).query
+                        query_vocab.apply(&stripped).text
                     }
                 };
                 let ctx = match doc.context(&query_text) {

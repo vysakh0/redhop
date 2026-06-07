@@ -75,11 +75,14 @@ pub trait QueryRewrite: Send + Sync {
     fn apply(&self, query: &str) -> RewriteResult;
 }
 
-/// Output of one [`QueryRewrite::apply`] step.
+/// Output of one [`QueryRewrite::apply`] or [`Vocabulary::enrich`] step.
 #[derive(Debug, Clone)]
 pub struct RewriteResult {
-    /// The rewritten query.
-    pub query: String,
+    /// The rewritten text — a query (for `apply`) or a chunk
+    /// (for `enrich`). The same field serves both directions; the
+    /// distinction is signaled by `record.stage` (`"strip"` /
+    /// `"vocabulary"` / `"enrich"`).
+    pub text: String,
     /// The audit record for this step.
     pub record: RewriteRecord,
 }
@@ -208,7 +211,7 @@ impl QueryRewrite for Stripper {
     fn apply(&self, query: &str) -> RewriteResult {
         if self.surface_forms.is_empty() {
             return RewriteResult {
-                query: query.to_string(),
+                text: query.to_string(),
                 record: RewriteRecord {
                     stage: "strip".to_string(),
                     from: query.to_string(),
@@ -268,16 +271,16 @@ impl QueryRewrite for Stripper {
             }
         }
 
-        let new_query = kept.join(" ");
+        let new_text = kept.join(" ");
         let mut removed: Vec<String> = removed_set.into_iter().collect();
         removed.sort();
 
         RewriteResult {
-            query: new_query.clone(),
+            text: new_text.clone(),
             record: RewriteRecord {
                 stage: "strip".to_string(),
                 from: query.to_string(),
-                to: new_query,
+                to: new_text,
                 matched: removed.clone(),
                 added: vec![],
                 removed,
@@ -411,7 +414,7 @@ impl Vocabulary {
     fn run(&self, text: &str, stage: &'static str) -> RewriteResult {
         if self.classes.is_empty() {
             return RewriteResult {
-                query: text.to_string(),
+                text: text.to_string(),
                 record: RewriteRecord {
                     stage: stage.to_string(),
                     from: text.to_string(),
@@ -481,7 +484,7 @@ impl Vocabulary {
         };
 
         RewriteResult {
-            query: new_text.clone(),
+            text: new_text.clone(),
             record: RewriteRecord {
                 stage: stage.to_string(),
                 from: text.to_string(),
@@ -542,7 +545,7 @@ impl Vocabulary {
     /// ];
     /// let enriched: Vec<String> = raw_chunks
     ///     .into_iter()
-    ///     .map(|c| vocab.enrich(&c).query)
+    ///     .map(|c| vocab.enrich(&c).text)
     ///     .collect();
     /// let mut doc = Document::from_chunks(enriched, None)?;
     /// // Now "how do we create accounts?" lights up usrSvc's chunk.
@@ -590,7 +593,7 @@ pub fn apply_chain(query: &str, rewrites: &[&dyn QueryRewrite]) -> (String, Vec<
     for rw in rewrites {
         let result = rw.apply(&current);
         trail.push(result.record);
-        current = result.query;
+        current = result.text;
     }
     (current, trail)
 }
@@ -618,7 +621,7 @@ mod tests {
             "to",
         ]);
         let r = s.apply("Highlight the parts of this contract related to \"Change of Control\".");
-        assert_eq!(r.query, "\"Change Control\".");
+        assert_eq!(r.text, "\"Change Control\".");
         assert_eq!(r.record.stage, "strip");
         assert!(r.record.matched.iter().any(|m| m == "highlight"));
         assert!(r.record.removed.iter().any(|m| m == "contract"));
@@ -640,7 +643,7 @@ mod tests {
             "to",
         ]); // note: no "of"
         let r = s.apply("Highlight the parts of this contract related to \"Change of Control\".");
-        assert_eq!(r.query, "of \"Change of Control\".");
+        assert_eq!(r.text, "of \"Change of Control\".");
     }
 
     #[test]
@@ -650,14 +653,14 @@ mod tests {
         // "office" as ["offic"] (post-Porter2), not ["of", "fice"].
         let s = Stripper::new(&["of", "the"]);
         let r = s.apply("the office is open");
-        assert_eq!(r.query, "office is open");
+        assert_eq!(r.text, "office is open");
     }
 
     #[test]
     fn stripper_empty_boilerplate_is_identity() {
         let s = Stripper::new::<&str>(&[]);
         let r = s.apply("the office is open");
-        assert_eq!(r.query, "the office is open");
+        assert_eq!(r.text, "the office is open");
         assert!(r.record.removed.is_empty());
     }
 
@@ -668,9 +671,9 @@ mod tests {
         let s = Stripper::new(&["highlight"]);
         let r = s.apply("Highlighted parts of this contract");
         assert!(
-            !r.query.to_lowercase().contains("highlighted"),
+            !r.text.to_lowercase().contains("highlighted"),
             "stem match should drop highlighted; got {:?}",
-            r.query
+            r.text
         );
     }
 
@@ -688,13 +691,13 @@ mod tests {
         let r = g.apply("\"Change of Control\" the right to terminate");
         for syn in &["merger", "successor", "acquisition"] {
             assert!(
-                r.query.contains(syn),
+                r.text.contains(syn),
                 "expected {syn} appended; got {:?}",
-                r.query
+                r.text
             );
         }
         assert!(
-            !r.query.contains("restraint"),
+            !r.text.contains("restraint"),
             "non-compete didn't match — its synonyms must not appear"
         );
         assert!(r.record.matched.iter().any(|m| m == "change of control"));
@@ -709,7 +712,7 @@ mod tests {
         let g = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = g.apply("send it to the recipient by Friday");
         assert_eq!(
-            r.query, "send it to the recipient by Friday",
+            r.text, "send it to the recipient by Friday",
             "ip must not match recipient via substring"
         );
         assert!(r.record.matched.is_empty());
@@ -720,7 +723,7 @@ mod tests {
     fn vocabulary_short_acronym_matches_when_actually_present_as_token() {
         let g = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = g.apply("the IP belongs to the licensee");
-        assert!(r.query.contains("intellectual property"));
+        assert!(r.text.contains("intellectual property"));
         assert!(r.record.matched.iter().any(|m| m == "ip"));
     }
 
@@ -730,13 +733,13 @@ mod tests {
 
         let r1 = g.apply("How do I file for PTO?");
         // Matched "pto" → both other members appended.
-        assert!(r1.query.contains("paid time off"));
-        assert!(r1.query.contains("vacation"));
+        assert!(r1.text.contains("paid time off"));
+        assert!(r1.text.contains("vacation"));
         assert!(r1.record.matched.iter().any(|m| m == "pto"));
 
         let r2 = g.apply("How do I file for vacation?");
-        assert!(r2.query.contains("pto"));
-        assert!(r2.query.contains("paid time off"));
+        assert!(r2.text.contains("pto"));
+        assert!(r2.text.contains("paid time off"));
         assert!(r2.record.matched.iter().any(|m| m == "vacation"));
     }
 
@@ -746,9 +749,9 @@ mod tests {
         let g = Vocabulary::new(&[("pto", &["paid time off", "vacation"][..])]);
         let r = g.apply("How do I file for vacation?");
         assert!(
-            !r.query.contains("pto"),
+            !r.text.contains("pto"),
             "non-bidirectional: matching a synonym should NOT fire; got {:?}",
-            r.query
+            r.text
         );
         assert!(r.record.matched.is_empty());
     }
@@ -764,11 +767,11 @@ mod tests {
             ("merger", &["consolidation"]),
         ]);
         let r = g.apply("change of control clause");
-        assert!(r.query.contains("merger"));
+        assert!(r.text.contains("merger"));
         assert!(
-            !r.query.contains("consolidation"),
+            !r.text.contains("consolidation"),
             "must not recursively expand; got {:?}",
-            r.query
+            r.text
         );
     }
 
@@ -782,10 +785,10 @@ mod tests {
         ]);
         let r = g.apply("change of control and termination for convenience");
         assert_eq!(
-            r.query.matches("assignment").count(),
+            r.text.matches("assignment").count(),
             1,
             "expected dedup; got {:?}",
-            r.query
+            r.text
         );
     }
 
@@ -793,7 +796,7 @@ mod tests {
     fn vocabulary_multi_token_key_matches_in_order() {
         let g = Vocabulary::new(&[("change of control", &["merger"][..])]);
         let r = g.apply("the change of ownership and change of control clauses");
-        assert!(r.query.contains("merger"));
+        assert!(r.text.contains("merger"));
         assert!(r.record.matched.iter().any(|m| m == "change of control"));
     }
 
@@ -801,7 +804,7 @@ mod tests {
     fn vocabulary_empty_is_identity() {
         let g = Vocabulary::new::<&str, &str>(&[]);
         let r = g.apply("any query at all");
-        assert_eq!(r.query, "any query at all");
+        assert_eq!(r.text, "any query at all");
         assert!(r.record.matched.is_empty());
         assert!(r.record.added.is_empty());
     }
@@ -816,17 +819,17 @@ mod tests {
         )]);
         let chunk = "Change of Control means the consummation of a transaction.";
         let r = vocab.enrich(chunk);
-        assert!(r.query.starts_with(chunk));
+        assert!(r.text.starts_with(chunk));
         for syn in ["merger", "successor", "acquisition"] {
             assert!(
-                r.query.contains(syn),
+                r.text.contains(syn),
                 "expected {syn} appended; got {}",
-                r.query
+                r.text
             );
         }
         assert_eq!(r.record.stage, "enrich");
         assert_eq!(r.record.from, chunk);
-        assert_eq!(r.record.to, r.query);
+        assert_eq!(r.record.to, r.text);
         assert!(r
             .record
             .matched
@@ -840,7 +843,7 @@ mod tests {
         let vocab = Vocabulary::new(&[("pto", &["paid time off"][..])]);
         let chunk = "Distinct text with no vocabulary triggers.";
         let r = vocab.enrich(chunk);
-        assert_eq!(r.query, chunk);
+        assert_eq!(r.text, chunk);
         assert!(r.record.matched.is_empty());
         assert!(r.record.added.is_empty());
         assert_eq!(r.record.stage, "enrich");
@@ -851,7 +854,7 @@ mod tests {
         // `"ip"` must NOT enrich `"recipient"` chunks via substring fire.
         let vocab = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = vocab.enrich("the recipient shall execute this agreement");
-        assert!(!r.query.contains("intellectual property"));
+        assert!(!r.text.contains("intellectual property"));
         assert!(r.record.matched.is_empty());
     }
 
@@ -859,7 +862,7 @@ mod tests {
     fn enrich_short_acronym_matches_real_token() {
         let vocab = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = vocab.enrich("Section 8: IP assignment");
-        assert!(r.query.contains("intellectual property"));
+        assert!(r.text.contains("intellectual property"));
     }
 
     #[test]
@@ -867,7 +870,7 @@ mod tests {
         let vocab = Vocabulary::new::<&str, &str>(&[]);
         let chunk = "anything at all";
         let r = vocab.enrich(chunk);
-        assert_eq!(r.query, chunk);
+        assert_eq!(r.text, chunk);
         assert_eq!(r.record.stage, "enrich");
         assert!(r.record.matched.is_empty());
         assert!(r.record.added.is_empty());
@@ -883,7 +886,7 @@ mod tests {
         let text = "a merger clause";
         let a = vocab.apply(text);
         let e = vocab.enrich(text);
-        assert_eq!(a.query, e.query);
+        assert_eq!(a.text, e.text);
         assert_eq!(a.record.from, e.record.from);
         assert_eq!(a.record.to, e.record.to);
         assert_eq!(a.record.matched, e.record.matched);

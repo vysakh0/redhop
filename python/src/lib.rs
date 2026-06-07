@@ -1699,7 +1699,7 @@ impl Stripper {
     /// the trail in the Decision Report.
     fn apply(&self, query: &str) -> String {
         use redhop::QueryRewrite;
-        self.inner.apply(query).query
+        self.inner.apply(query).text
     }
     fn __len__(&self) -> usize {
         self.inner.len()
@@ -1773,7 +1773,7 @@ impl Vocabulary {
     /// if you want the trail in the Decision Report.
     fn apply(&self, query: &str) -> String {
         use redhop::QueryRewrite;
-        self.inner.apply(query).query
+        self.inner.apply(query).text
     }
     /// Chunk-side enrichment — the symmetric to `apply`. Same compiled
     /// vocabulary, applied at ingest time to a chunk's text so opaque
@@ -1807,7 +1807,7 @@ impl Vocabulary {
     /// from CUAD_PRF_NULL. See `docs/findings/VOCABULARY_ENRICH.md`.
     fn enrich(&self, chunk: &str) -> (String, RewriteRecord) {
         let r = self.inner.enrich(chunk);
-        (r.query, RewriteRecord { inner: r.record })
+        (r.text, RewriteRecord { inner: r.record })
     }
     fn __len__(&self) -> usize {
         self.inner.len()

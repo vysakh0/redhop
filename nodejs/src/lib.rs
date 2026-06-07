@@ -623,7 +623,7 @@ impl Stripper {
     #[napi]
     pub fn apply(&self, query: String) -> String {
         use redhop::QueryRewrite;
-        self.inner.apply(&query).query
+        self.inner.apply(&query).text
     }
     /// Number of distinct boilerplate surface forms compiled.
     #[napi(getter)]
@@ -703,7 +703,7 @@ impl Vocabulary {
     #[napi]
     pub fn apply(&self, query: String) -> String {
         use redhop::QueryRewrite;
-        self.inner.apply(&query).query
+        self.inner.apply(&query).text
     }
     /// Chunk-side enrichment — the symmetric to `apply`. Same compiled
     /// vocabulary, applied at ingest time to a chunk's text so opaque
@@ -738,7 +738,7 @@ impl Vocabulary {
     pub fn enrich(&self, chunk: String) -> EnrichResult {
         let r = self.inner.enrich(&chunk);
         EnrichResult {
-            text: r.query,
+            text: r.text,
             record: to_record(&r.record),
         }
     }
