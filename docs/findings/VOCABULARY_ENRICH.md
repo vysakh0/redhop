@@ -1,41 +1,45 @@
-# `Vocabulary.enrich` — chunk-side rewrite primitive (bidirectional measured evidence)
+# `Vocabulary.enrich` — chunk-side rewrite primitive (asymmetric measured evidence)
 
-> **Status:** **Confirmed on both sides of the regime rule.**
+> **Status:** **Negative side falsified; positive side suggestive.**
 > [`Vocabulary::enrich`](../../crates/redhop/src/rewrite.rs) is the
 > symmetric to query-side [`QueryRewrite::apply`] (appends a compiled
 > dictionary's synonyms to chunk text at ingest time, audit-trail
-> intact). The regime rule predicts where it works and where it
-> doesn't; both predictions have now been measured:
+> intact). The regime guidance predicts where it works and where it
+> doesn't; the two predictions sit on different evidence strengths:
 >
-> - **Positive side (Confirmed):**
->   [SPIDER_ENRICH](SPIDER_ENRICH.md) — on Spider schema-style
->   retrieval (short opaque column names + workload-curated
->   synonyms), curated enrichment lifts mean column recall by
->   **+0.19 (0.77 → 0.97)** and ≥0.8 retention by **+30 pts** on the
->   Spider-shape sample (n=30, candidate_k=10).
 > - **Negative side (Falsified):**
 >   [CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md) —
 >   on CUAD prose chunks (long descriptive paragraphs), enriching
 >   with auto-extracted Definitions vocabulary regressed retention
 >   by **−2.0 pts** vs the 90.7% workflow baseline (~24-point loss on
 >   the 17/50 contracts where enrichment fired). The chunk-side
->   parallel to CUAD_PRF_NULL.
+>   parallel to CUAD_PRF_NULL. Sample n=300, cleanly measured.
+> - **Positive side (Suggestive only):**
+>   [SPIDER_ENRICH](SPIDER_ENRICH.md) — on a hand-selected Spider
+>   schema-shape sample (n=30), the mechanism behaves as predicted.
+>   The unconflicted part of the lift (arm B, schema-derived
+>   auto-enrichment) is **+0.128 mean recall**; the curator-conflicted
+>   part (arm C, hand-curated synonyms by the same agent that wrote
+>   the questions) adds an additional **+0.067** that is *upper-bounded
+>   by author-curator overlap*. See the
+>   [Methodology limitations](SPIDER_ENRICH.md#methodology-limitations)
+>   section of that finding.
 >
 > **What this means in practice.** Use enrich when your retrieval
 > units are short and opaque (schema columns, error codes, API
 > symbols, defined contract terms) and you have a workload-curated
-> synonym dictionary. Don't use it on long prose chunks. A/B against
-> your own corpus with `redhop.evaluate(...)` before production
-> adoption — the magnitude depends on how well your synonyms match
-> your queries, which is workload-specific.
+> synonym dictionary. Don't use it on long prose chunks. **A/B against
+> your own corpus** with `redhop.evaluate(..., gold_chunks=...)`
+> before production adoption — the magnitude depends on how well your
+> synonyms match your queries, which is workload-specific and which
+> our positive-side probe is not strong enough to predict.
 >
 > **TL;DR:** Same compiled vocab as query-side `apply`, applied at
-> ingest time to chunks. Works on the predicted regime
-> ([SPIDER_ENRICH](SPIDER_ENRICH.md)); fails outside it
-> ([CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md)).
-> The four-corner rule
-> ([SUB_IDF_AUTO_DROP_NULL](SUB_IDF_AUTO_DROP_NULL.md)) is now
-> measured on all four corners.
+> ingest time to chunks. The negative side (where to *avoid* it) is
+> cleanly measured. The positive side (where to *use* it) is
+> mechanism-observed on one favorable workload, suggestive only on
+> the curated arm. See the [four-corner observation](README.md)
+> for how this fits into the broader regime guidance.
 
 ## The regime hypothesis
 
