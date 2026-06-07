@@ -84,7 +84,7 @@ pub use crate::analyzer::{
 // functions from 0.2.x (deleted in 0.3.0 — see the redesign notes in
 // `crate::rewrite` for the three flaws that motivated the move).
 pub use crate::rewrite::{
-    apply_chain as apply_query_rewrites, Glossary, QueryRewrite, RewriteRecord,
+    apply_chain as apply_query_rewrites, Vocabulary, QueryRewrite, RewriteRecord,
     RewriteResult, Stripper,
 };
 

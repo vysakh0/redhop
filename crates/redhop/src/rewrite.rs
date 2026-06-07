@@ -9,7 +9,7 @@
 //!   (so a single-letter "of" cannot accidentally erase the "of" inside
 //!   "office", and stemming + stopword behavior matches what the BM25 index
 //!   actually saw).
-//! - [`Glossary`] — compile workload-specific equivalence classes once
+//! - [`Vocabulary`] — compile workload-specific equivalence classes once
 //!   (clause-name → synonyms, error-code → variants, anything where the
 //!   query and the indexed text use different surface forms for the same
 //!   concept). Supports bidirectional matching (PTO ↔ paid time off,
@@ -26,12 +26,12 @@
 //! 0.3.0) had three flaws this redesign fixes:
 //!
 //! - **Correctness.** Substring matching (`q_lower.contains(key_lower)`)
-//!   fired on partial-word collisions: a glossary key `"ip"` matched
+//!   fired on partial-word collisions: a vocabulary key `"ip"` matched
 //!   `"recipient"`, a stripper key `"of"` would have erased the `"of"`
 //!   inside `"office"` without the bolted-on word-boundary fallback. The
 //!   trait-based primitives match at **post-analyzer token granularity**,
 //!   inheriting the same tokenization the BM25 index used.
-//! - **Performance.** A 2000-term glossary on a chatbot hot path
+//! - **Performance.** A 2000-term vocabulary on a chatbot hot path
 //!   re-lowercased and re-walked every entry per request. The compiled
 //!   objects do the analyzer pass once at construction.
 //! - **Observability.** Bare-function expansion silently appended terms;
@@ -46,9 +46,9 @@
 //!   falsified twice ([CUAD_PRF_NULL](../../docs/findings/CUAD_PRF_NULL.md)),
 //!   index-side auto-drop was falsified
 //!   ([SUB_IDF_AUTO_DROP_NULL](../../docs/findings/SUB_IDF_AUTO_DROP_NULL.md)).
-//!   Glossary content is supplied, never inferred.
-//! - **No glossary file format.** Accept `HashMap<String, Vec<String>>`
-//!   (or the typed [`Glossary::new`] constructors); let the user load
+//!   Vocabulary content is supplied, never inferred.
+//! - **No vocabulary file format.** Accept `HashMap<String, Vec<String>>`
+//!   (or the typed [`Vocabulary::new`] constructors); let the user load
 //!   their CSV / Notion / DB in three lines.
 //! - **No fuzzy / partial / soft matching.** Exact token-sequence match
 //!   only. Fuzzy is a v2 with its own eval; bundling false-positive risk
@@ -66,7 +66,7 @@ use crate::analyzer::{default_english, Analyzer};
 /// [`crate::context::ContextReport::query_rewrites`] so the chain is
 /// auditable.
 pub trait QueryRewrite: Send + Sync {
-    /// Short identifier for the report (e.g., `"strip"`, `"glossary"`).
+    /// Short identifier for the report (e.g., `"strip"`, `"vocabulary"`).
     fn name(&self) -> &str;
 
     /// Apply the rewrite to `query`. Returns the new query string and a
@@ -101,14 +101,14 @@ pub struct RewriteRecord {
     pub to: String,
     /// Surface forms this stage *matched* in the input. For
     /// [`Stripper`]: the boilerplate forms it found and removed. For
-    /// [`Glossary`]: the equivalence-class members that triggered a
+    /// [`Vocabulary`]: the equivalence-class members that triggered a
     /// match.
     pub matched: Vec<String>,
-    /// Surface forms this stage *added* to the query. For [`Glossary`]:
+    /// Surface forms this stage *added* to the query. For [`Vocabulary`]:
     /// the synonyms appended. For [`Stripper`]: empty.
     pub added: Vec<String>,
     /// Surface forms this stage *removed* from the query. For
-    /// [`Stripper`]: the boilerplate tokens dropped. For [`Glossary`]:
+    /// [`Stripper`]: the boilerplate tokens dropped. For [`Vocabulary`]:
     /// empty.
     pub removed: Vec<String>,
 }
@@ -123,14 +123,14 @@ pub struct RewriteRecord {
 /// Typical use is the templated-workload workflow:
 ///
 /// ```no_run
-/// # use redhop::{Document, rewrite::{Stripper, Glossary, QueryRewrite}};
+/// # use redhop::{Document, rewrite::{Stripper, Vocabulary, QueryRewrite}};
 /// # fn main() -> redhop::Result<()> {
 /// let stripper = Stripper::new(&[
 ///     "highlight", "the", "parts", "if", "any", "of", "this",
 ///     "contract", "related", "to", "that", "should", "be",
 ///     "reviewed", "by", "a", "lawyer", "details",
 /// ]);
-/// let glossary = Glossary::new(&[
+/// let vocabulary = Vocabulary::new(&[
 ///     ("change of control", &["merger", "successor", "acquisition"][..]),
 ///     ("non-compete", &["restraint", "non-competition"]),
 /// ]);
@@ -138,7 +138,7 @@ pub struct RewriteRecord {
 /// let mut doc = Document::from_text("contract.pdf", "…")?;
 /// let ctx = doc.context_with_rewrites(
 ///     "Highlight the parts (if any) of this contract related to \"Change of Control\" …",
-///     &[&stripper, &glossary],
+///     &[&stripper, &vocabulary],
 /// )?;
 /// for record in &ctx.report.query_rewrites {
 ///     println!("{}: {:?} → added {:?}", record.stage, record.matched, record.added);
@@ -295,13 +295,13 @@ fn normalize_word(s: &str) -> String {
         .collect()
 }
 
-// ─── Glossary ───────────────────────────────────────────────────────────────
+// ─── Vocabulary ───────────────────────────────────────────────────────────────
 
-/// One equivalence class inside a [`Glossary`].
+/// One equivalence class inside a [`Vocabulary`].
 ///
-/// Internal — exposed only through [`Glossary::new`] /
-/// [`Glossary::bidirectional`].
-struct GlossaryClass {
+/// Internal — exposed only through [`Vocabulary::new`] /
+/// [`Vocabulary::bidirectional`].
+struct VocabularyClass {
     /// Surface forms in their original (case, punctuation) shape, used
     /// for the audit trail.
     members: Vec<String>,
@@ -315,40 +315,40 @@ struct GlossaryClass {
 /// member is found in it.
 ///
 /// **Token-level matching.** All forms (keys, synonyms, query) are
-/// tokenized through the same analyzer at compile time. A glossary key
+/// tokenized through the same analyzer at compile time. A vocabulary key
 /// `"ip"` matches the token `ip`, never the substring inside `recipient`;
 /// a multi-token key `"change of control"` matches the analyzer's token
 /// sequence for the same phrase in the query (so stemming and stopword
 /// handling agree with the BM25 index).
 ///
-/// **Bidirectional.** A symmetric glossary entry like
+/// **Bidirectional.** A symmetric vocabulary entry like
 /// `("PTO", &["paid time off", "vacation"])` in
-/// [`Glossary::bidirectional`] mode matches whichever surface form the
+/// [`Vocabulary::bidirectional`] mode matches whichever surface form the
 /// user typed and appends the other two. Non-bidirectional mode treats
 /// the first form as the only trigger and the rest as the additions
 /// (the asymmetric "key → synonyms" shape).
-pub struct Glossary {
-    classes: Vec<GlossaryClass>,
+pub struct Vocabulary {
+    classes: Vec<VocabularyClass>,
     analyzer: Arc<dyn Analyzer>,
     bidirectional: bool,
 }
 
-impl Glossary {
-    /// Compile a glossary using the default English analyzer in
+impl Vocabulary {
+    /// Compile a vocabulary using the default English analyzer in
     /// asymmetric mode (the first form of each entry is the only
     /// trigger; the rest are appended on match).
     pub fn new<K: AsRef<str>, S: AsRef<str>>(entries: &[(K, &[S])]) -> Self {
         Self::with_options(entries, false, default_english())
     }
 
-    /// Compile a glossary in **bidirectional** mode: any member of the
+    /// Compile a vocabulary in **bidirectional** mode: any member of the
     /// equivalence class is a trigger; matching any one appends the
     /// others.
     pub fn bidirectional<K: AsRef<str>, S: AsRef<str>>(entries: &[(K, &[S])]) -> Self {
         Self::with_options(entries, true, default_english())
     }
 
-    /// Compile a glossary with caller-supplied options.
+    /// Compile a vocabulary with caller-supplied options.
     pub fn with_options<K: AsRef<str>, S: AsRef<str>>(
         entries: &[(K, &[S])],
         bidirectional: bool,
@@ -361,7 +361,7 @@ impl Glossary {
                 members.extend(syns.iter().map(|s| s.as_ref().to_string()));
                 let member_tokens: Vec<Vec<String>> =
                     members.iter().map(|m| analyzer.tokens(m)).collect();
-                GlossaryClass {
+                VocabularyClass {
                     members,
                     member_tokens,
                 }
@@ -385,9 +385,9 @@ impl Glossary {
     }
 
     /// Override the analyzer after construction. Re-tokenizes every
-    /// member; cheap on a 10-class glossary, more expensive on a
+    /// member; cheap on a 10-class vocabulary, more expensive on a
     /// 2000-class one — prefer passing the analyzer to
-    /// [`Glossary::with_options`] in hot paths.
+    /// [`Vocabulary::with_options`] in hot paths.
     pub fn with_analyzer(mut self, analyzer: Arc<dyn Analyzer>) -> Self {
         for class in &mut self.classes {
             class.member_tokens = class
@@ -401,9 +401,9 @@ impl Glossary {
     }
 }
 
-impl QueryRewrite for Glossary {
+impl QueryRewrite for Vocabulary {
     fn name(&self) -> &str {
-        "glossary"
+        "vocabulary"
     }
 
     fn apply(&self, query: &str) -> RewriteResult {
@@ -411,7 +411,7 @@ impl QueryRewrite for Glossary {
             return RewriteResult {
                 query: query.to_string(),
                 record: RewriteRecord {
-                    stage: "glossary".to_string(),
+                    stage: "vocabulary".to_string(),
                     from: query.to_string(),
                     to: query.to_string(),
                     ..Default::default()
@@ -481,7 +481,7 @@ impl QueryRewrite for Glossary {
         RewriteResult {
             query: new_query.clone(),
             record: RewriteRecord {
-                stage: "glossary".to_string(),
+                stage: "vocabulary".to_string(),
                 from: query.to_string(),
                 to: new_query,
                 matched,
@@ -590,11 +590,11 @@ mod tests {
         );
     }
 
-    // ─── Glossary ──────────────────────────────────────────────────────────
+    // ─── Vocabulary ──────────────────────────────────────────────────────────
 
     #[test]
-    fn glossary_basic_asymmetric_append() {
-        let g = Glossary::new(&[
+    fn vocabulary_basic_asymmetric_append() {
+        let g = Vocabulary::new(&[
             ("change of control", &["merger", "successor", "acquisition"][..]),
             ("non-compete", &["restraint"]),
         ]);
@@ -608,11 +608,11 @@ mod tests {
     }
 
     #[test]
-    fn glossary_short_acronym_does_not_substring_fire() {
-        // The exact correctness flaw the redesign fixes: a glossary key
+    fn vocabulary_short_acronym_does_not_substring_fire() {
+        // The exact correctness flaw the redesign fixes: a vocabulary key
         // "ip" must NOT match the word "recipient" (which the old
         // substring-based expand_query_terms DID match).
-        let g = Glossary::new(&[("ip", &["intellectual property"][..])]);
+        let g = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = g.apply("send it to the recipient by Friday");
         assert_eq!(
             r.query, "send it to the recipient by Friday",
@@ -623,16 +623,16 @@ mod tests {
     }
 
     #[test]
-    fn glossary_short_acronym_matches_when_actually_present_as_token() {
-        let g = Glossary::new(&[("ip", &["intellectual property"][..])]);
+    fn vocabulary_short_acronym_matches_when_actually_present_as_token() {
+        let g = Vocabulary::new(&[("ip", &["intellectual property"][..])]);
         let r = g.apply("the IP belongs to the licensee");
         assert!(r.query.contains("intellectual property"));
         assert!(r.record.matched.iter().any(|m| m == "ip"));
     }
 
     #[test]
-    fn glossary_bidirectional_appends_other_members() {
-        let g = Glossary::bidirectional(&[("pto", &["paid time off", "vacation"][..])]);
+    fn vocabulary_bidirectional_appends_other_members() {
+        let g = Vocabulary::bidirectional(&[("pto", &["paid time off", "vacation"][..])]);
 
         let r1 = g.apply("How do I file for PTO?");
         // Matched "pto" → both other members appended.
@@ -647,9 +647,9 @@ mod tests {
     }
 
     #[test]
-    fn glossary_non_bidirectional_does_not_fire_from_synonym_side() {
+    fn vocabulary_non_bidirectional_does_not_fire_from_synonym_side() {
         // Asymmetric (default): only the key (first member) triggers.
-        let g = Glossary::new(&[("pto", &["paid time off", "vacation"][..])]);
+        let g = Vocabulary::new(&[("pto", &["paid time off", "vacation"][..])]);
         let r = g.apply("How do I file for vacation?");
         assert!(
             !r.query.contains("pto"),
@@ -660,12 +660,12 @@ mod tests {
     }
 
     #[test]
-    fn glossary_no_recursive_chaining() {
+    fn vocabulary_no_recursive_chaining() {
         // A class fires when its key matches the ORIGINAL query, not the
         // growing rewritten string. So if synonyms include something
         // that happens to be a key in a different class, the second
         // class doesn't fire.
-        let g = Glossary::new(&[
+        let g = Vocabulary::new(&[
             ("change of control", &["merger"][..]),
             ("merger", &["consolidation"]),
         ]);
@@ -679,10 +679,10 @@ mod tests {
     }
 
     #[test]
-    fn glossary_dedupes_synonyms_across_matches() {
+    fn vocabulary_dedupes_synonyms_across_matches() {
         // Two classes that both fire and share a synonym should append
         // it exactly once.
-        let g = Glossary::new(&[
+        let g = Vocabulary::new(&[
             ("change of control", &["merger", "assignment"][..]),
             ("termination for convenience", &["assignment", "rescission"]),
         ]);
@@ -696,16 +696,16 @@ mod tests {
     }
 
     #[test]
-    fn glossary_multi_token_key_matches_in_order() {
-        let g = Glossary::new(&[("change of control", &["merger"][..])]);
+    fn vocabulary_multi_token_key_matches_in_order() {
+        let g = Vocabulary::new(&[("change of control", &["merger"][..])]);
         let r = g.apply("the change of ownership and change of control clauses");
         assert!(r.query.contains("merger"));
         assert!(r.record.matched.iter().any(|m| m == "change of control"));
     }
 
     #[test]
-    fn glossary_empty_is_identity() {
-        let g = Glossary::new::<&str, &str>(&[]);
+    fn vocabulary_empty_is_identity() {
+        let g = Vocabulary::new::<&str, &str>(&[]);
         let r = g.apply("any query at all");
         assert_eq!(r.query, "any query at all");
         assert!(r.record.matched.is_empty());
@@ -715,21 +715,21 @@ mod tests {
     // ─── chain runner ──────────────────────────────────────────────────────
 
     #[test]
-    fn chain_composes_strip_then_glossary() {
+    fn chain_composes_strip_then_vocabulary() {
         let stripper = Stripper::new(&["highlight", "the", "parts", "of", "this", "contract"]);
-        let glossary = Glossary::new(&[("change of control", &["merger"][..])]);
+        let vocabulary = Vocabulary::new(&[("change of control", &["merger"][..])]);
         let (final_q, trail) = apply_chain(
             "Highlight the parts of this contract for Change of Control terms",
-            &[&stripper, &glossary],
+            &[&stripper, &vocabulary],
         );
         // Strip removed the wrapper words …
         assert!(!final_q.to_lowercase().contains("highlight"));
-        // … then glossary appended `merger`.
+        // … then vocabulary appended `merger`.
         assert!(final_q.contains("merger"));
         // Trail has both records, in order.
         assert_eq!(trail.len(), 2);
         assert_eq!(trail[0].stage, "strip");
-        assert_eq!(trail[1].stage, "glossary");
+        assert_eq!(trail[1].stage, "vocabulary");
         // Each record's `to` matches the next record's `from`.
         assert_eq!(trail[0].to, trail[1].from);
         // The final stage's `to` is the final query.

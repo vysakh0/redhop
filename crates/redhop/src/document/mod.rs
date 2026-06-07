@@ -640,26 +640,26 @@ impl Document {
 
     /// [`Document::context`] with a chain of query-side rewrites applied
     /// before retrieval. Each rewrite ([`crate::rewrite::Stripper`],
-    /// [`crate::rewrite::Glossary`], or anything implementing
+    /// [`crate::rewrite::Vocabulary`], or anything implementing
     /// [`crate::rewrite::QueryRewrite`]) runs in order; the rewritten
     /// query is the one BM25 sees; the per-stage audit trail lands in
     /// `ctx.report.query_rewrites` so every change is auditable in the
     /// Decision Report.
     ///
     /// ```no_run
-    /// # use redhop::{Document, rewrite::{Stripper, Glossary}};
+    /// # use redhop::{Document, rewrite::{Stripper, Vocabulary}};
     /// # fn main() -> redhop::Result<()> {
     /// let stripper = Stripper::new(&[
     ///     "highlight", "the", "parts", "of", "this", "contract",
     ///     "related", "to",
     /// ]);
-    /// let glossary = Glossary::new(&[
+    /// let vocabulary = Vocabulary::new(&[
     ///     ("change of control", &["merger", "successor", "acquisition"][..]),
     /// ]);
     /// let mut doc = Document::from_text("contract.pdf", "…")?;
     /// let ctx = doc.context_with_rewrites(
     ///     "Highlight the parts of this contract related to \"Change of Control\".",
-    ///     &[&stripper, &glossary],
+    ///     &[&stripper, &vocabulary],
     /// )?;
     /// for r in &ctx.report.query_rewrites {
     ///     println!("{}: {:?} → added {:?}", r.stage, r.matched, r.added);
