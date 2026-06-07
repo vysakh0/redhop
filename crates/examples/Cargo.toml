@@ -253,5 +253,10 @@ name = "sub_idf_reweighting_probe"
 path = "examples/sub_idf_reweighting_probe.rs"
 
 [[example]]
+name = "cuad_hybrid_rerank"
+path = "examples/cuad_hybrid_rerank.rs"
+required-features = ["onnx"]
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"
