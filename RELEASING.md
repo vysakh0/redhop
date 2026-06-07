@@ -6,7 +6,7 @@ ecosystem Run-workflow click. A fourth workflow creates the GitHub Release
 with notes from `CHANGELOG.md`, which is how external watchers learn there's
 a new version.
 
-All three are pinned to the same version (`0.1.4`). Bump in lockstep:
+All three are pinned to the same version (`0.3.0` as of this writing). Bump in lockstep:
 `python/pyproject.toml`, `nodejs/package.json` (+
 `nodejs/.npm-overrides/win32-x64-msvc/package.json`), and
 `[workspace.package] version` in `Cargo.toml`.

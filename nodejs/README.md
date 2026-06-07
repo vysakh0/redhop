@@ -31,8 +31,8 @@ Measured on identical documents + budgets + BM25 retrieval, RedHop **beats both
 frameworks on multi-hop evidence retention** (80% vs LangChain 71%, LlamaIndex 72%)
 and **beats LangChain on contracts** (82% vs 73%). It trails LlamaIndex by 4 points
 on CUAD's raw-template query — that gap is mechanism-known and closeable with a
-6-line query preprocessor (RedHop reaches 88%, +2 over LlamaIndex); see
-[CUAD_RECALL_GAP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md).
+`Stripper` + `Vocabulary` chain (RedHop reaches **90.7%**, +4.7 over LlamaIndex);
+see [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
 All without a vector database, an agent framework, or model finetuning.
 
 <p align="center">
@@ -233,7 +233,7 @@ closing it doesn't need a vector DB or a different retriever — it needs two
 small preprocessing helpers on the query side.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="CUAD retention rises 81% → 88% → 90.3% across the detect → strip → expand workflow; LlamaIndex is at 86%" width="100%">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="CUAD retention rises 81% → 88% → 90.7% across the detect → Stripper → Vocabulary workflow; LlamaIndex is at 86%" width="100%">
 </p>
 
 **Measured** on the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
