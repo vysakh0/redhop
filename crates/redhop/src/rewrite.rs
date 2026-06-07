@@ -201,6 +201,96 @@ impl Stripper {
     pub fn is_empty(&self) -> bool {
         self.surface_forms.is_empty()
     }
+
+    /// Diagnose how this Stripper acts on `query`. Surfaces three things
+    /// the bare [`apply`] return value buries:
+    ///
+    /// - **`original_tokens` / `stripped_tokens`** — the analyzer's view
+    ///   of the query before and after stripping. Stripper matches
+    ///   post-analyzer tokens, so this is what determines whether a
+    ///   boilerplate term will actually fire. If your `Stripper(["the"])`
+    ///   tokens to `[]` (because the analyzer drops `"the"` as a stopword)
+    ///   the tier-2 surface-form fallback still kicks in — but seeing the
+    ///   token streams makes it explicit when that's happening.
+    /// - **`removed_terms`** — configured surface forms that actually
+    ///   matched something in this query.
+    /// - **`unused_boilerplate`** — configured surface forms that did
+    ///   **not** match anything in this query. A long entry here on what
+    ///   you thought was a representative query usually means either the
+    ///   boilerplate isn't actually present in your workload, or the
+    ///   analyzer's stem of your term isn't matching the analyzer's stem
+    ///   of the query token (the silent-no-op failure mode).
+    ///
+    /// Returns a [`StripperEffect`]; nothing in the audit trail or
+    /// retrieval pipeline observes this call.
+    ///
+    /// ```
+    /// use redhop::Stripper;
+    /// let s = Stripper::new(&["the", "of", "this"]);
+    /// let effect = s.is_effective_on("highlight the parts of office hours");
+    /// assert!(effect.removed_terms.contains(&"the".to_string()));
+    /// assert!(effect.removed_terms.contains(&"of".to_string()));
+    /// // "this" wasn't in the query → reported as unused so you can prune it
+    /// assert!(effect.unused_boilerplate.contains(&"this".to_string()));
+    /// // "of" inside "office" is NOT erased — word-boundary safety holds
+    /// assert!(effect.stripped.contains("office"));
+    /// ```
+    pub fn is_effective_on(&self, query: &str) -> StripperEffect {
+        let result = self.apply(query);
+        let original_tokens = self.analyzer.tokens(query);
+        let stripped_tokens = self.analyzer.tokens(&result.text);
+
+        let matched_set: std::collections::HashSet<&str> = result
+            .record
+            .matched
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let mut removed_terms = Vec::new();
+        let mut unused_boilerplate = Vec::new();
+        for form in &self.surface_forms {
+            if matched_set.contains(form.as_str()) {
+                removed_terms.push(form.clone());
+            } else {
+                unused_boilerplate.push(form.clone());
+            }
+        }
+
+        StripperEffect {
+            original: query.to_string(),
+            stripped: result.text,
+            original_tokens,
+            stripped_tokens,
+            removed_terms,
+            unused_boilerplate,
+        }
+    }
+}
+
+/// Diagnostic output of [`Stripper::is_effective_on`].
+///
+/// Self-describing: every configured boilerplate term lands in exactly one
+/// of [`removed_terms`](Self::removed_terms) or
+/// [`unused_boilerplate`](Self::unused_boilerplate). The token streams
+/// expose the analyzer's view of the input so users can debug
+/// "my Stripper compiled but seems to do nothing" without reading source.
+#[derive(Debug, Clone)]
+pub struct StripperEffect {
+    /// The query passed in, verbatim.
+    pub original: String,
+    /// What `apply(query).text` would return.
+    pub stripped: String,
+    /// Analyzer tokens of the original query.
+    pub original_tokens: Vec<String>,
+    /// Analyzer tokens of the stripped output.
+    pub stripped_tokens: Vec<String>,
+    /// Configured surface forms that fired on this query.
+    pub removed_terms: Vec<String>,
+    /// Configured surface forms that did **not** fire on this query.
+    /// Either they aren't present in the input, or the analyzer is
+    /// stemming them away from the query's tokens — the most common
+    /// silent-no-op failure mode.
+    pub unused_boilerplate: Vec<String>,
 }
 
 impl QueryRewrite for Stripper {
@@ -668,6 +758,49 @@ mod tests {
             !r.text.to_lowercase().contains("highlighted"),
             "stem match should drop highlighted; got {:?}",
             r.text
+        );
+    }
+
+    #[test]
+    fn is_effective_on_reports_used_and_unused_boilerplate() {
+        let s = Stripper::new(&["highlight", "the", "of", "antidisestablishmentarianism"]);
+        let effect = s.is_effective_on("highlight the parts of office hours");
+        assert!(
+            effect.removed_terms.contains(&"highlight".to_string()),
+            "expected 'highlight' in removed_terms: {:?}",
+            effect.removed_terms
+        );
+        assert!(
+            effect.removed_terms.contains(&"of".to_string()),
+            "expected 'of' in removed_terms: {:?}",
+            effect.removed_terms
+        );
+        assert!(
+            effect
+                .unused_boilerplate
+                .contains(&"antidisestablishmentarianism".to_string()),
+            "expected the obscure absent term in unused_boilerplate: {:?}",
+            effect.unused_boilerplate
+        );
+        // Each configured term is reported in exactly one bucket.
+        let total = effect.removed_terms.len() + effect.unused_boilerplate.len();
+        assert_eq!(total, 4, "expected every configured term to be reported");
+        // Word-boundary safety: "of" inside "office" is not erased.
+        assert!(
+            effect.stripped.contains("office"),
+            "word-boundary safety violated: {:?}",
+            effect.stripped
+        );
+        // Token streams reflect the analyzer's view.
+        assert!(
+            !effect.original_tokens.is_empty(),
+            "original_tokens should populate"
+        );
+        assert!(
+            effect.original_tokens.len() >= effect.stripped_tokens.len(),
+            "stripping should not add tokens: {:?} → {:?}",
+            effect.original_tokens,
+            effect.stripped_tokens
         );
     }
 

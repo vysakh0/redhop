@@ -236,3 +236,34 @@ const { Chunk, Document, Stripper, Vocabulary } = require("../index.js");
 }
 
 console.log("rewrite: OK");
+
+// is_effective_on surfaces which configured boilerplate fired on this query
+// vs which sat silent (the "silent no-op" diagnostic).
+{
+  const s = new Stripper(["highlight", "the", "of", "antidisestablishmentarianism"]);
+  const effect = s.isEffectiveOn("highlight the parts of office hours");
+  assert.strictEqual(
+    effect.stripped.includes("office"),
+    true,
+    `word-boundary safety: 'of' inside 'office' must be preserved; got ${effect.stripped}`,
+  );
+  assert.deepStrictEqual(
+    new Set(effect.removedTerms),
+    new Set(["highlight", "the", "of"]),
+    `expected three fired terms; got: ${JSON.stringify(effect.removedTerms)}`,
+  );
+  assert.deepStrictEqual(
+    effect.unusedBoilerplate,
+    ["antidisestablishmentarianism"],
+    `expected the absent term reported as unused; got: ${JSON.stringify(effect.unusedBoilerplate)}`,
+  );
+  assert.strictEqual(
+    effect.removedTerms.length + effect.unusedBoilerplate.length,
+    4,
+    "every configured term must be reported in exactly one bucket",
+  );
+  assert.ok(
+    effect.originalTokens.length >= effect.strippedTokens.length,
+    `stripping must not add tokens; got ${effect.originalTokens.length} → ${effect.strippedTokens.length}`,
+  );
+}

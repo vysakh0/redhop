@@ -258,6 +258,32 @@ export interface QuerySetReport {
   suggestedAction: string
 }
 /**
+ * Diagnostic output of [`Stripper.isEffectiveOn`].
+ *
+ * Every configured boilerplate term lands in exactly one of `removedTerms`
+ * (fired on this query) or `unusedBoilerplate` (did not fire). The token
+ * streams expose the analyzer's view so users can debug
+ * "my Stripper compiled but seems to do nothing" without reading source.
+ */
+export interface StripperEffect {
+  /** The query passed in, verbatim. */
+  original: string
+  /** What `apply(query)` would return. */
+  stripped: string
+  /** Analyzer tokens of the original query. */
+  originalTokens: Array<string>
+  /** Analyzer tokens of the stripped output. */
+  strippedTokens: Array<string>
+  /** Configured surface forms that fired on this query. */
+  removedTerms: Array<string>
+  /**
+   * Configured surface forms that did NOT fire on this query — either
+   * they aren't present in the input, or the analyzer is stemming them
+   * away from the query's tokens.
+   */
+  unusedBoilerplate: Array<string>
+}
+/**
  * Result of [`Vocabulary.enrich`] — the enriched chunk text plus the
  * per-chunk audit record. The record's `stage` is `"enrich"` (vs
  * `"vocabulary"` for the query-side `apply`).
@@ -341,6 +367,14 @@ export interface EvalReport {
  * unlock `contextRecall` / `contextPrecision`; pass `options.goldAnswer`
  * to unlock `answerTokenRecall`. Both optional, any combination
  * supported.
+ *
+ * **What self-eval tells you, and what it doesn't.** Without gold, the
+ * returned metrics describe how *focused* the context is on the query —
+ * not whether the *correct* answer-bearing chunk is in there. A dense,
+ * query-focused context can still be confidently wrong. For A/B
+ * comparisons of `Stripper` / `Vocabulary` chains where you care about
+ * correctness, supply `goldChunks` or `goldAnswer`; that's what unlocks
+ * the retrieval-correctness signal.
  *
  * Zero LLM calls — every metric is computed from the same primitives the
  * runtime uses to make its Decision Report. See `EVALUATE_API.md` for
@@ -565,6 +599,26 @@ export declare class Stripper {
    * Decision Report.
    */
   apply(query: string): string
+  /**
+   * Diagnose how this Stripper would act on `query`. Returns an object
+   * with the analyzer's view of the input (which is what Stripper
+   * actually matches against) and the configured boilerplate terms
+   * that did and did not fire on this query.
+   *
+   * Use to catch silent-no-op cases: a long `unusedBoilerplate` array
+   * on what you thought was a representative query usually means the
+   * boilerplate isn't present in your workload, or the analyzer's stem
+   * of your term isn't matching the analyzer's stem of the query token.
+   *
+   * ```js
+   * const s = new redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"]);
+   * const effect = s.isEffectiveOn("highlight the parts of office hours");
+   * console.log(effect.removedTerms);        // [ 'highlight', 'the', 'of' ]
+   * console.log(effect.unusedBoilerplate);   // [ 'antidisestablishmentarianism' ]
+   * console.log(effect.stripped);            // 'parts office hours'
+   * ```
+   */
+  isEffectiveOn(query: string): StripperEffect
   /** Number of distinct boilerplate surface forms compiled. */
   get length(): number
 }

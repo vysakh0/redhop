@@ -261,3 +261,22 @@ def test_context_with_rewrites_rejects_non_rewrite_objects():
     doc = redhop.Document.from_text("anything")
     with pytest.raises(ValueError):
         doc.context_with_rewrites("q", ["not a rewrite"])
+
+
+def test_stripper_is_effective_on_reports_used_and_unused():
+    """is_effective_on surfaces which configured boilerplate fired on this
+    query vs which sat silent. The silent-no-op failure mode (a configured
+    term that doesn't actually exist in the workload) becomes visible
+    instead of being lost in the audit-trail noise."""
+    s = redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"])
+    effect = s.is_effective_on("highlight the parts of office hours")
+    assert effect["stripped"] == "parts office hours" or "parts" in effect["stripped"]
+    # Three configured terms fired; one stayed silent.
+    assert set(effect["removed_terms"]) == {"highlight", "the", "of"}
+    assert effect["unused_boilerplate"] == ["antidisestablishmentarianism"]
+    # Every configured term is reported exactly once across the two buckets.
+    assert len(effect["removed_terms"]) + len(effect["unused_boilerplate"]) == 4
+    # Word-boundary safety holds: "of" inside "office" is preserved.
+    assert "office" in effect["stripped"]
+    # Token streams are exposed (analyzer's view of the input).
+    assert len(effect["original_tokens"]) >= len(effect["stripped_tokens"])

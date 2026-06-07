@@ -625,11 +625,64 @@ impl Stripper {
         use redhop::QueryRewrite;
         self.inner.apply(&query).text
     }
+    /// Diagnose how this Stripper would act on `query`. Returns an object
+    /// with the analyzer's view of the input (which is what Stripper
+    /// actually matches against) and the configured boilerplate terms
+    /// that did and did not fire on this query.
+    ///
+    /// Use to catch silent-no-op cases: a long `unusedBoilerplate` array
+    /// on what you thought was a representative query usually means the
+    /// boilerplate isn't present in your workload, or the analyzer's stem
+    /// of your term isn't matching the analyzer's stem of the query token.
+    ///
+    /// ```js
+    /// const s = new redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"]);
+    /// const effect = s.isEffectiveOn("highlight the parts of office hours");
+    /// console.log(effect.removedTerms);        // [ 'highlight', 'the', 'of' ]
+    /// console.log(effect.unusedBoilerplate);   // [ 'antidisestablishmentarianism' ]
+    /// console.log(effect.stripped);            // 'parts office hours'
+    /// ```
+    #[napi]
+    pub fn is_effective_on(&self, query: String) -> StripperEffect {
+        let e = self.inner.is_effective_on(&query);
+        StripperEffect {
+            original: e.original,
+            stripped: e.stripped,
+            original_tokens: e.original_tokens,
+            stripped_tokens: e.stripped_tokens,
+            removed_terms: e.removed_terms,
+            unused_boilerplate: e.unused_boilerplate,
+        }
+    }
     /// Number of distinct boilerplate surface forms compiled.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
         self.inner.len() as u32
     }
+}
+
+/// Diagnostic output of [`Stripper.isEffectiveOn`].
+///
+/// Every configured boilerplate term lands in exactly one of `removedTerms`
+/// (fired on this query) or `unusedBoilerplate` (did not fire). The token
+/// streams expose the analyzer's view so users can debug
+/// "my Stripper compiled but seems to do nothing" without reading source.
+#[napi(object)]
+pub struct StripperEffect {
+    /// The query passed in, verbatim.
+    pub original: String,
+    /// What `apply(query)` would return.
+    pub stripped: String,
+    /// Analyzer tokens of the original query.
+    pub original_tokens: Vec<String>,
+    /// Analyzer tokens of the stripped output.
+    pub stripped_tokens: Vec<String>,
+    /// Configured surface forms that fired on this query.
+    pub removed_terms: Vec<String>,
+    /// Configured surface forms that did NOT fire on this query — either
+    /// they aren't present in the input, or the analyzer is stemming them
+    /// away from the query's tokens.
+    pub unused_boilerplate: Vec<String>,
 }
 
 /// Compiled workload-curated equivalence classes (term → synonyms). Each

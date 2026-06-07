@@ -83,7 +83,7 @@ pub use crate::analyzer::{analyze_query_set, DilutionCost, QuerySetReport};
 // `crate::rewrite` for the three flaws that motivated the move).
 pub use crate::rewrite::{
     apply_chain as apply_query_rewrites, QueryRewrite, RewriteRecord, RewriteResult, Stripper,
-    Vocabulary,
+    StripperEffect, Vocabulary,
 };
 
 // The built context + its telemetry, and the lower-level context entry points.

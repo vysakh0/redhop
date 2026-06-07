@@ -1701,6 +1701,41 @@ impl Stripper {
         use redhop::QueryRewrite;
         self.inner.apply(query).text
     }
+    /// Diagnose how this Stripper would act on `query`. Returns a dict
+    /// with: `original`, `stripped`, `original_tokens`, `stripped_tokens`
+    /// (the analyzer's view, which is what Stripper actually matches
+    /// against), `removed_terms` (configured boilerplate that fired on
+    /// this query), and `unused_boilerplate` (configured boilerplate
+    /// that did NOT fire — either absent from the query or stem-mismatched).
+    ///
+    /// A long entry in `unused_boilerplate` on what you thought was a
+    /// representative query usually means either the boilerplate isn't
+    /// actually in your workload, or the analyzer's stem of your term
+    /// isn't matching the analyzer's stem of the query token (the
+    /// silent-no-op failure mode).
+    ///
+    /// ```python
+    /// s = redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"])
+    /// effect = s.is_effective_on("highlight the parts of office hours")
+    /// print(effect["removed_terms"])         # ['highlight', 'the', 'of']
+    /// print(effect["unused_boilerplate"])    # ['antidisestablishmentarianism']
+    /// print(effect["stripped"])              # 'parts office hours' — 'of' inside 'office' preserved
+    /// ```
+    fn is_effective_on<'py>(
+        &self,
+        py: Python<'py>,
+        query: &str,
+    ) -> pyo3::PyResult<pyo3::Bound<'py, pyo3::types::PyDict>> {
+        let effect = self.inner.is_effective_on(query);
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("original", effect.original)?;
+        dict.set_item("stripped", effect.stripped)?;
+        dict.set_item("original_tokens", effect.original_tokens)?;
+        dict.set_item("stripped_tokens", effect.stripped_tokens)?;
+        dict.set_item("removed_terms", effect.removed_terms)?;
+        dict.set_item("unused_boilerplate", effect.unused_boilerplate)?;
+        Ok(dict)
+    }
     fn __len__(&self) -> usize {
         self.inner.len()
     }

@@ -5,6 +5,70 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [0.3.1] — 2026-06-08
+
+The **post-release honesty audit**. After 0.3.0 shipped, a critical review
+of the public claims surfaced ten methodological issues — curator-conflict
+on SPIDER_ENRICH, over-strong generalization in the "four-corner rule"
+language, an apples-to-oranges comparison in the 90.7% headline number,
+numeric drift between docs, and an undocumented silent-no-op failure
+mode in `Stripper`. This release addresses each one without changing
+runtime behavior, except for one small additive helper.
+
+### Added
+
+- **`Stripper::is_effective_on(query)`** (Rust + Python + Node): returns
+  a `StripperEffect` (Rust struct / Python dict / Node object) reporting
+  the analyzer's view of the query (`original_tokens` / `stripped_tokens`)
+  plus which configured boilerplate terms fired (`removed_terms`) vs sat
+  silent (`unused_boilerplate`). Surfaces the silent-no-op failure mode
+  where a configured term stems to the same form as surrounding query
+  tokens. Tests: 1 Rust + 1 Python + 1 Node.
+
+### Changed (documentation only, no behavior change)
+
+- **SPIDER_ENRICH downgraded from "Confirmed" to "Suggestive"** and
+  restructured to separate the cleanly-measured algorithmic lift
+  (arm B, +0.128 mean recall, deterministic enrichment from schema
+  metadata) from the curator-conflicted marginal lift (arm C, +0.067
+  on top, hand-curated synonyms by the author of the questions). New
+  Methodology Limitations section names the conflict, sample-schema
+  selection bias, and what the probe *does* vs *does not* support.
+  `VOCABULARY_ENRICH` header flipped from "bidirectional measured
+  evidence" → "asymmetric measured evidence (negative clean; positive
+  suggestive)".
+- **"Four-corner rule" renamed to "four-corner observation"** in
+  findings/README, SPIDER_ENRICH, CUAD_HYBRID_RERANK,
+  CUAD_ENRICH_DEFINITIONS_NULL, SUB_IDF_AUTO_DROP_NULL, examples
+  README, and the cuad_hybrid_rerank probe comment. The cleanly-falsified
+  corners are the load-bearing evidence; the curated corners are CUAD-only
+  with author-curator overlap on the positive arms, so the universal-rule
+  framing wasn't warranted.
+- **CUAD 90.7% headline split into two claims** in all three READMEs,
+  `comparison.mdx`, `benchmarks.md`, `overview.mdx`, and `llms.txt`:
+  - `Stripper(boilerplate)` alone reaches **87.7%** (+1.7 over LlamaIndex,
+    near-zero-effort: ~12 boilerplate terms).
+  - Adding a workload-curated `Vocabulary` (34 keys, 121 synonyms
+    hand-authored against CUAD's clause-name list) reaches **90.7%**
+    (+4.7).
+  The +4.7 is "RedHop with workload-curated preprocessing" vs
+  "LlamaIndex with its default retriever" — the same preprocessing is
+  *not* applied to LlamaIndex; this caveat now appears in the same
+  paragraph as the number.
+- **Stripper-alone retention aligned to 87.7%** (from `CUAD_CLAUSE_EXPANSION`'s
+  controlled three-arm run) across all forward-looking surfaces; the
+  rounded 88% from `CUAD_RECALL_GAP`'s original prototype probe stays in
+  that historical finding doc but no longer appears in user-facing docs.
+- **`evaluate` docstrings** (Rust, Python, Node) now distinguish
+  self-eval (always populated, measures *focus*) from gold-conditional
+  (measures *correctness*). Without gold, evaluate's metrics describe
+  how query-focused the context is, not whether the right answer is in
+  there.
+- **`Stripper`'s analyzer-token semantics** documented in the new helper's
+  rustdoc + Python/Node docstrings + `llms.txt`. The silent-no-op failure
+  mode (where a configured term shares a stem with surrounding words) is
+  now explicitly named alongside the fix (use `is_effective_on`).
+
 ## [0.3.0] — 2026-06-07
 
 The **workflow + measurement** release. Ships a new public-API surface
