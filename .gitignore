@@ -2,6 +2,7 @@
 Cargo.lock
 *.swp
 .DS_Store
+node_modules/
 
 # Experiment outputs (regenerable); curated results live in reports/
 /exports/

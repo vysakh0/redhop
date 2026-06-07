@@ -12,7 +12,7 @@ scenarios.
 | Language | Folder | Status |
 | -------- | ------ | ------ |
 | Python | [`python/`](python/) | ✓ 11 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing |
-| Node.js | `nodejs/` | _coming_ — same scenarios, `.cjs` mirrors |
+| Node.js | [`nodejs/`](nodejs/) | ✓ 11 examples — same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
 | Rust | `rust/` | _coming_ — currently lives at `crates/examples/examples/`; will be reorganized here |
 
 Each language folder has its own `README.md` describing the demos and
