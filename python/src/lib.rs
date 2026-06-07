@@ -1296,7 +1296,8 @@ impl Document {
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50,
-                        ignore=None, gitignore=true, rerank=None, language=None))]
+                        ignore=None, gitignore=true, rerank=None, language=None,
+                        preserve_order=false))]
     #[allow(clippy::too_many_arguments)]
     fn from_folder(
         path: &str,
@@ -1322,6 +1323,7 @@ impl Document {
         rerank: Option<String>,
 
         language: Option<String>,
+        preserve_order: bool,
     ) -> PyResult<Self> {
         // The walk + persist + cache-format + skipped-tracking all live in
         // Rust's `redhop::read_folder_with` so Python and Node share one
@@ -1355,6 +1357,7 @@ impl Document {
                     rerank,
                     min_candidates: None,
                     language,
+                    preserve_order: Some(preserve_order),
                 },
             };
             let inner = to_py(redhop::read_folder_with(path, &fo))?;
@@ -1386,6 +1389,7 @@ impl Document {
                 gitignore,
                 rerank,
                 language,
+                preserve_order,
             );
             Err(PyValueError::new_err(
                 "from_folder requires the file-parsing tier. The standard \
