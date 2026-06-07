@@ -53,6 +53,7 @@ from ._redhop import (
     analyze_query_set,
     drop_template_terms,
     evaluate,
+    expand_query_terms,
     grounding_score,
     link_strength,
 )
@@ -246,6 +247,7 @@ __all__ = [
     "analyze_query_set",
     "drop_template_terms",
     "evaluate",
+    "expand_query_terms",
     "BuiltContext",
     "ContextReport",
     "EvalReport",

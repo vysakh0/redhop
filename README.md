@@ -289,14 +289,25 @@ if report.is_templated:
     # 2 — Strip. Use the boilerplate the analyzer found.
     def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3 — A/B. Run with and without strip on your gold sample;
-    #    redhop.evaluate gives you a deterministic score, no LLM judge.
+    # 3 — (optional) Expand. If your workload has a known taxonomy of
+    #    "topics" each with predictable synonyms (clause types, error
+    #    codes, issue categories), add them with redhop.expand_query_terms.
+    #    On CUAD this lifts retention from 88% to 90% on top of the strip.
+    #    Mechanism: high-IDF discriminators raise the score of the right
+    #    chunk. Opposite direction from PRF (CUAD_PRF_NULL).
+    expansions = {
+        # YOUR keys → synonyms; CUAD example in CUAD_CLAUSE_EXPANSION.md
+        "change of control": ["merger", "successor", "acquisition"],
+    }
+    preprocess = lambda q: redhop.expand_query_terms(strip(q), expansions)
+
+    # 4 — A/B. redhop.evaluate gives you a deterministic score, no LLM judge.
     doc = redhop.Document.from_file("contract.pdf")
     eval_a = redhop.evaluate(user_query,
                              doc.context(user_query, strategy="raw_topk"),
                              gold_chunks=your_gold_chunk_ids)
-    eval_b = redhop.evaluate(strip(user_query),
-                             doc.context(strip(user_query), strategy="raw_topk"),
+    eval_b = redhop.evaluate(preprocess(user_query),
+                             doc.context(preprocess(user_query), strategy="raw_topk"),
                              gold_chunks=your_gold_chunk_ids)
     print(eval_b.overall - eval_a.overall)   # the lift, deterministically
 ```
@@ -326,6 +337,8 @@ Cross-workload probe that validated the analyzer:
 [`docs/findings/QUERY_SET_ANALYZER.md`](docs/findings/QUERY_SET_ANALYZER.md).
 Design rationale + tradeoffs for `evaluate`:
 [`docs/findings/EVALUATE_API.md`](docs/findings/EVALUATE_API.md).
+Worked example of clause-name expansion (+2.7 → 90.3% on CUAD):
+[`docs/findings/CUAD_CLAUSE_EXPANSION.md`](docs/findings/CUAD_CLAUSE_EXPANSION.md).
 
 ## Documentation
 

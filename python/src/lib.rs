@@ -1356,6 +1356,51 @@ fn drop_template_terms(query: &str, boilerplate: Vec<String>) -> String {
     redhop::drop_template_terms(query, &bp)
 }
 
+/// Append high-IDF discriminative terms to a query when a known key appears.
+///
+/// The additive counterpart to `drop_template_terms`. Pass a dict mapping
+/// each known key (clause name, error code, policy slug — anything
+/// workload-specific) to a list of synonyms. For every key whose
+/// (case-insensitive) substring appears in the query, the synonyms are
+/// appended with a single space separator. Matches against the *original*
+/// query only — no recursive chaining, no duplicates.
+///
+/// ```python
+/// expansions = {
+///     "change of control": ["merger", "successor", "acquisition"],
+///     "non-compete": ["restraint", "non-competition"],
+/// }
+/// expanded = redhop.expand_query_terms(
+///     "What about Change of Control clauses?",
+///     expansions,
+/// )
+/// # → "What about Change of Control clauses? merger successor acquisition"
+/// ```
+///
+/// Same workload-specific discipline as `drop_template_terms`: the library
+/// ships the mechanism, the caller supplies the dict. Use case: closing the
+/// remaining CUAD gap after template stripping — the gold span for a clause
+/// like "Change of Control" often uses words like "merger" or "successor"
+/// that don't appear in the templated query. See
+/// `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
+#[pyfunction]
+fn expand_query_terms(
+    query: &str,
+    expansions: std::collections::HashMap<String, Vec<String>>,
+) -> String {
+    // Convert to the borrowed-shape redhop::expand_query_terms expects.
+    let pairs: Vec<(String, Vec<String>)> = expansions.into_iter().collect();
+    let borrowed: Vec<(&str, Vec<&str>)> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+        .collect();
+    let final_refs: Vec<(&str, &[&str])> = borrowed
+        .iter()
+        .map(|(k, v)| (*k, v.as_slice()))
+        .collect();
+    redhop::expand_query_terms(query, &final_refs)
+}
+
 /// Diagnostic over a representative sample of queries — detects
 /// templated-workload dilution and reports which terms are doing it.
 ///
@@ -1518,6 +1563,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(grounding_score, m)?)?;
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
     m.add_function(wrap_pyfunction!(drop_template_terms, m)?)?;
+    m.add_function(wrap_pyfunction!(expand_query_terms, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
     Ok(())

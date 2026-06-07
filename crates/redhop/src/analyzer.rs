@@ -491,6 +491,72 @@ fn is_no_space_script(c: char) -> bool {
     (0x1000..=0x109F).contains(&n)
 }
 
+/// Append high-IDF discriminative terms to a query when a known key appears.
+///
+/// The additive counterpart to [`drop_template_terms`]. Where the strip
+/// helper *removes* low-IDF boilerplate, this helper *adds* high-IDF
+/// synonyms — the operations target opposite ends of the same dilution
+/// problem.
+///
+/// Each `(key, synonyms)` pair in `expansions` is checked against the
+/// query case-insensitively. If the query contains the key as a substring,
+/// every synonym is appended to the returned string with a single space
+/// separator. Matches against the **original** query only — synonyms are
+/// never re-checked against the growing result, so an expansion can't
+/// runaway-chain or duplicate itself.
+///
+/// Like [`drop_template_terms`], the *content* of `expansions` is
+/// workload-specific (CUAD has clause names, support tickets have error
+/// codes, an HR KB has policy names). The library ships the mechanism;
+/// the caller supplies the data.
+///
+/// ```
+/// use redhop::analyzer::expand_query_terms;
+/// let q = "\"Change of Control\" The right of either party to terminate";
+/// let expansions: &[(&str, &[&str])] = &[
+///     ("change of control", &["merger", "successor", "acquisition", "assignment"]),
+///     ("non-compete", &["restraint", "non-competition", "compete"]),
+/// ];
+/// let expanded = expand_query_terms(q, expansions);
+/// assert!(expanded.contains("merger"));
+/// assert!(expanded.contains("\"Change of Control\""));
+/// ```
+///
+/// **Why this works on BM25 corpora dominated by domain boilerplate** —
+/// the dilution failure mode that killed unweighted PRF
+/// (see `docs/findings/CUAD_PRF_NULL.md`) was *additive* in the wrong
+/// shape: feedback added low-IDF corpus boilerplate. A static
+/// workload-specific dictionary adds **high-IDF**, **caller-curated**
+/// terms — exactly the discriminators the corpus is missing in the query.
+/// The mechanism is the opposite direction; the trap from PRF doesn't apply.
+pub fn expand_query_terms(query: &str, expansions: &[(&str, &[&str])]) -> String {
+    if expansions.is_empty() {
+        return query.to_string();
+    }
+    let q_lower = query.to_lowercase();
+    // Use a small ordered-insertion vec so the appended block is
+    // deterministic (alphabetical-by-insertion, not HashSet-random).
+    let mut added: Vec<String> = Vec::new();
+    let mut seen: StdHashSet<String> = StdHashSet::new();
+    for (key, syns) in expansions {
+        let key_lower = key.to_lowercase();
+        if !q_lower.contains(&key_lower) {
+            continue;
+        }
+        for s in *syns {
+            let s_lower = s.to_lowercase();
+            if seen.insert(s_lower) {
+                added.push((*s).to_string());
+            }
+        }
+    }
+    if added.is_empty() {
+        query.to_string()
+    } else {
+        format!("{} {}", query, added.join(" "))
+    }
+}
+
 /// How heavy the template-boilerplate dilution looks on a query set.
 ///
 /// Mapped from [`QuerySetReport::template_word_share`] using thresholds
@@ -982,6 +1048,83 @@ mod tests {
             assert!(!stripped.contains(noise), "expected {noise} stripped; got {stripped:?}");
         }
         assert!(stripped.contains("文書名"), "expected discriminator preserved; got {stripped:?}");
+    }
+
+    // ─── expand_query_terms ────────────────────────────────────────────────
+
+    #[test]
+    fn expand_query_terms_appends_matched_synonyms() {
+        let q = "\"Change of Control\" the right to terminate";
+        let expansions: &[(&str, &[&str])] = &[
+            ("change of control", &["merger", "successor", "acquisition"]),
+            ("non-compete", &["restraint", "non-competition"]),
+        ];
+        let expanded = expand_query_terms(q, expansions);
+        assert!(expanded.starts_with(q), "original query must be preserved verbatim; got {expanded:?}");
+        for syn in &["merger", "successor", "acquisition"] {
+            assert!(expanded.contains(syn), "expected {syn} appended; got {expanded:?}");
+        }
+        // non-compete didn't match → its synonyms must not appear.
+        for not_expected in &["restraint", "non-competition"] {
+            assert!(!expanded.contains(not_expected), "expected {not_expected} NOT appended; got {expanded:?}");
+        }
+    }
+
+    #[test]
+    fn expand_query_terms_empty_dict_is_identity() {
+        let q = "anything goes here";
+        assert_eq!(expand_query_terms(q, &[]), q);
+    }
+
+    #[test]
+    fn expand_query_terms_no_match_is_identity() {
+        let q = "the refund window is thirty days";
+        let expansions: &[(&str, &[&str])] = &[
+            ("change of control", &["merger"]),
+            ("non-compete", &["restraint"]),
+        ];
+        assert_eq!(expand_query_terms(q, expansions), q);
+    }
+
+    #[test]
+    fn expand_query_terms_dedupes_synonyms_across_matches() {
+        // Two keys both match and share a synonym → it must appear once.
+        let q = "change of control and termination for convenience";
+        let expansions: &[(&str, &[&str])] = &[
+            ("change of control", &["merger", "assignment"]),
+            ("termination for convenience", &["assignment", "rescission"]),
+        ];
+        let expanded = expand_query_terms(q, expansions);
+        let n = expanded.matches("assignment").count();
+        // Original query has 0 occurrences of "assignment"; expansion should
+        // append exactly 1 even though two keys list it.
+        assert_eq!(n, 1, "expected dedup; got {expanded:?}");
+    }
+
+    #[test]
+    fn expand_query_terms_case_insensitive_key_match() {
+        let q = "What about CHANGE OF CONTROL clauses?";
+        let expansions: &[(&str, &[&str])] = &[("change of control", &["merger"])];
+        let expanded = expand_query_terms(q, expansions);
+        assert!(expanded.contains("merger"), "case-insensitive match should fire; got {expanded:?}");
+    }
+
+    #[test]
+    fn expand_query_terms_no_recursive_chaining() {
+        // The synonym "merger" is itself a key with its own synonyms. The
+        // helper must NOT re-check appended synonyms against the dict — that
+        // would lead to runaway expansion. Matches against the ORIGINAL query.
+        let q = "change of control clause";
+        let expansions: &[(&str, &[&str])] = &[
+            ("change of control", &["merger"]),
+            ("merger", &["consolidation"]),  // would chain if naive
+        ];
+        let expanded = expand_query_terms(q, expansions);
+        assert!(expanded.contains("merger"));
+        assert!(
+            !expanded.contains("consolidation"),
+            "must not recursively expand; got {expanded:?}"
+        );
     }
 
     #[test]

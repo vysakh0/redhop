@@ -73,7 +73,7 @@ pub use crate::document::{Document, DocumentConfig, RetrievalMode, Section};
 // (what doesn't help), and docs/findings/QUERY_SET_ANALYZER.md (the
 // cross-workload probe that validated the heuristic thresholds).
 pub use crate::analyzer::{
-    analyze_query_set, drop_template_terms, DilutionCost, QuerySetReport,
+    analyze_query_set, drop_template_terms, expand_query_terms, DilutionCost, QuerySetReport,
 };
 
 // The built context + its telemetry, and the lower-level context entry points.

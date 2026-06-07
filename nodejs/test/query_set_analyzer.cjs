@@ -80,6 +80,82 @@ const { analyzeQuerySet, dropTemplateTerms } = require("../index.js");
   assert.strictEqual(out, "office is open", "word boundary preserved on Latin script");
 }
 
+// ─── expandQueryTerms ────────────────────────────────────────────────────
+
+const { expandQueryTerms } = require("../index.js");
+
+{
+  // Matched key → synonyms appended; non-matching key's syns absent.
+  const expansions = {
+    "change of control": ["merger", "successor", "acquisition"],
+    "non-compete": ["restraint", "non-competition"],
+  };
+  const expanded = expandQueryTerms(
+    '"Change of Control" the right to terminate',
+    expansions,
+  );
+  assert.ok(
+    expanded.startsWith('"Change of Control" the right to terminate'),
+    `original query must be preserved verbatim; got: ${expanded}`,
+  );
+  for (const syn of ["merger", "successor", "acquisition"]) {
+    assert.ok(expanded.includes(syn), `expected ${syn} appended; got: ${expanded}`);
+  }
+  for (const absent of ["restraint", "non-competition"]) {
+    assert.ok(
+      !expanded.includes(absent),
+      `expected ${absent} NOT appended; got: ${expanded}`,
+    );
+  }
+}
+
+{
+  assert.strictEqual(expandQueryTerms("anything", {}), "anything", "empty dict is identity");
+}
+
+{
+  const expanded = expandQueryTerms(
+    "What about CHANGE OF CONTROL clauses?",
+    { "change of control": ["merger"] },
+  );
+  assert.ok(expanded.includes("merger"), "case-insensitive key match");
+}
+
+{
+  // Synonyms must not chain: "merger" is a key, but its synonyms shouldn't
+  // be appended just because "merger" was added as a synonym of an earlier
+  // key.
+  const expanded = expandQueryTerms(
+    "change of control clause",
+    {
+      "change of control": ["merger"],
+      "merger": ["consolidation"],
+    },
+  );
+  assert.ok(expanded.includes("merger"));
+  assert.ok(
+    !expanded.includes("consolidation"),
+    `must not recursively expand; got: ${expanded}`,
+  );
+}
+
+{
+  // Two keys share a synonym — dedup: it appears once.
+  const expanded = expandQueryTerms(
+    "change of control and termination for convenience",
+    {
+      "change of control": ["merger", "assignment"],
+      "termination for convenience": ["assignment", "rescission"],
+    },
+  );
+  const occurrences = expanded.split("assignment").length - 1;
+  assert.strictEqual(
+    occurrences,
+    1,
+    `expected dedup of shared synonym; got: ${expanded}`,
+  );
+}
+
 // ── analyzeQuerySet ──────────────────────────────────────────────────────
 
 const cuadShape = () => [

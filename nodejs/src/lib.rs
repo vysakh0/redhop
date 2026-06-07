@@ -523,6 +523,48 @@ pub fn drop_template_terms(query: String, boilerplate: Vec<String>) -> String {
     redhop::drop_template_terms(&query, &bp)
 }
 
+/// Append high-IDF discriminative terms to a query when a known key appears.
+///
+/// The additive counterpart to `dropTemplateTerms`. Pass an object mapping
+/// each known key (clause name, error code, policy slug — anything
+/// workload-specific) to an array of synonyms. For every key whose
+/// case-insensitive substring appears in the query, the synonyms are
+/// appended with a single space separator. Matches against the *original*
+/// query only — no recursive chaining, no duplicates.
+///
+/// ```js
+/// const { expandQueryTerms } = require("redhop");
+/// const expansions = {
+///   "change of control": ["merger", "successor", "acquisition"],
+///   "non-compete":       ["restraint", "non-competition"],
+/// };
+/// const expanded = expandQueryTerms(
+///   "What about Change of Control clauses?",
+///   expansions,
+/// );
+/// // → "What about Change of Control clauses? merger successor acquisition"
+/// ```
+///
+/// Same workload-specific discipline as `dropTemplateTerms`: the library
+/// ships the mechanism, the caller supplies the dict. See
+/// `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
+#[napi]
+pub fn expand_query_terms(
+    query: String,
+    expansions: std::collections::HashMap<String, Vec<String>>,
+) -> String {
+    let pairs: Vec<(String, Vec<String>)> = expansions.into_iter().collect();
+    let borrowed: Vec<(&str, Vec<&str>)> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+        .collect();
+    let final_refs: Vec<(&str, &[&str])> = borrowed
+        .iter()
+        .map(|(k, v)| (*k, v.as_slice()))
+        .collect();
+    redhop::expand_query_terms(&query, &final_refs)
+}
+
 /// Diagnostic over a representative sample of queries — detects
 /// templated-workload dilution and reports which terms are doing it.
 ///

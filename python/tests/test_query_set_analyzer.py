@@ -76,6 +76,65 @@ def test_drop_template_terms_latin_word_boundary_safe():
     assert stripped == "office is open"
 
 
+# ─── expand_query_terms ──────────────────────────────────────────────────────
+
+
+def test_expand_query_terms_appends_matched_synonyms():
+    expansions = {
+        "change of control": ["merger", "successor", "acquisition"],
+        "non-compete": ["restraint", "non-competition"],
+    }
+    expanded = redhop.expand_query_terms(
+        '"Change of Control" the right to terminate',
+        expansions,
+    )
+    # Original query preserved verbatim, synonyms appended.
+    assert expanded.startswith('"Change of Control" the right to terminate')
+    for syn in ("merger", "successor", "acquisition"):
+        assert syn in expanded
+    # Non-matching key's synonyms must not appear.
+    for absent in ("restraint", "non-competition"):
+        assert absent not in expanded
+
+
+def test_expand_query_terms_empty_dict_is_identity():
+    assert redhop.expand_query_terms("anything", {}) == "anything"
+
+
+def test_expand_query_terms_case_insensitive_key_match():
+    expanded = redhop.expand_query_terms(
+        "What about CHANGE OF CONTROL clauses?",
+        {"change of control": ["merger"]},
+    )
+    assert "merger" in expanded
+
+
+def test_expand_query_terms_no_recursive_chaining():
+    """Synonyms must match against the ORIGINAL query only — appended
+    terms can't trigger further expansion."""
+    expanded = redhop.expand_query_terms(
+        "change of control clause",
+        {
+            "change of control": ["merger"],
+            "merger": ["consolidation"],  # would chain if naive
+        },
+    )
+    assert "merger" in expanded
+    assert "consolidation" not in expanded
+
+
+def test_expand_query_terms_dedupes_across_matches():
+    """Two keys that both match and share a synonym → it appears once."""
+    expanded = redhop.expand_query_terms(
+        "change of control and termination for convenience",
+        {
+            "change of control": ["merger", "assignment"],
+            "termination for convenience": ["assignment", "rescission"],
+        },
+    )
+    assert expanded.count("assignment") == 1, f"expected dedup; got: {expanded!r}"
+
+
 # ─── analyze_query_set ───────────────────────────────────────────────────────
 
 

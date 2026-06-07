@@ -171,7 +171,24 @@ else:
     def strip(q):
         return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3. A/B — redhop.evaluate scores both arms deterministically; no
+    # 3. (optional) Expand — when you have a known taxonomy of "topics"
+    #    each with predictable synonyms (clause types, error codes,
+    #    issue categories), add them with redhop.expand_query_terms.
+    #    Adds high-IDF discriminators to the (already-stripped) query
+    #    so BM25 ranks the relevant chunk higher. The opposite mechanism
+    #    direction from PRF (which fails on boilerplate-heavy corpora,
+    #    findings/CUAD_PRF_NULL.md) — this works because the synonyms
+    #    are workload-curated, high-IDF, not corpus-frequency-derived.
+    expansions = {
+        # YOUR workload's keys → synonyms (CUAD example shown in
+        # findings/CUAD_CLAUSE_EXPANSION.md).
+        "change of control": ["merger", "successor", "acquisition"],
+        "non-compete":       ["restraint", "non-competition"],
+    }
+    def preprocess(q):
+        return redhop.expand_query_terms(strip(q), expansions)
+
+    # 4. A/B — redhop.evaluate scores both arms deterministically; no
     #          LLM judge, no extra dependencies. The composite `overall`
     #          plus the components let you compare arms across a sample
     #          of queries. See findings/EVALUATE_API.md for design.
@@ -182,8 +199,8 @@ else:
         gold_chunks=your_gold_chunk_ids,
     )
     eval_b = redhop.evaluate(
-        strip(user_query),
-        doc.context(strip(user_query), strategy="raw_topk"),
+        preprocess(user_query),
+        doc.context(preprocess(user_query), strategy="raw_topk"),
         gold_chunks=your_gold_chunk_ids,
     )
     # eval_b.overall - eval_a.overall is the per-query lift.

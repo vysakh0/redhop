@@ -192,14 +192,23 @@ if report.is_templated:
     # 2 — Strip. Use the boilerplate the analyzer found.
     def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3 — A/B. redhop.evaluate scores both arms deterministically,
+    # 3 — (optional) Expand. If your workload has known topic synonyms
+    #     (clause types, error codes), add them with expand_query_terms.
+    #     On CUAD this lifts 88% → 90% on top of the strip.
+    expansions = {
+        # YOUR keys → synonyms; CUAD worked example in CUAD_CLAUSE_EXPANSION.md
+        "change of control": ["merger", "successor", "acquisition"],
+    }
+    preprocess = lambda q: redhop.expand_query_terms(strip(q), expansions)
+
+    # 4 — A/B. redhop.evaluate scores both arms deterministically,
     #     no LLM judge — see EVALUATE_API.md for the design.
     doc = redhop.Document.from_file("contract.pdf")
     eval_a = redhop.evaluate(user_query,
                              doc.context(user_query, strategy="raw_topk"),
                              gold_chunks=your_gold_chunk_ids)
-    eval_b = redhop.evaluate(strip(user_query),
-                             doc.context(strip(user_query), strategy="raw_topk"),
+    eval_b = redhop.evaluate(preprocess(user_query),
+                             doc.context(preprocess(user_query), strategy="raw_topk"),
                              gold_chunks=your_gold_chunk_ids)
     print(eval_b.overall - eval_a.overall)   # the lift, deterministically
 ```
@@ -227,6 +236,8 @@ Cross-workload probe that validated the analyzer:
 [QUERY_SET_ANALYZER.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md).
 Design rationale + tradeoffs for `evaluate`:
 [EVALUATE_API.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
+Worked example of clause-name expansion (+2.7 → 90.3% on CUAD):
+[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
 
 ## Documentation
 

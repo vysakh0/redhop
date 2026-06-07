@@ -240,6 +240,34 @@ export interface QuerySetReport {
  */
 export declare function dropTemplateTerms(query: string, boilerplate: Array<string>): string
 /**
+ * Append high-IDF discriminative terms to a query when a known key appears.
+ *
+ * The additive counterpart to `dropTemplateTerms`. Pass an object mapping
+ * each known key (clause name, error code, policy slug — anything
+ * workload-specific) to an array of synonyms. For every key whose
+ * case-insensitive substring appears in the query, the synonyms are
+ * appended with a single space separator. Matches against the *original*
+ * query only — no recursive chaining, no duplicates.
+ *
+ * ```js
+ * const { expandQueryTerms } = require("redhop");
+ * const expansions = {
+ *   "change of control": ["merger", "successor", "acquisition"],
+ *   "non-compete":       ["restraint", "non-competition"],
+ * };
+ * const expanded = expandQueryTerms(
+ *   "What about Change of Control clauses?",
+ *   expansions,
+ * );
+ * // → "What about Change of Control clauses? merger successor acquisition"
+ * ```
+ *
+ * Same workload-specific discipline as `dropTemplateTerms`: the library
+ * ships the mechanism, the caller supplies the dict. See
+ * `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
+ */
+export declare function expandQueryTerms(query: string, expansions: Record<string, Array<string>>): string
+/**
  * Diagnostic over a representative sample of queries — detects
  * templated-workload dilution and reports which terms are doing it.
  *

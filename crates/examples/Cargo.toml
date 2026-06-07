@@ -245,5 +245,9 @@ name = "multilingual_query_set_probe"
 path = "examples/multilingual_query_set_probe.rs"
 
 [[example]]
+name = "cuad_clause_expansion"
+path = "examples/cuad_clause_expansion.rs"
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"
