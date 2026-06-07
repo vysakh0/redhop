@@ -167,11 +167,15 @@ is now clear:
 | add       | corpus-only DF (PRF top-k) | ✗ | CUAD_PRF_NULL |
 | add       | user-curated workload synonyms | ✓ | CUAD_CLAUSE_EXPANSION |
 
-**The four corners settle the design space.** Query-side IDF
-manipulation works iff the source of the IDF signal carries semantic
-awareness (query-set overlap for the user is doing it, or curated
-synonyms for the workload). Corpus-only statistics, in either
-direction, fail.
+**The four corners map the design space.** Query-side IDF
+manipulation appears to work iff the source of the IDF signal carries
+semantic awareness (query-set overlap for the user doing the manipulation,
+or curated synonyms for the workload). Corpus-only statistics, in
+either direction, fail. Treat as a predictive heuristic for failure —
+the cleanly-falsified corners (this null + CUAD_PRF_NULL) are the
+load-bearing evidence; the curated corners are CUAD-only with author-
+curator overlap, which is why the broader claim is an
+*observation* not a *rule*.
 
 ## What this rules in / out
 
@@ -192,10 +196,12 @@ direction, fail.
   trivial boilerplate; the marginal terms that matter need
   query-set or workload-curated signal, both already covered by the
   existing API surface.
-- **The four-corner table above is the rule.** When someone proposes
-  a new query-manipulation idea, place it on the table. Corpus-only
-  approaches in either direction have been falsified twice
-  independently.
+- **The four-corner table above is a predictive heuristic.** When
+  someone proposes a new query-manipulation idea, place it on the
+  table. Corpus-only approaches in either direction have been falsified
+  twice independently — that prediction is reliable. The positive
+  corners are workload-specific demonstrations and need their own
+  measurement before claiming generalization.
 
 ## Honest limits
 

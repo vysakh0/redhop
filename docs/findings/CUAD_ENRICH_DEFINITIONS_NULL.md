@@ -153,11 +153,13 @@ diluting the clause-specific discriminators.
 PRF failed on the query side because it appended corpus-pervasive
 low-IDF terms to queries. Definitions enrichment failed here because
 it appended workload-pervasive medium-IDF terms to chunks. Same law,
-opposite side of the pipeline. The four-corner rule from
+opposite side of the pipeline. The four-corner observation from
 [`SUB_IDF_AUTO_DROP_NULL`](SUB_IDF_AUTO_DROP_NULL.md) — *query-side IDF
-manipulation works iff the signal carries semantic awareness; corpus-
-only stats fail* — generalizes: **for chunk-side too, the appended
-signal must be term-specific, not workload-pervasive.**
+manipulation appears to work iff the signal carries semantic
+awareness; corpus-only stats fail* — extends to chunk-side: **the
+appended signal must be term-specific, not workload-pervasive.** Note
+this is a pattern across 2–3 workloads with author-curator overlap on
+the positive arms, not a universally-tested rule.
 
 ## What this changes
 
@@ -226,7 +228,10 @@ Runs in under 2 seconds; no models, no embeddings, no LLM. Same
   queries failed there for the same reason appending workload-
   pervasive medium-IDF terms to chunks fails here.
 - [SUB_IDF_AUTO_DROP_NULL](SUB_IDF_AUTO_DROP_NULL.md) — the
-  four-corner rule that generalizes: corpus/workload-pervasive
-  signal manipulation fails on either side of the pipeline.
+  four-corner *observation* (not rule): corpus/workload-pervasive
+  signal manipulation predictably fails on either side of the
+  pipeline. Positive corners are curator-conflicted; the negative
+  corners (this finding + CUAD_PRF_NULL + SUB_IDF_AUTO_DROP_NULL) are
+  the cleanly-measured evidence.
 
 [`Vocabulary.apply`]: ../../crates/redhop/src/rewrite.rs

@@ -21,7 +21,7 @@ how to run them.
 ## What's NOT here
 
 Measurement probes (CUAD harnesses, multilingual probes, dilution
-sweeps, the four-corner-rule falsifications) stay in
+sweeps, the four-corner-observation falsifications) stay in
 [`crates/examples/examples/`](../crates/examples/examples/) because
 they are evidence-layer infrastructure, not API showcases. The split:
 

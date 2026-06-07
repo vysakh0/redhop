@@ -17,7 +17,7 @@
 
 ## Question
 
-The four-corner rule from
+The four-corner observation from
 [SUB_IDF_AUTO_DROP_NULL](SUB_IDF_AUTO_DROP_NULL.md) showed that
 query-side IDF manipulation needs semantic awareness in the signal
 source. The natural follow-up is whether **a different mechanism

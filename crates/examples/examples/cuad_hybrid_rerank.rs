@@ -6,7 +6,7 @@
 //! plateau established by template-strip + clause-expansion (see
 //! [CUAD_CLAUSE_EXPANSION](docs/findings/CUAD_CLAUSE_EXPANSION.md)).
 //!
-//! The mechanism contrast: the four-corner rule from
+//! The mechanism contrast: the four-corner observation from
 //! [SUB_IDF_AUTO_DROP_NULL](docs/findings/SUB_IDF_AUTO_DROP_NULL.md) said
 //! corpus-only IDF manipulation fails; this probe tests a different
 //! mechanism entirely — **semantic similarity over chunk embeddings**, which
