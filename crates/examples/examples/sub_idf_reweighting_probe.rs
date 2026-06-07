@@ -192,8 +192,7 @@ fn run_cuad(budget: usize) -> anyhow::Result<Vec<Cell>> {
                 Ok(d) => d,
                 Err(_) => continue,
             };
-            let chunk_texts: Vec<String> =
-                doc.chunks().iter().map(|c| c.text.clone()).collect();
+            let chunk_texts: Vec<String> = doc.chunks().iter().map(|c| c.text.clone()).collect();
 
             for qa in &para.qas {
                 if q_count >= LIMIT_Q {
@@ -214,8 +213,7 @@ fn run_cuad(budget: usize) -> anyhow::Result<Vec<Cell>> {
                         Err(_) => continue,
                     };
                     let assembled = ctx.text();
-                    let ctx_words: HashSet<String> =
-                        words(&assembled).into_iter().collect();
+                    let ctx_words: HashSet<String> = words(&assembled).into_iter().collect();
                     let recall = span_recall(gold, &ctx_words);
                     cells[i].add(recall, &filtered);
                 }
@@ -365,7 +363,10 @@ fn run_musique(budget: usize) -> anyhow::Result<Vec<Cell>> {
 
 fn print_workload(label: &str, cells: &[Cell]) {
     println!("── {label} (n={}) ──", cells[0].n);
-    println!("  {:<30}  {:>10}  {:>10}", "threshold", "≥0.8", "mean q len");
+    println!(
+        "  {:<30}  {:>10}  {:>10}",
+        "threshold", "≥0.8", "mean q len"
+    );
     for (cell, (_, lbl)) in cells.iter().zip(THRESHOLDS.iter()) {
         println!(
             "  {:<30}  {:>9.1}%  {:>10.1}",
@@ -400,15 +401,27 @@ fn main() -> anyhow::Result<()> {
 
     // ── verdict ───────────────────────────────────────────────────────────
     let control_cuad = cuad[0].r80();
-    let best_cuad = cuad.iter().skip(1).map(|c| c.r80()).fold(f64::MIN, f64::max);
+    let best_cuad = cuad
+        .iter()
+        .skip(1)
+        .map(|c| c.r80())
+        .fold(f64::MIN, f64::max);
     let cuad_lift = best_cuad - control_cuad;
 
     let control_hot = hotpot[0].r80();
-    let worst_hot = hotpot.iter().skip(1).map(|c| c.r80()).fold(f64::MAX, f64::min);
+    let worst_hot = hotpot
+        .iter()
+        .skip(1)
+        .map(|c| c.r80())
+        .fold(f64::MAX, f64::min);
     let hot_regression = control_hot - worst_hot;
 
     let control_mus = musique[0].r80();
-    let worst_mus = musique.iter().skip(1).map(|c| c.r80()).fold(f64::MAX, f64::min);
+    let worst_mus = musique
+        .iter()
+        .skip(1)
+        .map(|c| c.r80())
+        .fold(f64::MAX, f64::min);
     let mus_regression = control_mus - worst_mus;
 
     println!("══ summary ══");
@@ -431,7 +444,9 @@ fn main() -> anyhow::Result<()> {
         println!("  ✓ CLEAN POSITIVE: sub-IDF auto-drop lifts CUAD without regressing diverse.");
         println!("    Mechanism is general. Worth shipping as an opt-in/auto API.");
     } else if lifts_cuad && !preserves_diverse {
-        println!("  ~ CONDITIONAL POSITIVE: lifts CUAD but regresses one or more diverse workloads.");
+        println!(
+            "  ~ CONDITIONAL POSITIVE: lifts CUAD but regresses one or more diverse workloads."
+        );
         println!("    The mechanism can't be auto-default; must be opt-in.");
     } else if !lifts_cuad && preserves_diverse {
         println!("  ✗ NULL ON CUAD, BENIGN ON DIVERSE: corpus-side auto-drop doesn't help");

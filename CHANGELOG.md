@@ -7,13 +7,15 @@ minor releases may break; breaking changes are noted here).
 
 ## [Unreleased] — pending 0.3.0
 
-The **workflow + measurement** release. Ships four new public-API helpers
-that close the templated-workload retention gap end-to-end, in all three
-bindings (Rust, Python, Node): `analyze_query_set`, `drop_template_terms`,
-`expand_query_terms`, and `evaluate`. On the CUAD framework comparison the
-full **detect → strip → expand → A/B** workflow takes ≥0.8 retention from
-**81.3% → 90.3%** — a 9-point lift over raw BM25, beating LlamaIndex's 86%
-by 4 points, at native BM25 latency (~2.5ms/query) on default lexical
+The **workflow + measurement** release. Ships a new public-API surface
+that closes the templated-workload retention gap end-to-end, in all three
+bindings (Rust, Python, Node): `analyze_query_set`, the `QueryRewrite`
+trait with two built-in implementations (`Stripper` and `Vocabulary`),
+`Document::context_with_rewrites(...)` to compose them with an audit
+trail, and `evaluate`. On the CUAD framework comparison the full
+**detect → strip → vocabulary → A/B** workflow takes ≥0.8 retention from
+**81.3% → 90.7%** — a 9.4-point lift over raw BM25, beating LlamaIndex's
+86% by 4 points, at native BM25 latency (~2.5ms/query) on default lexical
 retrieval. Worked example, hand-curated CUAD clause-name dictionary, and a
 6-arm probe contrasting the workflow vs hybrid+cross-encoder live in
 `docs/findings/CUAD_CLAUSE_EXPANSION.md` and `docs/findings/CUAD_HYBRID_RERANK.md`.
@@ -34,25 +36,41 @@ and Rust callers are unaffected.
   `is_templated=False`). Conservative by design — false positives push
   users toward a workaround that won't help, which is worse than staying
   quiet.
-- **`drop_template_terms(query, boilerplate)`** — script-aware token-level
-  boilerplate removal. Latin scripts go through the original
-  whitespace-token path with word-boundary safety (a boilerplate `"of"`
-  does **not** erase the `"of"` inside `"office"`); Han / Hiragana /
-  Katakana / Hangul / Thai / Lao / Khmer / Burmese terms use
-  substring removal because those scripts have no whitespace between
-  words. Validated across French, German, Spanish, Chinese, and Japanese
-  in `docs/findings/MULTILINGUAL_ANALYZER.md`.
-- **`expand_query_terms(query, expansions) → String`** — additive symmetric
-  to `drop_template_terms`. Takes a workload-specific dict mapping known
-  keys (clause names, error codes, issue categories) to high-IDF synonyms;
-  appends matched synonyms to the query. The CUAD probe
-  (`docs/findings/CUAD_CLAUSE_EXPANSION.md`) shows +2.7 points on top of
-  the template-stripped baseline — the lift comes specifically from
-  *workload-curated high-IDF terms*. Compare with the falsified
-  unweighted-PRF arc (`docs/findings/CUAD_PRF_NULL.md`) where adding
-  *corpus-pervasive low-IDF terms* regressed by −3.7 points; the
-  mechanism direction is the same (additive query expansion), but the
-  IDF profile of what you add is what decides the outcome.
+- **`QueryRewrite` trait + `Stripper` + `Vocabulary`** — compiled,
+  observable, token-level-correct replacement for the function-form
+  rewrites originally drafted for this release. Each `QueryRewrite`
+  implementation returns a `RewriteResult { query, record }` so every
+  stage's `{stage, from, to, matched, added, removed}` lands on
+  `ContextReport::query_rewrites` automatically when called through
+  the chain.
+  - **`Stripper::new(boilerplate)`** — compiled boilerplate-removal
+    rewrite. Matches at token granularity through the analyzer (with a
+    surface-form fallback for tokens like "of"/"the" that stem to
+    empty), so a single-token strip cannot accidentally erase a
+    substring inside a longer word (an `"of"` strip does **not** erase
+    the `"of"` inside `"office"`). Replaces the substring-based
+    `drop_template_terms` function originally drafted for 0.3.0.
+  - **`Vocabulary::new(entries)` / `Vocabulary::bidirectional(entries)`**
+    — compiled workload-curated equivalence classes. Tokenizes keys,
+    synonyms, and the query through the same analyzer the BM25 index
+    uses, so a vocabulary key `"ip"` cannot fire on the `"ip"` inside
+    `"recipient"`. Bidirectional mode treats every class member as a
+    trigger (PTO ↔ "paid time off" ↔ "vacation"). The CUAD probe
+    (`docs/findings/CUAD_CLAUSE_EXPANSION.md`) shows +3.0 points on top
+    of the template-stripped baseline (the new token-level matching
+    re-validates at 90.7% vs the substring-based predecessor's 90.3%
+    — same workload, +0.4 from analyzer alignment).
+  - **`Document::context_with_rewrites(query, &[&stripper, &vocab])`**
+    — runs the chain left-to-right through retrieval. Each stage sees
+    the previous stage's output; the per-stage `RewriteRecord`s land on
+    `ctx.report.query_rewrites` automatically.
+  - **Future-extensible.** Both `Stripper` and `Vocabulary` are
+    `QueryRewrite` implementations; user code can ship its own (e.g. a
+    workload-specific normalizer) and chain it alongside the built-ins.
+    The trait is exported on the public API surface.
+  - **Future-queued:** a `Vocabulary::enrich()` operation (chunk-side
+    definitions injection, the symmetric to query-side appending) sits
+    behind a CUAD-defined-terms probe and will land on a follow-up branch.
 - **`evaluate(query, ctx, gold) → EvalReport`** — in-process retrieval-eval
   scorer, no LLM judge. Self-eval (`mean_grounding`, `evidence_density`,
   `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`,
@@ -94,11 +112,11 @@ Eleven new harnesses under `crates/examples/examples/`:
 #### Documentation
 
 - New workflow-lift chart `.github/workflow_lift.svg` embedded in the
-  root README + binding READMEs — surfaces the 81 → 88 → 90.3% story
+  root README + binding READMEs — surfaces the 81 → 88 → 90.7% story
   visually.
 - Root README, `python/README.md`, `nodejs/README.md` "Templated
-  workloads" section rewritten to detect → strip → (optional) expand →
-  A/B with the four helpers tabled.
+  workloads" section rewritten to detect → strip → (optional) vocabulary →
+  A/B with `Stripper` / `Vocabulary` / `context_with_rewrites` tabled.
 - `docs/CHOOSING_A_CONFIG.md` step 3 leads with the new "two paths up
   the same hill" decision table contrasting `retrieval="hybrid"` (the
   one-knob alternative) vs BM25 + the helpers (best-quality).
@@ -156,8 +174,8 @@ Eleven new harnesses under `crates/examples/examples/`:
 - **Findings master table refreshed** with six new finding rows on
   `/docs/benchmarks/` (website) and `docs/findings/README.md` (repo).
   Framework comparison row updated: the CUAD headline is now
-  `90.3%` via strip + expand (was `88%` via strip alone), beating
-  LlamaIndex by 4 points.
+  `90.7%` via `Stripper` + `Vocabulary` (was `88%` via strip alone),
+  beating LlamaIndex by 4 points.
 
 ### Breaking (Node only — Python and Rust callers unaffected)
 

@@ -181,7 +181,7 @@ fn cfg(strategy: ContextStrategy, tau: f32, budget: usize) -> ContextConfig {
         redundancy_max_cosine: 1.0,
         low_confidence_max_grounding: 0.10,
         analyzer: redhop::analyzer::default_english(),
-            preserve_order: false,
+        preserve_order: false,
     }
 }
 

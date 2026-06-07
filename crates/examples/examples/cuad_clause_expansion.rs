@@ -42,9 +42,9 @@
 
 use std::collections::HashSet;
 
-use redhop::{Vocabulary, QueryRewrite};
 use redhop::context::{ContextConfig, ContextStrategy};
 use redhop::document::{Document, DocumentConfig};
+use redhop::{QueryRewrite, Vocabulary};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -119,37 +119,112 @@ fn extract_cuad_signal(q: &str) -> String {
 /// of `expand_query_terms` would supply their own workload-specific dict.
 fn cuad_clause_synonyms() -> Vec<(&'static str, &'static [&'static str])> {
     vec![
-        ("change of control", &["merger", "successor", "acquisition", "consolidation", "stockholders"][..]),
-        ("anti-assignment", &["assign", "transfer", "successors", "delegate"]),
-        ("non-compete", &["restraint", "compete", "competitive", "compete", "competing"]),
-        ("non-disparagement", &["disparage", "criticize", "negative", "statement"]),
+        (
+            "change of control",
+            &[
+                "merger",
+                "successor",
+                "acquisition",
+                "consolidation",
+                "stockholders",
+            ][..],
+        ),
+        (
+            "anti-assignment",
+            &["assign", "transfer", "successors", "delegate"],
+        ),
+        (
+            "non-compete",
+            &[
+                "restraint",
+                "compete",
+                "competitive",
+                "compete",
+                "competing",
+            ],
+        ),
+        (
+            "non-disparagement",
+            &["disparage", "criticize", "negative", "statement"],
+        ),
         ("exclusivity", &["exclusive", "sole", "exclusively"]),
-        ("most favored nation", &["mfn", "favored", "comparable", "better"]),
-        ("no-solicit", &["solicit", "solicitation", "recruit", "hire"]),
-        ("right of first refusal", &["rofr", "refusal", "first option", "preemptive"]),
-        ("right of first offer", &["rofo", "first offer", "preemptive"]),
-        ("termination for convenience", &["convenience", "without cause", "any reason"]),
-        ("renewal term", &["renew", "extend", "extension", "renewable"]),
-        ("notice period to terminate renewal", &["notice", "days notice", "written notice"]),
-        ("governing law", &["governed", "construed", "jurisdiction", "venue", "law of"]),
-        ("ip ownership assignment", &["assign", "ownership", "title", "intellectual property"]),
-        ("joint ip ownership", &["jointly", "co-own", "joint ownership"]),
-        ("license grant", &["grants", "license", "licensee", "licensor"]),
+        (
+            "most favored nation",
+            &["mfn", "favored", "comparable", "better"],
+        ),
+        (
+            "no-solicit",
+            &["solicit", "solicitation", "recruit", "hire"],
+        ),
+        (
+            "right of first refusal",
+            &["rofr", "refusal", "first option", "preemptive"],
+        ),
+        (
+            "right of first offer",
+            &["rofo", "first offer", "preemptive"],
+        ),
+        (
+            "termination for convenience",
+            &["convenience", "without cause", "any reason"],
+        ),
+        (
+            "renewal term",
+            &["renew", "extend", "extension", "renewable"],
+        ),
+        (
+            "notice period to terminate renewal",
+            &["notice", "days notice", "written notice"],
+        ),
+        (
+            "governing law",
+            &["governed", "construed", "jurisdiction", "venue", "law of"],
+        ),
+        (
+            "ip ownership assignment",
+            &["assign", "ownership", "title", "intellectual property"],
+        ),
+        (
+            "joint ip ownership",
+            &["jointly", "co-own", "joint ownership"],
+        ),
+        (
+            "license grant",
+            &["grants", "license", "licensee", "licensor"],
+        ),
         ("uncapped liability", &["unlimited", "uncapped", "no limit"]),
-        ("cap on liability", &["capped", "limited", "maximum", "shall not exceed"]),
+        (
+            "cap on liability",
+            &["capped", "limited", "maximum", "shall not exceed"],
+        ),
         ("liquidated damages", &["liquidated", "damages", "penalty"]),
         ("warranty duration", &["warrants", "warranty", "warranted"]),
         ("insurance", &["insure", "insured", "coverage", "policy"]),
         ("audit rights", &["audit", "inspect", "books and records"]),
         ("source code escrow", &["escrow", "deposit", "source code"]),
-        ("third party beneficiary", &["beneficiary", "third party", "intended"]),
-        ("covenant not to sue", &["release", "waiver", "covenant", "sue"]),
-        ("revenue sharing", &["royalty", "percentage", "revenue", "share"]),
+        (
+            "third party beneficiary",
+            &["beneficiary", "third party", "intended"],
+        ),
+        (
+            "covenant not to sue",
+            &["release", "waiver", "covenant", "sue"],
+        ),
+        (
+            "revenue sharing",
+            &["royalty", "percentage", "revenue", "share"],
+        ),
         ("price restrictions", &["pricing", "price", "rate", "fees"]),
         ("minimum commitment", &["minimum", "commit", "guarantee"]),
         ("volume restriction", &["volume", "quantity", "cap"]),
-        ("document name", &["title", "this agreement", "this contract"]),
-        ("agreement date", &["dated", "as of", "executed", "effective date"]),
+        (
+            "document name",
+            &["title", "this agreement", "this contract"],
+        ),
+        (
+            "agreement date",
+            &["dated", "as of", "executed", "effective date"],
+        ),
         ("effective date", &["effective", "commence", "begin"]),
         ("expiration date", &["expire", "terminate", "ends"]),
         ("parties", &["between", "and"]),
@@ -194,8 +269,23 @@ const CANDIDATE_K: usize = 40;
 // CUAD template boilerplate, used by the `Stripped` arm so it can drop the
 // 24-word wrapper. Matches what the analyzer surfaces for templated CUAD.
 const CUAD_BOILERPLATE: &[&str] = &[
-    "highlight", "the", "parts", "if", "any", "of", "this", "contract",
-    "related", "to", "that", "should", "be", "reviewed", "by", "a", "lawyer",
+    "highlight",
+    "the",
+    "parts",
+    "if",
+    "any",
+    "of",
+    "this",
+    "contract",
+    "related",
+    "to",
+    "that",
+    "should",
+    "be",
+    "reviewed",
+    "by",
+    "a",
+    "lawyer",
     "details",
 ];
 
@@ -290,9 +380,7 @@ fn main() -> anyhow::Result<()> {
     let raw = std::fs::read_to_string(&path)?;
     let cuad: Cuad = serde_json::from_str(&raw)?;
 
-    println!(
-        "CUAD clause-name expansion probe — does adding high-IDF synonyms push past 88%?"
-    );
+    println!("CUAD clause-name expansion probe — does adding high-IDF synonyms push past 88%?");
     println!(
         "  config: n={LIMIT_Q}, BM25, budget={BUDGET}, candidate_k={CANDIDATE_K}, RawTopK, set-based span_recall"
     );
@@ -339,7 +427,10 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     let arm_d = run(&cuad, Arm::RawExpanded, &vocabulary)?;
-    print_arm("arm D: raw template + clause-name expanded (control)", &arm_d);
+    print_arm(
+        "arm D: raw template + clause-name expanded (control)",
+        &arm_d,
+    );
     println!();
 
     let a80 = pct(arm_a.retained_80, arm_a.n);
@@ -371,8 +462,12 @@ fn main() -> anyhow::Result<()> {
     } else if delta_cb > -0.5 {
         println!("  ✗ Flat ({delta_cb:+.1} pts). Mechanism didn't help on this workload at this dict size.");
     } else {
-        println!("  ✗ Regressed ({delta_cb:+.1} pts). The added synonyms hurt more than they helped.");
-        println!("    Likely the dict synonyms are not actually high-IDF in CUAD's contract corpus.");
+        println!(
+            "  ✗ Regressed ({delta_cb:+.1} pts). The added synonyms hurt more than they helped."
+        );
+        println!(
+            "    Likely the dict synonyms are not actually high-IDF in CUAD's contract corpus."
+        );
     }
     Ok(())
 }

@@ -145,6 +145,7 @@ pub struct RewriteRecord {
 /// }
 /// # Ok(()) }
 /// ```
+#[derive(Clone)]
 pub struct Stripper {
     /// Original surface forms (for the audit trail).
     surface_forms: Vec<String>,
@@ -175,15 +176,10 @@ impl Stripper {
     }
 
     /// Compile a boilerplate list using the supplied analyzer.
-    pub fn with_analyzer<S: AsRef<str>>(
-        boilerplate: &[S],
-        analyzer: Arc<dyn Analyzer>,
-    ) -> Self {
-        let surface_forms: Vec<String> = boilerplate.iter().map(|s| s.as_ref().to_string()).collect();
-        let tokens: Vec<Vec<String>> = surface_forms
-            .iter()
-            .map(|s| analyzer.tokens(s))
-            .collect();
+    pub fn with_analyzer<S: AsRef<str>>(boilerplate: &[S], analyzer: Arc<dyn Analyzer>) -> Self {
+        let surface_forms: Vec<String> =
+            boilerplate.iter().map(|s| s.as_ref().to_string()).collect();
+        let tokens: Vec<Vec<String>> = surface_forms.iter().map(|s| analyzer.tokens(s)).collect();
         let surface_keys: Vec<String> = surface_forms.iter().map(|s| normalize_word(s)).collect();
         Self {
             surface_forms,
@@ -233,7 +229,13 @@ impl QueryRewrite for Stripper {
             .surface_keys
             .iter()
             .zip(self.tokens.iter())
-            .filter_map(|(key, toks)| if toks.is_empty() && !key.is_empty() { Some(key) } else { None })
+            .filter_map(|(key, toks)| {
+                if toks.is_empty() && !key.is_empty() {
+                    Some(key)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         // Walk the original query in whitespace chunks so case and
@@ -301,6 +303,7 @@ fn normalize_word(s: &str) -> String {
 ///
 /// Internal — exposed only through [`Vocabulary::new`] /
 /// [`Vocabulary::bidirectional`].
+#[derive(Clone)]
 struct VocabularyClass {
     /// Surface forms in their original (case, punctuation) shape, used
     /// for the audit trail.
@@ -327,6 +330,7 @@ struct VocabularyClass {
 /// user typed and appends the other two. Non-bidirectional mode treats
 /// the first form as the only trigger and the rest as the additions
 /// (the asymmetric "key → synonyms" shape).
+#[derive(Clone)]
 pub struct Vocabulary {
     classes: Vec<VocabularyClass>,
     analyzer: Arc<dyn Analyzer>,
@@ -390,11 +394,7 @@ impl Vocabulary {
     /// [`Vocabulary::with_options`] in hot paths.
     pub fn with_analyzer(mut self, analyzer: Arc<dyn Analyzer>) -> Self {
         for class in &mut self.classes {
-            class.member_tokens = class
-                .members
-                .iter()
-                .map(|m| analyzer.tokens(m))
-                .collect();
+            class.member_tokens = class.members.iter().map(|m| analyzer.tokens(m)).collect();
         }
         self.analyzer = analyzer;
         self
@@ -537,7 +537,14 @@ mod tests {
         // Control"` preserved verbatim, the boilerplate list must NOT
         // contain `"of"`. Pin the actual contract.
         let s = Stripper::new(&[
-            "highlight", "the", "parts", "of", "this", "contract", "related", "to",
+            "highlight",
+            "the",
+            "parts",
+            "of",
+            "this",
+            "contract",
+            "related",
+            "to",
         ]);
         let r = s.apply("Highlight the parts of this contract related to \"Change of Control\".");
         assert_eq!(r.query, "\"Change Control\".");
@@ -553,7 +560,13 @@ mod tests {
         // quoted phrase like "Change of Control". Lets users compose a
         // stripper carefully when phrase preservation matters.
         let s = Stripper::new(&[
-            "highlight", "the", "parts", "this", "contract", "related", "to",
+            "highlight",
+            "the",
+            "parts",
+            "this",
+            "contract",
+            "related",
+            "to",
         ]); // note: no "of"
         let r = s.apply("Highlight the parts of this contract related to \"Change of Control\".");
         assert_eq!(r.query, "of \"Change of Control\".");
@@ -595,14 +608,24 @@ mod tests {
     #[test]
     fn vocabulary_basic_asymmetric_append() {
         let g = Vocabulary::new(&[
-            ("change of control", &["merger", "successor", "acquisition"][..]),
+            (
+                "change of control",
+                &["merger", "successor", "acquisition"][..],
+            ),
             ("non-compete", &["restraint"]),
         ]);
         let r = g.apply("\"Change of Control\" the right to terminate");
         for syn in &["merger", "successor", "acquisition"] {
-            assert!(r.query.contains(syn), "expected {syn} appended; got {:?}", r.query);
+            assert!(
+                r.query.contains(syn),
+                "expected {syn} appended; got {:?}",
+                r.query
+            );
         }
-        assert!(!r.query.contains("restraint"), "non-compete didn't match — its synonyms must not appear");
+        assert!(
+            !r.query.contains("restraint"),
+            "non-compete didn't match — its synonyms must not appear"
+        );
         assert!(r.record.matched.iter().any(|m| m == "change of control"));
         assert_eq!(r.record.added, vec!["merger", "successor", "acquisition"]);
     }

@@ -241,6 +241,17 @@ impl ContextReport {
     fn estimated_waste_tokens(&self) -> usize {
         self.inner.economics.estimated_waste_tokens
     }
+    /// Audit trail of query rewrites applied (one [`RewriteRecord`] per
+    /// stage, in chain order). Empty when no rewrite chain was used.
+    #[getter]
+    fn query_rewrites(&self) -> Vec<RewriteRecord> {
+        self.inner
+            .query_rewrites
+            .iter()
+            .cloned()
+            .map(|r| RewriteRecord { inner: r })
+            .collect()
+    }
     /// The full report as a JSON string (Python wrapper exposes `.to_dict()`).
     fn json(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner)
@@ -1262,6 +1273,25 @@ impl Document {
         Ok(py_built(to_py(built)?))
     }
 
+    /// Run a query through a chain of [`Stripper`]/[`Vocabulary`] rewrites
+    /// before retrieval, then assemble context as `.context(...)` does.
+    ///
+    /// `rewrites` is an ordered list — each stage sees the previous
+    /// stage's output. The per-stage audit trail lands on
+    /// `ctx.report.query_rewrites` as a list of `RewriteRecord`.
+    ///
+    /// Mirrors `redhop::Document::context_with_rewrites` in the Rust core.
+    #[pyo3(signature = (query, rewrites))]
+    fn context_with_rewrites(
+        &mut self,
+        query: &str,
+        rewrites: &Bound<'_, PyAny>,
+    ) -> PyResult<BuiltContext> {
+        let owned = extract_rewrites(rewrites)?;
+        let refs = rewrite_refs(&owned);
+        Ok(py_built(to_py(self.inner.context_with_rewrites(query, &refs))?))
+    }
+
     /// Diagnose retrieval for a query **without** modifying anything (pure
     /// observability). For `strategy="auto"`, `report.strategy` is the decision.
     fn analyze(&mut self, query: &str) -> PyResult<ContextReport> {
@@ -1369,60 +1399,218 @@ impl QuerySetReport {
     }
 }
 
-/// Drop boilerplate tokens from a query string before retrieval.
+// ─── Query-side rewrites (Stripper + Vocabulary) ──────────────────────────
+// Backed by `redhop::rewrite::{Stripper, Vocabulary, QueryRewrite}`. Both
+// implementations compile their content once and emit auditable trace
+// records that land in `ContextReport.query_rewrites`. See
+// `docs/findings/CUAD_RECALL_GAP.md` (mechanism) and
+// `docs/findings/CUAD_CLAUSE_EXPANSION.md` (worked CUAD example with
+// numbers).
+
+/// One step in the rewrite chain — what the stage matched / added /
+/// removed.
 ///
-/// Token matching is case-insensitive on alphanumeric tokens; surviving
-/// tokens are rejoined with single spaces, with punctuation preserved.
-/// See `docs/findings/CUAD_RECALL_GAP.md` for the mechanism.
-#[pyfunction]
-fn drop_template_terms(query: &str, boilerplate: Vec<String>) -> String {
-    let bp: Vec<&str> = boilerplate.iter().map(|s| s.as_str()).collect();
-    redhop::drop_template_terms(query, &bp)
+/// Returned per-stage on `ctx.report.query_rewrites` so the rewrite
+/// chain is auditable. Fields surface as read-only Python attributes.
+#[pyclass(module = "redhop")]
+#[derive(Clone)]
+struct RewriteRecord {
+    inner: redhop::RewriteRecord,
 }
 
-/// Append high-IDF discriminative terms to a query when a known key appears.
-///
-/// The additive counterpart to `drop_template_terms`. Pass a dict mapping
-/// each known key (clause name, error code, policy slug — anything
-/// workload-specific) to a list of synonyms. For every key whose
-/// (case-insensitive) substring appears in the query, the synonyms are
-/// appended with a single space separator. Matches against the *original*
-/// query only — no recursive chaining, no duplicates.
+#[pymethods]
+impl RewriteRecord {
+    /// The `QueryRewrite::name` of the stage that emitted this record
+    /// (`"strip"` or `"vocabulary"` for the built-in implementations).
+    #[getter]
+    fn stage(&self) -> String {
+        self.inner.stage.clone()
+    }
+    /// Input query handed to this stage.
+    #[getter]
+    fn from_query(&self) -> String {
+        self.inner.from.clone()
+    }
+    /// Output query this stage produced. The next stage's `from_query`
+    /// matches this; the final stage's `to_query` is what BM25 saw.
+    #[getter]
+    fn to_query(&self) -> String {
+        self.inner.to.clone()
+    }
+    /// Surface forms this stage *matched* in the input.
+    #[getter]
+    fn matched(&self) -> Vec<String> {
+        self.inner.matched.clone()
+    }
+    /// Surface forms this stage *added* to the query (Vocabulary).
+    #[getter]
+    fn added(&self) -> Vec<String> {
+        self.inner.added.clone()
+    }
+    /// Surface forms this stage *removed* from the query (Stripper).
+    #[getter]
+    fn removed(&self) -> Vec<String> {
+        self.inner.removed.clone()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "RewriteRecord(stage={:?}, matched={:?}, added={:?}, removed={:?})",
+            self.inner.stage, self.inner.matched, self.inner.added, self.inner.removed,
+        )
+    }
+}
+
+/// Compiled boilerplate-removal rewrite. Token-level matching using the
+/// document's analyzer, so a single-token stripper key cannot accidentally
+/// erase a substring inside a longer word (an `"of"` stripper does **not**
+/// erase the `"of"` inside `"office"`).
 ///
 /// ```python
-/// expansions = {
-///     "change of control": ["merger", "successor", "acquisition"],
-///     "non-compete": ["restraint", "non-competition"],
-/// }
-/// expanded = redhop.expand_query_terms(
-///     "What about Change of Control clauses?",
-///     expansions,
-/// )
-/// # → "What about Change of Control clauses? merger successor acquisition"
+/// stripper = redhop.Stripper([
+///     "highlight", "the", "parts", "of", "this",
+///     "contract", "related", "to",
+/// ])
 /// ```
 ///
-/// Same workload-specific discipline as `drop_template_terms`: the library
-/// ships the mechanism, the caller supplies the dict. Use case: closing the
-/// remaining CUAD gap after template stripping — the gold span for a clause
-/// like "Change of Control" often uses words like "merger" or "successor"
-/// that don't appear in the templated query. See
-/// `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
-#[pyfunction]
-fn expand_query_terms(
-    query: &str,
-    expansions: std::collections::HashMap<String, Vec<String>>,
-) -> String {
-    // Convert to the borrowed-shape redhop::expand_query_terms expects.
-    let pairs: Vec<(String, Vec<String>)> = expansions.into_iter().collect();
-    let borrowed: Vec<(&str, Vec<&str>)> = pairs
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
-        .collect();
-    let final_refs: Vec<(&str, &[&str])> = borrowed
-        .iter()
-        .map(|(k, v)| (*k, v.as_slice()))
-        .collect();
-    redhop::expand_query_terms(query, &final_refs)
+/// Pass into the rewrite chain on `Document.context_with_rewrites(...)`.
+#[pyclass(module = "redhop")]
+struct Stripper {
+    inner: redhop::Stripper,
+}
+
+#[pymethods]
+impl Stripper {
+    #[new]
+    fn new(boilerplate: Vec<String>) -> Self {
+        Self {
+            inner: redhop::Stripper::new(&boilerplate),
+        }
+    }
+    /// Apply the stripper to a query string outside the rewrite chain
+    /// (useful for ad-hoc / pipeline-outside cases). Returns the
+    /// rewritten string; the audit record is discarded — use the
+    /// chain via `Document.context_with_rewrites(...)` if you want
+    /// the trail in the Decision Report.
+    fn apply(&self, query: &str) -> String {
+        use redhop::QueryRewrite;
+        self.inner.apply(query).query
+    }
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+    fn __repr__(&self) -> String {
+        format!("Stripper(n={})", self.inner.len())
+    }
+}
+
+/// Compiled workload-curated equivalence classes (term → synonyms). Each
+/// entry's key, when found in the query at token granularity, triggers
+/// appending its synonyms to the rewritten query. With
+/// `Vocabulary.bidirectional({...})`, any class member can be the trigger
+/// and the others get appended (so PTO ↔ "paid time off" works in both
+/// directions).
+///
+/// ```python
+/// vocab = redhop.Vocabulary({
+///     "change of control": ["merger", "successor", "acquisition"],
+///     "non-compete":       ["restraint", "non-competition"],
+/// })
+/// # symmetric (PTO ↔ paid time off ↔ vacation):
+/// pto = redhop.Vocabulary.bidirectional({"pto": ["paid time off", "vacation"]})
+/// ```
+#[pyclass(module = "redhop")]
+struct Vocabulary {
+    inner: redhop::Vocabulary,
+}
+
+#[pymethods]
+impl Vocabulary {
+    /// Asymmetric vocabulary: the first form of each entry is the only
+    /// trigger; the rest are appended on match.
+    #[new]
+    fn new(entries: std::collections::HashMap<String, Vec<String>>) -> Self {
+        let pairs: Vec<(String, Vec<String>)> = entries.into_iter().collect();
+        let borrowed: Vec<(&str, Vec<&str>)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+            .collect();
+        let final_refs: Vec<(&str, &[&str])> = borrowed
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        Self {
+            inner: redhop::Vocabulary::new(&final_refs),
+        }
+    }
+
+    /// Symmetric (bidirectional) vocabulary: any class member can trigger;
+    /// the other members get appended.
+    #[staticmethod]
+    fn bidirectional(entries: std::collections::HashMap<String, Vec<String>>) -> Self {
+        let pairs: Vec<(String, Vec<String>)> = entries.into_iter().collect();
+        let borrowed: Vec<(&str, Vec<&str>)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+            .collect();
+        let final_refs: Vec<(&str, &[&str])> = borrowed
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        Self {
+            inner: redhop::Vocabulary::bidirectional(&final_refs),
+        }
+    }
+    /// Apply the vocabulary to a query string outside the rewrite chain
+    /// (useful for ad-hoc / pipeline-outside cases). Returns the
+    /// rewritten string with synonyms appended; the audit record is
+    /// discarded — use the chain via `Document.context_with_rewrites(...)`
+    /// if you want the trail in the Decision Report.
+    fn apply(&self, query: &str) -> String {
+        use redhop::QueryRewrite;
+        self.inner.apply(query).query
+    }
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+    fn __repr__(&self) -> String {
+        format!("Vocabulary(n={})", self.inner.len())
+    }
+}
+
+/// Owned Rust copy of the underlying rewrite so we can hand out
+/// `&dyn QueryRewrite` references without juggling pyo3 borrow guards.
+/// Stripper and Vocabulary are cheap to clone (Arc<Analyzer> + Vec<String>).
+enum OwnedRewrite {
+    Stripper(redhop::Stripper),
+    Vocabulary(redhop::Vocabulary),
+}
+
+fn extract_rewrites(rewrites: &Bound<'_, PyAny>) -> PyResult<Vec<OwnedRewrite>> {
+    let mut out = Vec::new();
+    for item in rewrites.try_iter()? {
+        let item = item?;
+        if let Ok(s) = item.extract::<PyRef<'_, Stripper>>() {
+            out.push(OwnedRewrite::Stripper(s.inner.clone()));
+        } else if let Ok(v) = item.extract::<PyRef<'_, Vocabulary>>() {
+            out.push(OwnedRewrite::Vocabulary(v.inner.clone()));
+        } else {
+            return Err(PyValueError::new_err(
+                "rewrites entry must be a Stripper or Vocabulary instance",
+            ));
+        }
+    }
+    Ok(out)
+}
+
+fn rewrite_refs(held: &[OwnedRewrite]) -> Vec<&dyn redhop::QueryRewrite> {
+    held.iter()
+        .map(|r| -> &dyn redhop::QueryRewrite {
+            match r {
+                OwnedRewrite::Stripper(s) => s,
+                OwnedRewrite::Vocabulary(v) => v,
+            }
+        })
+        .collect()
 }
 
 /// Diagnostic over a representative sample of queries — detects
@@ -1580,14 +1768,15 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;
     m.add_class::<EvalReport>()?;
+    m.add_class::<RewriteRecord>()?;
+    m.add_class::<Stripper>()?;
+    m.add_class::<Vocabulary>()?;
     m.add_function(wrap_pyfunction!(build_context, m)?)?;
     m.add_function(wrap_pyfunction!(filter_context, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_context, m)?)?;
     m.add_function(wrap_pyfunction!(context_economics, m)?)?;
     m.add_function(wrap_pyfunction!(grounding_score, m)?)?;
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
-    m.add_function(wrap_pyfunction!(drop_template_terms, m)?)?;
-    m.add_function(wrap_pyfunction!(expand_query_terms, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
     Ok(())

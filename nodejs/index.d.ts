@@ -181,8 +181,36 @@ export interface Report {
   lowConfidenceRetrieval: boolean
   /** The grounding ceiling that `low_confidence_retrieval` applied. */
   lowConfidenceThreshold: number
+  /**
+   * Audit trail of query rewrites applied (one entry per stage, in
+   * chain order). Empty when no rewrite chain was used. See
+   * `Document.contextWithRewrites`.
+   */
+  queryRewrites: Array<RewriteRecord>
   /** The human-readable Decision Report. */
   rendered: string
+}
+/**
+ * One step in the rewrite chain — what the stage matched / added /
+ * removed. Surfaced on `Report.queryRewrites` so the rewrite chain is
+ * auditable.
+ */
+export interface RewriteRecord {
+  /**
+   * The `QueryRewrite::name` of the stage that emitted this record
+   * (`"strip"` or `"vocabulary"` for the built-in implementations).
+   */
+  stage: string
+  /** Input query handed to this stage. */
+  fromQuery: string
+  /** Output query produced by this stage. */
+  toQuery: string
+  /** Surface forms in the input that this stage matched. */
+  matched: Array<string>
+  /** Surface forms this stage *added* to the query (Vocabulary). */
+  added: Array<string>
+  /** Surface forms this stage *removed* from the query (Stripper). */
+  removed: Array<string>
 }
 /** A file that `Document.fromFolder` skipped, with the reason why. */
 export interface SkippedFile {
@@ -230,51 +258,6 @@ export interface QuerySetReport {
   suggestedAction: string
 }
 /**
- * Drop boilerplate tokens from a query before retrieval.
- *
- * Token matching is case-insensitive on alphanumeric tokens; surviving
- * tokens are rejoined with single spaces, with punctuation preserved.
- * Mechanism: docs/findings/CUAD_RECALL_GAP.md.
- *
- * ```js
- * const { dropTemplateTerms } = require("redhop");
- * const stripped = dropTemplateTerms(
- *   'Highlight the parts related to "Change of Control".',
- *   ["highlight", "the", "parts", "related", "to"],
- * );
- * // stripped === '"Change of Control".'
- * ```
- */
-export declare function dropTemplateTerms(query: string, boilerplate: Array<string>): string
-/**
- * Append high-IDF discriminative terms to a query when a known key appears.
- *
- * The additive counterpart to `dropTemplateTerms`. Pass an object mapping
- * each known key (clause name, error code, policy slug — anything
- * workload-specific) to an array of synonyms. For every key whose
- * case-insensitive substring appears in the query, the synonyms are
- * appended with a single space separator. Matches against the *original*
- * query only — no recursive chaining, no duplicates.
- *
- * ```js
- * const { expandQueryTerms } = require("redhop");
- * const expansions = {
- *   "change of control": ["merger", "successor", "acquisition"],
- *   "non-compete":       ["restraint", "non-competition"],
- * };
- * const expanded = expandQueryTerms(
- *   "What about Change of Control clauses?",
- *   expansions,
- * );
- * // → "What about Change of Control clauses? merger successor acquisition"
- * ```
- *
- * Same workload-specific discipline as `dropTemplateTerms`: the library
- * ships the mechanism, the caller supplies the dict. See
- * `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
- */
-export declare function expandQueryTerms(query: string, expansions: Record<string, Array<string>>): string
-/**
  * Diagnostic over a representative sample of queries — detects
  * templated-workload dilution and reports which terms are doing it.
  *
@@ -283,11 +266,11 @@ export declare function expandQueryTerms(query: string, expansions: Record<strin
  * cross-workload probe that validated the heuristic.
  *
  * ```js
- * const { analyzeQuerySet, dropTemplateTerms } = require("redhop");
+ * const { analyzeQuerySet, Stripper } = require("redhop");
  * const r = analyzeQuerySet(myQueries);
  * if (r.isTemplated) {
- *   const stripped = dropTemplateTerms(query, r.boilerplateTerms);
- *   const ctx = doc.context(stripped, { strategy: "raw_topk" });
+ *   const stripper = new Stripper(r.boilerplateTerms);
+ *   const ctx = doc.contextWithRewrites(query, [stripper]);
  * }
  * ```
  */
@@ -509,10 +492,89 @@ export declare class Document {
    */
   context(query: string, budget?: number | undefined | null, neighbors?: number | undefined | null, includeHeading?: boolean | undefined | null): BuiltContext
   /**
+   * Run a query through a chain of `Stripper` / `Vocabulary` rewrites
+   * before retrieval, then assemble context as `.context(...)` does.
+   *
+   * `rewrites` is an ordered array — each stage sees the previous
+   * stage's output. The per-stage audit trail lands on
+   * `ctx.report.queryRewrites` as an array of `RewriteRecord`.
+   *
+   * Mirrors `redhop::Document::context_with_rewrites` in the Rust core.
+   */
+  contextWithRewrites(query: string, rewrites: Array<Stripper | Vocabulary>): BuiltContext
+  /**
    * Pure diagnostics: retrieve + score for the query but DON'T assemble
    * the prompt. Returns the same `Report` shape as `context().report` so
    * callers can audit what would happen without paying assembly cost or
    * stringifying the chunks.
    */
   analyze(query: string): Report
+}
+/**
+ * Compiled boilerplate-removal rewrite. Token-level matching using the
+ * document's analyzer, so a single-token stripper key cannot accidentally
+ * erase a substring inside a longer word (an `"of"` stripper does **not**
+ * erase the `"of"` inside `"office"`).
+ *
+ * ```js
+ * const stripper = new redhop.Stripper([
+ *   "highlight", "the", "parts", "of", "this",
+ *   "contract", "related", "to",
+ * ]);
+ * ```
+ *
+ * Pass into the rewrite chain on `Document.contextWithRewrites(...)`.
+ */
+export declare class Stripper {
+  constructor(boilerplate: Array<string>)
+  /**
+   * Apply the stripper to a query string outside the rewrite chain
+   * (ad-hoc / pipeline-outside cases). Returns the rewritten string;
+   * the audit record is discarded — use the chain via
+   * `Document.contextWithRewrites(...)` if you want the trail in the
+   * Decision Report.
+   */
+  apply(query: string): string
+  /** Number of distinct boilerplate surface forms compiled. */
+  get length(): number
+}
+/**
+ * Compiled workload-curated equivalence classes (term → synonyms). Each
+ * entry's key, when found in the query at token granularity, triggers
+ * appending its synonyms to the rewritten query. With
+ * `Vocabulary.bidirectional({...})`, any class member can be the trigger
+ * and the others get appended (so PTO ↔ "paid time off" works in both
+ * directions).
+ *
+ * ```js
+ * const vocab = new redhop.Vocabulary({
+ *   "change of control": ["merger", "successor", "acquisition"],
+ *   "non-compete":       ["restraint", "non-competition"],
+ * });
+ * // symmetric:
+ * const pto = redhop.Vocabulary.bidirectional({
+ *   pto: ["paid time off", "vacation"],
+ * });
+ * ```
+ */
+export declare class Vocabulary {
+  /**
+   * Asymmetric vocabulary: the first form of each entry is the only
+   * trigger; the rest are appended on match.
+   */
+  constructor(entries: Record<string, Array<string>>)
+  /**
+   * Symmetric (bidirectional) vocabulary: any class member can trigger
+   * expansion; the other members get appended.
+   */
+  static bidirectional(entries: Record<string, Array<string>>): Vocabulary
+  /**
+   * Apply the vocabulary to a query string outside the rewrite chain.
+   * Returns the rewritten string; the audit record is discarded — use
+   * the chain via `Document.contextWithRewrites(...)` if you want the
+   * trail in the Decision Report.
+   */
+  apply(query: string): string
+  /** Number of equivalence classes compiled. */
+  get length(): number
 }

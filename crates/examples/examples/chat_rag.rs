@@ -28,7 +28,10 @@ use std::sync::Arc;
 
 use redhop::analyzer::default_english;
 use redhop::context::{build_context, ContextConfig, ContextStrategy};
-use redhop::core::{Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown, TokenCount};
+use redhop::core::{
+    Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
+    TokenCount,
+};
 
 /// Hand-rolled synthetic chat: 12 turns spanning order, shipping, refund,
 /// and return policy. The clear *chronology signal* is the turn number;
@@ -39,14 +42,32 @@ fn chat_history() -> Vec<(String, String)> {
         ("turn-00", "Hi, I have a question about my order."),
         ("turn-01", "I ordered a laptop last Tuesday."),
         ("turn-02", "It was the new MacBook Air, 15-inch."),
-        ("turn-03", "Shipping confirmation came in yesterday — said tomorrow."),
-        ("turn-04", "Actually I'd like to cancel and get my money back."),
-        ("turn-05", "Sure — what is your refund policy on a shipped order?"),
-        ("turn-06", "We offer a thirty-day refund window from the delivery date."),
+        (
+            "turn-03",
+            "Shipping confirmation came in yesterday — said tomorrow.",
+        ),
+        (
+            "turn-04",
+            "Actually I'd like to cancel and get my money back.",
+        ),
+        (
+            "turn-05",
+            "Sure — what is your refund policy on a shipped order?",
+        ),
+        (
+            "turn-06",
+            "We offer a thirty-day refund window from the delivery date.",
+        ),
         ("turn-07", "Great, that works. How do I initiate a return?"),
         ("turn-08", "I'll email you a return label and instructions."),
-        ("turn-09", "Do I need to print the label or can I show it on my phone?"),
-        ("turn-10", "Either is fine. Drop the package at any UPS access point."),
+        (
+            "turn-09",
+            "Do I need to print the label or can I show it on my phone?",
+        ),
+        (
+            "turn-10",
+            "Either is fine. Drop the package at any UPS access point.",
+        ),
         ("turn-11", "Perfect. Thanks for the help!"),
     ]
     .into_iter()
@@ -81,7 +102,9 @@ fn make_chunks(history: &[(String, String)]) -> Vec<RetrievalResult> {
             // selection, the picks span the timeline — and the contrast
             // between relevance order and chat order becomes visible.
             let q_terms: std::collections::HashSet<&str> =
-                ["shipping", "refund", "label", "return"].into_iter().collect();
+                ["shipping", "refund", "label", "return"]
+                    .into_iter()
+                    .collect();
             let s = text
                 .to_lowercase()
                 .split(|c: char| !c.is_alphanumeric())

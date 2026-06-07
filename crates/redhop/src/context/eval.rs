@@ -418,7 +418,10 @@ mod tests {
         let atr = r
             .answer_token_recall
             .expect("answer_token_recall should be populated when Answer gold is given");
-        assert!(atr > 0.0, "stemmed gold answer terms appear in context; got {atr}");
+        assert!(
+            atr > 0.0,
+            "stemmed gold answer terms appear in context; got {atr}"
+        );
     }
 
     #[test]
@@ -507,11 +510,7 @@ mod tests {
         assert!((0.0..=1.0).contains(&r.overall));
 
         // Chunk-gold provided — recall must be 0 (nothing selected), not NaN.
-        let r = evaluate(
-            &Query::new("query"),
-            &ctx,
-            EvalGold::Chunks(&["expected"]),
-        );
+        let r = evaluate(&Query::new("query"), &ctx, EvalGold::Chunks(&["expected"]));
         assert_eq!(r.context_recall, Some(0.0));
         // precision on an empty selection is reported as 0.0 (not NaN) so
         // callers can treat the field as always-finite when chunk gold is

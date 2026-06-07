@@ -178,8 +178,10 @@ def test_detect_strip_evaluate_workflow():
     report = redhop.analyze_query_set(cuad_shape)
     assert report.is_templated
 
+    stripper = redhop.Stripper(report.boilerplate_terms)
+
     def strip(q):
-        return redhop.drop_template_terms(q, report.boilerplate_terms)
+        return stripper.apply(q)
 
     raw = cuad_shape[0]
     stripped = strip(raw)

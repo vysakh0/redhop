@@ -52,6 +52,6 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "test": "node test/smoke.cjs && node test/analyzer.cjs && node test/query_set_analyzer.cjs && node test/evaluate.cjs"
+    "test": "node test/smoke.cjs && node test/analyzer.cjs && node test/query_set_analyzer.cjs && node test/rewrite.cjs && node test/evaluate.cjs"
   }
 }

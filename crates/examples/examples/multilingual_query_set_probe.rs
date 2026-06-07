@@ -45,15 +45,35 @@ fn report_workload(label: &str, queries: &[&str], report: &QuerySetReport, expec
     let pass = report.is_templated == expect_templated;
     let symbol = if pass { "✓" } else { "✗" };
     println!("  {symbol} {label}");
-    println!("    n={}, share={:.3}, cost={}, is_templated={}", report.n_queries, report.template_word_share, cost_label(report.estimated_dilution_cost), report.is_templated);
-    println!("    boilerplate (top 10): {:?}", report.boilerplate_terms.iter().take(10).collect::<Vec<_>>());
+    println!(
+        "    n={}, share={:.3}, cost={}, is_templated={}",
+        report.n_queries,
+        report.template_word_share,
+        cost_label(report.estimated_dilution_cost),
+        report.is_templated
+    );
+    println!(
+        "    boilerplate (top 10): {:?}",
+        report.boilerplate_terms.iter().take(10).collect::<Vec<_>>()
+    );
     if !pass {
-        let want = if expect_templated { "templated" } else { "NOT templated" };
+        let want = if expect_templated {
+            "templated"
+        } else {
+            "NOT templated"
+        };
         println!("    → mismatch: expected {want}");
     }
     if !queries.is_empty() {
         let snippet: String = queries[0].chars().take(110).collect();
-        println!("    first query: \"{snippet}{}\"", if queries[0].len() > snippet.len() { "…" } else { "" });
+        println!(
+            "    first query: \"{snippet}{}\"",
+            if queries[0].len() > snippet.len() {
+                "…"
+            } else {
+                ""
+            }
+        );
     }
 }
 
@@ -208,7 +228,10 @@ fn main() {
     results.push(("Japanese", tp, fp));
 
     println!("══ summary ══");
-    println!("  {:<10} {:>14} {:>14}", "language", "templated→true?", "diverse→false?");
+    println!(
+        "  {:<10} {:>14} {:>14}",
+        "language", "templated→true?", "diverse→false?"
+    );
     for (lang, tp, fp) in &results {
         println!(
             "  {:<10} {:>14} {:>14}",
@@ -219,8 +242,9 @@ fn main() {
     }
 
     let all_pass = results.iter().all(|(_, tp, fp)| *tp && *fp);
-    let cjk_broken =
-        results.iter().any(|(lang, tp, fp)| (*lang == "Chinese" || *lang == "Japanese") && !(*tp && *fp));
+    let cjk_broken = results
+        .iter()
+        .any(|(lang, tp, fp)| (*lang == "Chinese" || *lang == "Japanese") && !(*tp && *fp));
     let latin_pass = results
         .iter()
         .filter(|(lang, _, _)| *lang == "French" || *lang == "German" || *lang == "Spanish")

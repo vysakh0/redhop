@@ -113,7 +113,10 @@ fn span_coverage(span: &str, chunk_texts: &[(String, usize)]) -> Coverage {
     per_chunk.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
     let g = gold_words.len() as f32;
-    let top1_hit = per_chunk.first().map(|(h, _)| h.clone()).unwrap_or_default();
+    let top1_hit = per_chunk
+        .first()
+        .map(|(h, _)| h.clone())
+        .unwrap_or_default();
     let mut top2_hit = top1_hit.clone();
     if let Some((h, _)) = per_chunk.get(1) {
         top2_hit.extend(h.iter().cloned());
@@ -137,11 +140,17 @@ fn span_coverage(span: &str, chunk_texts: &[(String, usize)]) -> Coverage {
 }
 
 fn band(v: f32) -> &'static str {
-    if v >= 0.95 { ">=0.95" }
-    else if v >= 0.80 { "0.80-0.95" }
-    else if v >= 0.50 { "0.50-0.80" }
-    else if v >= 0.20 { "0.20-0.50" }
-    else { "<0.20" }
+    if v >= 0.95 {
+        ">=0.95"
+    } else if v >= 0.80 {
+        "0.80-0.95"
+    } else if v >= 0.50 {
+        "0.50-0.80"
+    } else if v >= 0.20 {
+        "0.20-0.50"
+    } else {
+        "<0.20"
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -158,8 +167,10 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     let mut q_count = 0usize;
-    let mut bucket_top1: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-    let mut bucket_top2: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut bucket_top1: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
+    let mut bucket_top2: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
 
     let mut sum_top1 = 0.0f64;
     let mut sum_top2 = 0.0f64;
@@ -212,8 +223,12 @@ fn main() -> anyhow::Result<()> {
                 sum_top1 += cov.top1 as f64;
                 sum_top2 += cov.top2 as f64;
                 sum_top3 += cov.top3 as f64;
-                if cov.top1 >= 0.8 { span_in_one_chunk_count += 1; }
-                if cov.top2 >= 0.8 { span_in_top2_count += 1; }
+                if cov.top1 >= 0.8 {
+                    span_in_one_chunk_count += 1;
+                }
+                if cov.top2 >= 0.8 {
+                    span_in_top2_count += 1;
+                }
                 sum_chunks_touched += cov.n_chunks_touched;
                 sum_primary_tokens += cov.primary_chunk_tokens;
                 sum_gold_tokens += cov.gold_span_tokens;
@@ -280,7 +295,10 @@ fn main() -> anyhow::Result<()> {
         println!("── worst-fragmented examples (top-1 cov < 0.5) ──");
         for (cov, gold, ntok) in &worst {
             let snip: String = gold.chars().take(120).collect();
-            println!("  cov={cov:.2}, |span|={ntok}:  \"{snip}{}\"", if gold.len() > snip.len() { "…" } else { "" });
+            println!(
+                "  cov={cov:.2}, |span|={ntok}:  \"{snip}{}\"",
+                if gold.len() > snip.len() { "…" } else { "" }
+            );
         }
         println!();
     }
@@ -290,14 +308,19 @@ fn main() -> anyhow::Result<()> {
     let top2_80 = 100.0 * span_in_top2_count as f64 / n;
     if top1_80 >= 80.0 {
         println!("  ✓ Chunker hypothesis FALSIFIED for this workload.");
-        println!("    {top1_80:.1}% of gold spans are already contained in a single chunk at ≥0.8.");
+        println!(
+            "    {top1_80:.1}% of gold spans are already contained in a single chunk at ≥0.8."
+        );
         println!("    The CUAD gap to LlamaIndex is NOT chunk-boundary fragmentation;");
         println!("    look elsewhere (retrieval ranking, budget pressure, chunk-token");
         println!("    overlap with non-gold context).");
     } else if top2_80 - top1_80 >= 15.0 {
         println!("  ~ Chunker hypothesis PARTIALLY confirmed.");
         println!("    Only {top1_80:.1}% of spans fit in 1 chunk, but {top2_80:.1}% fit");
-        println!("    in 2 chunks combined. A {:.1}-point lift potential if a", top2_80 - top1_80);
+        println!(
+            "    in 2 chunks combined. A {:.1}-point lift potential if a",
+            top2_80 - top1_80
+        );
         println!("    paragraph-aware or larger-window chunker keeps both halves together.");
     } else {
         println!("  ✗ Spans don't even fit cleanly in the top-2 chunks ({top2_80:.1}%).");

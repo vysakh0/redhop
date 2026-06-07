@@ -277,7 +277,9 @@ fn main() -> anyhow::Result<()> {
     let cuad: Cuad = serde_json::from_str(&raw)?;
 
     println!("CUAD hybrid + cross-encoder rerank probe");
-    println!("  config: n={LIMIT_Q}, BM25/hybrid/hybrid+CE, budget={BUDGET}, candidate_k={CANDIDATE_K}");
+    println!(
+        "  config: n={LIMIT_Q}, BM25/hybrid/hybrid+CE, budget={BUDGET}, candidate_k={CANDIDATE_K}"
+    );
     println!("         rerank_pool={RERANK_POOL}, RawTopK, set-based span_recall");
     println!();
 
@@ -334,11 +336,22 @@ fn main() -> anyhow::Result<()> {
     let c1 = by_arm(Retrieval::HybridCe, QueryPrep::Raw);
     let c2 = by_arm(Retrieval::HybridCe, QueryPrep::Stripped);
 
-    println!("Δ on raw query:      hybrid={:+.1}  hybrid+CE={:+.1}", b1 - a1, c1 - a1);
-    println!("Δ on stripped query: hybrid={:+.1}  hybrid+CE={:+.1}", b2 - a2, c2 - a2);
+    println!(
+        "Δ on raw query:      hybrid={:+.1}  hybrid+CE={:+.1}",
+        b1 - a1,
+        c1 - a1
+    );
+    println!(
+        "Δ on stripped query: hybrid={:+.1}  hybrid+CE={:+.1}",
+        b2 - a2,
+        c2 - a2
+    );
     println!();
 
-    let best = [a1, a2, b1, b2, c1, c2].iter().copied().fold(f64::MIN, f64::max);
+    let best = [a1, a2, b1, b2, c1, c2]
+        .iter()
+        .copied()
+        .fold(f64::MIN, f64::max);
     let prior_plateau = 90.3; // CUAD_CLAUSE_EXPANSION ceiling
     println!("highest cell on this probe: {best:.1}%");
     println!("prior CUAD plateau (template strip + clause expand): {prior_plateau:.1}%");

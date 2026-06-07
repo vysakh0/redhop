@@ -658,10 +658,7 @@ impl BuiltContext {
 /// `Document`-level wrappers that thread the rewrite chain. Kept public
 /// so callers driving their own rewrite pipeline can attach the same
 /// trace to the report and have it land in JSON / bindings consistently.
-pub fn attach_rewrite_trail(
-    ctx: &mut BuiltContext,
-    trail: Vec<crate::rewrite::RewriteRecord>,
-) {
+pub fn attach_rewrite_trail(ctx: &mut BuiltContext, trail: Vec<crate::rewrite::RewriteRecord>) {
     ctx.report.query_rewrites = trail;
 }
 

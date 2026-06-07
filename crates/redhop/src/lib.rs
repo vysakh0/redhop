@@ -73,9 +73,7 @@ pub use crate::document::{Document, DocumentConfig, RetrievalMode, Section};
 // docs/findings/CUAD_RECALL_GAP.md (the mechanism), docs/findings/CUAD_PRF_NULL.md
 // (what doesn't help), and docs/findings/QUERY_SET_ANALYZER.md (the
 // cross-workload probe that validated the heuristic thresholds).
-pub use crate::analyzer::{
-    analyze_query_set, DilutionCost, QuerySetReport,
-};
+pub use crate::analyzer::{analyze_query_set, DilutionCost, QuerySetReport};
 
 // Query-side rewrite primitives. Compile boilerplate / glossaries once,
 // route every rewrite through the same `QueryRewrite` seam, and land the
@@ -84,8 +82,8 @@ pub use crate::analyzer::{
 // functions from 0.2.x (deleted in 0.3.0 — see the redesign notes in
 // `crate::rewrite` for the three flaws that motivated the move).
 pub use crate::rewrite::{
-    apply_chain as apply_query_rewrites, Vocabulary, QueryRewrite, RewriteRecord,
-    RewriteResult, Stripper,
+    apply_chain as apply_query_rewrites, QueryRewrite, RewriteRecord, RewriteResult, Stripper,
+    Vocabulary,
 };
 
 // The built context + its telemetry, and the lower-level context entry points.

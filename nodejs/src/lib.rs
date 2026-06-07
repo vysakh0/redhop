@@ -5,7 +5,7 @@
 
 #![deny(clippy::all)]
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, Either};
 use napi_derive::napi;
 
 fn err(e: impl std::fmt::Display) -> napi::Error {
@@ -213,8 +213,44 @@ pub struct Report {
     pub low_confidence_retrieval: bool,
     /// The grounding ceiling that `low_confidence_retrieval` applied.
     pub low_confidence_threshold: f64,
+    /// Audit trail of query rewrites applied (one entry per stage, in
+    /// chain order). Empty when no rewrite chain was used. See
+    /// `Document.contextWithRewrites`.
+    pub query_rewrites: Vec<RewriteRecord>,
     /// The human-readable Decision Report.
     pub rendered: String,
+}
+
+/// One step in the rewrite chain — what the stage matched / added /
+/// removed. Surfaced on `Report.queryRewrites` so the rewrite chain is
+/// auditable.
+#[napi(object)]
+#[derive(Clone)]
+pub struct RewriteRecord {
+    /// The `QueryRewrite::name` of the stage that emitted this record
+    /// (`"strip"` or `"vocabulary"` for the built-in implementations).
+    pub stage: String,
+    /// Input query handed to this stage.
+    pub from_query: String,
+    /// Output query produced by this stage.
+    pub to_query: String,
+    /// Surface forms in the input that this stage matched.
+    pub matched: Vec<String>,
+    /// Surface forms this stage *added* to the query (Vocabulary).
+    pub added: Vec<String>,
+    /// Surface forms this stage *removed* from the query (Stripper).
+    pub removed: Vec<String>,
+}
+
+fn to_record(r: &redhop::RewriteRecord) -> RewriteRecord {
+    RewriteRecord {
+        stage: r.stage.clone(),
+        from_query: r.from.clone(),
+        to_query: r.to.clone(),
+        matched: r.matched.clone(),
+        added: r.added.clone(),
+        removed: r.removed.clone(),
+    }
 }
 
 fn strategy_to_str(s: redhop::ContextStrategy) -> &'static str {
@@ -311,6 +347,7 @@ fn to_report(r: &redhop::ContextReport) -> Report {
         estimated_waste_tokens: r.economics.estimated_waste_tokens as u32,
         low_confidence_retrieval: r.low_confidence_retrieval,
         low_confidence_threshold: r.low_confidence_threshold as f64,
+        query_rewrites: r.query_rewrites.iter().map(to_record).collect(),
         rendered: r.render(None),
     }
 }
@@ -357,7 +394,8 @@ impl Document {
     /// Build from chunks you already produced (array of strings).
     #[napi(factory)]
     pub fn from_chunks(chunks: Vec<String>, options: Option<Options>) -> napi::Result<Document> {
-        let inner = redhop::chunks(chunks, &options.unwrap_or_default().into_load()).map_err(err)?;
+        let inner =
+            redhop::chunks(chunks, &options.unwrap_or_default().into_load()).map_err(err)?;
         Ok(Document { inner })
     }
 
@@ -377,8 +415,9 @@ impl Document {
         source: String,
         options: Option<Options>,
     ) -> napi::Result<Document> {
-        let inner = redhop::read_bytes_with(&data[..], &source, &options.unwrap_or_default().into_load())
-            .map_err(err)?;
+        let inner =
+            redhop::read_bytes_with(&data[..], &source, &options.unwrap_or_default().into_load())
+                .map_err(err)?;
         Ok(Document { inner })
     }
 
@@ -386,8 +425,8 @@ impl Document {
     /// `ignore` globs; `persist: true` saves an incremental on-disk index.
     #[napi(factory)]
     pub fn from_folder(path: String, options: Option<FolderOptions>) -> napi::Result<Document> {
-        let inner =
-            redhop::read_folder_with(&path, &options.unwrap_or_default().into_folder()).map_err(err)?;
+        let inner = redhop::read_folder_with(&path, &options.unwrap_or_default().into_folder())
+            .map_err(err)?;
         Ok(Document { inner })
     }
 
@@ -438,9 +477,39 @@ impl Document {
         let ctx = if n == 0 && !heading {
             self.inner.context_with(&query, budget, None)
         } else {
-            self.inner.context_expanded(&query, budget, None, n, heading)
+            self.inner
+                .context_expanded(&query, budget, None, n, heading)
         }
         .map_err(err)?;
+        Ok(to_built(ctx))
+    }
+
+    /// Run a query through a chain of `Stripper` / `Vocabulary` rewrites
+    /// before retrieval, then assemble context as `.context(...)` does.
+    ///
+    /// `rewrites` is an ordered array — each stage sees the previous
+    /// stage's output. The per-stage audit trail lands on
+    /// `ctx.report.queryRewrites` as an array of `RewriteRecord`.
+    ///
+    /// Mirrors `redhop::Document::context_with_rewrites` in the Rust core.
+    #[napi]
+    pub fn context_with_rewrites(
+        &mut self,
+        query: String,
+        rewrites: Vec<Either<&Stripper, &Vocabulary>>,
+    ) -> napi::Result<BuiltContext> {
+        let owned: Vec<OwnedRewrite> = rewrites
+            .into_iter()
+            .map(|e| match e {
+                Either::A(s) => OwnedRewrite::Stripper(s.inner.clone()),
+                Either::B(v) => OwnedRewrite::Vocabulary(v.inner.clone()),
+            })
+            .collect();
+        let refs = rewrite_refs(&owned);
+        let ctx = self
+            .inner
+            .context_with_rewrites(&query, &refs)
+            .map_err(err)?;
         Ok(to_built(ctx))
     }
 
@@ -477,8 +546,9 @@ pub fn link_strength(a: String, b: String) -> f64 {
 
 // ── Query-side diagnostics (templated workloads) ────────────────────────────
 //
-// Backed by `redhop::analyze_query_set` and `redhop::drop_template_terms`.
-// See docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe.
+// Backed by `redhop::analyze_query_set`; pair with `Stripper` /
+// `Vocabulary` (above) for the detect → strip → expand workflow. See
+// docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe.
 
 /// Diagnostic report over a representative sample of a workload's queries.
 ///
@@ -509,66 +579,147 @@ fn cost_str(c: redhop::DilutionCost) -> String {
     .to_string()
 }
 
-/// Drop boilerplate tokens from a query before retrieval.
-///
-/// Token matching is case-insensitive on alphanumeric tokens; surviving
-/// tokens are rejoined with single spaces, with punctuation preserved.
-/// Mechanism: docs/findings/CUAD_RECALL_GAP.md.
+/// Compiled boilerplate-removal rewrite. Token-level matching using the
+/// document's analyzer, so a single-token stripper key cannot accidentally
+/// erase a substring inside a longer word (an `"of"` stripper does **not**
+/// erase the `"of"` inside `"office"`).
 ///
 /// ```js
-/// const { dropTemplateTerms } = require("redhop");
-/// const stripped = dropTemplateTerms(
-///   'Highlight the parts related to "Change of Control".',
-///   ["highlight", "the", "parts", "related", "to"],
-/// );
-/// // stripped === '"Change of Control".'
+/// const stripper = new redhop.Stripper([
+///   "highlight", "the", "parts", "of", "this",
+///   "contract", "related", "to",
+/// ]);
 /// ```
+///
+/// Pass into the rewrite chain on `Document.contextWithRewrites(...)`.
 #[napi]
-pub fn drop_template_terms(query: String, boilerplate: Vec<String>) -> String {
-    let bp: Vec<&str> = boilerplate.iter().map(|s| s.as_str()).collect();
-    redhop::drop_template_terms(&query, &bp)
+pub struct Stripper {
+    inner: redhop::Stripper,
 }
 
-/// Append high-IDF discriminative terms to a query when a known key appears.
-///
-/// The additive counterpart to `dropTemplateTerms`. Pass an object mapping
-/// each known key (clause name, error code, policy slug — anything
-/// workload-specific) to an array of synonyms. For every key whose
-/// case-insensitive substring appears in the query, the synonyms are
-/// appended with a single space separator. Matches against the *original*
-/// query only — no recursive chaining, no duplicates.
+#[napi]
+impl Stripper {
+    #[napi(constructor)]
+    pub fn new(boilerplate: Vec<String>) -> Self {
+        Self {
+            inner: redhop::Stripper::new(&boilerplate),
+        }
+    }
+    /// Apply the stripper to a query string outside the rewrite chain
+    /// (ad-hoc / pipeline-outside cases). Returns the rewritten string;
+    /// the audit record is discarded — use the chain via
+    /// `Document.contextWithRewrites(...)` if you want the trail in the
+    /// Decision Report.
+    #[napi]
+    pub fn apply(&self, query: String) -> String {
+        use redhop::QueryRewrite;
+        self.inner.apply(&query).query
+    }
+    /// Number of distinct boilerplate surface forms compiled.
+    #[napi(getter)]
+    pub fn length(&self) -> u32 {
+        self.inner.len() as u32
+    }
+}
+
+/// Compiled workload-curated equivalence classes (term → synonyms). Each
+/// entry's key, when found in the query at token granularity, triggers
+/// appending its synonyms to the rewritten query. With
+/// `Vocabulary.bidirectional({...})`, any class member can be the trigger
+/// and the others get appended (so PTO ↔ "paid time off" works in both
+/// directions).
 ///
 /// ```js
-/// const { expandQueryTerms } = require("redhop");
-/// const expansions = {
+/// const vocab = new redhop.Vocabulary({
 ///   "change of control": ["merger", "successor", "acquisition"],
 ///   "non-compete":       ["restraint", "non-competition"],
-/// };
-/// const expanded = expandQueryTerms(
-///   "What about Change of Control clauses?",
-///   expansions,
-/// );
-/// // → "What about Change of Control clauses? merger successor acquisition"
+/// });
+/// // symmetric:
+/// const pto = redhop.Vocabulary.bidirectional({
+///   pto: ["paid time off", "vacation"],
+/// });
 /// ```
-///
-/// Same workload-specific discipline as `dropTemplateTerms`: the library
-/// ships the mechanism, the caller supplies the dict. See
-/// `docs/findings/CUAD_CLAUSE_EXPANSION.md` for the worked CUAD example.
 #[napi]
-pub fn expand_query_terms(
-    query: String,
-    expansions: std::collections::HashMap<String, Vec<String>>,
-) -> String {
-    let pairs: Vec<(String, Vec<String>)> = expansions.into_iter().collect();
-    let borrowed: Vec<(&str, Vec<&str>)> = pairs
+pub struct Vocabulary {
+    inner: redhop::Vocabulary,
+}
+
+fn build_vocab_refs(
+    entries: &std::collections::HashMap<String, Vec<String>>,
+) -> (Vec<(String, Vec<String>)>, ()) {
+    let pairs: Vec<(String, Vec<String>)> = entries
         .iter()
-        .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+        .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let final_refs: Vec<(&str, &[&str])> = borrowed
-        .iter()
-        .map(|(k, v)| (*k, v.as_slice()))
-        .collect();
-    redhop::expand_query_terms(&query, &final_refs)
+    (pairs, ())
+}
+
+#[napi]
+impl Vocabulary {
+    /// Asymmetric vocabulary: the first form of each entry is the only
+    /// trigger; the rest are appended on match.
+    #[napi(constructor)]
+    pub fn new(entries: std::collections::HashMap<String, Vec<String>>) -> Self {
+        let (pairs, _) = build_vocab_refs(&entries);
+        let borrowed: Vec<(&str, Vec<&str>)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+            .collect();
+        let final_refs: Vec<(&str, &[&str])> =
+            borrowed.iter().map(|(k, v)| (*k, v.as_slice())).collect();
+        Self {
+            inner: redhop::Vocabulary::new(&final_refs),
+        }
+    }
+    /// Symmetric (bidirectional) vocabulary: any class member can trigger
+    /// expansion; the other members get appended.
+    #[napi(factory)]
+    pub fn bidirectional(entries: std::collections::HashMap<String, Vec<String>>) -> Self {
+        let (pairs, _) = build_vocab_refs(&entries);
+        let borrowed: Vec<(&str, Vec<&str>)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
+            .collect();
+        let final_refs: Vec<(&str, &[&str])> =
+            borrowed.iter().map(|(k, v)| (*k, v.as_slice())).collect();
+        Self {
+            inner: redhop::Vocabulary::bidirectional(&final_refs),
+        }
+    }
+    /// Apply the vocabulary to a query string outside the rewrite chain.
+    /// Returns the rewritten string; the audit record is discarded — use
+    /// the chain via `Document.contextWithRewrites(...)` if you want the
+    /// trail in the Decision Report.
+    #[napi]
+    pub fn apply(&self, query: String) -> String {
+        use redhop::QueryRewrite;
+        self.inner.apply(&query).query
+    }
+    /// Number of equivalence classes compiled.
+    #[napi(getter)]
+    pub fn length(&self) -> u32 {
+        self.inner.len() as u32
+    }
+}
+
+/// Internal: a heterogeneous rewrite stage holding an owned Rust copy of
+/// the underlying compiled rewrite. Stripper and Vocabulary are cheap to
+/// clone (Arc<Analyzer> + Vec<String>), so we copy rather than juggle
+/// napi borrow guards.
+enum OwnedRewrite {
+    Stripper(redhop::Stripper),
+    Vocabulary(redhop::Vocabulary),
+}
+
+fn rewrite_refs(held: &[OwnedRewrite]) -> Vec<&dyn redhop::QueryRewrite> {
+    held.iter()
+        .map(|r| -> &dyn redhop::QueryRewrite {
+            match r {
+                OwnedRewrite::Stripper(s) => s,
+                OwnedRewrite::Vocabulary(v) => v,
+            }
+        })
+        .collect()
 }
 
 /// Diagnostic over a representative sample of queries — detects
@@ -579,11 +730,11 @@ pub fn expand_query_terms(
 /// cross-workload probe that validated the heuristic.
 ///
 /// ```js
-/// const { analyzeQuerySet, dropTemplateTerms } = require("redhop");
+/// const { analyzeQuerySet, Stripper } = require("redhop");
 /// const r = analyzeQuerySet(myQueries);
 /// if (r.isTemplated) {
-///   const stripped = dropTemplateTerms(query, r.boilerplateTerms);
-///   const ctx = doc.context(stripped, { strategy: "raw_topk" });
+///   const stripper = new Stripper(r.boilerplateTerms);
+///   const ctx = doc.contextWithRewrites(query, [stripper]);
 /// }
 /// ```
 #[napi]
@@ -791,7 +942,10 @@ fn build_context_config(opts: Option<ContextOptions>) -> napi::Result<redhop::Co
         None => base.strategy,
     };
     Ok(redhop::ContextConfig {
-        token_budget: o.token_budget.map(|n| n as usize).unwrap_or(base.token_budget),
+        token_budget: o
+            .token_budget
+            .map(|n| n as usize)
+            .unwrap_or(base.token_budget),
         strategy,
         distractor_min_grounding: o
             .distractor_min_grounding

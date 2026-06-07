@@ -107,19 +107,17 @@ fn print_workload(label: &str, queries: &[String], report: &QuerySetReport, expe
     println!("  sample queries:");
     for q in queries.iter().take(3) {
         let snippet: String = q.chars().take(110).collect();
-        println!("    · {snippet}{}", if q.len() > snippet.len() { "…" } else { "" });
+        println!(
+            "    · {snippet}{}",
+            if q.len() > snippet.len() { "…" } else { "" }
+        );
     }
     println!(
         "  template_word_share: {:.3}    cost: {}",
         report.template_word_share,
         cost_label(report.estimated_dilution_cost)
     );
-    let top: Vec<String> = report
-        .boilerplate_terms
-        .iter()
-        .take(15)
-        .cloned()
-        .collect();
+    let top: Vec<String> = report.boilerplate_terms.iter().take(15).cloned().collect();
     println!("  boilerplate_terms (top {}): {:?}", top.len(), top);
     println!("  is_templated:        {}", report.is_templated);
     println!("  suggested_action:    {}", report.suggested_action);
@@ -138,9 +136,7 @@ fn print_workload(label: &str, queries: &[String], report: &QuerySetReport, expe
 const SAMPLE_N: usize = 300;
 
 fn main() -> anyhow::Result<()> {
-    println!(
-        "redhop::analyze_query_set — cross-workload probe (n={SAMPLE_N} per workload)\n"
-    );
+    println!("redhop::analyze_query_set — cross-workload probe (n={SAMPLE_N} per workload)\n");
 
     // True-positive workload: CUAD (every query is the 24-word fixed template).
     let cuad_path = std::env::var("REDHOP_CUAD_PATH")
@@ -203,7 +199,9 @@ fn main() -> anyhow::Result<()> {
     let pass_fp = !fp_hotpot && !fp_musique;
     if pass_tp && pass_fp {
         println!();
-        println!("  ✓ Heuristic ships: true-positive on CUAD, no false positives on diverse workloads.");
+        println!(
+            "  ✓ Heuristic ships: true-positive on CUAD, no false positives on diverse workloads."
+        );
     } else {
         println!();
         if !pass_tp {

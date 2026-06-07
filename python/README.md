@@ -179,16 +179,17 @@ small preprocessing helpers on the query side.
 | step | helper | retention | Δ |
 | ---- | ------ | ---------:| -:|
 | raw 24-word template | — | 81.3% | — |
-| + strip the wrapper | `drop_template_terms` | 87.7% | **+6.4** |
-| + add workload synonyms | `expand_query_terms` | **90.3%** | **+2.7** |
+| + strip the wrapper | `Stripper` | 87.7% | **+6.4** |
+| + add workload synonyms | `Vocabulary` | **90.7%** | **+3.0** |
 
-**RedHop with the full workflow is at 90.3% — beating LlamaIndex by 4 points
+**RedHop with the full workflow is at 90.7% — beating LlamaIndex by 4 points
 on the same setup, at native BM25 latency (~2.5ms/query).** Mechanism +
 worked clause dict:
 [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
 
-Recommended workflow: **detect → strip → (optional) expand → A/B**. Four
-helpers in the public API — same names across Python, Node, and Rust:
+Recommended workflow: **detect → strip → (optional) expand → A/B**. The
+rewrite chain runs inside `Document.context_with_rewrites(...)` so each
+stage's audit trail lands on `report.query_rewrites` automatically.
 
 ```python
 import redhop
@@ -199,30 +200,24 @@ report = redhop.analyze_query_set(my_queries[:300])
 # report.template_word_share     → e.g. 0.66 on CUAD
 # report.boilerplate_terms       → ["highlight", "contract", "lawyer", …]
 # report.estimated_dilution_cost → "high" | "medium" | "low" | "none"
-# report.suggested_action        → human-readable recommendation
 
 if report.is_templated:
-    # 2 — Strip. Use the boilerplate the analyzer found.
-    def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
+    # 2 — Compile the rewrite chain.
+    stripper = redhop.Stripper(report.boilerplate_terms)
 
-    # 3 — (optional) Expand. If your workload has known topic synonyms
-    #     (clause types, error codes), add them with expand_query_terms.
-    #     On CUAD this lifts 88% → 90% on top of the strip.
-    expansions = {
+    # 3 — (optional) Vocabulary. If your workload has known topic synonyms
+    #     (clause types, error codes), compile them once.
+    vocab = redhop.Vocabulary({
         # YOUR keys → synonyms; CUAD worked example in CUAD_CLAUSE_EXPANSION.md
         "change of control": ["merger", "successor", "acquisition"],
-    }
-    preprocess = lambda q: redhop.expand_query_terms(strip(q), expansions)
+    })
 
-    # 4 — A/B. redhop.evaluate scores both arms deterministically,
-    #     no LLM judge — see EVALUATE_API.md for the design.
+    # 4 — Run the chain through retrieval; audit lands on report.query_rewrites.
     doc = redhop.Document.from_file("contract.pdf")
-    eval_a = redhop.evaluate(user_query,
-                             doc.context(user_query, strategy="raw_topk"),
-                             gold_chunks=your_gold_chunk_ids)
-    eval_b = redhop.evaluate(preprocess(user_query),
-                             doc.context(preprocess(user_query), strategy="raw_topk"),
-                             gold_chunks=your_gold_chunk_ids)
+    ctx_a = doc.context(user_query)                              # baseline
+    ctx_b = doc.context_with_rewrites(user_query, [stripper, vocab])
+    eval_a = redhop.evaluate(user_query, ctx_a, gold_chunks=gold_ids)
+    eval_b = redhop.evaluate(user_query, ctx_b, gold_chunks=gold_ids)
     print(eval_b.overall - eval_a.overall)   # the lift, deterministically
 ```
 
@@ -240,22 +235,24 @@ if report.is_templated:
   by ~4 points at every chunk size on CUAD.
 - **We deliberately don't ship a CUAD-specific `strip_template()`
   helper.** Templates are workload-specific; baking one in would make
-  the wrong call for the next workload. `drop_template_terms` takes
-  *your* boilerplate so the call stays on your side.
+  the wrong call for the next workload. `Stripper(...)` and
+  `Vocabulary({...})` take *your* boilerplate / synonym dict so the
+  call stays on your side.
 - **Or take the one-knob alternative — `retrieval="hybrid"`.**
   Dense reads chunks as semantic content rather than counting tokens,
   so the boilerplate ratio stops mattering. Substitutes for stripping
   by a different mechanism (+5.3 on raw CUAD at ~10ms/query). On CUAD
-  specifically, BM25 + strip + expand still wins — 90.3% / 2.5ms vs
-  hybrid+CE 89.0% / 683ms. The two paths are *substitutes*, not
+  specifically, BM25 + strip + vocabulary still wins — 90.7% / 2.5ms
+  vs hybrid+CE 89.0% / 683ms. The two paths are *substitutes*, not
   complements; pick one. See
   [CUAD_HYBRID_RERANK.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_HYBRID_RERANK.md).
 
 | helper | what it does | finding |
 | ------ | ------------ | ------- |
 | `analyze_query_set(queries)` | Inspects your queries; flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md) |
-| `drop_template_terms(query, boilerplate)` | Script-aware boilerplate strip; works in 5 measured languages (Latin word-boundary safe, CJK phrase removal) | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
-| `expand_query_terms(query, expansions)` | Appends workload-curated high-IDF synonyms when known keys match. Opposite mechanism to PRF | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
+| `Stripper(boilerplate)` | Compiled token-level boilerplate strip; word-boundary safe (an `"of"` strip does not erase `"of"` inside `"office"`). Plugs into the rewrite chain so the audit trail is captured | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
+| `Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes — appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
+| `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval; per-stage audit lands on `report.query_rewrites` | (same finding as above) |
 | `evaluate(query, ctx, gold_chunks=, gold_answer=)` | Deterministic A/B scoring against gold; no LLM judge. Same primitives the Decision Report uses | [EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md) |
 
 Decision rule + the recipe on the docs site:

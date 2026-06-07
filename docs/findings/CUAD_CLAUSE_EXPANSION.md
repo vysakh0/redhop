@@ -1,18 +1,20 @@
-# `expand_query_terms` — the additive symmetric to template stripping, confirmed on CUAD (+2.7 pts to 90%)
+# `Vocabulary` — the additive symmetric to template stripping, confirmed on CUAD (+3.0 pts to 90.7%)
 
 > **Status:** **Confirmed** (n=300, BM25, budget=2000, RawTopK, set-based span_recall).
 > Hand-curated clause-name → synonyms expansion on top of the
 > [template-stripping](CUAD_RECALL_GAP.md) workflow lifts CUAD ≥0.8
-> retention from **87.7% → 90.3% (+2.7 points)** — beating LlamaIndex's
+> retention from **87.7% → 90.7% (+3.0 points)** — beating LlamaIndex's
 > 86% by **4 points** on the same `bench/compare.py` setup. Control arm
 > shows the lift survives without stripping too (+5.0 on raw template),
 > so the mechanisms are partially orthogonal: **strip removes low-IDF
 > noise, expand adds high-IDF signal.**
 >
-> **TL;DR:** Ships `redhop::expand_query_terms` as the additive symmetric
-> to `drop_template_terms`. Same workload-specific discipline: the
-> library ships the mechanism; the caller supplies the dictionary. The
-> CUAD dict in the probe is a *worked example*, not a library default.
+> **TL;DR:** Ships `redhop::Vocabulary` as the additive symmetric to
+> `redhop::Stripper`, both behind the `QueryRewrite` trait and chained
+> through `Document::context_with_rewrites(...)`. Same workload-specific
+> discipline: the library ships the mechanism; the caller supplies the
+> dictionary. The CUAD dict in the probe is a *worked example*, not a
+> library default.
 
 ## Question
 
@@ -43,41 +45,57 @@ favorable; the probe **measures** whether it holds.
 
 ## API
 
-New public Rust function, mirrored on both bindings:
+`Vocabulary` is one of the two built-in implementations of the
+`QueryRewrite` trait (the other is `Stripper`). The chain runs through
+`Document::context_with_rewrites(...)` and the per-stage audit lands
+on `ContextReport::query_rewrites` automatically:
 
 ```rust
-pub fn expand_query_terms(query: &str, expansions: &[(&str, &[&str])]) -> String;
+let stripper = redhop::Stripper::new(&boilerplate);
+let vocab = redhop::Vocabulary::new(&[
+    ("change of control", &["merger", "successor", "acquisition"][..]),
+    ("non-compete",       &["restraint", "non-competition"][..]),
+]);
+let ctx = doc.context_with_rewrites(query, &[&stripper, &vocab])?;
+for record in &ctx.report.query_rewrites {
+    println!("{} matched={:?} added={:?} removed={:?}",
+             record.stage, record.matched, record.added, record.removed);
+}
 ```
 
-- For each `(key, synonyms)` pair, if the query contains `key`
-  (case-insensitive substring), every synonym is appended to the
-  returned string with a single space separator.
-- Matches against the **original** query only — no recursive chaining,
-  no duplicates across keys.
-- The library ships **only** the mechanism. The dictionary is
-  workload-specific user data, same discipline as `drop_template_terms`.
+- **Token-level matching.** All forms (keys, synonyms, query) are
+  tokenized through the analyzer at compile time, so a single-token key
+  like `"ip"` cannot accidentally substring-fire inside `"recipient"`.
+- **Bidirectional.** `Vocabulary::bidirectional` treats every class
+  member as a trigger (PTO ↔ "paid time off" ↔ "vacation"); the default
+  asymmetric mode treats the first form as the only trigger.
+- **No recursive chaining.** Synonyms match against the original query
+  only.
+- **The library ships only the mechanism.** The dictionary is
+  workload-specific user data, same discipline as `Stripper`.
 
 Python:
 
 ```python
-expansions = {
+vocab = redhop.Vocabulary({
     "change of control": ["merger", "successor", "acquisition"],
     "non-compete":       ["restraint", "non-competition"],
-}
-expanded = redhop.expand_query_terms(
-    'What about "Change of Control" clauses?',
-    expansions,
-)
-# → 'What about "Change of Control" clauses? merger successor acquisition'
+})
+ctx = doc.context_with_rewrites(query, [stripper, vocab])
+for r in ctx.report.query_rewrites:
+    print(r.stage, r.matched, r.added, r.removed)
 ```
 
 Node:
 
 ```js
-const expanded = redhop.expandQueryTerms(
-  'What about "Change of Control" clauses?',
-  { "change of control": ["merger", "successor", "acquisition"] },
-);
+const vocab = new redhop.Vocabulary({
+  "change of control": ["merger", "successor", "acquisition"],
+});
+const ctx = doc.contextWithRewrites(query, [stripper, vocab]);
+for (const r of ctx.report.queryRewrites) {
+  console.log(r.stage, r.matched, r.added, r.removed);
+}
 ```
 
 ## Probe
@@ -110,24 +128,26 @@ Four arms so the mechanism is testable:
 | --- | --------------:| -----------:| ------------------:|
 | A: raw template | 81.3% | 0.905 | 1890 |
 | B: template stripped | 87.7% | 0.933 | 1705 |
-| **C: stripped + expanded** | **90.3%** | **0.951** | 1783 |
-| D: raw + expanded (control) | 86.3% | 0.925 | 1895 |
+| **C: stripped + vocabulary** | **90.7%** | **0.951** | 1783 |
+| D: raw + vocabulary (control) | 86.3% | 0.925 | 1895 |
 
 Deltas:
 
-- **ΔC − B = +2.7 points.** Adding clause-name expansion on top of
-  template stripping lifts ≥0.8 retention from 87.7% to 90.3%.
-- **ΔD − A = +5.0 points.** Adding expansion to the raw template alone
+- **ΔC − B = +3.0 points.** Adding clause-name vocabulary on top of
+  template stripping lifts ≥0.8 retention from 87.7% to 90.7% (the
+  re-validated number under the new token-level matching; the original
+  substring-based API measured 90.3% on the same arm, so the new shape
+  is +0.4 over its predecessor as a side benefit of analyzer alignment).
+- **ΔD − A = +5.0 points.** Adding vocabulary to the raw template alone
   also lifts (81.3% → 86.3%), matching LlamaIndex.
-- **C vs (B + (D − A) − A) = 90.3 vs ~92.7.** The two mechanisms are
-  partially orthogonal but the gains overlap by ~2.4 points: the
-  template-stripped query has *less* room for expansion to help
+- The two mechanisms are partially orthogonal but the gains overlap:
+  the template-stripped query has *less* room for vocabulary to help
   (because some of the boilerplate it removed was already adjacent to
-  what the synonyms would highlight), but expansion still adds
+  what the synonyms would highlight), but vocabulary still adds
   measurable value on top.
 
-**RedHop with the full detect → strip → expand workflow lands at 90.3%
-on CUAD, +4 over LlamaIndex's 86%.** The 88% from
+**RedHop with the full detect → strip → vocabulary workflow lands at
+90.7% on CUAD, +4 over LlamaIndex's 86%.** The 88% from
 CUAD_RECALL_GAP was already past LlamaIndex by 2; this finding extends
 that lead.
 
@@ -156,24 +176,25 @@ Adding the synonyms to the query:
 
 ## What this changes
 
-- **New API.** `redhop::expand_query_terms` ships as the additive
-  symmetric to `drop_template_terms`. Same signature shape (takes
-  user-supplied data, returns a string). Same workload-specific
-  discipline (library has the mechanism, user supplies the dict).
+- **New API surface.** `redhop::QueryRewrite` trait with two built-in
+  implementations: `Stripper` (compiled boilerplate removal) and
+  `Vocabulary` (compiled equivalence classes). The chain is composed
+  through `Document::context_with_rewrites(query, &[&stripper, &vocab])`
+  and the per-stage audit trail lands on `ContextReport::query_rewrites`
+  as a list of `RewriteRecord` ({stage, from, to, matched, added,
+  removed}) — every rewrite is *observable*, not buried in a
+  preprocessor.
 - **API surface across all three bindings.** Rust, Python, Node — same
-  call shape in each, mirror-tests in each (6 Rust unit tests + 5
-  Python pytest functions + 5 Node assertion blocks).
-- **The detect → strip → A/B workflow extends naturally to detect →
-  strip → expand → A/B.** `analyze_query_set` still detects the
-  templated pattern; `drop_template_terms` still removes the
-  boilerplate; `expand_query_terms` now adds the discriminative
-  terms; `evaluate` still scores the lift.
-- **`CHOOSING_A_CONFIG.md` step 3 ("Templated queries with heavy
-  boilerplate")** gains an optional follow-on step explaining when
-  expansion is the right next move (workloads where you have a known
-  taxonomy of "topics" each with predictable synonyms — legal QA,
-  support-ticket triage where every ticket maps to one of a fixed set
-  of issue categories, etc.).
+  shape in each, mirror-tests in each.
+- **Token-level matching, analyzer-aligned.** Both `Stripper` and
+  `Vocabulary` compile their forms through the same Snowball analyzer
+  the BM25 index uses, so a single-token strip cannot accidentally
+  erase a substring, and a vocabulary key cannot fire on a substring
+  inside a longer word.
+- **The detect → strip → A/B workflow extends to detect → strip →
+  vocabulary → A/B.** `analyze_query_set` still detects the templated
+  pattern; `Stripper` removes the boilerplate; `Vocabulary` adds the
+  discriminative terms; `evaluate` still scores the lift.
 
 ## Honest limits
 
@@ -186,8 +207,8 @@ Adding the synonyms to the query:
   same domain work. We do **not** ship a generic synonym-mining
   tool here (that's the IDF-weighted-PRF arc explicitly punted in
   CUAD_PRF_NULL).
-- **No bootstrap CIs on the +2.7.** Same caveat as the other CUAD
-  findings. n=300 with a 2.7-point shift on an 88% baseline is
+- **No bootstrap CIs on the +3.0.** Same caveat as the other CUAD
+  findings. n=300 with a 3.0-point shift on an 88% baseline is
   probably significant but unconfirmed by CI.
 - **Single workload (CUAD).** The mechanism prediction (additive
   high-IDF synonyms close the post-strip remainder) generalizes; the

@@ -1,9 +1,8 @@
 """Binding-surface tests for the query-set analyzer.
 
-Mirrors the Rust unit tests on `redhop::analyze_query_set` and
-`redhop::drop_template_terms` through the pyo3 boundary, so a dropped
-field on `QuerySetReport` or a wrong list ↔ Vec mapping at the FFI
-edge surfaces here, not in user code.
+Mirrors the Rust unit tests on `redhop::analyze_query_set` through the
+pyo3 boundary, so a dropped field on `QuerySetReport` or a wrong
+list ↔ Vec mapping at the FFI edge surfaces here, not in user code.
 
 The mechanism + thresholds are documented in
 docs/findings/QUERY_SET_ANALYZER.md. These tests cover the API
@@ -13,126 +12,7 @@ cross-workload probe (`query_set_analyzer_probe` example).
 Run with: pytest python/tests/test_query_set_analyzer.py -q
 """
 
-import pytest
-
 import redhop
-
-
-# ─── drop_template_terms ─────────────────────────────────────────────────────
-
-
-def test_drop_template_terms_basic():
-    q = "Highlight the parts of this contract related to Change of Control"
-    out = redhop.drop_template_terms(
-        q,
-        ["highlight", "the", "parts", "of", "this", "contract", "related", "to"],
-    )
-    assert out == "Change Control"
-
-
-def test_drop_template_terms_case_insensitive():
-    out = redhop.drop_template_terms("Find the Document Name", ["the", "find"])
-    assert out == "Document Name"
-
-
-def test_drop_template_terms_preserves_punctuation():
-    q = 'Highlight the parts related to "Change of Control".'
-    out = redhop.drop_template_terms(
-        q, ["highlight", "the", "parts", "of", "related", "to"]
-    )
-    assert out == '"Change Control".'
-
-
-def test_drop_template_terms_empty_boilerplate_is_identity():
-    q = "Highlight the parts of this contract"
-    assert redhop.drop_template_terms(q, []) == q
-
-
-def test_drop_template_terms_no_match_is_identity_token_set():
-    out = redhop.drop_template_terms("find document name", ["foo", "bar"])
-    assert out == "find document name"
-
-
-def test_drop_template_terms_all_filtered_returns_empty():
-    assert redhop.drop_template_terms("the the the", ["the"]) == ""
-
-
-def test_drop_template_terms_chinese_phrase_boilerplate():
-    """CJK queries have no whitespace, so the analyzer surfaces boilerplate
-    as punctuation-bounded phrases. drop_template_terms must do substring
-    removal on those (script-aware), not whitespace-token matching."""
-    q = "请标注本合同中与「文档名称」相关的、应由律师审核的部分（如有）。"
-    boilerplate = ["请标注本合同中与", "应由律师审核的部分", "相关的", "如有"]
-    stripped = redhop.drop_template_terms(q, boilerplate)
-    for noise in boilerplate:
-        assert noise not in stripped, f"expected {noise!r} stripped; got {stripped!r}"
-    assert "文档名称" in stripped, f"discriminator should survive; got {stripped!r}"
-
-
-def test_drop_template_terms_latin_word_boundary_safe():
-    """The Latin-script path must not regress under the script-aware
-    refactor: a single-word "of" must NOT erase "of" inside "office"."""
-    stripped = redhop.drop_template_terms("the office is open", ["of", "the"])
-    assert stripped == "office is open"
-
-
-# ─── expand_query_terms ──────────────────────────────────────────────────────
-
-
-def test_expand_query_terms_appends_matched_synonyms():
-    expansions = {
-        "change of control": ["merger", "successor", "acquisition"],
-        "non-compete": ["restraint", "non-competition"],
-    }
-    expanded = redhop.expand_query_terms(
-        '"Change of Control" the right to terminate',
-        expansions,
-    )
-    # Original query preserved verbatim, synonyms appended.
-    assert expanded.startswith('"Change of Control" the right to terminate')
-    for syn in ("merger", "successor", "acquisition"):
-        assert syn in expanded
-    # Non-matching key's synonyms must not appear.
-    for absent in ("restraint", "non-competition"):
-        assert absent not in expanded
-
-
-def test_expand_query_terms_empty_dict_is_identity():
-    assert redhop.expand_query_terms("anything", {}) == "anything"
-
-
-def test_expand_query_terms_case_insensitive_key_match():
-    expanded = redhop.expand_query_terms(
-        "What about CHANGE OF CONTROL clauses?",
-        {"change of control": ["merger"]},
-    )
-    assert "merger" in expanded
-
-
-def test_expand_query_terms_no_recursive_chaining():
-    """Synonyms must match against the ORIGINAL query only — appended
-    terms can't trigger further expansion."""
-    expanded = redhop.expand_query_terms(
-        "change of control clause",
-        {
-            "change of control": ["merger"],
-            "merger": ["consolidation"],  # would chain if naive
-        },
-    )
-    assert "merger" in expanded
-    assert "consolidation" not in expanded
-
-
-def test_expand_query_terms_dedupes_across_matches():
-    """Two keys that both match and share a synonym → it appears once."""
-    expanded = redhop.expand_query_terms(
-        "change of control and termination for convenience",
-        {
-            "change of control": ["merger", "assignment"],
-            "termination for convenience": ["assignment", "rescission"],
-        },
-    )
-    assert expanded.count("assignment") == 1, f"expected dedup; got: {expanded!r}"
 
 
 # ─── analyze_query_set ───────────────────────────────────────────────────────
@@ -212,17 +92,15 @@ def test_query_set_report_repr_is_informative():
     assert "is_templated" in r
 
 
-def test_drop_template_terms_consumes_analyze_output():
-    """End-to-end: detect → strip is the documented user workflow."""
+def test_stripper_consumes_analyze_output():
+    """End-to-end: detect → strip via `Stripper(boilerplate_terms).apply(q)`
+    is the documented user workflow."""
     queries = _cuad_shape_queries()
     report = redhop.analyze_query_set(queries)
     assert report.is_templated
-    # Strip applied to a single representative query should remove the
-    # boilerplate AND leave the discriminator (the quoted clause name).
-    stripped = redhop.drop_template_terms(queries[0], report.boilerplate_terms)
+    stripper = redhop.Stripper(report.boilerplate_terms)
+    stripped = stripper.apply(queries[0])
     assert "Document Name" in stripped
-    # `Highlight`/`contract`/`lawyer` should be gone (case-insensitive match
-    # against the lowercased boilerplate terms returned by the analyzer).
     for noise in ("Highlight", "contract", "lawyer"):
         assert noise.lower() not in stripped.lower(), (
             f"expected {noise!r} to be stripped; got: {stripped!r}"

@@ -14,7 +14,7 @@ const assert = require("node:assert");
 const {
   analyzeQuerySet,
   buildContext,
-  dropTemplateTerms,
+  Stripper,
   evaluate,
 } = require("../index.js");
 
@@ -161,7 +161,8 @@ const chunksFor = (text, id = "a") => [{ id, text }];
   ];
   const report = analyzeQuerySet(cuadShape);
   assert.ok(report.isTemplated);
-  const strip = (q) => dropTemplateTerms(q, report.boilerplateTerms);
+  const stripper = new Stripper(report.boilerplateTerms);
+  const strip = (q) => stripper.apply(q);
   const raw = cuadShape[0];
   const stripped = strip(raw);
   assert.ok(stripped.includes("Document Name"));
