@@ -130,6 +130,21 @@ pub struct EvalReport {
 ///
 /// See the module-level docs for the design rationale and a usage example.
 /// All metrics are deterministic, in-process, and require no LLM call.
+///
+/// **Self-eval vs gold-conditional — what evaluate actually tells you.**
+/// Without ground truth, `evaluate` populates *self-eval* fields
+/// (`mean_grounding`, `evidence_density`, `second_hop_rescues`,
+/// `low_confidence`, `estimated_waste_tokens`). These measure how
+/// **focused** the assembled context is relative to the query —
+/// whether the chunks share query vocabulary, whether the budget is
+/// being spent on relevant tokens. They do **not** tell you whether
+/// the **correct** answer-bearing chunk is in the context: a dense,
+/// on-topic context can still be confidently wrong. To measure
+/// correctness, pass `gold` (chunk ids or answer text), which unlocks
+/// `context_recall` / `context_precision` (chunk-level) and
+/// `answer_token_recall` (token-level). For A/B comparisons of
+/// `Stripper` / `Vocabulary` chains, supplying `gold` is what makes
+/// the comparison meaningful.
 pub fn evaluate(query: &Query, ctx: &BuiltContext, gold: EvalGold<'_>) -> EvalReport {
     let analyzer = default_english();
 

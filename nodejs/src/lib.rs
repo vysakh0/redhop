@@ -862,6 +862,14 @@ pub struct EvalReport {
 /// to unlock `answerTokenRecall`. Both optional, any combination
 /// supported.
 ///
+/// **What self-eval tells you, and what it doesn't.** Without gold, the
+/// returned metrics describe how *focused* the context is on the query —
+/// not whether the *correct* answer-bearing chunk is in there. A dense,
+/// query-focused context can still be confidently wrong. For A/B
+/// comparisons of `Stripper` / `Vocabulary` chains where you care about
+/// correctness, supply `goldChunks` or `goldAnswer`; that's what unlocks
+/// the retrieval-correctness signal.
+///
 /// Zero LLM calls — every metric is computed from the same primitives the
 /// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
 /// the "refraction not independent measurement" design choice.
