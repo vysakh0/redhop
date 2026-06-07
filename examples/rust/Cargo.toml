@@ -1,0 +1,20 @@
+[package]
+name = "redhop-rust-examples"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Runnable Rust examples for RedHop — mirrors examples/python/ and examples/nodejs/."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Pull both the files loader and the semantic embedder so every example
+# runs from one `cargo run -p redhop-rust-examples …` invocation.
+redhop = { workspace = true, features = ["files", "semantic"] }
+anyhow = "1"
+serde_json = "1"
+tempfile = "3"

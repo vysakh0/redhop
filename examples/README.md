@@ -13,7 +13,7 @@ scenarios.
 | -------- | ------ | ------ |
 | Python | [`python/`](python/) | ✓ 11 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing |
 | Node.js | [`nodejs/`](nodejs/) | ✓ 11 examples — same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
-| Rust | `rust/` | _coming_ — currently lives at `crates/examples/examples/`; will be reorganized here |
+| Rust | [`rust/`](rust/) | ✓ 11 examples — same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
 
 Each language folder has its own `README.md` describing the demos and
 how to run them.
@@ -26,10 +26,11 @@ sweeps, the four-corner-rule falsifications) stay in
 they are evidence-layer infrastructure, not API showcases. The split:
 
 - `examples/` — *how* to use the API. Real-world scenarios,
-  inline data, demo-shaped output.
+  inline data, demo-shaped output. All three languages.
 - `crates/examples/` — *what is true* on a measured workload.
   Reproducible benchmarks behind every claim in
-  [`docs/findings/`](../docs/findings/).
+  [`docs/findings/`](../docs/findings/). Rust-only because the probes
+  need fast iteration and the existing CUAD/HotpotQA harness shape.
 
 If you want to know whether a feature works, look at the finding doc
 + its harness. If you want to know how to call the feature, look

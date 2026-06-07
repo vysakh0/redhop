@@ -10,6 +10,7 @@ members = [
     "crates/benchmarks",
     "crates/examples",
     "crates/cli",
+    "examples/rust",
 ]
 
 [workspace.lints.rust]
