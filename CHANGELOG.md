@@ -103,6 +103,46 @@ Eleven new harnesses under `crates/examples/examples/`:
   the same hill" decision table contrasting `retrieval="hybrid"` (the
   one-knob alternative) vs BM25 + the helpers (best-quality).
 
+#### Chat-RAG and chronology preservation
+
+- **`ContextConfig::preserve_order: bool`** — new field (default `false`,
+  no behavior change for existing callers). When set, the assembled
+  context emits selected chunks in **source-document order** instead of
+  the strategy's relevance-emitted order. The selection step is
+  untouched; only the final ordering changes. Designed for chat
+  histories, narrative transcripts, and sequential logs where
+  chronology / causality matters and a relevance-ranked emission would
+  destroy the meaning ("after the refund came in" reads strangely if
+  presented before "ordered the laptop").
+- The sort key is `(source, chunk_position)` where `chunk_position`
+  prefers a `chunk_index` metadata field (stamped automatically by
+  `Document::from_chunks_with` based on input order, so caller-supplied
+  chunks via `from_chunks` get a stable chronology key for free) and
+  falls back to the chunker's existing `sentence_range.start` for
+  text-loaded paths.
+- Exposed across all three bindings:
+  - **Rust** — `ContextConfig { preserve_order: true, .. }`; flows
+    through `LoadOptions::preserve_order` for the `text()` /
+    `chunks()` paths.
+  - **Python** — `redhop.Document.from_text(text, preserve_order=True)`
+    and `from_chunks` / `from_file` / `from_bytes`; also exposed on the
+    low-level `redhop.build_context(query, chunks, preserve_order=True)`
+    and `redhop.filter_context(...)`.
+  - **Node** — `Document.fromText(text, { preserveOrder: true })` and
+    siblings; also a `preserveOrder?: boolean` field on the
+    `ContextOptions` shape consumed by `buildContext` and `filterContext`.
+- Worked example:
+  [`crates/examples/examples/chat_rag.rs`](../../crates/examples/examples/chat_rag.rs)
+  shows a 12-turn chat where, on the query `"shipping refund label
+  return"`, the strategy picks four turns by relevance — preserve_order
+  off emits them in `[turn-08, turn-03, turn-05, turn-06]` (relevance);
+  preserve_order on emits them in `[turn-03, turn-05, turn-06, turn-08]`
+  (chronological), so the LLM reads what was said in the order it was
+  said. 3 new Rust unit tests pin the contract
+  (`preserve_order_off_emits_relevance_order`,
+  `preserve_order_on_emits_document_order`,
+  `preserve_order_groups_by_source`).
+
 ### Changed
 
 - **Package registry URLs now point at `https://www.redhopai.com`** as

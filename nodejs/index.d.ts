@@ -69,6 +69,13 @@ export interface Options {
    * silent fallback to English; a typo'd `"germann"` surfaces).
    */
   language?: string
+  /**
+   * Preserve source-document order of selected chunks instead of the
+   * strategy's relevance order. Useful for chat histories / transcripts
+   * where chronology matters. Default `false`. See
+   * `crates/examples/examples/chat_rag.rs` for the worked pattern.
+   */
+  preserveOrder?: boolean
 }
 /** Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`). */
 export interface FolderOptions {
@@ -397,6 +404,14 @@ export interface ContextOptions {
   autoPassthroughMaxTokens?: number
   /** Cosine ceiling above which a chunk is treated as redundant. Default 0.92. */
   redundancyMaxCosine?: number
+  /**
+   * Preserve source-document order of selected chunks instead of the
+   * strategy's relevance order. Useful for chat histories / transcripts
+   * where chronology matters. Default `false` (existing relevance-first
+   * behavior). See `docs/findings/CHAT_RAG.md` (TODO) and
+   * `crates/examples/examples/chat_rag.rs` for the worked pattern.
+   */
+  preserveOrder?: boolean
 }
 /**
  * Assemble the reasoning context from caller-supplied retrieved chunks

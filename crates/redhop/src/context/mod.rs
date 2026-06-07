@@ -199,6 +199,26 @@ pub struct ContextConfig {
     /// (`Document::with_analyzer` sets both in lockstep) so the two layers
     /// agree on what counts as "the same term".
     pub analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer>,
+    /// Preserve the original source-document order of selected chunks instead
+    /// of the relevance order the strategy would otherwise emit. Useful when
+    /// **chronology or causal order matters** — chat histories, narrative
+    /// transcripts, sequential logs — and reordering selected chunks by
+    /// relevance score would destroy the meaning.
+    ///
+    /// Mechanism: the selection step (top-K by relevance under whatever
+    /// `strategy` is in effect) is unchanged; only the **final ordering of
+    /// the selected chunks** is overridden. Chunks are grouped by
+    /// `chunk.source` and within each source sorted by the `sentence_range.start`
+    /// metadata stamped by the default sentence chunker (falls back to `0` on
+    /// chunkers that don't stamp this — in which case the resulting order is
+    /// the chunker's emission order, which matches "original document order"
+    /// for any sensible chunker).
+    ///
+    /// Off by default — keeps the existing strategy-emitted order untouched
+    /// for callers who care about relevance-first presentation (RAG QA,
+    /// document retrieval). See `crates/examples/examples/chat_rag.rs` for
+    /// the worked chat-history pattern.
+    pub preserve_order: bool,
 }
 
 impl Default for ContextConfig {
@@ -237,6 +257,10 @@ impl Default for ContextConfig {
             // English Snowball Porter2 by default. Process-wide cached Arc so
             // `Default::default()` is cheap.
             analyzer: crate::analyzer::default_english(),
+            // Off — the existing strategy-emitted order (typically relevance
+            // first) is preserved for the standard RAG/QA case. Callers who
+            // care about chronology (chat, transcripts, logs) opt in.
+            preserve_order: false,
         }
     }
 }
@@ -750,10 +774,36 @@ pub fn build_context(
         },
         economics,
     );
-    BuiltContext {
-        chunks: selected.iter().map(|i| i.chunk.clone()).collect(),
-        report,
+    // Optional final-ordering override: when `preserve_order` is set, present
+    // the selected chunks in source-document order instead of relevance order.
+    // Selection is untouched — only the *emission* order changes. See
+    // `ContextConfig::preserve_order` for the design rationale.
+    let mut chunks: Vec<Chunk> = selected.iter().map(|i| i.chunk.clone()).collect();
+    if cfg.preserve_order {
+        chunks.sort_by(|a, b| {
+            // Sort key: (source, position). Position prefers `chunk_index`
+            // (stamped by `Document::from_chunks_with` for caller-supplied
+            // chunks); falls back to `sentence_range.start` (stamped by the
+            // sentence chunker for from-text paths); then `0` so a chunker
+            // that stamps neither still sorts stably by source.
+            let key = |c: &Chunk| -> (String, i64) {
+                let pos = c
+                    .metadata
+                    .get("chunk_index")
+                    .and_then(|v| v.as_i64())
+                    .or_else(|| {
+                        c.metadata
+                            .get("sentence_range")
+                            .and_then(|v| v.get("start"))
+                            .and_then(|v| v.as_i64())
+                    })
+                    .unwrap_or(0);
+                (c.source.clone(), pos)
+            };
+            key(a).cmp(&key(b))
+        });
     }
+    BuiltContext { chunks, report }
 }
 
 /// Deterministic structural companions for context expansion. For each seed
@@ -1418,6 +1468,7 @@ mod tests {
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
             analyzer: crate::analyzer::default_english(),
+            preserve_order: false,
         }
     }
 
@@ -1600,6 +1651,7 @@ mod tests {
             low_confidence_max_grounding: 0.10,
             analyzer: crate::analyzer::default_english(),
             strategy: ContextStrategy::DistractorFiltered,
+            preserve_order: false,
         };
         let filtered = build_context(&q, &chunks, &aggressive);
         let preserving = build_context(
@@ -1676,6 +1728,7 @@ mod tests {
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
             analyzer: crate::analyzer::default_english(),
+            preserve_order: false,
         };
         let rp = build_context(&q, &bridge_chunks(), &cfg);
         // hop2 is below the bar but rescued → kept, and NOT a distractor.
@@ -1781,6 +1834,7 @@ mod tests {
             redundancy_max_cosine: 1.0,
             low_confidence_max_grounding: 0.10,
             analyzer: crate::analyzer::default_english(),
+            preserve_order: false,
         };
         let before = analyze_context(&q, &bridge_chunks(), &cfg);
         let after = build_context(&q, &bridge_chunks(), &cfg);
@@ -1901,5 +1955,105 @@ mod tests {
             !r2.low_confidence_retrieval,
             "expected low_confidence_retrieval=false on on-topic corpus, got report: {r2:?}"
         );
+    }
+
+    // ─── preserve_order ─────────────────────────────────────────────────────
+
+    /// Helper for the preserve_order tests — builds a chunk with an explicit
+    /// `sentence_range.start` so the test controls the "original document
+    /// position" the sort key reads.
+    fn rr_at(id: &str, text: &str, position: i64) -> RetrievalResult {
+        let mut c = Chunk::new(
+            ChunkId::new(id),
+            text,
+            "chat",
+            TokenCount(text.split_whitespace().count()),
+        );
+        c.metadata.insert(
+            "sentence_range".to_string(),
+            serde_json::json!({ "start": position, "end": position + 1 }),
+        );
+        RetrievalResult {
+            chunk: c,
+            score: Score {
+                value: 1.0,
+                method: RetrievalMethod::Lexical,
+            },
+            breakdown: ScoreBreakdown::default(),
+        }
+    }
+
+    #[test]
+    fn preserve_order_off_emits_relevance_order() {
+        // Two chunks; the higher-scoring one (newer) comes first, the older
+        // less-relevant one second. Without preserve_order, selection
+        // emits them in the strategy's chosen order (here: input order,
+        // which is score-descending).
+        let chunks = vec![
+            rr_at("turn-50", "refund window is thirty days", 50),
+            rr_at("turn-3", "ordered a new laptop yesterday", 3),
+        ];
+        let cfg = ContextConfig {
+            token_budget: 1000,
+            strategy: ContextStrategy::RawTopK,
+            preserve_order: false,
+            ..Default::default()
+        };
+        let ctx = build_context(&Query::new("refund window"), &chunks, &cfg);
+        // The newer turn should come first (strategy emits input order).
+        assert_eq!(ctx.chunks[0].id.as_str(), "turn-50");
+        assert_eq!(ctx.chunks[1].id.as_str(), "turn-3");
+    }
+
+    #[test]
+    fn preserve_order_on_emits_document_order() {
+        // Same input as above but with preserve_order=true. Selection still
+        // picks both chunks, but they're emitted in source-document order
+        // (turn-3 before turn-50) so chat chronology is preserved.
+        let chunks = vec![
+            rr_at("turn-50", "refund window is thirty days", 50),
+            rr_at("turn-3", "ordered a new laptop yesterday", 3),
+        ];
+        let cfg = ContextConfig {
+            token_budget: 1000,
+            strategy: ContextStrategy::RawTopK,
+            preserve_order: true,
+            ..Default::default()
+        };
+        let ctx = build_context(&Query::new("refund window"), &chunks, &cfg);
+        assert_eq!(
+            ctx.chunks[0].id.as_str(),
+            "turn-3",
+            "earlier turn should appear first when preserve_order is set"
+        );
+        assert_eq!(ctx.chunks[1].id.as_str(), "turn-50");
+    }
+
+    #[test]
+    fn preserve_order_groups_by_source() {
+        // Two sources interleaved in score order. preserve_order should
+        // emit each source's chunks in its own document order — sources
+        // grouped together rather than interleaved.
+        let mut a1 = rr_at("a-1", "first message in A", 1);
+        a1.chunk.source = "chat_a".into();
+        let mut a5 = rr_at("a-5", "fifth message in A", 5);
+        a5.chunk.source = "chat_a".into();
+        let mut b2 = rr_at("b-2", "second message in B", 2);
+        b2.chunk.source = "chat_b".into();
+        // Score-descending input order: a5, b2, a1.
+        let chunks = vec![a5, b2, a1];
+        let cfg = ContextConfig {
+            token_budget: 1000,
+            strategy: ContextStrategy::RawTopK,
+            preserve_order: true,
+            ..Default::default()
+        };
+        let ctx = build_context(&Query::new("message"), &chunks, &cfg);
+        // Expected: chat_a's chunks together in document order, then
+        // chat_b's. The (source, position) tuple sort puts "chat_a" before
+        // "chat_b" lexicographically, then a-1 before a-5 by position.
+        assert_eq!(ctx.chunks[0].id.as_str(), "a-1");
+        assert_eq!(ctx.chunks[1].id.as_str(), "a-5");
+        assert_eq!(ctx.chunks[2].id.as_str(), "b-2");
     }
 }

@@ -437,13 +437,32 @@ impl Document {
     }
 
     /// Build from chunks with an explicit [`DocumentConfig`].
-    pub fn from_chunks_with(chunks: Vec<Chunk>, cfg: DocumentConfig) -> Result<Self> {
+    pub fn from_chunks_with(mut chunks: Vec<Chunk>, cfg: DocumentConfig) -> Result<Self> {
         if chunks.is_empty() {
             return Err(crate::core::Error::InvalidConfig(
                 "cannot build a Document with no chunks — the text was empty or produced no \
                  chunks. Pass non-empty text to `from_text`, or chunks to `from_chunks`."
                     .into(),
             ));
+        }
+        // Stamp a stable per-source `chunk_index` so the input order is
+        // preserved through retrieval. Caller-supplied chunks via
+        // `from_chunks*` may not carry the chunker's `sentence_range`, so
+        // this metadata key is what `ContextConfig::preserve_order` reads
+        // to reconstruct source-document order downstream.
+        let mut per_source: std::collections::HashMap<String, i64> =
+            std::collections::HashMap::new();
+        for chunk in chunks.iter_mut() {
+            // Only stamp if the chunk doesn't already carry `chunk_index`
+            // (callers — and future chunkers — may stamp it themselves).
+            if !chunk.metadata.contains_key("chunk_index") {
+                let idx = per_source.entry(chunk.source.clone()).or_insert(0);
+                let val = *idx;
+                *idx += 1;
+                chunk
+                    .metadata
+                    .insert("chunk_index".to_string(), serde_json::json!(val));
+            }
         }
         // A current-thread runtime is enough: the internal retriever's work is
         // CPU-bound (Tantivy on a blocking worker); we only block_on it.

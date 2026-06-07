@@ -122,6 +122,7 @@ fn cfg_with(strategy: ContextStrategy) -> ContextConfig {
         auto_passthrough_max_tokens: 1_000_000,
         low_confidence_max_grounding: 0.10,
         analyzer: redhop::analyzer::default_english(),
+            preserve_order: false,
     }
 }
 

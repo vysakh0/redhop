@@ -124,6 +124,7 @@ fn arb_config() -> impl Strategy<Value = ContextConfig> {
                 redundancy_max_cosine: rmc,
                 low_confidence_max_grounding: lcmg,
                 analyzer: default_english(),
+                preserve_order: false,
             },
         )
 }

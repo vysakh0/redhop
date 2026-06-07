@@ -72,6 +72,11 @@ pub struct LoadOptions {
     /// drop the string config and call `Document::with_analyzer` directly
     /// with your `Arc<dyn Analyzer>`.
     pub language: Option<String>,
+    /// Preserve source-document order of selected chunks instead of the
+    /// strategy's relevance order. Useful for chat histories / transcripts
+    /// where chronology matters. Default `false`.
+    /// See `crates/examples/examples/chat_rag.rs` for the worked pattern.
+    pub preserve_order: Option<bool>,
 }
 
 /// Options for `read_folder_with` (plus the chunking/retrieval [`LoadOptions`]).
@@ -199,6 +204,7 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         token_budget: o.token_budget.unwrap_or(8192),
         strategy,
         analyzer,
+        preserve_order: o.preserve_order.unwrap_or(base.context.preserve_order),
         ..base.context
     };
     Ok(DocumentConfig {

@@ -258,5 +258,9 @@ path = "examples/cuad_hybrid_rerank.rs"
 required-features = ["onnx"]
 
 [[example]]
+name = "chat_rag"
+path = "examples/chat_rag.rs"
+
+[[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"

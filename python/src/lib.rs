@@ -107,6 +107,7 @@ fn chunks_from_py(chunks: &Bound<'_, PyAny>) -> PyResult<Vec<RetrievalResult>> {
     Ok(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn config(
     strategy: Option<String>,
     token_budget: usize,
@@ -114,6 +115,7 @@ fn config(
     link_min_jaccard: f32,
     auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
+    preserve_order: bool,
 ) -> PyResult<ContextConfig> {
     let strat = match strategy {
         Some(s) => strategy_from_str(&s)?,
@@ -126,6 +128,7 @@ fn config(
         link_min_jaccard,
         auto_passthrough_max_tokens,
         redundancy_max_cosine,
+        preserve_order,
         // Inherits the Rust-side default (0.10). Not exposed as a Python kwarg
         // yet — the signal it drives is observable on the report regardless.
         ..ContextConfig::default()
@@ -338,7 +341,7 @@ impl BuiltContext {
 
 #[pyfunction]
 #[pyo3(signature = (query, retrieved_chunks, strategy=None, token_budget=8192,
-       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92))]
+       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92, preserve_order=false))]
 #[allow(clippy::too_many_arguments)]
 fn build_context(
     query: &str,
@@ -349,6 +352,7 @@ fn build_context(
     link_min_jaccard: f32,
     auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
+    preserve_order: bool,
 ) -> PyResult<BuiltContext> {
     let cfg = config(
         strategy,
@@ -357,6 +361,7 @@ fn build_context(
         link_min_jaccard,
         auto_passthrough_max_tokens,
         redundancy_max_cosine,
+        preserve_order,
     )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
@@ -377,7 +382,7 @@ fn build_context(
 
 #[pyfunction]
 #[pyo3(signature = (query, retrieved_chunks, strategy=None,
-       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92))]
+       distractor_min_grounding=0.10, link_min_jaccard=0.12, auto_passthrough_max_tokens=1500, redundancy_max_cosine=0.92, preserve_order=false))]
 #[allow(clippy::too_many_arguments)]
 fn filter_context(
     query: &str,
@@ -387,6 +392,7 @@ fn filter_context(
     link_min_jaccard: f32,
     auto_passthrough_max_tokens: usize,
     redundancy_max_cosine: f32,
+    preserve_order: bool,
 ) -> PyResult<BuiltContext> {
     // filter = build with no budget truncation.
     let cfg = config(
@@ -396,6 +402,7 @@ fn filter_context(
         link_min_jaccard,
         auto_passthrough_max_tokens,
         redundancy_max_cosine,
+        preserve_order,
     )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
@@ -434,6 +441,7 @@ fn analyze_context(
         link_min_jaccard,
         auto_passthrough_max_tokens,
         0.92,
+        false, // preserve_order doesn't apply to analyze (no chunk emission)
     )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
@@ -460,6 +468,7 @@ fn context_economics(
         link_min_jaccard,
         8_000,
         0.92,
+        false, // preserve_order doesn't apply to economics (no chunk emission)
     )?;
     let q = Query::new(query);
     let retrieved = chunks_from_py(retrieved_chunks)?;
@@ -520,6 +529,7 @@ fn doc_config(
     chunk_overlap: usize,
     retrieval_mode: RetrievalMode,
     language: Option<String>,
+    preserve_order: bool,
 ) -> PyResult<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match strategy {
@@ -547,6 +557,7 @@ fn doc_config(
         token_budget,
         strategy,
         analyzer,
+        preserve_order,
         ..base.context
     };
     Ok(DocumentConfig {
@@ -805,6 +816,7 @@ fn build_text_doc(
     candidate_pool: usize,
     rerank: Option<String>,
     language: Option<String>,
+    preserve_order: bool,
 ) -> PyResult<RhDocument> {
     let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
     let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
@@ -816,6 +828,7 @@ fn build_text_doc(
         chunk_overlap,
         mode,
         language,
+        preserve_order,
     )?;
     let mut inner = to_py(RhDocument::from_sources_with(files, cfg))?;
     if needs_embedder {
@@ -866,7 +879,8 @@ impl Document {
                         chunk_overlap=1, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
+                        preserve_order=false))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -888,6 +902,7 @@ impl Document {
         rerank: Option<String>,
 
         language: Option<String>,
+        preserve_order: bool,
     ) -> PyResult<Self> {
         let sections = vec![RhSection {
             text: text.to_string(),
@@ -913,6 +928,7 @@ impl Document {
             candidate_pool,
             rerank,
             language,
+            preserve_order,
         )?;
         Ok(Self::single(inner))
     }
@@ -929,7 +945,8 @@ impl Document {
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
+                        preserve_order=false))]
     #[allow(clippy::too_many_arguments)]
     fn from_file(
         path: &str,
@@ -950,6 +967,7 @@ impl Document {
         rerank: Option<String>,
 
         language: Option<String>,
+        preserve_order: bool,
     ) -> PyResult<Self> {
         let (source, sections) = extract_file_text(path)?;
         let inner = build_text_doc(
@@ -970,6 +988,7 @@ impl Document {
             candidate_pool,
             rerank,
             language,
+            preserve_order,
         )?;
         Ok(Self::single(inner))
     }
@@ -987,7 +1006,8 @@ impl Document {
                         token_budget=8192, candidate_k=20, retrieval=None, model=None,
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
+                        preserve_order=false))]
     #[allow(clippy::too_many_arguments)]
     fn from_bytes(
         data: Vec<u8>,
@@ -1009,6 +1029,7 @@ impl Document {
         rerank: Option<String>,
 
         language: Option<String>,
+        preserve_order: bool,
     ) -> PyResult<Self> {
         let (source, sections) = extract_bytes_sections(&data, source)?;
         let inner = build_text_doc(
@@ -1029,6 +1050,7 @@ impl Document {
             candidate_pool,
             rerank,
             language,
+            preserve_order,
         )?;
         Ok(Self::single(inner))
     }
@@ -1166,7 +1188,8 @@ impl Document {
     #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None))]
+                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
+                        preserve_order=false))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -1185,6 +1208,7 @@ impl Document {
         rerank: Option<String>,
 
         language: Option<String>,
+        preserve_order: bool,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
@@ -1192,7 +1216,7 @@ impl Document {
             .collect();
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
         let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, language)?;
+        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, language, preserve_order)?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if needs_embedder {
             inner = apply_dense_embedder(

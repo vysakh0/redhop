@@ -72,6 +72,11 @@ pub struct Options {
     /// the 18 Snowball Porter2 languages. Unknown strings ERROR (no
     /// silent fallback to English; a typo'd `"germann"` surfaces).
     pub language: Option<String>,
+    /// Preserve source-document order of selected chunks instead of the
+    /// strategy's relevance order. Useful for chat histories / transcripts
+    /// where chronology matters. Default `false`. See
+    /// `crates/examples/examples/chat_rag.rs` for the worked pattern.
+    pub preserve_order: Option<bool>,
 }
 
 impl Options {
@@ -96,6 +101,7 @@ impl Options {
             rerank: self.rerank,
             min_candidates: u(self.min_candidates),
             language: self.language,
+            preserve_order: self.preserve_order,
         }
     }
 }
@@ -743,6 +749,12 @@ pub struct ContextOptions {
     pub auto_passthrough_max_tokens: Option<u32>,
     /// Cosine ceiling above which a chunk is treated as redundant. Default 0.92.
     pub redundancy_max_cosine: Option<f64>,
+    /// Preserve source-document order of selected chunks instead of the
+    /// strategy's relevance order. Useful for chat histories / transcripts
+    /// where chronology matters. Default `false` (existing relevance-first
+    /// behavior). See `docs/findings/CHAT_RAG.md` (TODO) and
+    /// `crates/examples/examples/chat_rag.rs` for the worked pattern.
+    pub preserve_order: Option<bool>,
 }
 
 fn build_chunk_input(c: ChunkInput, idx: usize) -> redhop::core::RetrievalResult {
@@ -797,6 +809,7 @@ fn build_context_config(opts: Option<ContextOptions>) -> napi::Result<redhop::Co
             .redundancy_max_cosine
             .map(|n| n as f32)
             .unwrap_or(base.redundancy_max_cosine),
+        preserve_order: o.preserve_order.unwrap_or(base.preserve_order),
         ..base
     })
 }

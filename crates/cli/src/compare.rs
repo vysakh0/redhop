@@ -101,6 +101,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             redundancy_max_cosine: 0.92,
             low_confidence_max_grounding: 0.10,
             analyzer: redhop::analyzer::default_english(),
+            preserve_order: false,
         };
         let ctx = build_context(&query, &retrieved, &cfg);
         let r = &ctx.report;
