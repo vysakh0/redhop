@@ -345,7 +345,7 @@ CUAD bench. Closing it doesn't need a vector DB, a different embedder, or a
 cross-encoder — it needs two small preprocessing helpers on the query side.
 
 <p align="center">
-  <img src=".github/workflow_lift.svg" alt="CUAD retention rises 81% → 88% → 90.7% across the detect → Stripper → Vocabulary workflow; LlamaIndex is at 86%" width="100%">
+  <img src=".github/workflow_lift.svg" alt="CUAD retention rises 81.3% → 87.7% → 90.7% across the detect → Stripper → Vocabulary workflow; LlamaIndex is at 86%. RedHop uses a workload-curated 34-key Vocabulary dictionary; the same preprocessing is not applied to LlamaIndex." width="100%">
 </p>
 
 **Measured on the CUAD framework comparison** (n=300, BM25, budget 2,000 tok):

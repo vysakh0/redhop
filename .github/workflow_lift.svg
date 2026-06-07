@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" role="img" aria-label="CUAD retention lift across the detect → strip → expand workflow">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" role="img" aria-label="CUAD retention lift across the detect → Stripper → Vocabulary workflow">
   <title>CUAD retention lift across the workflow (≥0.8 word-recall, n=300)</title>
-  <desc>Horizontal-bar chart showing CUAD retention rising from 81% on the raw 24-word template, to 88% after drop_template_terms, to 90.3% after also using expand_query_terms. LlamaIndex's 86% is shown as a vertical reference line.</desc>
+  <desc>Horizontal-bar chart showing CUAD ≥0.8 retention rising from 81.3% on the raw 24-word template, to 87.7% after Stripper(boilerplate_terms), to 90.7% after also using Vocabulary(synonyms). LlamaIndex's 86% is shown as a vertical reference line. Note: this is RedHop with a workload-curated Vocabulary dictionary (34 keys, 121 synonyms compiled against CUAD's clause names) vs LlamaIndex with its default retriever; the same preprocessing is not applied to LlamaIndex in this comparison.</desc>
 
   <defs>
     <linearGradient id="bar-raw" x1="0" y1="0" x2="1" y2="0">

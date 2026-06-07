@@ -7,8 +7,8 @@
 //!         that should be reviewed by a lawyer. Details: <…>
 //!     where only <X> varies. The boilerplate words dilute BM25's signal
 //!     on the discriminating clause name, costing retention on the
-//!     framework comparison (CUAD: 81% raw → 88% stripped → 90.7%
-//!     stripped + clause-synonyms).
+//!     framework comparison (CUAD: 81.3% raw → 87.7% stripped →
+//!     90.7% stripped + workload-curated clause-synonyms).
 //!
 //! What this demonstrates:
 //!     - `redhop::analyze_query_set(...)` — flags whether a query set is

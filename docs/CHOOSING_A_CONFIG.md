@@ -226,8 +226,9 @@ else:
 
 The analyzer measures the *shape* of your queries; it does **not**
 promise a specific retention lift. On CUAD the lift was measured
-directly at +6 points ≥0.8 retention (82% → 88%, overtaking LlamaIndex
-at 86%; see [findings/CUAD_RECALL_GAP.md](findings/CUAD_RECALL_GAP.md)).
+directly at +6.4 points ≥0.8 retention (81.3% → 87.7%, overtaking
+LlamaIndex at 86%; see CUAD_CLAUSE_EXPANSION's controlled three-arm
+run in [findings/CUAD_CLAUSE_EXPANSION.md](findings/CUAD_CLAUSE_EXPANSION.md)).
 On a different templated workload the magnitude depends on how much of
 your real query signal was being drowned, which is why step 3 matters.
 
