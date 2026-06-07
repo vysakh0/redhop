@@ -42,7 +42,7 @@
 
 use std::collections::HashSet;
 
-use redhop::analyzer::{drop_template_terms, expand_query_terms};
+use redhop::{Glossary, QueryRewrite};
 use redhop::context::{ContextConfig, ContextStrategy};
 use redhop::document::{Document, DocumentConfig};
 use serde::Deserialize;
@@ -210,7 +210,7 @@ enum Arm {
     RawExpanded,
 }
 
-fn run(cuad: &Cuad, arm: Arm, expansions: &[(&str, &[&str])]) -> anyhow::Result<Cell> {
+fn run(cuad: &Cuad, arm: Arm, glossary: &Glossary) -> anyhow::Result<Cell> {
     let mut acc = Cell::default();
     let mut q_count = 0usize;
 
@@ -246,15 +246,15 @@ fn run(cuad: &Cuad, arm: Arm, expansions: &[(&str, &[&str])]) -> anyhow::Result<
                     Arm::Stripped => extract_cuad_signal(&qa.question),
                     Arm::StrippedExpanded => {
                         let stripped = extract_cuad_signal(&qa.question);
-                        expand_query_terms(&stripped, expansions)
+                        glossary.apply(&stripped).query
                     }
-                    Arm::RawExpanded => expand_query_terms(&qa.question, expansions),
+                    Arm::RawExpanded => glossary.apply(&qa.question).query,
                 };
-                // (drop_template_terms unused in this harness — kept available
-                // for ad-hoc Stripped via redhop::drop_template_terms; the
-                // extract_cuad_signal path is canonical and matches the prior
-                // CUAD harnesses' definitions.)
-                let _ = drop_template_terms;
+                // (`extract_cuad_signal` is the canonical CUAD template
+                // strip — matches the prior CUAD harnesses' definitions.
+                // For non-CUAD workloads, use `redhop::Stripper` to compile
+                // a boilerplate list once instead of writing a per-call
+                // signal extractor.)
                 let _ = CUAD_BOILERPLATE;
                 let ctx = match doc.context(&query_text) {
                     Ok(c) => c,
@@ -305,29 +305,40 @@ fn main() -> anyhow::Result<()> {
     );
     println!();
 
-    // Sample expansion on the first query.
+    // Compile the dictionary once — token-level matching via the
+    // document's default analyzer. With the new `Glossary` API, lookup
+    // happens at retrieval-call rate, not per-construction.
+    let glossary = Glossary::new(&dict);
+
+    // Sample expansion on the first query — also exercise the audit
+    // trail so the worked example shows what the Decision Report will
+    // record.
     let sample_q = &cuad.data[0].paragraphs[0].qas[0].question;
     let sample_stripped = extract_cuad_signal(sample_q);
-    let sample_expanded = expand_query_terms(&sample_stripped, &dict);
+    let sample_result = glossary.apply(&sample_stripped);
     println!("sample query:");
     println!("  raw:      {sample_q}");
     println!("  stripped: {sample_stripped}");
-    println!("  expanded: {sample_expanded}");
+    println!("  expanded: {}", sample_result.query);
+    println!(
+        "  trail:    matched={:?} added={:?}",
+        sample_result.record.matched, sample_result.record.added
+    );
     println!();
 
-    let arm_a = run(&cuad, Arm::RawTemplate, &dict)?;
+    let arm_a = run(&cuad, Arm::RawTemplate, &glossary)?;
     print_arm("arm A: raw 24-word template", &arm_a);
     println!();
 
-    let arm_b = run(&cuad, Arm::Stripped, &dict)?;
+    let arm_b = run(&cuad, Arm::Stripped, &glossary)?;
     print_arm("arm B: template stripped", &arm_b);
     println!();
 
-    let arm_c = run(&cuad, Arm::StrippedExpanded, &dict)?;
+    let arm_c = run(&cuad, Arm::StrippedExpanded, &glossary)?;
     print_arm("arm C: stripped + clause-name expanded", &arm_c);
     println!();
 
-    let arm_d = run(&cuad, Arm::RawExpanded, &dict)?;
+    let arm_d = run(&cuad, Arm::RawExpanded, &glossary)?;
     print_arm("arm D: raw template + clause-name expanded (control)", &arm_d);
     println!();
 

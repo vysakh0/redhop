@@ -635,13 +635,65 @@ impl Document {
         budget: Option<usize>,
         candidate_k: Option<usize>,
     ) -> Result<BuiltContext> {
+        self.context_inner(query, budget, candidate_k, &[])
+    }
+
+    /// [`Document::context`] with a chain of query-side rewrites applied
+    /// before retrieval. Each rewrite ([`crate::rewrite::Stripper`],
+    /// [`crate::rewrite::Glossary`], or anything implementing
+    /// [`crate::rewrite::QueryRewrite`]) runs in order; the rewritten
+    /// query is the one BM25 sees; the per-stage audit trail lands in
+    /// `ctx.report.query_rewrites` so every change is auditable in the
+    /// Decision Report.
+    ///
+    /// ```no_run
+    /// # use redhop::{Document, rewrite::{Stripper, Glossary}};
+    /// # fn main() -> redhop::Result<()> {
+    /// let stripper = Stripper::new(&[
+    ///     "highlight", "the", "parts", "of", "this", "contract",
+    ///     "related", "to",
+    /// ]);
+    /// let glossary = Glossary::new(&[
+    ///     ("change of control", &["merger", "successor", "acquisition"][..]),
+    /// ]);
+    /// let mut doc = Document::from_text("contract.pdf", "…")?;
+    /// let ctx = doc.context_with_rewrites(
+    ///     "Highlight the parts of this contract related to \"Change of Control\".",
+    ///     &[&stripper, &glossary],
+    /// )?;
+    /// for r in &ctx.report.query_rewrites {
+    ///     println!("{}: {:?} → added {:?}", r.stage, r.matched, r.added);
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn context_with_rewrites(
+        &mut self,
+        query: &str,
+        rewrites: &[&dyn crate::rewrite::QueryRewrite],
+    ) -> Result<BuiltContext> {
+        self.context_inner(query, None, None, rewrites)
+    }
+
+    /// Internal shared body for [`Self::context`], [`Self::context_with`],
+    /// and [`Self::context_with_rewrites`]. Threading the rewrite chain
+    /// through one path keeps retrieval and assembly in lockstep — BM25
+    /// sees the rewritten query iff the report records the corresponding
+    /// trail.
+    fn context_inner(
+        &mut self,
+        query: &str,
+        budget: Option<usize>,
+        candidate_k: Option<usize>,
+        rewrites: &[&dyn crate::rewrite::QueryRewrite],
+    ) -> Result<BuiltContext> {
+        let (rewritten, trail) = crate::rewrite::apply_chain(query, rewrites);
         let k = candidate_k.unwrap_or(self.cfg.candidate_k);
-        let results = self.retrieve(query, k)?;
+        let results = self.retrieve(&rewritten, k)?;
         let mut cfg = self.cfg.context.clone();
         if let Some(b) = budget {
             cfg.token_budget = b;
         }
-        let q = Query::new(query);
+        let q = Query::new(&rewritten);
 
         // Auto-expand based on what the retrieved set looks like:
         //
@@ -662,12 +714,17 @@ impl Document {
         };
         let include_heading =
             self.cfg.prose_heading_default && results.iter().any(has_prose_heading);
-        if neighbors > 0 || include_heading {
+        let mut ctx = if neighbors > 0 || include_heading {
             let plan = self.expansion_plan(&results, neighbors, include_heading);
-            return Ok(build_context_expanded(&q, &results, &cfg, &plan));
-        }
-
-        Ok(build_context(&q, &results, &cfg))
+            build_context_expanded(&q, &results, &cfg, &plan)
+        } else {
+            build_context(&q, &results, &cfg)
+        };
+        // Attach the rewrite trail to the report so the chain is auditable.
+        // Empty trail when no rewrites were supplied (the report's
+        // `query_rewrites` is `Vec::new()` by default).
+        crate::context::attach_rewrite_trail(&mut ctx, trail);
+        Ok(ctx)
     }
 
     /// [`Document::context_with`] plus **structural context expansion**: after the

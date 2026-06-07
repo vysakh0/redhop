@@ -383,6 +383,14 @@ pub struct ContextReport {
     /// Token/evidence economics of the assembled context.
     #[serde(default)]
     pub economics: ContextEconomics,
+    /// Per-stage trace of query-side rewrites applied before retrieval. One
+    /// record per [`crate::rewrite::QueryRewrite`] stage in the chain,
+    /// recording what was matched, added, and removed. Empty when no
+    /// rewrites were supplied. Each record's `to` matches the next
+    /// record's `from`, and the final stage's `to` is the query that
+    /// reached BM25.
+    #[serde(default)]
+    pub query_rewrites: Vec<crate::rewrite::RewriteRecord>,
 }
 
 impl ContextReport {
@@ -643,6 +651,40 @@ impl BuiltContext {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
+}
+
+/// Attach a pre-computed query-rewrite trail to a `BuiltContext` after
+/// assembly. Used by [`build_context_with_rewrites`] and the
+/// `Document`-level wrappers that thread the rewrite chain. Kept public
+/// so callers driving their own rewrite pipeline can attach the same
+/// trace to the report and have it land in JSON / bindings consistently.
+pub fn attach_rewrite_trail(
+    ctx: &mut BuiltContext,
+    trail: Vec<crate::rewrite::RewriteRecord>,
+) {
+    ctx.report.query_rewrites = trail;
+}
+
+/// Build a context from a query, after running it through a chain of
+/// [`crate::rewrite::QueryRewrite`] stages. The rewritten query is the
+/// one passed to the strategy; the per-stage trail is attached to
+/// `ctx.report.query_rewrites` so every change is auditable.
+///
+/// `retrieved` is **not** re-fetched — the caller is responsible for
+/// running retrieval against the *rewritten* query if the chain changes
+/// it. The high-level [`crate::Document::context_with_rewrites`] handles
+/// this end-to-end.
+pub fn build_context_with_rewrites(
+    query: &Query,
+    retrieved: &[RetrievalResult],
+    cfg: &ContextConfig,
+    rewrites: &[&dyn crate::rewrite::QueryRewrite],
+) -> BuiltContext {
+    let (rewritten, trail) = crate::rewrite::apply_chain(&query.text, rewrites);
+    let q = Query::new(&rewritten);
+    let mut ctx = build_context(&q, retrieved, cfg);
+    attach_rewrite_trail(&mut ctx, trail);
+    ctx
 }
 
 /// Build a finite-attention-aware context from retrieved chunks.
@@ -940,6 +982,11 @@ fn make_report(
         low_confidence_retrieval,
         low_confidence_threshold: cfg.low_confidence_max_grounding,
         economics,
+        // The rewrite trail is attached by the caller of build_context after
+        // selection completes — make_report doesn't see the chain. Default
+        // empty here; populated by `build_context_with_rewrites` (and the
+        // Document-level wrappers that thread the chain through).
+        query_rewrites: vec![],
     }
 }
 
@@ -1021,6 +1068,8 @@ pub fn analyze_context(
         low_confidence_retrieval,
         low_confidence_threshold: cfg.low_confidence_max_grounding,
         economics,
+        // analyze_context observes the input — no rewrite chain ran.
+        query_rewrites: vec![],
     }
 }
 

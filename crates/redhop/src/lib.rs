@@ -56,6 +56,7 @@ pub mod context;
 pub mod core;
 pub mod document;
 pub mod retrieval;
+pub mod rewrite;
 pub mod storage;
 
 #[cfg(feature = "semantic")]
@@ -73,7 +74,18 @@ pub use crate::document::{Document, DocumentConfig, RetrievalMode, Section};
 // (what doesn't help), and docs/findings/QUERY_SET_ANALYZER.md (the
 // cross-workload probe that validated the heuristic thresholds).
 pub use crate::analyzer::{
-    analyze_query_set, drop_template_terms, expand_query_terms, DilutionCost, QuerySetReport,
+    analyze_query_set, DilutionCost, QuerySetReport,
+};
+
+// Query-side rewrite primitives. Compile boilerplate / glossaries once,
+// route every rewrite through the same `QueryRewrite` seam, and land the
+// per-stage trail in `ContextReport::query_rewrites` so every change is
+// auditable. Replaces the old `drop_template_terms` / `expand_query_terms`
+// functions from 0.2.x (deleted in 0.3.0 — see the redesign notes in
+// `crate::rewrite` for the three flaws that motivated the move).
+pub use crate::rewrite::{
+    apply_chain as apply_query_rewrites, Glossary, QueryRewrite, RewriteRecord,
+    RewriteResult, Stripper,
 };
 
 // The built context + its telemetry, and the lower-level context entry points.
