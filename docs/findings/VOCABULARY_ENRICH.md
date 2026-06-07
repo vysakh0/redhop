@@ -1,12 +1,16 @@
 # `Vocabulary.enrich` — the chunk-side mirror of query rewriting, for short opaque retrieval units
 
-> **Status:** **Shipped on mechanism + regime reasoning**; measured
+> **Status:** **Shipped on mechanism + regime reasoning**;
+> negative-side measured falsification on CUAD
+> ([CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md):
+> −2.0 pts vs the 90.7% workflow baseline). Positive-side measured
 > probes (Spider/BIRD for schemas) queued not run. The mechanism is
 > well-established in IR (the doc2query family); the regime where it
 > earns its keep is sharp enough that users can predict whether it
 > applies to their workload without their own probe. Failure modes —
-> especially the "same boilerplate on every chunk" trap — are
-> documented so the prediction stays honest.
+> especially the "same boilerplate on every chunk" trap that the
+> CUAD probe measured directly — are documented so the prediction
+> stays honest.
 >
 > **TL;DR:** [`Vocabulary::enrich`](../../crates/redhop/src/rewrite.rs)
 > is the symmetric to query-side [`QueryRewrite::apply`]. Applied at
@@ -214,10 +218,16 @@ const doc = redhop.Document.fromChunks(enriched);
 
 ## Honest limits
 
-- **No measured probe yet.** Mechanism prediction is sharp and
-  IR-literature established, but until Spider/BIRD or a similar
-  workload is harnessed, we can't put a number on the lift. The
-  measured probes are queued, not run.
+- **Measured falsification on the negative side, no measured
+  confirmation on the positive side yet.** The CUAD probe
+  ([CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md))
+  measured a −2.0-point regression where the regime rule predicted
+  null, confirming the rule's negative half — but the positive half
+  (Spider/BIRD-style schema retrieval) is still mechanism reasoning
+  awaiting a real harness. The asymmetry is honest: it's easier to
+  measure "this didn't help on a workload outside the regime" than
+  "this helped on a workload inside the regime, controlled against
+  the right baseline."
 - **Worked example uses a small toy corpus.** The
   [`enrich_code_search`](../../crates/examples/examples/enrich_code_search.rs)
   example demonstrates the audit trail and the use pattern; on the

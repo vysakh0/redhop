@@ -114,18 +114,25 @@ into citations — a real functional gap, not just ergonomics. The typed
 
 #### Findings (the evidence layer)
 
-Nine new findings document what was tried, what worked, and what was
+New findings document what was tried, what worked, and what was
 falsified across this release:
 
 - **Confirmed** — `QUERY_SET_ANALYZER`, `CUAD_RECALL_GAP`,
   `CUAD_CLAUSE_EXPANSION`, `MULTILINGUAL_ANALYZER`, `EVALUATE_API`,
-  `CUAD_HYBRID_RERANK` (substitute-not-stack rule).
+  `CUAD_HYBRID_RERANK` (substitute-not-stack rule), `VOCABULARY_ENRICH`
+  (shipped on regime rule + IR-literature mechanism + measured negative
+  probe on CUAD).
 - **Null result / falsified** — `CUAD_PRF_NULL` (unweighted PRF on
   boilerplate-heavy corpora), `CUAD_CHUNK_FRAGMENTATION_NULL` (chunker
   isn't the CUAD lever), `SUB_IDF_AUTO_DROP_NULL` (corpus-only IDF
   manipulation fails in both directions; combined with PRF null,
   completes a **four-corner rule**: query-side IDF manipulation works iff
-  the signal carries query-set or workload-curated semantics).
+  the signal carries query-set or workload-curated semantics),
+  `CUAD_ENRICH_DEFINITIONS_NULL` (chunk-side enrich on per-contract
+  Definitions regressed −2.0 pts vs the 90.7% workflow baseline;
+  ~24-point loss on the 17/50 contracts where Definitions were
+  extractable — chunk-side parallel to CUAD_PRF_NULL's failure mode,
+  measured directly).
 
 #### Examples
 

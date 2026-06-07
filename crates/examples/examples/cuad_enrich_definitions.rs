@@ -206,7 +206,10 @@ fn extract_definitions(text: &str) -> HashMap<String, String> {
                 }
                 if c == '.'
                     && body_window.as_bytes().get(idx + 1) == Some(&b' ')
-                    && body_window.as_bytes().get(idx + 2).is_some_and(u8::is_ascii_uppercase)
+                    && body_window
+                        .as_bytes()
+                        .get(idx + 2)
+                        .is_some_and(u8::is_ascii_uppercase)
                 {
                     return Some(idx);
                 }
@@ -215,7 +218,8 @@ fn extract_definitions(text: &str) -> HashMap<String, String> {
             .unwrap_or(body_window.len());
         let body = body_window[..body_end_rel].trim();
         if body.len() > 8 {
-            out.entry(term.to_string()).or_insert_with(|| body.to_string());
+            out.entry(term.to_string())
+                .or_insert_with(|| body.to_string());
         }
         i = term_end + 1;
     }
@@ -273,37 +277,106 @@ fn definitions_to_vocabulary(defs: &HashMap<String, String>) -> Option<Vocabular
 /// chunk-side enrichment on top.
 fn cuad_clause_synonyms() -> Vec<(&'static str, &'static [&'static str])> {
     vec![
-        ("change of control", &["merger", "successor", "acquisition", "consolidation", "stockholders"][..]),
-        ("anti-assignment", &["assign", "transfer", "successors", "delegate"]),
-        ("non-compete", &["restraint", "compete", "competitive", "competing"]),
-        ("non-disparagement", &["disparage", "criticize", "negative", "statement"]),
+        (
+            "change of control",
+            &[
+                "merger",
+                "successor",
+                "acquisition",
+                "consolidation",
+                "stockholders",
+            ][..],
+        ),
+        (
+            "anti-assignment",
+            &["assign", "transfer", "successors", "delegate"],
+        ),
+        (
+            "non-compete",
+            &["restraint", "compete", "competitive", "competing"],
+        ),
+        (
+            "non-disparagement",
+            &["disparage", "criticize", "negative", "statement"],
+        ),
         ("exclusivity", &["exclusive", "sole", "exclusively"]),
-        ("most favored nation", &["mfn", "favored", "comparable", "better"]),
-        ("no-solicit", &["solicit", "solicitation", "recruit", "hire"]),
-        ("right of first refusal", &["rofr", "refusal", "first option", "preemptive"]),
-        ("right of first offer", &["rofo", "first offer", "preemptive"]),
-        ("termination for convenience", &["convenience", "without cause", "any reason"]),
-        ("renewal term", &["renew", "extend", "extension", "renewable"]),
-        ("notice period to terminate renewal", &["notice", "days notice", "written notice"]),
-        ("governing law", &["governed", "construed", "jurisdiction", "venue", "law of"]),
-        ("ip ownership assignment", &["assign", "ownership", "title", "intellectual property"]),
-        ("joint ip ownership", &["jointly", "co-own", "joint ownership"]),
-        ("license grant", &["grants", "license", "licensee", "licensor"]),
+        (
+            "most favored nation",
+            &["mfn", "favored", "comparable", "better"],
+        ),
+        (
+            "no-solicit",
+            &["solicit", "solicitation", "recruit", "hire"],
+        ),
+        (
+            "right of first refusal",
+            &["rofr", "refusal", "first option", "preemptive"],
+        ),
+        (
+            "right of first offer",
+            &["rofo", "first offer", "preemptive"],
+        ),
+        (
+            "termination for convenience",
+            &["convenience", "without cause", "any reason"],
+        ),
+        (
+            "renewal term",
+            &["renew", "extend", "extension", "renewable"],
+        ),
+        (
+            "notice period to terminate renewal",
+            &["notice", "days notice", "written notice"],
+        ),
+        (
+            "governing law",
+            &["governed", "construed", "jurisdiction", "venue", "law of"],
+        ),
+        (
+            "ip ownership assignment",
+            &["assign", "ownership", "title", "intellectual property"],
+        ),
+        (
+            "joint ip ownership",
+            &["jointly", "co-own", "joint ownership"],
+        ),
+        (
+            "license grant",
+            &["grants", "license", "licensee", "licensor"],
+        ),
         ("uncapped liability", &["unlimited", "uncapped", "no limit"]),
-        ("cap on liability", &["capped", "limited", "maximum", "shall not exceed"]),
+        (
+            "cap on liability",
+            &["capped", "limited", "maximum", "shall not exceed"],
+        ),
         ("liquidated damages", &["liquidated", "damages", "penalty"]),
         ("warranty duration", &["warrants", "warranty", "warranted"]),
         ("insurance", &["insure", "insured", "coverage", "policy"]),
         ("audit rights", &["audit", "inspect", "books and records"]),
         ("source code escrow", &["escrow", "deposit", "source code"]),
-        ("third party beneficiary", &["beneficiary", "third party", "intended"]),
-        ("covenant not to sue", &["release", "waiver", "covenant", "sue"]),
-        ("revenue sharing", &["royalty", "percentage", "revenue", "share"]),
+        (
+            "third party beneficiary",
+            &["beneficiary", "third party", "intended"],
+        ),
+        (
+            "covenant not to sue",
+            &["release", "waiver", "covenant", "sue"],
+        ),
+        (
+            "revenue sharing",
+            &["royalty", "percentage", "revenue", "share"],
+        ),
         ("price restrictions", &["pricing", "price", "rate", "fees"]),
         ("minimum commitment", &["minimum", "commit", "guarantee"]),
         ("volume restriction", &["volume", "quantity", "cap"]),
-        ("document name", &["title", "this agreement", "this contract"]),
-        ("agreement date", &["dated", "as of", "executed", "effective date"]),
+        (
+            "document name",
+            &["title", "this agreement", "this contract"],
+        ),
+        (
+            "agreement date",
+            &["dated", "as of", "executed", "effective date"],
+        ),
         ("effective date", &["effective", "commence", "begin"]),
         ("expiration date", &["expire", "terminate", "ends"]),
         ("parties", &["between", "and"]),
@@ -496,7 +569,11 @@ fn main() -> anyhow::Result<()> {
         let defs = extract_definitions(&first.context);
         println!(
             "\nSample definitions extracted from contract {:?} ({} terms found):",
-            cuad.data[0].title.split('_').next().unwrap_or(&cuad.data[0].title),
+            cuad.data[0]
+                .title
+                .split('_')
+                .next()
+                .unwrap_or(&cuad.data[0].title),
             defs.len(),
         );
         for (i, (term, body)) in defs.iter().take(4).enumerate() {
@@ -515,7 +592,10 @@ fn main() -> anyhow::Result<()> {
     println!();
 
     let arm_b = run(&cuad, Arm::StrippedExpanded, &query_vocab)?;
-    print_arm("arm B: stripped + query-side vocabulary (shipped workflow)", &arm_b);
+    print_arm(
+        "arm B: stripped + query-side vocabulary (shipped workflow)",
+        &arm_b,
+    );
     println!();
 
     let arm_c = run(&cuad, Arm::StrippedExpandedEnriched, &query_vocab)?;
