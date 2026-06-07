@@ -5,7 +5,103 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
-## [Unreleased]
+## [Unreleased] — pending 0.3.0
+
+The **workflow + measurement** release. Ships four new public-API helpers
+that close the templated-workload retention gap end-to-end, in all three
+bindings (Rust, Python, Node): `analyze_query_set`, `drop_template_terms`,
+`expand_query_terms`, and `evaluate`. On the CUAD framework comparison the
+full **detect → strip → expand → A/B** workflow takes ≥0.8 retention from
+**81.3% → 90.3%** — a 9-point lift over raw BM25, beating LlamaIndex's 86%
+by 4 points, at native BM25 latency (~2.5ms/query) on default lexical
+retrieval. Worked example, hand-curated CUAD clause-name dictionary, and a
+6-arm probe contrasting the workflow vs hybrid+cross-encoder live in
+`docs/findings/CUAD_CLAUSE_EXPANSION.md` and `docs/findings/CUAD_HYBRID_RERANK.md`.
+
+One small breaking change on the Node binding (see Breaking below); Python
+and Rust callers are unaffected.
+
+### Added
+
+#### Templated-workload helpers (Rust + Python + Node)
+
+- **`analyze_query_set(queries) → QuerySetReport`** — diagnostic that takes
+  a representative sample of your queries and reports whether they share
+  enough boilerplate to be templated, which terms are doing the dilution,
+  and a coarse `estimated_dilution_cost` band. Cross-workload probe
+  (`docs/findings/QUERY_SET_ANALYZER.md`): CUAD fires (share 0.66, cost
+  high); HotpotQA + MuSiQue both stay quiet (0.00 and 0.12, both
+  `is_templated=False`). Conservative by design — false positives push
+  users toward a workaround that won't help, which is worse than staying
+  quiet.
+- **`drop_template_terms(query, boilerplate)`** — script-aware token-level
+  boilerplate removal. Latin scripts go through the original
+  whitespace-token path with word-boundary safety (a boilerplate `"of"`
+  does **not** erase the `"of"` inside `"office"`); Han / Hiragana /
+  Katakana / Hangul / Thai / Lao / Khmer / Burmese terms use
+  substring removal because those scripts have no whitespace between
+  words. Validated across French, German, Spanish, Chinese, and Japanese
+  in `docs/findings/MULTILINGUAL_ANALYZER.md`.
+- **`expand_query_terms(query, expansions) → String`** — additive symmetric
+  to `drop_template_terms`. Takes a workload-specific dict mapping known
+  keys (clause names, error codes, issue categories) to high-IDF synonyms;
+  appends matched synonyms to the query. The CUAD probe
+  (`docs/findings/CUAD_CLAUSE_EXPANSION.md`) shows +2.7 points on top of
+  the template-stripped baseline — the lift comes specifically from
+  *workload-curated high-IDF terms*. Compare with the falsified
+  unweighted-PRF arc (`docs/findings/CUAD_PRF_NULL.md`) where adding
+  *corpus-pervasive low-IDF terms* regressed by −3.7 points; the
+  mechanism direction is the same (additive query expansion), but the
+  IDF profile of what you add is what decides the outcome.
+- **`evaluate(query, ctx, gold) → EvalReport`** — in-process retrieval-eval
+  scorer, no LLM judge. Self-eval (`mean_grounding`, `evidence_density`,
+  `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`,
+  `estimated_waste_tokens`) is always populated; gold-relative metrics
+  (`context_recall`, `context_precision`, `answer_token_recall`) are
+  optionally unlocked by passing `gold_chunks` and/or `gold_answer`.
+  Composite `overall` blends whichever fields are available. Designed as
+  a *refraction* of the same primitives the runtime uses to make its
+  Decision Report — a low `overall` and `report.low_confidence_retrieval`
+  are the same signal viewed twice, not independent measurements, so eval
+  and runtime can never disagree. Rationale, contract details, and the
+  10 / 11 / 9 Rust / Python / Node tests pin in
+  `docs/findings/EVALUATE_API.md`.
+
+#### Findings (the evidence layer)
+
+Nine new findings document what was tried, what worked, and what was
+falsified across this release:
+
+- **Confirmed** — `QUERY_SET_ANALYZER`, `CUAD_RECALL_GAP`,
+  `CUAD_CLAUSE_EXPANSION`, `MULTILINGUAL_ANALYZER`, `EVALUATE_API`,
+  `CUAD_HYBRID_RERANK` (substitute-not-stack rule).
+- **Null result / falsified** — `CUAD_PRF_NULL` (unweighted PRF on
+  boilerplate-heavy corpora), `CUAD_CHUNK_FRAGMENTATION_NULL` (chunker
+  isn't the CUAD lever), `SUB_IDF_AUTO_DROP_NULL` (corpus-only IDF
+  manipulation fails in both directions; combined with PRF null,
+  completes a **four-corner rule**: query-side IDF manipulation works iff
+  the signal carries query-set or workload-curated semantics).
+
+#### Examples
+
+Eleven new harnesses under `crates/examples/examples/`:
+`cuad_query_preprocessing`, `cuad_chunk_strategy_sweep`,
+`cuad_chunk_fragmentation`, `cuad_clause_expansion`, `cuad_hybrid_rerank`,
+`cuad_perf`, `cuad_prf`, `cuad_rust_vs_python_path`,
+`multilingual_query_set_probe`, `query_set_analyzer_probe`,
+`sub_idf_reweighting_probe`.
+
+#### Documentation
+
+- New workflow-lift chart `.github/workflow_lift.svg` embedded in the
+  root README + binding READMEs — surfaces the 81 → 88 → 90.3% story
+  visually.
+- Root README, `python/README.md`, `nodejs/README.md` "Templated
+  workloads" section rewritten to detect → strip → (optional) expand →
+  A/B with the four helpers tabled.
+- `docs/CHOOSING_A_CONFIG.md` step 3 leads with the new "two paths up
+  the same hill" decision table contrasting `retrieval="hybrid"` (the
+  one-knob alternative) vs BM25 + the helpers (best-quality).
 
 ### Changed
 
@@ -17,6 +113,28 @@ minor releases may break; breaking changes are noted here).
   `Documentation`, `Changelog`, `Issues`, and `Evidence layer` link
   entries; npm gains `homepage`, `repository`, `bugs`, and an
   expanded `keywords` array (`reasoning`, `embeddings` added).
+- **Findings master table refreshed** with six new finding rows on
+  `/docs/benchmarks/` (website) and `docs/findings/README.md` (repo).
+  Framework comparison row updated: the CUAD headline is now
+  `90.3%` via strip + expand (was `88%` via strip alone), beating
+  LlamaIndex by 4 points.
+
+### Breaking (Node only — Python and Rust callers unaffected)
+
+- **Node `BuiltContext` is now a `#[napi]` class** (was a plain
+  `#[napi(object)]`). The four exposed properties (`text`, `chunks`,
+  `citations`, `report`) remain readable as JS properties via getters, so
+  existing user code that does `ctx.text`, `ctx.chunks`, etc., continues
+  to work unchanged. The TypeScript type changes from
+  `interface BuiltContext { … }` to `class BuiltContext { … }`. The
+  reason for the change is that `redhop.evaluate(query, ctx, …)` needs
+  access to the underlying Rust struct (chunk IDs, the full report shape)
+  which a plain object can't carry.
+  - **What breaks:** if you were `JSON.stringify(ctx)`, class getters
+    aren't enumerable by default and the output will be `{}` instead of
+    the four-field object. Project to a plain object explicitly:
+    `JSON.stringify({ text: ctx.text, chunks: ctx.chunks, citations: ctx.citations, report: ctx.report })`.
+    No other behavior changes.
 
 ## [0.2.2] - 2026-06-06
 

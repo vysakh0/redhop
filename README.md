@@ -255,7 +255,7 @@ the others are there when you want a different trade-off.
 | `raw_topk` | keep retrieval order until the budget fills | baseline / no optimization |
 | `auto` | size-gated: pass small contexts through untouched, prune large/diluted ones | when you don't want to choose |
 
-## Templated workloads — the +6 retention lift
+## Templated workloads — the +9 retention lift (BM25, no model needed)
 
 If every query in your workload follows a fixed template — legal QA
 ("*Highlight the parts (if any) of this contract related to X. Details: …*"),
@@ -263,16 +263,30 @@ support-ticket triage ("*Help me with X, my account is Y, the error is Z*"),
 form-filled queries from a structured UI — **BM25 weights every query term
 by corpus IDF, not by how often the term repeats across your query set**.
 The boilerplate words dilute the real signal words, and retention suffers.
-This is the mechanism that costs RedHop 4 points to LlamaIndex on the raw
-CUAD bench. Stripping the template at *your* boundary closes it.
+This is the mechanism that costs raw BM25 four points to LlamaIndex on the
+CUAD bench. Closing it doesn't need a vector DB, a different embedder, or a
+cross-encoder — it needs two small preprocessing helpers on the query side.
 
-**Measured.** On the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
-≥0.8 evidence retention goes **82% → 88%** with a six-line stripper, overtaking
-LlamaIndex's 86% by 2 points. Full mechanism + numbers in
-[`docs/findings/CUAD_RECALL_GAP.md`](docs/findings/CUAD_RECALL_GAP.md).
+<p align="center">
+  <img src=".github/workflow_lift.svg" alt="CUAD retention rises 81% → 88% → 90.3% across the detect → strip → expand workflow; LlamaIndex is at 86%" width="100%">
+</p>
 
-The recommended workflow is **detect → strip → A/B**, with two helpers that ship
-in the public API:
+**Measured on the CUAD framework comparison** (n=300, BM25, budget 2,000 tok):
+
+| step | helper | retention | Δ |
+| ---- | ------ | ---------:| -:|
+| raw 24-word template | — | 81.3% | — |
+| + strip the wrapper | `drop_template_terms` | 87.7% | **+6.4** |
+| + add workload synonyms | `expand_query_terms` | **90.3%** | **+2.7** |
+
+**RedHop with the full workflow is at 90.3% — beating LlamaIndex by 4 points
+on the same setup, at native BM25 latency (~2.5ms/query).** Full mechanism,
+worked clause-name dict, and the 4-arm probe in
+[`docs/findings/CUAD_CLAUSE_EXPANSION.md`](docs/findings/CUAD_CLAUSE_EXPANSION.md).
+
+The recommended workflow is **detect → strip → (optional) expand → A/B**.
+Four helpers ship in the public API across Rust, Python, and Node — same names,
+same shape:
 
 ```python
 import redhop
@@ -330,15 +344,25 @@ A few things worth being explicit about:
   Templates are workload-specific; baking one in would make the wrong
   call for the next workload. `drop_template_terms` takes *your*
   boilerplate so the call stays on your side.
+- **Or take the one-knob alternative — `retrieval="hybrid"`.**
+  Dense retrieval reads chunks as semantic content rather than counting
+  tokens, so the boilerplate ratio stops mattering. It substitutes for
+  template stripping by a different mechanism (+5.3 on the raw CUAD query
+  at ~10ms/query). On CUAD specifically, BM25 + strip + expand still wins
+  on retention AND latency (90.3% / 2.5ms vs hybrid+CE 89.0% / 683ms);
+  the two paths are *substitutes*, not complements — pick one.
+  See [`docs/findings/CUAD_HYBRID_RERANK.md`](docs/findings/CUAD_HYBRID_RERANK.md)
+  for the 6-arm probe and the substitute-not-stack rule.
+
+| helper | what it does | finding |
+| ------ | ------------ | ------- |
+| `analyze_query_set(queries)` | Inspects a sample of your queries; flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](docs/findings/QUERY_SET_ANALYZER.md) (cross-workload probe: CUAD fires, HotpotQA + MuSiQue stay quiet) |
+| `drop_template_terms(query, boilerplate)` | Script-aware boilerplate strip (Latin word-boundary safe; CJK phrase removal). Works in 5 measured languages | [CUAD_RECALL_GAP](docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](docs/findings/MULTILINGUAL_ANALYZER.md) |
+| `expand_query_terms(query, expansions)` | Appends workload-curated high-IDF synonyms when known keys match. Opposite mechanism to PRF (which was falsified) | [CUAD_CLAUSE_EXPANSION](docs/findings/CUAD_CLAUSE_EXPANSION.md) |
+| `evaluate(query, ctx, gold_chunks, gold_answer)` | Deterministic A/B scoring against gold; no LLM judge. Refraction of the same primitives the Decision Report uses, so eval and runtime can't disagree | [EVALUATE_API](docs/findings/EVALUATE_API.md) |
 
 Decision rule + the recipe in full:
 [`docs/CHOOSING_A_CONFIG.md` → "Templated queries with heavy boilerplate"](docs/CHOOSING_A_CONFIG.md).
-Cross-workload probe that validated the analyzer:
-[`docs/findings/QUERY_SET_ANALYZER.md`](docs/findings/QUERY_SET_ANALYZER.md).
-Design rationale + tradeoffs for `evaluate`:
-[`docs/findings/EVALUATE_API.md`](docs/findings/EVALUATE_API.md).
-Worked example of clause-name expansion (+2.7 → 90.3% on CUAD):
-[`docs/findings/CUAD_CLAUSE_EXPANSION.md`](docs/findings/CUAD_CLAUSE_EXPANSION.md).
 
 ## Documentation
 

@@ -158,7 +158,7 @@ user's call).
 Already have chunks from your own retriever? Use `redhop.build_context(query,
 retrieved_chunks=chunks, ...)` for the low-level surface.
 
-## Templated workloads — the +6 retention lift
+## Templated workloads — the +9 retention lift (BM25, no model needed)
 
 If every query in your workload follows a fixed template — legal QA
 ("*Highlight the parts (if any) of this contract related to X. Details: …*"),
@@ -167,15 +167,28 @@ form-filled queries from a structured UI — **BM25 weights every query term
 by corpus IDF, not by how often the term repeats across your query set**.
 The boilerplate words dilute the real signal words, and retention suffers.
 This is the mechanism behind the 4-point CUAD gap on the head-to-head;
-stripping the template at *your* boundary closes it.
+closing it doesn't need a vector DB or a different retriever — it needs two
+small preprocessing helpers on the query side.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="CUAD retention rises 81% → 88% → 90.3% across the detect → strip → expand workflow; LlamaIndex is at 86%" width="100%">
+</p>
 
 **Measured** on the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
-≥0.8 evidence retention goes **82% → 88%** with a six-line stripper,
-overtaking LlamaIndex's 86% by 2 points. Full mechanism + numbers:
-[CUAD_RECALL_GAP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md).
 
-Recommended workflow: **detect → strip → A/B**, with two helpers in the
-public API:
+| step | helper | retention | Δ |
+| ---- | ------ | ---------:| -:|
+| raw 24-word template | — | 81.3% | — |
+| + strip the wrapper | `drop_template_terms` | 87.7% | **+6.4** |
+| + add workload synonyms | `expand_query_terms` | **90.3%** | **+2.7** |
+
+**RedHop with the full workflow is at 90.3% — beating LlamaIndex by 4 points
+on the same setup, at native BM25 latency (~2.5ms/query).** Mechanism +
+worked clause dict:
+[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
+
+Recommended workflow: **detect → strip → (optional) expand → A/B**. Four
+helpers in the public API — same names across Python, Node, and Rust:
 
 ```python
 import redhop
@@ -229,15 +242,24 @@ if report.is_templated:
   helper.** Templates are workload-specific; baking one in would make
   the wrong call for the next workload. `drop_template_terms` takes
   *your* boilerplate so the call stays on your side.
+- **Or take the one-knob alternative — `retrieval="hybrid"`.**
+  Dense reads chunks as semantic content rather than counting tokens,
+  so the boilerplate ratio stops mattering. Substitutes for stripping
+  by a different mechanism (+5.3 on raw CUAD at ~10ms/query). On CUAD
+  specifically, BM25 + strip + expand still wins — 90.3% / 2.5ms vs
+  hybrid+CE 89.0% / 683ms. The two paths are *substitutes*, not
+  complements; pick one. See
+  [CUAD_HYBRID_RERANK.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_HYBRID_RERANK.md).
+
+| helper | what it does | finding |
+| ------ | ------------ | ------- |
+| `analyze_query_set(queries)` | Inspects your queries; flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md) |
+| `drop_template_terms(query, boilerplate)` | Script-aware boilerplate strip; works in 5 measured languages (Latin word-boundary safe, CJK phrase removal) | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
+| `expand_query_terms(query, expansions)` | Appends workload-curated high-IDF synonyms when known keys match. Opposite mechanism to PRF | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
+| `evaluate(query, ctx, gold_chunks=, gold_answer=)` | Deterministic A/B scoring against gold; no LLM judge. Same primitives the Decision Report uses | [EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
-Cross-workload probe that validated the analyzer:
-[QUERY_SET_ANALYZER.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md).
-Design rationale + tradeoffs for `evaluate`:
-[EVALUATE_API.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
-Worked example of clause-name expansion (+2.7 → 90.3% on CUAD):
-[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
 
 ## Documentation
 
