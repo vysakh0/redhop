@@ -24,6 +24,11 @@ const {
   groundingScore,
   linkStrength,
   Chunk,
+  Stripper,
+  Vocabulary,
+  Document,
+  analyzeQuerySet,
+  evaluate,
 } = require("../index.js");
 
 // The Python side ships JSON-wire chunks: `[{ id, text }, ...]`. As of
@@ -93,6 +98,82 @@ process.stdin.on("end", () => {
         break;
       case "groundingScore":   result = groundingScore(...args); break;
       case "linkStrength":     result = linkStrength(...args); break;
+
+      // ── 0.3.0 surface: query-rewrites + diagnostics + evaluate ──
+      // For each, args carry primitive types (strings, arrays, dicts) so
+      // the Python and Node sides can hand identical inputs; the runner
+      // constructs the redhop objects from those primitives, runs the
+      // call, and projects to a snake_case-ish wire shape so the Python
+      // parity diff doesn't trip over camelCase.
+
+      case "stripperApply": {
+        const [boilerplate, query] = args;
+        result = new Stripper(boilerplate).apply(query);
+        break;
+      }
+      case "stripperIsEffectiveOn": {
+        const [boilerplate, query] = args;
+        const e = new Stripper(boilerplate).isEffectiveOn(query);
+        // Project to snake_case for Python diff symmetry.
+        result = {
+          original: e.original,
+          stripped: e.stripped,
+          original_tokens: e.originalTokens,
+          stripped_tokens: e.strippedTokens,
+          removed_terms: e.removedTerms,
+          unused_boilerplate: e.unusedBoilerplate,
+        };
+        break;
+      }
+      case "vocabularyApply": {
+        const [dict, query] = args;
+        result = new Vocabulary(dict).apply(query);
+        break;
+      }
+      case "vocabularyEnrich": {
+        const [dict, chunk] = args;
+        const r = new Vocabulary(dict).enrich(chunk);
+        // Project camelCase RewriteRecord → snake_case for diff symmetry.
+        result = {
+          text: r.text,
+          record: {
+            stage: r.record.stage,
+            from_query: r.record.fromQuery,
+            to_query: r.record.toQuery,
+            matched: r.record.matched,
+            added: r.record.added,
+            removed: r.record.removed,
+          },
+        };
+        break;
+      }
+      case "analyzeQuerySet": {
+        const [queries] = args;
+        const r = analyzeQuerySet(queries);
+        result = {
+          n_queries: r.nQueries,
+          is_templated: r.isTemplated,
+          template_word_share: r.templateWordShare,
+          boilerplate_terms: r.boilerplateTerms,
+          estimated_dilution_cost: r.estimatedDilutionCost,
+          suggested_action: r.suggestedAction,
+        };
+        break;
+      }
+      case "contextWithRewrites": {
+        // args = [text, query, rewriteSpecs] where each spec is
+        //   {type: "stripper", terms: [...]} or {type: "vocabulary", dict: {...}}
+        const [text, query, specs] = args;
+        const doc = Document.fromText(text);
+        const rewrites = specs.map((s) => {
+          if (s.type === "stripper") return new Stripper(s.terms);
+          if (s.type === "vocabulary") return new Vocabulary(s.dict);
+          throw new Error(`unknown rewrite spec type: ${s.type}`);
+        });
+        result = projectBuiltContext(doc.contextWithRewrites(query, rewrites));
+        break;
+      }
+
       default:
         process.stdout.write(JSON.stringify({ ok: false, error: `unknown fn '${req.fn}'` }));
         return;

@@ -394,3 +394,142 @@ def test_context_economics_field_surface_parity():
     py_only = py_keys - node_keys - _ECON_PY_ONLY
     node_only = node_keys - py_keys - _ECON_NODE_ONLY
     assert not (py_only or node_only), _diff_msg("ContextEconomics", py_only, node_only)
+
+
+# ── 0.3.0 surface parity ────────────────────────────────────────────────────
+# The query-rewrite primitives (Stripper, Vocabulary), the chain runner
+# (context_with_rewrites), and the workload analyzer (analyze_query_set)
+# all became user-facing in 0.3.0. The pre-0.3.0 parity tests above don't
+# touch them; the audit/0.3.1 review caught that gap. These tests close it.
+
+
+def test_stripper_apply_parity():
+    boilerplate = ["highlight", "the", "parts", "if", "any", "of", "this", "contract"]
+    query = 'Highlight the parts (if any) of this contract related to "Change of Control"'
+    py = redhop.Stripper(boilerplate).apply(query)
+    node = node_call("stripperApply", [boilerplate, query])
+    assert py == node, f"Stripper.apply diverged:\n  Python: {py!r}\n  Node:   {node!r}"
+
+
+def test_stripper_is_effective_on_parity():
+    """Diagnostic helper: makes the silent-no-op visible. Parity here
+    means both bindings agree on which configured terms fire and which
+    sit silent — diverging would mean one analyzer is stemming
+    differently from the other (a class of FFI bug the older parity
+    tests would never see because they don't exercise this path)."""
+    boilerplate = ["highlight", "the", "of", "antidisestablishmentarianism"]
+    query = "highlight the parts of office hours"
+    py = redhop.Stripper(boilerplate).is_effective_on(query)
+    node = node_call("stripperIsEffectiveOn", [boilerplate, query])
+    # Python returns a dict; Node side has already projected to snake_case.
+    assert py["original"] == node["original"]
+    assert py["stripped"] == node["stripped"]
+    assert py["original_tokens"] == node["original_tokens"], (
+        f"analyzer tokenization diverged:\n  Python: {py['original_tokens']}\n  Node:   {node['original_tokens']}"
+    )
+    assert py["stripped_tokens"] == node["stripped_tokens"]
+    assert sorted(py["removed_terms"]) == sorted(node["removed_terms"])
+    assert sorted(py["unused_boilerplate"]) == sorted(node["unused_boilerplate"])
+
+
+def test_vocabulary_apply_parity():
+    dict_ = {
+        "change_of_control": ["merger", "successor", "acquisition"],
+        "termination_for_convenience": ["cancel", "exit"],
+    }
+    query = "what triggers a change_of_control event"
+    py = redhop.Vocabulary(dict_).apply(query)
+    node = node_call("vocabularyApply", [dict_, query])
+    # Vocabulary.apply appends synonyms; order may differ across bindings,
+    # so we assert token-set equality rather than string equality.
+    assert set(py.split()) == set(node.split()), (
+        f"Vocabulary.apply token set diverged:\n  Python: {py!r}\n  Node:   {node!r}"
+    )
+
+
+def test_vocabulary_enrich_parity():
+    dict_ = {"usrSvc": ["user service", "account creation", "signup"]}
+    chunk = "fn usrSvc(req: Req) -> Resp { … }"
+    py_text, py_record = redhop.Vocabulary(dict_).enrich(chunk)
+    node = node_call("vocabularyEnrich", [dict_, chunk])
+    # Token set equality on the enriched text.
+    assert set(py_text.split()) == set(node["text"].split()), (
+        f"Vocabulary.enrich text diverged:\n  Python: {py_text!r}\n  Node:   {node['text']!r}"
+    )
+    # Record field surface parity — both must report the same stage and
+    # the same matched/added terms (set-equality, order may differ).
+    assert py_record.stage == node["record"]["stage"]
+    assert py_record.from_query == node["record"]["from_query"]
+    assert py_record.to_query == node["record"]["to_query"]
+    assert sorted(py_record.matched) == sorted(node["record"]["matched"])
+    assert sorted(py_record.added) == sorted(node["record"]["added"])
+    assert sorted(py_record.removed) == sorted(node["record"]["removed"])
+
+
+def test_analyze_query_set_parity():
+    # Templated CUAD-shape sample: every query is wrapped in the same
+    # 24-word frame, only the quoted clause varies.
+    template = (
+        'Highlight the parts (if any) of this contract related to "{}"'
+        " that should be reviewed by a lawyer. Details: that 's all."
+    )
+    clauses = [
+        "Change of Control",
+        "Non-Compete",
+        "Termination for Convenience",
+        "Governing Law",
+        "Indemnification",
+    ]
+    queries = [template.format(c) for c in clauses]
+    py = redhop.analyze_query_set(queries)
+    node = node_call("analyzeQuerySet", [queries])
+    assert py.n_queries == node["n_queries"]
+    assert py.is_templated == node["is_templated"]
+    assert abs(py.template_word_share - node["template_word_share"]) < 1e-9
+    assert sorted(py.boilerplate_terms) == sorted(node["boilerplate_terms"])
+    # estimated_dilution_cost is a categorical label ("low" / "medium" / "high").
+    assert py.estimated_dilution_cost == node["estimated_dilution_cost"]
+    assert py.suggested_action == node["suggested_action"]
+
+
+def test_context_with_rewrites_parity():
+    """End-to-end: chain a Stripper + Vocabulary through context_with_rewrites
+    on both bindings, assert the assembled context + report match. This is
+    the path the published `90.7%` CUAD claim runs through, so divergence
+    here would mean the headline number isn't actually reproducible
+    cross-binding."""
+    text = (
+        "Section 3.1 Refund Window. Customers may return items within thirty "
+        "days for a full refund. Section 4.2 Change of Control. Upon a merger "
+        "or acquisition, the surviving entity assumes obligations. Section 5.3 "
+        "Termination for Convenience. Either party may cancel with thirty "
+        "days notice. Section 6.4 Indemnification. The vendor shall indemnify..."
+    )
+    query = 'Highlight the parts (if any) of this contract related to "Change of Control"'
+    boilerplate = ["highlight", "the", "parts", "if", "any", "of", "this", "contract"]
+    syns = {"change of control": ["merger", "successor", "acquisition"]}
+    specs = [
+        {"type": "stripper", "terms": boilerplate},
+        {"type": "vocabulary", "dict": syns},
+    ]
+
+    py_doc = redhop.Document.from_text(text)
+    py_stripper = redhop.Stripper(boilerplate)
+    py_vocab = redhop.Vocabulary(syns)
+    py_ctx = py_doc.context_with_rewrites(query, [py_stripper, py_vocab])
+    node = node_call("contextWithRewrites", [text, query, specs])
+
+    # Context text must be byte-identical — same chunks selected in same order.
+    assert py_ctx.text() == node["text"], (
+        f"context_with_rewrites text diverged:\n  Python: {py_ctx.text()[:200]}…\n  Node:   {node['text'][:200]}…"
+    )
+    # Same chunks selected.
+    py_chunk_texts = list(py_ctx.chunks)
+    node_chunk_texts = list(node["chunks"])
+    assert py_chunk_texts == node_chunk_texts, "chunk list diverged"
+    # query_rewrites audit trail must have the same stages in the same order.
+    py_stages = [r.stage for r in py_ctx.report.query_rewrites]
+    node_stages = [r["stage"] for r in node["report"]["queryRewrites"]]
+    assert py_stages == node_stages, (
+        f"query_rewrites stages diverged:\n  Python: {py_stages}\n  Node:   {node_stages}"
+    )
