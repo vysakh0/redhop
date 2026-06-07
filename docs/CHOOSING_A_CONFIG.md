@@ -149,9 +149,27 @@ is Z"*, form-filled queries from structured UIs — BM25 weights each term
 in the query by corpus IDF, not query-set frequency. So the 19 boilerplate
 words **dilute** the 5 real signal words.
 
-**Recommended workflow: detect → strip → A/B.** The first two steps ship
-as helpers in the public API (`analyze_query_set`, `drop_template_terms`);
-the third is up to you with your own gold-evidence sample. Decision rule:
+**Two paths up the same hill — pick one, don't combine.** Measured on
+CUAD ([findings/CUAD_HYBRID_RERANK.md](findings/CUAD_HYBRID_RERANK.md)):
+
+| path | what you do | retention | latency |
+| ---- | ----------- | ---------:| -------:|
+| **One-knob** | `retrieval="hybrid"` (BGE-small embedder) | ~86–88% | ~10 ms/q |
+| **Best-quality** | BM25 default + `analyze_query_set` → `drop_template_terms` + `expand_query_terms` (workload dict) | **90.3%** | ~2.5 ms/q |
+
+Hybrid retrieval reads chunks as semantic content rather than counting
+tokens, so the boilerplate ratio stops mattering. It substitutes for
+template stripping by a different mechanism. **Running both gives
+diminishing returns** — once one mechanism has fixed the boilerplate
+dilution, the other adds only +0.3 points. Strip + expand is
+Pareto-optimal on CUAD (higher retention AND lower latency) but takes
+the upfront work of writing a stripper and building a synonym dict.
+
+**Recommended workflow if you go the best-quality path:** detect → strip
+→ (optional) expand → A/B. The first three steps ship as helpers in the
+public API (`analyze_query_set`, `drop_template_terms`,
+`expand_query_terms`); the fourth is up to you with your own
+gold-evidence sample. Decision rule:
 
 ```python
 import redhop
