@@ -19,6 +19,8 @@ python examples/python/01_quickstart.py
 
 ## What's here
 
+**Core API surface (no model download, no FS access):**
+
 | # | File | What it demonstrates |
 | -- | ---- | -------------------- |
 | 01 | [`01_quickstart.py`](01_quickstart.py) | Load a document, ask a question, read the Decision Report. The 3-call surface. |
@@ -28,35 +30,48 @@ python examples/python/01_quickstart.py
 | 05 | [`05_evaluate_ab.py`](05_evaluate_ab.py) | Deterministic A/B with `redhop.evaluate(query, ctx, gold_chunks=[...])` — no LLM judge, no API key, no money spent. Same primitives the runtime uses for its Decision Report. |
 | 06 | [`06_chat_rag.py`](06_chat_rag.py) | `preserve_order=True` for chat histories — relevance-driven *selection*, chronological *emission*. The trick is one config flag; the contrast on the same chat is the demo. |
 
+**Retrieval tiers and assembly options:**
+
+| # | File | What it demonstrates |
+| -- | ---- | -------------------- |
+| 07 | [`07_retrieval_tiers.py`](07_retrieval_tiers.py) | The three `retrieval=` tiers — `lexical` (BM25, default), `hybrid` (BM25 + dense rerank), `semantic` (global dense). First run of hybrid/semantic downloads `bge-small` (~80MB). |
+| 08 | [`08_structural_expansion.py`](08_structural_expansion.py) | `neighbors=1` and `include_heading=True` for structured-document QA — same retrieval selection, padded with adjacent context and section headings within the token budget. |
+| 09 | [`09_multilingual.py`](09_multilingual.py) | `language="german"`/`"french"`/… — routes the whole pipeline (chunking, BM25 stemming, grounding) through the right Snowball stemmer. 18 languages supported; unknown strings *error* rather than silently fall back to English. |
+| 10 | [`10_strategy_choice.py`](10_strategy_choice.py) | Assembly strategies — `auto` (default size-gated), `raw_topk` (pass-through), `reasoning_preserving` (multi-hop rescue, with `second_hop_rescue_count` on the report), `distractor_filtered` (naive baseline). Shows the second-hop tax mechanism live. |
+
+**Loaders (requires `redhop[files]`):**
+
+| # | File | What it demonstrates |
+| -- | ---- | -------------------- |
+| 11 | [`11_folder_indexing.py`](11_folder_indexing.py) | `Document.from_folder(path, ...)` with `.gitignore`, custom `ignore` globs, `persist=True` for incremental on-disk caching, and `from_bytes(...)` for S3/GCS/DB blobs. |
+
 ## What's not here (yet)
 
 - **Spider / BIRD schema retrieval** — the natural positive probe for
   `Vocabulary.enrich(...)`. Queued post-0.3.0; in the meantime,
   `04_chunk_enrich.py` shows the API and the honest framing.
-- **`Document.from_file(...)` walk-through** — once you `pip install
-  "redhop[files]"`, the API is the same as `from_text(...)` — see
-  the root README for a code snippet.
-- **Dense / hybrid retrieval** — `retrieval="hybrid"` adds an
-  embedding model download; we kept these examples model-free so they
-  run anywhere. The pattern is documented in
-  [docs/CHOOSING_A_CONFIG.md](../../docs/CHOOSING_A_CONFIG.md).
+- **Cross-encoder reranking** (`rerank="cross-encoder"`) — adds
+  another ~300MB model and 5-10× latency. Documented in
+  [docs/CHOOSING_A_CONFIG.md](../../docs/CHOOSING_A_CONFIG.md);
+  consider adding once we measure when it actually helps on top of
+  the workflows in 03 and 07.
 
 ## How to read these in order
 
 If you're new to RedHop, run them top-to-bottom — they're sequenced to
 introduce one concept at a time:
 
-1. **Quickstart** (01) gives you the 3-call surface and the Decision Report.
-2. **Structured corpus** (02) introduces the typed `Chunk` constructor
-   and the source-vs-id distinction.
-3. **Templated workload** (03) layers in the rewrite chain and the
-   audit trail.
-4. **Chunk enrich** (04) is the chunk-side mirror of (03)'s query-side
-   rewrites, with explicit caveats about its asymmetric evidence.
-5. **Evaluate A/B** (05) closes the loop — how to *measure* whether a
-   rewrite you adopted in (03) or (04) actually helps on your data.
-6. **Chat RAG** (06) is a tangent: same retrieval surface, one config
-   flag that matters for chronology-sensitive applications.
+1. **01–06 (core API surface)** — Quickstart through chat RAG. Each
+   one introduces a new piece of the surface: the 3-call shape, typed
+   chunks, the rewrite chain + audit trail, chunk-side enrich (with
+   honesty), A/B eval, chronology preservation.
+2. **07–10 (retrieval and assembly options)** — Once you know the
+   surface, these show the knobs: which retrieval tier (lexical /
+   hybrid / semantic), how to pad hits with structural context,
+   multilingual support, which assembly strategy fits which workload.
+3. **11 (loaders)** — Where your bytes live: filesystem, in-memory,
+   blob storage; how RedHop handles the boring parts (.gitignore,
+   persistence, ignore globs).
 
 Each file's docstring spells out the real-world scenario it's modeling
 and links to the relevant finding in `docs/findings/` where applicable.

@@ -11,7 +11,7 @@ scenarios.
 
 | Language | Folder | Status |
 | -------- | ------ | ------ |
-| Python | [`python/`](python/) | ✓ 6 examples (quickstart, structured corpus, templated workload, chunk enrich, A/B evaluate, chat RAG) |
+| Python | [`python/`](python/) | ✓ 11 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing |
 | Node.js | `nodejs/` | _coming_ — same scenarios, `.cjs` mirrors |
 | Rust | `rust/` | _coming_ — currently lives at `crates/examples/examples/`; will be reorganized here |
 
