@@ -28,7 +28,7 @@ all = { level = "warn", priority = -1 }
 needless_range_loop = "allow"
 
 [workspace.package]
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 # Workspace-wide MSRV — set to the highest minimum any member requires.
 # napi-rs 2.x (used by `nodejs/`) needs 1.77; the published `redhop` crate

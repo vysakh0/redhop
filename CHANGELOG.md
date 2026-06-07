@@ -5,20 +5,33 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
-## [Unreleased] — pending 0.3.0
+## [0.3.0] — 2026-06-07
 
 The **workflow + measurement** release. Ships a new public-API surface
 that closes the templated-workload retention gap end-to-end, in all three
 bindings (Rust, Python, Node): `analyze_query_set`, the `QueryRewrite`
 trait with two built-in implementations (`Stripper` and `Vocabulary`),
 `Document::context_with_rewrites(...)` to compose them with an audit
-trail, and `evaluate`. On the CUAD framework comparison the full
-**detect → strip → vocabulary → A/B** workflow takes ≥0.8 retention from
-**81.3% → 90.7%** — a 9.4-point lift over raw BM25, beating LlamaIndex's
-86% by 4 points, at native BM25 latency (~2.5ms/query) on default lexical
-retrieval. Worked example, hand-curated CUAD clause-name dictionary, and a
-6-arm probe contrasting the workflow vs hybrid+cross-encoder live in
-`docs/findings/CUAD_CLAUSE_EXPANSION.md` and `docs/findings/CUAD_HYBRID_RERANK.md`.
+trail, `Vocabulary::enrich(...)` as the chunk-side mirror, and `evaluate`
+for deterministic A/B with no LLM judge. On the CUAD framework comparison
+the full **detect → compile → context_with_rewrites → A/B** workflow takes
+≥0.8 retention from **81.3% → 90.7%** — a 9.4-point lift over raw BM25,
+beating LlamaIndex's 86% by 4 points, at native BM25 latency (~2.5ms/query)
+on default lexical retrieval. Worked example, hand-curated CUAD clause-name
+dictionary, and a 6-arm probe contrasting the workflow vs hybrid+cross-encoder
+live in `docs/findings/CUAD_CLAUSE_EXPANSION.md` and
+`docs/findings/CUAD_HYBRID_RERANK.md`.
+
+`Vocabulary.enrich(...)` ships with **bidirectional measured evidence on the
+regime rule it follows.** Positive side: `docs/findings/SPIDER_ENRICH.md`
+measured **+0.19 mean column recall** on Spider-shape schema retrieval (curated
+workload synonyms; n=30, candidate_k=10). Negative side:
+`docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md` measured **−2.0 pts** on
+CUAD prose chunks. The two findings together complete the **four-corner
+rule** with measured evidence on all four corners: workload-pervasive
+signal manipulation fails on either side of the pipeline; only
+workload-curated semantics work. See `docs/findings/VOCABULARY_ENRICH.md`
+for the regime rule, use-case ranking, and failure modes.
 
 **Breaking on the manual-chunks path (Python + Node):** the typed
 `redhop.Chunk(text, *, source=None, id=None, metadata=None, ...)` constructor
@@ -124,19 +137,26 @@ falsified across this release:
 - **Confirmed** — `QUERY_SET_ANALYZER`, `CUAD_RECALL_GAP`,
   `CUAD_CLAUSE_EXPANSION`, `MULTILINGUAL_ANALYZER`, `EVALUATE_API`,
   `CUAD_HYBRID_RERANK` (substitute-not-stack rule), `VOCABULARY_ENRICH`
-  (shipped on regime rule + IR-literature mechanism + measured negative
-  probe on CUAD).
+  (confirmed on both sides of the regime rule), `SPIDER_ENRICH`
+  (the positive-side validation for `Vocabulary.enrich(...)`: curated
+  chunk-side enrichment on a Spider-shape sample lifted mean column
+  recall +0.19 from 0.77 → 0.97, ≥0.8 retention 63% → 93%).
 - **Null result / falsified** — `CUAD_PRF_NULL` (unweighted PRF on
   boilerplate-heavy corpora), `CUAD_CHUNK_FRAGMENTATION_NULL` (chunker
   isn't the CUAD lever), `SUB_IDF_AUTO_DROP_NULL` (corpus-only IDF
-  manipulation fails in both directions; combined with PRF null,
-  completes a **four-corner rule**: query-side IDF manipulation works iff
-  the signal carries query-set or workload-curated semantics),
+  manipulation fails in both directions),
   `CUAD_ENRICH_DEFINITIONS_NULL` (chunk-side enrich on per-contract
   Definitions regressed −2.0 pts vs the 90.7% workflow baseline;
   ~24-point loss on the 17/50 contracts where Definitions were
   extractable — chunk-side parallel to CUAD_PRF_NULL's failure mode,
   measured directly).
+- **The four-corner rule is now measured on all four corners.**
+  Workload-pervasive signal manipulation fails on either side of the
+  pipeline; only workload-curated semantics work:
+  query-side curated wins (`CUAD_CLAUSE_EXPANSION` +3.0pt) ·
+  query-side auto fails (`CUAD_PRF_NULL` −3.7pt) ·
+  chunk-side curated wins (`SPIDER_ENRICH` +0.19 mean recall) ·
+  chunk-side auto fails (`CUAD_ENRICH_DEFINITIONS_NULL` −2.0pt).
 
 #### Examples
 
@@ -209,11 +229,45 @@ Eleven new harnesses under `crates/examples/examples/`:
   `Documentation`, `Changelog`, `Issues`, and `Evidence layer` link
   entries; npm gains `homepage`, `repository`, `bugs`, and an
   expanded `keywords` array (`reasoning`, `embeddings` added).
-- **Findings master table refreshed** with six new finding rows on
+- **Findings master table refreshed** with new rows on
   `/docs/benchmarks/` (website) and `docs/findings/README.md` (repo).
   Framework comparison row updated: the CUAD headline is now
   `90.7%` via `Stripper` + `Vocabulary` (was `88%` via strip alone),
-  beating LlamaIndex by 4 points.
+  beating LlamaIndex by 4 points. `VOCABULARY_ENRICH` row promoted from
+  *asymmetric measured evidence* to *confirmed on both sides of the
+  regime rule* after the `SPIDER_ENRICH` probe landed.
+- **`RewriteResult.query` field renamed to `RewriteResult.text`**
+  (Rust). The same struct is the output of both query-side
+  `QueryRewrite::apply` and chunk-side `Vocabulary::enrich`. The old
+  `query` field name read awkwardly on the enrich path
+  (`vocab.enrich(chunk_text).query` describes a chunk, not a query);
+  `text` is neutral and accurate for both directions. The audit-record
+  `stage` field is the signal of which side of the pipeline emitted
+  the result (`"strip"` / `"vocabulary"` / `"enrich"`). Pre-publish
+  rename — no callers exist outside the repo yet, but flagging for
+  anyone building from source on a pre-release commit.
+- **User-facing docs (`README.md`, `python/README.md`, `nodejs/README.md`,
+  website) elevate the rewrite chain + audit trail + `evaluate` to a
+  dedicated "Show your work" section.** The 0.3.0 differentiator
+  versus other RAG frameworks is *every transform is observable on
+  the same Decision Report and every change is A/B-scoreable without
+  an LLM judge*; the previous docs surfaced the 3-call surface plus
+  citations but understated the rewrite/audit/evaluate combo. The new
+  section appears on every binding's README and as both a homepage
+  card and a section on the website.
+
+### Fixed
+
+- **`Document.from_folder` was constructing `LoadOptions` without
+  `preserve_order` under `--features files,semantic`.** Caught
+  locally while writing `examples/python/07_retrieval_tiers.py` (a
+  full-feature build). The bug was hidden in the lean (no-features)
+  default build because the missing-field code path was behind
+  `#[cfg(feature = "files")]`. The default published wheel ships with
+  `features = ["files", "semantic"]`, so end users would have hit it.
+  Fixed; all 4 feature configurations (`--no-default-features`,
+  `--features files`, `--features semantic`, `--features files,semantic`)
+  now compile cleanly.
 
 ### Breaking — `redhop.Chunk` is now the only accepted manual-chunks shape
 

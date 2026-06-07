@@ -90,6 +90,49 @@ for c in ctx.citations:
     # notes.md      None  "Refunds" ->  "notes.md -> Refunds"
 ```
 
+## Show your work — query rewrites with an audit trail
+
+Every transformation between the raw query and what BM25 actually saw is
+recorded on the same Decision Report. Compile a `Stripper` (boilerplate
+removal), a `Vocabulary` (workload-curated synonyms), or both, run them as
+a chain via `doc.context_with_rewrites(...)`, and the per-stage records
+land on `ctx.report.query_rewrites`:
+
+```python
+stripper = redhop.Stripper(["highlight", "the", "parts", "of", "this", "contract"])
+vocab    = redhop.Vocabulary({"change of control": ["merger", "successor", "acquisition"]})
+
+ctx = doc.context_with_rewrites(query, [stripper, vocab])
+
+for rec in ctx.report.query_rewrites:
+    print(rec.stage, "matched=", rec.matched, "added=", rec.added)
+```
+
+The same `Vocabulary` works **chunk-side** at ingest via `vocab.enrich(chunk_text)`
+— lifts retrieval **+0.19 mean recall** on schema-style corpora
+([SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md));
+measured to *hurt* (−2.0pt) on long prose chunks
+([CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md)).
+A/B with `redhop.evaluate(...)` to confirm before adopting.
+
+## Score the change deterministically — no LLM judge
+
+`redhop.evaluate(query, ctx, gold_chunks=[...])` returns
+`context_recall` / `context_precision` / `answer_token_recall` + a composite
+`overall`, all computed from the same primitives the Decision Report uses
+(no LLM call, deterministic across runs, ~ms per query):
+
+```python
+ctx_a = doc.context(user_query)
+ctx_b = doc.context_with_rewrites(user_query, [stripper, vocab])
+eval_a = redhop.evaluate(user_query, ctx_a, gold_chunks=gold_ids)
+eval_b = redhop.evaluate(user_query, ctx_b, gold_chunks=gold_ids)
+print("lift on overall:", eval_b.overall - eval_a.overall)
+```
+
+Design rationale + the full field list in
+[EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
+
 ## Loading documents
 
 | On-ramp | For |
@@ -254,7 +297,7 @@ if report.is_templated:
 | `analyze_query_set(queries)` | Inspects your queries; flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md) |
 | `Stripper(boilerplate)` | Compiled token-level boilerplate strip; word-boundary safe (an `"of"` strip does not erase `"of"` inside `"office"`). Plugs into the rewrite chain so the audit trail is captured | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
 | `Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes — appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
-| `vocab.enrich(chunk_text)` | Chunk-side mirror. **Use only when your retrieval units are short and opaque** (schema columns, error codes, API symbols, defined contract terms): the appended decoding-dictionary tokens raise the chunk's matchable surface so natural-language queries can land. On long prose chunks it is measured to *hurt* (CUAD, −2.0pt). A/B with `redhop.evaluate(...)` against your gold set before production adoption | [VOCABULARY_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
+| `vocab.enrich(chunk_text)` | Chunk-side mirror. **Measured to lift retrieval +0.19 mean recall on Spider-shape schemas** — use it when your retrieval units are short and opaque (schema columns, error codes, API symbols, defined contract terms). Measured to *hurt* (−2.0pt) on long prose chunks — don't use it there. A/B with `redhop.evaluate(...)` against your gold before adopting | [SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md) + [VOCABULARY_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
 | `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval; per-stage audit lands on `report.query_rewrites` | (same finding as above) |
 | `evaluate(query, ctx, gold_chunks=, gold_answer=)` | Deterministic A/B scoring against gold; no LLM judge. Same primitives the Decision Report uses | [EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md) |
 
