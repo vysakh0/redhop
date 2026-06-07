@@ -1,52 +1,74 @@
-//! Code-symbol retrieval with `Vocabulary::enrich(...)` — chunks are
-//! short and opaque (function signatures with cryptic identifiers), the
-//! query is natural language, and a hand-curated symbol→meaning
-//! dictionary lifts the answer chunk from "doesn't surface at all" to
-//! "top hit."
+//! Code-symbol retrieval with `Vocabulary::enrich(...)` — **a synthetic
+//! demo, not a benchmark**. The corpus, the dictionary, and the query
+//! were all crafted by hand to make the mechanism's lift visible in a
+//! 100-line example. It demonstrates *how* enrich plugs into the
+//! pipeline (audit trail, ingest-time text change, downstream
+//! retrieval). It does **not** measure whether enrich helps on a real
+//! legacy code corpus — there's no eval rig under this; the
+//! "monthly billing run" → `calcAmt` lift is engineered, not observed
+//! in the wild.
 //!
-//! The use case: a legacy codebase where function names are abbreviated
-//! (`usrSvc`, `calcAmt`, `chkInv`) and the developer's question is
-//! ordinary English ("monthly billing run"). Lexical retrieval has
-//! nothing to match — the query and the bare symbol `calcAmt` share
-//! zero surface forms — so the right chunk never makes it into the
-//! BM25 top-K. Enrichment fixes this by appending each symbol's
+//! For the actual measured datapoints on enrich:
+//! - **Negative measured (CUAD, prose):**
+//!   [`CUAD_ENRICH_DEFINITIONS_NULL`](../../../docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md)
+//!   regressed −2.0pt on top of the 90.7% workflow baseline.
+//! - **Positive measured:** none yet. Spider/BIRD as the schema-regime
+//!   probe is the natural positive test; queued, not run.
+//!
+//! So treat this file as a *demo of the API surface*, not as evidence
+//! enrich works for code search. To know if it works on *your*
+//! codebase, A/B with `redhop::evaluate(...)` on your own gold.
+//!
+//! ## The use case it's modeling
+//!
+//! A legacy codebase where function names are abbreviated (`usrSvc`,
+//! `calcAmt`, `chkInv`) and the developer's question is ordinary
+//! English ("monthly billing run"). Lexical retrieval has nothing to
+//! match — the query and the bare symbol `calcAmt` share zero surface
+//! forms — so the right chunk doesn't make it into the BM25 top-K.
+//! Enrichment is *predicted* to fix this by appending each symbol's
 //! plain-language synonyms to its chunk at ingest time, raising the
 //! chunk's matchable surface area without changing how it's authored.
 //!
-//! ## The mechanism (and why it's not the same as query-side expand)
+//! ## The mechanism (and how it differs from query-side expand)
 //!
-//! Query-side [`redhop::Vocabulary::apply`] patches gaps the *author of
-//! the query rewriter* anticipated — you enumerate which queries get
-//! which synonyms. Chunk-side `enrich` does the opposite: you describe
-//! the *content* once, and any future query that uses a paraphrase of
-//! that description finds it. Different jobs:
+//! Query-side [`redhop::Vocabulary::apply`] patches gaps the *author
+//! of the query rewriter* anticipated — you enumerate which queries
+//! get which synonyms. Chunk-side `enrich` is a different mechanism:
+//! you describe the *content* once, and the prediction is that future
+//! queries paraphrasing the description will find it. Different jobs:
 //!
-//! - **expand:** known query reformulations. Surgical, cheap, narrow.
-//! - **enrich:** raise the content's semantic floor for queries you
-//!   can't predict. Broader, ingest-time cost, conditional on having a
-//!   decoding dictionary.
+//! - **apply:** known query reformulations. Surgical, cheap, narrow.
+//!   Measured positive on CUAD (+3.0).
+//! - **enrich:** the prediction is *raise the content's semantic floor
+//!   for queries you can't predict*. Broader (in mechanism), ingest-
+//!   time cost, conditional on having a decoding dictionary.
+//!   Measured negative on CUAD; positive case unmeasured.
 //!
-//! ## When this earns its keep
+//! ## When this is predicted to earn its keep
 //!
-//! `value ∝ shortness × opacity × (dictionary exists)`. Function
-//! signatures are an extreme case. Other extreme cases: SQL schema
-//! columns (`emp_compensation`, `ord_dt`), error codes (`ERR_4012`),
-//! defined terms in contracts, clinical abbreviations (`MI`, `SOB`).
-//! On long descriptive prose chunks the operation is *redundant* —
-//! matching already works. See [`VOCABULARY_ENRICH`].
+//! Mechanism prediction: `value ∝ shortness × opacity × (dictionary
+//! exists)`. Function signatures are an extreme case on the shortness
+//! and opacity axes. Other predicted-strong cases: SQL schema columns
+//! (`emp_compensation`, `ord_dt`), error codes (`ERR_4012`), clinical
+//! abbreviations (`MI`, `SOB`). On long descriptive prose chunks the
+//! operation is *predicted* to be redundant and was *measured* to
+//! regress on CUAD. See
+//! [`VOCABULARY_ENRICH`](../../../docs/findings/VOCABULARY_ENRICH.md).
 //!
-//! ## Two arms
+//! ## Two arms (engineered, not eval'd)
 //!
 //! - **A — raw chunks (no enrichment).** The query
 //!   `"monthly billing run"` has zero overlap with `calcAmt`'s bare
 //!   signature; BM25 doesn't surface it.
-//! - **B — enriched chunks.** Each function chunk gets its plain-language
-//!   synonyms appended at ingest. The same query now finds `calcAmt`
-//!   on its enriched `"calculate amount billing total line-item sum"`
-//!   tokens.
+//! - **B — enriched chunks.** Each function chunk gets its hand-
+//!   crafted plain-language synonyms appended at ingest. The same
+//!   query now finds `calcAmt` on its enriched
+//!   `"calculate amount billing total line-item sum"` tokens.
 //!
-//! Selection is observably different between the two arms — that's the
-//! point. We print both top hits so the contrast is visible at a glance.
+//! Selection differs between arms because the dictionary was engineered
+//! to make it differ. That's the demo. Whether the same shape of
+//! dictionary helps on *your* code corpus is your A/B to run.
 //!
 //! Run: cargo run -p redhop-examples --example enrich_code_search --release
 //!

@@ -1,124 +1,166 @@
-# `Vocabulary.enrich` — the chunk-side mirror of query rewriting, for short opaque retrieval units
+# `Vocabulary.enrich` — chunk-side rewrite primitive (asymmetric evidence: measured negative, mechanism-predicted positive)
 
-> **Status:** **Shipped on mechanism + regime reasoning**;
-> negative-side measured falsification on CUAD
-> ([CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md):
-> −2.0 pts vs the 90.7% workflow baseline). Positive-side measured
-> probes (Spider/BIRD for schemas) queued not run. The mechanism is
-> well-established in IR (the doc2query family); the regime where it
-> earns its keep is sharp enough that users can predict whether it
-> applies to their workload without their own probe. Failure modes —
-> especially the "same boilerplate on every chunk" trap that the
-> CUAD probe measured directly — are documented so the prediction
-> stays honest.
+> **Status:** **Shipped as a primitive on mechanism reasoning** —
+> [`Vocabulary::enrich`](../../crates/redhop/src/rewrite.rs) is the
+> symmetric to query-side [`QueryRewrite::apply`] (appends a compiled
+> dictionary's synonyms to chunk text at ingest time, audit-trail
+> intact). Its **mechanism** is well-established in IR (the doc2query
+> family). Its **measured evidence is asymmetric**:
 >
-> **TL;DR:** [`Vocabulary::enrich`](../../crates/redhop/src/rewrite.rs)
-> is the symmetric to query-side [`QueryRewrite::apply`]. Applied at
-> ingest time, it appends a compiled dictionary's synonyms to chunk
-> text where the chunk contains a vocabulary key. The use case is
-> *short, opaque, coded retrieval units paired with a decoding
-> dictionary* — schema columns, API symbols, error codes, defined
-> contract terms, clinical abbreviations.
+> - **Measured negative:** 1 datapoint.
+>   [CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md)
+>   regressed retention by **−2.0 pts** vs the 90.7% workflow
+>   baseline (~24-point loss on the 17/50 contracts where enrichment
+>   fired). The chunk-side parallel to CUAD_PRF_NULL.
+> - **Measured positive:** 0 datapoints. The "where it earns its
+>   keep" sections below describe **mechanism-predicted** use cases
+>   — schema retrieval, code/API search, error codes, clinical
+>   abbreviations. None of these have been measured by RedHop yet.
+>   The IR literature on doc2query is the closest external
+>   evidence, but it tests different setups.
+> - **Queued:** Spider / BIRD as the positive probe for the schema
+>   regime — the cleanest predicted fit. Not yet run.
+>
+> **What this means in practice.** If your retrieval unit is a long
+> prose paragraph, enrich is *predicted to fail* and *was measured to
+> fail* on at least one such workload (CUAD). If your retrieval
+> unit is a short opaque coded token (schema column, error code, API
+> symbol), enrich is *predicted to help* but **not yet measured to
+> help on RedHop's eval rigs**. A/B against your own corpus before
+> adopting; treat the regime rule below as a *hypothesis to test*,
+> not a guarantee.
+>
+> **TL;DR:** Same compiled vocab as query-side `apply`, applied at
+> ingest time to chunks. Use only when your retrieval units are
+> short and opaque, you have a decoding dictionary, and you're
+> willing to A/B-verify the lift on your own data.
 
-## The rule (when enrich earns its keep)
+## The regime hypothesis
 
-A compact, testable predictor:
+A compact, testable predictor — **a hypothesis the docs/code haven't
+yet measured a positive case for**:
 
 ```text
-value ∝ shortness × opacity × (dictionary exists)
+expected value ∝ shortness × opacity × (dictionary exists)
 ```
 
 - **Shortness.** A long prose paragraph already has plenty of surface
   area for BM25 (or any lexical scorer) to match against; adding more
-  signal helps marginally at best. A bare token — `emp_compensation`,
+  signal is *predicted to help marginally at best, hurt at worst*.
+  CUAD_ENRICH_DEFINITIONS_NULL measured the "hurt at worst" half of
+  that prediction (−2.0pt). A bare token — `emp_compensation`,
   `ERR_4012`, `MI`, `usrSvc` — has almost no matchable surface, so
-  enrichment is what gives it meaning at all.
+  enrichment *should* give it meaning. The "should" is unmeasured.
 - **Opacity.** The retrieval unit is a coded identifier: abbreviated,
   domain-internal, machine-generated. Its surface form has nothing in
-  common with how users would phrase their question.
+  common with how users would phrase their question. Mechanism
+  prediction; unmeasured at write time.
 - **Dictionary exists.** The cost of building a vocabulary from scratch
   may exceed the benefit; the mechanism predicts wins when you
   *already* have a decoding dictionary (data dictionary, glossary,
   abbreviation list, API reference) and the missing piece is wiring it
-  into retrieval.
+  into retrieval. Unmeasured at write time.
 
-Outside this regime — long descriptive prose — enrichment is redundant
-(matching already works) and risks the failure modes below.
+Where the rule predicts failure — long descriptive prose — we have
+measured evidence (CUAD_ENRICH_DEFINITIONS_NULL: −2.0pt). Where it
+predicts success — short opaque tokens + dictionary — we don't yet.
+The rule is testable; pending its positive validation, treat it as
+**design rationale, not a performance claim**.
 
-## Why this is more general than query-side `apply` (not less)
+## How it differs from query-side `apply` (mechanism only)
 
-Query-side [`apply`] is surgical: you enumerate the synonyms you expect
-users to use. It can't help a query phrasing you didn't foresee. Chunk
--side `enrich` describes the *content* once and serves every future
-query — including phrasings you never listed — because it raises the
-content's semantic floor rather than patching specific holes.
+Query-side [`apply`] is surgical: you enumerate the synonyms you
+expect users to use. It can't help a query phrasing you didn't
+foresee. Chunk-side `enrich` is a different mechanism: it describes
+the *content* once and (the mechanism predicts) serves future queries
+— including phrasings you never listed — because it raises the
+content's surface area rather than patching specific holes.
 
-So they're not competing on the same axis. They're different jobs:
+They're different jobs, not strictly comparable on a single axis:
 
 |  | `apply` (query-side) | `enrich` (chunk-side) |
 | --- | --- | --- |
 | **Direction** | rewrites the query | rewrites the chunks |
 | **Time** | query time | ingest time |
-| **Covers** | the query reformulations you anticipated | unanticipated queries against content you described |
+| **Covers** (mechanism) | query reformulations you anticipated | (predicted) unanticipated queries against content you described |
 | **Cost** | per-query, small | one-time at ingest, larger |
 | **Audit trail** | `report.query_rewrites` | per-chunk `RewriteRecord` from `vocab.enrich(...)` |
-| **Best when** | you can enumerate user phrasings | you can describe what your content is |
-| **Works on dense?** | partial (rewrites the query embedded) | yes (raises chunk's semantic floor in both lexical + dense) |
+| **Measured on RedHop** | yes — `CUAD_CLAUSE_EXPANSION` (+3.0pt) | partially — `CUAD_ENRICH_DEFINITIONS_NULL` (−2.0pt on a workload outside the regime). Positive case unmeasured. |
+| **Mechanism prediction strongest when** | you can enumerate user phrasings | you can describe what your content is *and* your retrieval units are short/opaque |
 
-Use both when both apply. They compose naturally — `apply` for the
-queries you anticipate, `enrich` for content meaning that needs to be
-made explicit.
+The "Covers" cell on the enrich column says *predicted to* — not
+*measured to*. Don't read past that. Use `apply` based on its
+measured CUAD positive; use `enrich` based on the mechanism
+prediction plus your own A/B on your corpus.
 
-## Use cases, ranked by how well they fit the rule
+## Use cases where the mechanism prediction is strongest (none measured)
 
-**Strong — short, opaque units + a real dictionary:**
+The following are **regime-predicted** to benefit. None of them have
+been measured on RedHop eval rigs at the time of writing. A/B
+against your own corpus before committing.
+
+**Predicted-strong — short, opaque units + a real dictionary:**
 
 - **Schemas (text-to-SQL).** Column names like `emp_compensation`,
   `ord_dt`. Data dictionaries are standard practice. Maximally short +
-  opaque; the cleanest case. (Public benchmarks: Spider, BIRD.)
+  opaque on the regime axis. (Public benchmarks: Spider, BIRD —
+  *queued, not yet run by RedHop.* This is the natural positive
+  probe.)
 - **Code / API search.** Symbols (`usrSvc`, `calcAmt`), endpoints
-  (`POST /v1/payment_intents`). Enrichment helps most on undocumented
-  / legacy codebases — where docstrings already exist, the
-  documentation already enriches.
+  (`POST /v1/payment_intents`). Mechanism predicts the strongest
+  effect on undocumented / legacy codebases; where docstrings already
+  exist, the documentation already supplies the surface area.
+  Synthetic demo:
+  [`enrich_code_search`](../../crates/examples/examples/enrich_code_search.rs)
+  (hand-crafted corpus + dictionary, *not* a measurement).
 - **Logs / observability.** Error and event codes (`ERR_4012`,
-  `evt_chrgbck`). Enrichment with their meanings lets on-call engineers
-  search natural-language symptoms (`"payment failed"`) and reach the
-  right runbook section. Underrated and very real for ops correlation.
-- **Clinical / medical notes.** Abbreviation soup (`MI`, `SOB`, `HTN`,
-  `ICD-10` codes). Medical glossaries let lay or NL queries match
-  cryptic chart notes. High value, domain-specialized.
-- **Legal contracts — defined terms.** The Definitions section is a
-  glossary the document ships with itself; enrich each clause chunk
-  with the relevant defined-term meanings. Bonus: the dictionary is
-  often auto-extractable from the document.
+  `evt_chrgbck`). Mechanism predicts enrichment lets on-call
+  engineers search natural-language symptoms (`"payment failed"`) and
+  reach the right runbook section.
+- **Clinical / medical notes.** Abbreviation soup (`MI`, `SOB`,
+  `HTN`, `ICD-10` codes). Medical glossaries → lay/NL queries match
+  cryptic chart notes. Mechanism prediction; domain-specialized.
 - **Acronym-heavy enterprise wikis.** Codenames, team abbreviations,
-  internal tool names. Enrich so full-name queries reach codename
-  documentation.
+  internal tool names. Mechanism predicts enrichment lets full-name
+  queries reach codename documentation.
 
-**Medium — fits the rule but the dictionary gap is often already
-filled:**
+**Predicted-medium — fits the regime but the dictionary gap is often
+already filled by the corpus itself:**
 
-- **Product / parts catalogs.** SKUs and part numbers — strong for
-  industrial/technical catalogs; weak for consumer ones that already
-  have rich descriptions.
-- **Financial / tickers.** `AAPL` → "Apple Inc.", accounting line-item
-  codes.
+- **Product / parts catalogs.** SKUs and part numbers — predicted
+  effect higher on industrial/technical catalogs; consumer ones
+  usually already have rich descriptions.
+- **Financial / tickers.** `AAPL` → "Apple Inc.", accounting
+  line-item codes.
 - **Scientific / bio.** Gene symbols (`TP53`), chemical identifiers,
   field abbreviations.
 
-## Where this is *not* useful (the honest failure cases)
+## Where we *measured* failure (or the mechanism predicts it)
 
-- **Normal prose corpora.** If your chunks are already descriptive
-  paragraphs, enrichment adds nothing — you'd be re-indexing meaning
-  that's already there.
+- **Legal contracts — defined-terms enrichment.** The Definitions
+  section is a glossary the document ships with itself, so this
+  *seemed* like a fit. **Measured: it isn't.**
+  [CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md)
+  measured a −2.0pt regression on top of the 90.7% workflow baseline;
+  ~24-point loss on the 17/50 contracts where Definitions extraction
+  fired. The chunks are long prose paragraphs, so the regime rule
+  predicts failure (which it does); and the appended definition
+  vocabulary is workload-pervasive enough to dilute the term-IDF
+  distribution. **If you have a legal-contracts corpus, don't reach
+  for enrich.**
+- **Normal prose corpora generally.** Mechanism predicts that if
+  your chunks are already descriptive paragraphs, enrichment adds
+  nothing helpful and risks dilution. CUAD is the measured datapoint
+  on this; the prediction generalizes.
 - **Same-boilerplate enrichment.** Bolt the *identical* description
-  onto every chunk (e.g. "this is a function" on every code chunk) and
-  you re-create the low-IDF dilution falsified twice in
+  onto every chunk (e.g. "this is a function" on every code chunk)
+  and you re-create the low-IDF dilution falsified twice in
   [CUAD_PRF_NULL](CUAD_PRF_NULL.md) and
-  [SUB_IDF_AUTO_DROP_NULL](SUB_IDF_AUTO_DROP_NULL.md). Enrichment must
-  add *term-specific* signal, not repeated filler. Under dense
-  retrieval the failure mode is vector-collapse instead of IDF
-  dilution, but the law is the same.
+  [SUB_IDF_AUTO_DROP_NULL](SUB_IDF_AUTO_DROP_NULL.md), now also on
+  the chunk side ([CUAD_ENRICH_DEFINITIONS_NULL](CUAD_ENRICH_DEFINITIONS_NULL.md)).
+  Enrichment must add *term-specific* signal, not repeated filler.
+  Under dense retrieval the failure mode is vector-collapse instead
+  of IDF dilution, but the law is the same.
 - **No dictionary exists.** If you'd have to build the descriptions
   from scratch, the cost may exceed the benefit. Sometimes the right
   fix is upstream — annotate the source — not enrich.

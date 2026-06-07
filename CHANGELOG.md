@@ -79,25 +79,29 @@ into citations — a real functional gap, not just ergonomics. The typed
     workload-specific normalizer) and chain it alongside the built-ins.
     The trait is exported on the public API surface.
   - **`Vocabulary::enrich(chunk) → RewriteResult`** — chunk-side
-    mirror of `apply`. Same compiled vocabulary, applied at ingest time
-    to raise the semantic floor of short, opaque, coded retrieval
-    units (schema columns, API symbols, error codes, defined contract
-    terms, clinical abbreviations). The shipping rule:
-    *value ∝ shortness × opacity × dictionary-exists*. Different job
-    from query-side `apply` — `apply` patches anticipated query
-    reformulations; `enrich` makes opaque content matchable for
-    queries you can't anticipate. Ships on mechanism + regime
-    reasoning + IR-literature parallel (the doc2query family);
-    measured probes (Spider/BIRD for schemas) queued, not run. The
-    chunk-side failure mode is documented: bolting identical
-    boilerplate onto every chunk re-creates the low-IDF dilution
-    falsified by CUAD_PRF_NULL — enrichment must add *term-specific*
-    signal, not repeated filler. Audit trail (per-chunk
-    `RewriteRecord` with `stage: "enrich"`) returned to the caller so
-    users can A/B on their own corpus. Worked example:
-    `crates/examples/examples/enrich_code_search.rs`. Full regime
-    rule + ranked use cases + failure modes in
-    `docs/findings/VOCABULARY_ENRICH.md`.
+    mirror of `apply` shipped as a primitive on **mechanism reasoning
+    with asymmetric measured evidence**. The mechanism (a chunk-side
+    doc2query variant) and the regime hypothesis
+    (`expected value ∝ shortness × opacity × dictionary-exists`) are
+    well-grounded; the *positive* prediction (short opaque coded
+    units — schema columns, API symbols, error codes) is **not yet
+    measured by RedHop**. Spider/BIRD as the schema-regime probe is
+    queued, not run. The *negative* prediction (long prose chunks
+    + workload-pervasive vocabulary will dilute, not help) has been
+    measured directly:
+    [`CUAD_ENRICH_DEFINITIONS_NULL`](docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md)
+    regressed retention −2.0pt vs the 90.7% workflow baseline
+    (~24-point loss on the 17/50 affected contracts). This completes
+    the four-corner rule from CUAD_PRF_NULL + SUB_IDF_AUTO_DROP_NULL
+    onto the chunk side: workload-pervasive signal manipulation fails
+    on either side of the pipeline. Users adopting `enrich` should
+    A/B on their own corpus with `redhop::evaluate(...)` —
+    the regime rule is a hypothesis, not a guarantee. Audit trail
+    (per-chunk `RewriteRecord` with `stage: "enrich"`) returned to
+    the caller so the A/B is auditable. Synthetic demo (not a
+    benchmark): `crates/examples/examples/enrich_code_search.rs`.
+    Full asymmetric-evidence framing + use case predictions + failure
+    modes in `docs/findings/VOCABULARY_ENRICH.md`.
 - **`evaluate(query, ctx, gold) → EvalReport`** — in-process retrieval-eval
   scorer, no LLM judge. Self-eval (`mean_grounding`, `evidence_density`,
   `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`,
