@@ -209,10 +209,14 @@ The 60-second decision guide with trade-offs and query-writing tips:
 
 ## Non-English content
 
-Default is English Snowball. Swap with the `language=` kwarg — any of
-the 18 Snowball Porter2 languages (`arabic, danish, dutch, english,
-finnish, french, german, greek, hungarian, italian, norwegian,
-portuguese, romanian, russian, spanish, swedish, tamil, turkish`):
+Default is a minimal analyzer (tokenize + lowercase + ASCII fold; no
+stemmer) — measured to beat English Snowball on every English workload
+we tested ([RAW_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/RAW_ANALYZER.md)).
+Swap with the `language=` kwarg — `"english"` for code search /
+inflection-heavy English content, or any of the 18 Snowball Porter2
+languages (`arabic, danish, dutch, english, finnish, french, german,
+greek, hungarian, italian, norwegian, portuguese, romanian, russian,
+spanish, swedish, tamil, turkish`):
 
 ```python
 doc = redhop.Document.from_text(german_text, language="german")

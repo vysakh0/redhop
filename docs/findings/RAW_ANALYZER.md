@@ -1,13 +1,11 @@
-# `language="raw"` — opt-in fast BM25 with no stemming
+# Raw analyzer is the new default — fast BM25, no stemming
 
-> **Status:** **Confirmed — and the default may be wrong.** Measured
-> `language="raw"` (minimal Tantivy pipeline: tokenize + lowercase +
-> ASCII fold; no CamelCase split, no stopword filter, no Snowball
-> stemmer) against the default English Snowball analyzer on three
-> workloads at n=100, budget=2000, candidate_k=40.
->
-> **`raw` wins on every workload measured**, both on retention AND
-> latency:
+> **Status: shipped as the 0.3.2 default (breaking).** The minimal
+> Tantivy pipeline (tokenize + ASCII fold + lowercase; no CamelCase
+> split, no stopword filter, no Snowball stemmer) measurably beat the
+> previous English-Snowball default on three workloads — on retention
+> AND latency — so it became the default. English Snowball is still
+> available as an explicit opt-in via `language="english"`.
 >
 > | Workload | english ≥0.8 | raw ≥0.8 | Δ retention | english p50 | raw p50 |
 > |---|---:|---:|---:|---:|---:|
@@ -15,12 +13,12 @@
 > | HotpotQA | 100% | 100% | 0 | 2.9ms | 2.3ms |
 > | MuSiQue | 90% | **97%** | **+7pts** | 3.4ms | 2.3ms |
 >
-> Stemming is *hurting* recall on these workloads (false-positive
+> Stemming was *hurting* recall on these workloads (false-positive
 > ranking from stem collisions like `"settles"`/`"settling"` →
-> `"settl"`), not helping. The English Snowball default might not be
-> right for typical RedHop usage. **Default unchanged for 0.3.2**
-> (backward compatibility + multilingual workloads still need their
-> language stemmer); opt in via `language="raw"`.
+> `"settl"`), not helping. The flip is a breaking change: rankings
+> shift for users who built indexes under the old default. Code-search
+> users and inflection-heavy workloads should opt back in with
+> `language="english"`.
 
 ## Why this probe ran
 
@@ -53,13 +51,18 @@ Three steps total. No `CamelCaseSplitter`, no `RemoveLongFilter`, no
 should do: tokenize on Unicode word boundaries, fold diacritics
 (`"café"` → `"cafe"`), and lowercase. That's it.
 
-Wired via `language="raw"` (or `"none"`) on `Document.from_text`,
-`from_file`, etc. — the same parameter that already picks German /
-French / etc. for non-English workloads.
+In 0.3.2 this is the default — passing nothing at all gets you the
+raw pipeline. English Snowball, German, French, etc. require an
+explicit `language=` opt-in.
 
 ```python
-doc = redhop.Document.from_text(text, language="raw")
-# Or for multilingual content:
+# 0.3.2 default — raw pipeline, no extra arguments needed:
+doc = redhop.Document.from_text(text)
+
+# Opt back in to English Snowball (stemming + camelCase + stopwords):
+doc = redhop.Document.from_text(text, language="english")
+
+# Multilingual content still uses the language string:
 doc = redhop.Document.from_text(text, language="german")
 ```
 
@@ -122,34 +125,29 @@ pipeline runs faster. No surprises here.
 
 ## What this changes
 
-- **A measurably-faster, measurably-better path exists** for users
-  who turn on `language="raw"`. Documented in
-  [the rag-tips guide](https://www.redhopai.com/guides/rag-tips/).
-- **The English Snowball default may not be right**, at least for the
-  workloads we benchmark. We have NOT switched the default for 0.3.2:
-  - Backward compatibility: existing users' rankings would shift
-  - Multilingual workloads (`language="german"`, etc.) still need
-    their stemmer; switching the i18n routing to "default raw, opt
-    in for stem" is a bigger refactor
-  - The three workloads here are all English; a future probe on a
-    non-English workload should verify before any default flip
-- **For 0.4 or later**: revisit the default. The evidence here
-  suggests the right default is `language="english"` only if the user
-  knows their queries paraphrase the document; otherwise `raw` is the
-  reasonable starting point.
+- **The default flipped in 0.3.2.** New `Document` objects use the
+  raw pipeline. Existing users rebuilding their index will see
+  ranking shifts (some queries better, some worse) — measure before
+  upgrading production indexes.
+- **English Snowball is still one keyword away.** Pass
+  `language="english"` to get the previous pipeline (camelCase split,
+  stopwords, Snowball stemmer) — useful for code search and
+  inflection-heavy workloads.
+- **Multilingual paths are unaffected.** `language="german"`,
+  `"french"`, etc. still route to the corresponding Snowball
+  analyzer; they were always opt-in and they still are.
 
 ## When to use which
 
-- **`language=None` (default, English Snowball):** keep if your
-  workload has heavy inflectional variation between query and doc
-  (e.g. legal "the parties hereby acknowledge" template-stripped to
-  "parties acknowledge"; queries about "acquisitions" against doc
-  text mentioning "acquired", "acquiring"). Some workloads still
-  benefit; just measure.
-- **`language="raw"`:** the empirically-better default for the
-  three workloads measured here. Faster, slightly higher recall on
-  CUAD and MuSiQue, tied on HotpotQA. Always safe to try as the
-  first move when you start.
+- **Default (raw pipeline, no `language=` argument):** the
+  empirically-better starting point for the three English workloads
+  measured here. Faster, slightly higher recall on CUAD and MuSiQue,
+  tied on HotpotQA.
+- **`language="english"`:** opt in if your workload has heavy
+  inflectional variation between query and doc (e.g. queries about
+  "acquisitions" against doc text mentioning "acquired", "acquiring")
+  or if you're doing code search where camelCase splitting matters
+  (`compressVideo` → both `compress` and `video` indexed).
 - **`language="german"` / `"french"` / etc.:** required for
   non-English content where the Snowball stemmer for that language
   helps with morphology.
@@ -169,9 +167,9 @@ pipeline runs faster. No surprises here.
   likely the result generalizes (analyzer-pipeline overhead is the
   same regardless of assembly strategy), but it's untested.
 - **No code workload tested.** RedHop's `CamelCaseSplitter` matters
-  for code search (`"compressVideo"` → both forms searchable);
-  `language="raw"` skips it. Code-search users should keep the
-  default.
+  for code search (`"compressVideo"` → both forms searchable); the
+  new raw default skips it. Code-search users should pass
+  `language="english"` to keep the splitter.
 
 ## Reproduce
 

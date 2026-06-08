@@ -74,21 +74,31 @@ fn g02_stemming_finds_morphological_variants() {
     // `compress_video` and got nothing back. After Snowball stemming
     // both reduce to `compress` and the chunk surfaces.
     //
-    // If this regresses, the analyzer's stemmer is off or BM25 isn't
-    // applying it. Either is a class of bug that breaks every
-    // morphological variant, not just this query — so failing here means
-    // a wide swath of real-world queries silently stops working.
+    // **0.3.2 default change:** the default analyzer is now `RawAnalyzer`
+    // (no stemming) — see docs/findings/RAW_ANALYZER.md for the
+    // measurement that flipped it. So this test now exercises the
+    // **explicit** English-Snowball path that users opt into via
+    // `language="english"` (or `Document::with_analyzer(SnowballAnalyzer::english())`
+    // at the Rust level). The bug class that motivated this test
+    // (stemmer wiring + BM25 picking up the analyzer) is still pinned
+    // here — just against the explicit opt-in, not the default.
+    use std::sync::Arc;
     let corpus = "\
 fn compress_video(file_path: &str, quality: &str) { ... } \
 unrelated handler for renaming files. \
 helper for parsing configuration data.";
-    let ctx = ask(corpus, "video.rs", "compression");
+    let analyzer: Arc<dyn redhop::analyzer::Analyzer> =
+        Arc::new(redhop::analyzer::SnowballAnalyzer::english());
+    let mut doc = redhop::Document::from_text("video.rs", corpus)
+        .expect("Document::from_text")
+        .with_analyzer(analyzer);
+    let ctx = doc.context("compression").expect("Document::context");
     assert!(
         ctx_contains_lowercase(&ctx, "compress_video"),
         "G02 — Snowball stemming regressed: query 'compression' should \
-         match `compress_video` (both stem to 'compress'). Check the \
-         analyzer wiring + that BM25 is using the configured analyzer. \
-         ctx.text = {:?}",
+         match `compress_video` (both stem to 'compress') under the \
+         explicit English-Snowball analyzer. Check the analyzer wiring \
+         + that BM25 is using the configured analyzer. ctx.text = {:?}",
         ctx.text()
     );
 }

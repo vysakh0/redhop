@@ -200,10 +200,14 @@ decision guide:
 
 ## Non-English content
 
-Default is English Snowball. Swap with `options.language` — any of the
-18 Snowball Porter2 languages (`arabic, danish, dutch, english,
-finnish, french, german, greek, hungarian, italian, norwegian,
-portuguese, romanian, russian, spanish, swedish, tamil, turkish`):
+Default is a minimal analyzer (tokenize + lowercase + ASCII fold; no
+stemmer) — measured to beat English Snowball on every English workload
+we tested ([RAW_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/RAW_ANALYZER.md)).
+Swap with `options.language` — `"english"` for code search /
+inflection-heavy English content, or any of the 18 Snowball Porter2
+languages (`arabic, danish, dutch, english, finnish, french, german,
+greek, hungarian, italian, norwegian, portuguese, romanian, russian,
+spanish, swedish, tamil, turkish`):
 
 ```javascript
 const doc = Document.fromText(germanText, { language: "german" });

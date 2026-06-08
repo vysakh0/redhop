@@ -194,8 +194,13 @@ pub struct ContextConfig {
     /// distractor-level relevance.
     pub low_confidence_max_grounding: f32,
     /// Lexical analyzer driving term extraction in the grounding scorer.
-    /// Defaults to [`crate::analyzer::default_english`] — preserves the 0.1.4
-    /// behavior. Should match the analyzer used by the BM25 retriever
+    /// **Defaults to [`crate::analyzer::default_analyzer`]** (RawAnalyzer)
+    /// since 0.3.2 — the [RAW_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/RAW_ANALYZER.md)
+    /// finding measured this as better recall AND faster on every English
+    /// workload we tested. Pre-0.3.2 default was [`crate::analyzer::default_english`]
+    /// (SnowballAnalyzer::english); callers who specifically want English
+    /// Snowball stemming should set `language="english"` explicitly. Should
+    /// match the analyzer used by the BM25 retriever
     /// (`Document::with_analyzer` sets both in lockstep) so the two layers
     /// agree on what counts as "the same term".
     pub analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer>,
@@ -254,9 +259,17 @@ impl Default for ContextConfig {
             // is at-or-below distractor relevance, the retrieval itself was
             // weak (issue #1) and the caller should know programmatically.
             low_confidence_max_grounding: 0.10,
-            // English Snowball Porter2 by default. Process-wide cached Arc so
-            // `Default::default()` is cheap.
-            analyzer: crate::analyzer::default_english(),
+            // RawAnalyzer (minimal pipeline: tokenize + lowercase + ASCII
+            // fold; no stem, no stopwords, no CamelCase split) by default
+            // since 0.3.2. Breaking change vs ≤0.3.1: callers who relied
+            // on English Snowball stemming should set `language="english"`
+            // explicitly. The cross-workload probe in
+            // docs/findings/RAW_ANALYZER.md showed stemming was hurting
+            // recall on every English workload measured (CUAD +5pts,
+            // MuSiQue +7pts, HotpotQA tied) AND raw is 1.5-2.5× faster
+            // per query. Process-wide cached Arc so `Default::default()`
+            // is cheap.
+            analyzer: crate::analyzer::default_analyzer(),
             // Off — the existing strategy-emitted order (typically relevance
             // first) is preserved for the standard RAG/QA case. Callers who
             // care about chronology (chat, transcripts, logs) opt in.

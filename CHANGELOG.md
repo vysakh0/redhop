@@ -5,6 +5,44 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [0.3.2] — 2026-06-08
+
+**Breaking: the default text analyzer flipped to `RawAnalyzer`.** New
+`Document` objects no longer apply English Snowball stemming,
+CamelCaseSplitter, or stopword filtering by default. Measurement on
+three workloads (CUAD, HotpotQA, MuSiQue) showed the simpler pipeline
+matches or beats English Snowball on retention AND latency:
+
+| Workload | english ≥0.8 | raw ≥0.8 | Δ | english p50 | raw p50 |
+|---|---:|---:|---:|---:|---:|
+| CUAD | 86% | **91%** | **+5pts** | 6.4ms | 3.8ms |
+| HotpotQA | 100% | 100% | 0 | 2.9ms | 2.3ms |
+| MuSiQue | 90% | **97%** | **+7pts** | 3.4ms | 2.3ms |
+
+The mechanism: Snowball stem collisions (`settles`/`settled`/`settling`
+→ `settl`) inflate BM25 scores on chunks that share *any* form, drowning
+out the discriminating proper nouns. See
+[docs/findings/RAW_ANALYZER.md](docs/findings/RAW_ANALYZER.md) for the
+full probe.
+
+### Migration
+
+- **Most users:** rebuild the index against 0.3.2; expect rank shifts
+  but usually higher retention. Re-run your eval if you have one.
+- **Code search / inflection-heavy workloads:** pass
+  `language="english"` to restore the previous behavior
+  (CamelCaseSplitter, stopwords, Snowball stem).
+- **Multilingual paths unchanged:** `language="german"`, `"french"`,
+  etc. still route to the corresponding Snowball analyzer.
+
+```python
+# Before 0.3.2 default (still available via opt-in):
+doc = redhop.Document.from_text(text, language="english")
+
+# 0.3.2 default (no argument):
+doc = redhop.Document.from_text(text)
+```
+
 ## [0.3.1] — 2026-06-08
 
 The **post-release honesty audit**. After 0.3.0 shipped, a critical

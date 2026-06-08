@@ -119,6 +119,19 @@ fn build(chunks: Vec<Chunk>) -> Document {
     Document::from_chunks_with(chunks, DocumentConfig::default()).unwrap()
 }
 
+/// Build with explicit English Snowball analyzer. Tests that exercise
+/// English-specific morphology (stemming, camelCase/letter↔digit splitting,
+/// stopword filtering) must opt in: the 0.3.2 default analyzer is the
+/// minimal `RawAnalyzer` (see docs/findings/RAW_ANALYZER.md).
+fn build_english(chunks: Vec<Chunk>) -> Document {
+    use std::sync::Arc;
+    let analyzer: Arc<dyn redhop::analyzer::Analyzer> =
+        Arc::new(redhop::analyzer::SnowballAnalyzer::english());
+    Document::from_chunks_with(chunks, DocumentConfig::default())
+        .unwrap()
+        .with_analyzer(analyzer)
+}
+
 // ── 1. TOKENIZATION ROBUSTNESS ─────────────────────────────────────────────
 //
 // These protect the analyzer pipeline (Snowball stemmer + stopword filter +
@@ -129,7 +142,9 @@ fn build(chunks: Vec<Chunk>) -> Document {
 fn t01_stemming_compression_finds_compress() {
     // The bug that started the audit arc: query "compression" missed a
     // chunk containing only "compress" (not stemmed by BM25 in 0.1.2).
-    let mut doc = build(vec![
+    // 0.3.2 flipped the default to RawAnalyzer (no stemming); this test
+    // pins the opt-in English-Snowball path.
+    let mut doc = build_english(vec![
         code("0", "pub fn compress_video(file: &str)", "video.rs"),
         code("1", "pub fn elsewhere() {}", "video.rs"),
     ]);
@@ -141,7 +156,8 @@ fn t01_stemming_compression_finds_compress() {
 fn t02_camelcase_compress_finds_camel_identifier() {
     // JS/Go/TS codebases use camelCase. Query for the base name should reach
     // the identifier even though the index never sees `compress` alone.
-    let mut doc = build(vec![
+    // 0.3.2: RawAnalyzer doesn't split camelCase; English-Snowball pipeline does.
+    let mut doc = build_english(vec![
         code(
             "0",
             "function compressVideo(filePath, quality) { ... }",
@@ -160,8 +176,9 @@ fn t02_camelcase_compress_finds_camel_identifier() {
 #[test]
 fn t03_pascalcase_http_finds_acronym_identifier() {
     // Acronym-prefix Pascal case (HTTPResponse, XMLParser). The splitter
-    // must handle the upper→upper→lower acronym-tail rule.
-    let mut doc = build(vec![
+    // must handle the upper→upper→lower acronym-tail rule. 0.3.2: needs
+    // the English pipeline's CamelCaseSplitter.
+    let mut doc = build_english(vec![
         code("0", "class HTTPResponse extends BaseResponse {}", "lib.ts"),
         code("1", "class HelloWorld {}", "lib.ts"),
     ]);
@@ -184,7 +201,8 @@ fn t04_snake_case_compress_finds_compress_video() {
 #[test]
 fn t05_digit_boundary_parse_finds_versioned_identifier() {
     // Versioned identifiers (parseV2, gpt4o, Phi3) split on letter↔digit.
-    let mut doc = build(vec![
+    // 0.3.2: needs the English pipeline's CamelCaseSplitter (letter↔digit rule).
+    let mut doc = build_english(vec![
         code("0", "fn parseV2(input: &str) -> Result<()>", "lib.rs"),
         code("1", "fn unrelated_function() {}", "lib.rs"),
     ]);
@@ -1287,8 +1305,9 @@ fn t47_query_reducing_to_zero_terms_after_stopwords_returns_empty() {
     // Query that's all stopwords AFTER the analyzer runs but non-empty
     // BEFORE. The analyzer pipeline strips stopwords; what's left is
     // empty. The retriever has to treat that as a "no signal" empty
-    // result, not an error.
-    let mut doc = build(vec![
+    // result, not an error. 0.3.2: pins the English-Snowball pipeline
+    // (RawAnalyzer has no stopword filter — it would match everything).
+    let mut doc = build_english(vec![
         prose(
             "0",
             "the refund window is thirty days from purchase",

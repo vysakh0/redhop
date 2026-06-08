@@ -316,13 +316,18 @@ enabling.**
 
 ### Language support
 
-The default lexical tier is English-tuned: Snowball Porter2 stemming,
-English stopword filtering, and ASCII folding for accented Latin
-(`café` ↔ `cafe`, `Süßigkeit` ↔ `Sussigkeit`).
+The default lexical tier uses a minimal analyzer — Unicode
+tokenization, lowercase, ASCII fold (`café` ↔ `cafe`, `Süßigkeit` ↔
+`Sussigkeit`); **no stemming, no stopword filter, no CamelCase split.**
+This was measured on CUAD / HotpotQA / MuSiQue and beat the previous
+English-Snowball default on both retention and latency
+([RAW_ANALYZER](docs/findings/RAW_ANALYZER.md)).
 
-For non-English content, swap the analyzer to any of the 18 Snowball
-Porter2 languages (one analyzer drives both BM25 retrieval AND the
-grounding scorer, so the two layers can't drift):
+Opt back in to English Snowball (camelCase split + stopwords + stemmer)
+for code search or inflection-heavy English with `language="english"`.
+For non-English content, swap to any of the 18 Snowball Porter2
+languages (one analyzer drives both BM25 retrieval AND the grounding
+scorer, so the two layers can't drift):
 
 ```python
 # Python

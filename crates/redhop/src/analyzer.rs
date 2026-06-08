@@ -348,13 +348,38 @@ impl Analyzer for RawAnalyzer {
     }
 }
 
-// ── Shared "default English instance" ──────────────────────────────────────
+// ── Shared analyzer instances ──────────────────────────────────────────────
 
-/// A process-wide cloned `Arc<dyn Analyzer>` pointing at
-/// [`SnowballAnalyzer::english`]. Used as the default in
-/// [`crate::context::ContextConfig`] and elsewhere — clone is cheap (just
-/// an Arc bump), construction happens
-/// once.
+/// A process-wide cloned `Arc<dyn Analyzer>` pointing at [`RawAnalyzer`].
+/// **This is the new default** as of the 0.3.2 audit pass. The cross-
+/// workload measurement (`docs/findings/RAW_ANALYZER.md`) showed Snowball
+/// English stemming was *hurting* recall via false-positive stem collisions
+/// (`"settles"` / `"settling"` / `"settled"` all → `"settl"`), not helping
+/// the way the IR-textbook intuition suggested.
+///
+/// Users who want the old behavior set `language="english"` explicitly:
+///
+/// ```rust,no_run
+/// # use std::sync::Arc;
+/// # use redhop::analyzer::{Analyzer, SnowballAnalyzer};
+/// let english: Arc<dyn Analyzer> = Arc::new(SnowballAnalyzer::english());
+/// ```
+///
+/// For non-English content, pass the language code (`"german"`, `"french"`,
+/// …) — those still use [`SnowballAnalyzer`] because morphology in
+/// inflected languages genuinely needs the language-specific stemmer.
+pub fn default_analyzer() -> Arc<dyn Analyzer> {
+    static INSTANCE: OnceLock<Arc<dyn Analyzer>> = OnceLock::new();
+    INSTANCE
+        .get_or_init(|| Arc::new(RawAnalyzer::new()) as Arc<dyn Analyzer>)
+        .clone()
+}
+
+/// **Pre-0.3.2 default.** Process-wide cached `Arc<dyn Analyzer>` for
+/// [`SnowballAnalyzer::english`]. Still available for callers who
+/// explicitly want English Snowball stemming. The 0.3.2 default is
+/// [`default_analyzer`] (which returns [`RawAnalyzer`]); see
+/// `docs/findings/RAW_ANALYZER.md` for the measured reason.
 pub fn default_english() -> Arc<dyn Analyzer> {
     static INSTANCE: OnceLock<Arc<dyn Analyzer>> = OnceLock::new();
     INSTANCE
