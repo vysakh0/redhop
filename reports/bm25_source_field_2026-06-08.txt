@@ -1,0 +1,24 @@
+
+==============================================================================
+  BM25 source-field probe
+  Does multi-field reach help when source is signal, hurt when noise?
+==============================================================================
+
+  HotpotQA (n=100, budget=400 tok)
+  All arms: same paragraphs, no heading metadata. Source varies.
+
+  arm                                        recall   ≥0.5   ≥0.8   p50 ms  avg ctx words
+  ------------------------------------------------------------------------------------
+  A. signal-bearing source (current ideal)     0.93    99%    82%     2.1          376.7
+  B. generic source (neutral control)          0.91    97%    78%     2.1          377.4
+  C. noisy source (random hash path)           0.91    97%    78%     2.0          377.4
+
+  Δ A − B (signal lift vs neutral): recall +0.03  ≥0.5 +2  ≥0.8 +4
+  Δ C − B (noise penalty vs neutral): recall +0.00  ≥0.5 +0  ≥0.8 +0
+
+Reading the result:
+  • A > B > C  → multi-field reach is a real signal, hurt by noise
+  • A ≈ B ≈ C  → source field doesn't move retention; safe in all regimes
+  • A ≈ B, C < B → safe when meaningful, hurts on noise (warning case)
+  • A > B, C ≈ B → signal helps, noise is harmless (best case)
+
