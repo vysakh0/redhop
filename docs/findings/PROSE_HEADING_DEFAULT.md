@@ -130,15 +130,15 @@ contracts with clause titles) likely fit too.
 
 - **`prose_heading_default=true` stays.** Empirically validated; flipping
   would cost retention at typical budgets.
-- **A small API smell surfaced.** The Python `doc.context(query,
-  include_heading=False, neighbors=0)` falls back to the auto path
-  (because `if neighbors == 0 && !include_heading` → calls
-  `context_with`, which goes through `context_inner` and consults
-  `prose_heading_default`). There's no way from Python to call
-  "context_expanded with both off" — i.e., to *disable* the
-  heading auto-attach without re-building chunks without metadata.
-  Documented as a follow-up — not urgent; the default is correct so
-  users rarely need to opt out.
+- **The API smell flagged here was fixed in 0.3.3.** Both
+  `prose_heading_default` (Python kwarg / Node `proseHeadingDefault`
+  option) and `code_neighbors_default` are now surfaced at the
+  `Document` constructor level. Users with memory-tight workloads or
+  category-only headings can disable the auto-attach explicitly:
+  ```python
+  doc = redhop.Document.from_text(text, prose_heading_default=False)
+  ```
+  See [CHANGELOG.md §0.3.3](../../CHANGELOG.md).
 
 ## Reproduce
 

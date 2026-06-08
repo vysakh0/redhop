@@ -136,15 +136,17 @@ behavior at tighter budgets.
   - At budget ≥ 1000: explicit `neighbors=2` or `3` recovers more
     function bodies (+1 to +2 hits per +1 neighbor on a 10-query
     code-search sample)
-- **A Python API smell** — same one noted in
-  [PROSE_HEADING_DEFAULT](PROSE_HEADING_DEFAULT.md). There's no
-  Python kwarg to disable the auto-expansion directly;
-  `doc.context(q, neighbors=0, include_heading=False)` falls back
-  to the auto path. The workaround
-  (`doc.context(q, neighbors=0, include_heading=True)` — heading is
-  a no-op on code) was used here. Worth surfacing both
-  `code_neighbors_default` and `prose_heading_default` as kwargs in
-  a future Python release.
+- **The Python/Node API smell flagged here was fixed in 0.3.3.** Both
+  `code_neighbors_default` (Python kwarg / Node `codeNeighborsDefault`
+  option) and `prose_heading_default` are now surfaced at the
+  `Document` constructor level. Users on memory-tight workloads can
+  disable the auto-expansion explicitly:
+  ```python
+  doc = redhop.Document.from_file("src.rs", code_neighbors_default=0)
+  ```
+  See [CHANGELOG.md §0.3.3](../../CHANGELOG.md). The
+  `include_heading=True` workaround used in this probe's bench script
+  is no longer the only opt-out path.
 
 ## Honest limits
 

@@ -5,6 +5,57 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [0.3.3] — Unreleased
+
+**Audit of defaulted-on heuristics — five measured, one already-flipped
+(raw analyzer, 0.3.2), four left alone with documented reasons.** The
+audit found two **API smells** in the structural-expansion defaults that
+this release fixes by exposing the underlying knobs as Python kwargs
+and Node options:
+
+### Added
+
+- **`code_neighbors_default` / `codeNeighborsDefault`** — surfaces the
+  ±N adjacent-chunk auto-pull on code chunks as a constructor kwarg on
+  Python `from_text`/`from_file`/`from_bytes`/`from_folder`/`from_chunks`
+  and as a field on the Node `Options` struct. Default `1` (unchanged
+  behavior). Pass `0` to disable, or `2`/`3` for more aggressive
+  expansion under loose token budgets. See
+  [docs/findings/CODE_NEIGHBORS_DEFAULT.md](docs/findings/CODE_NEIGHBORS_DEFAULT.md)
+  for the measured budget tradeoff.
+- **`prose_heading_default` / `proseHeadingDefault`** — surfaces the
+  auto-attach of section-heading chunks to prose hits as the same
+  constructor-level kwarg / option. Default `true` (unchanged). Pass
+  `false` for memory-tight workloads where the heading isn't
+  load-bearing. See
+  [docs/findings/PROSE_HEADING_DEFAULT.md](docs/findings/PROSE_HEADING_DEFAULT.md)
+  for the measured +7pt ≥0.8 lift at typical budgets.
+- **`crates/redhop/src/load.rs`** — `LoadOptions` now exposes
+  `code_neighbors_default` and `prose_heading_default` as
+  `Option<usize>` / `Option<bool>`. Threads through `read_folder_with`
+  for parity with the in-memory loaders.
+- **Audit finding docs.** Five new findings on the defaulted-on
+  heuristics audit:
+  [`RAW_ANALYZER`](docs/findings/RAW_ANALYZER.md) (flipped in 0.3.2),
+  [`HYBRID_CANDIDATE_POOL`](docs/findings/HYBRID_CANDIDATE_POOL.md)
+  (inert knob — don't tune),
+  [`PROSE_HEADING_DEFAULT`](docs/findings/PROSE_HEADING_DEFAULT.md)
+  (+7pt at typical budgets),
+  [`BM25_SOURCE_FIELD`](docs/findings/BM25_SOURCE_FIELD.md) (+4pt with
+  signal, 0pt with noise),
+  [`CODE_NEIGHBORS_DEFAULT`](docs/findings/CODE_NEIGHBORS_DEFAULT.md)
+  (budget-dependent compromise).
+- **Cross-binding parity tests** for the two new kwargs (Python
+  `test_loaders.py`, Node `smoke.cjs`).
+
+### Changed
+
+- **No default values changed in this release.** All defaults remain
+  what they were after 0.3.2 — the new kwargs default to the existing
+  Rust values (`code_neighbors_default=1`, `prose_heading_default=true`).
+  Existing callers see zero behavior change; the new kwargs are an
+  opt-out / tune surface only.
+
 ## [0.3.2] — 2026-06-08
 
 **Breaking: the default text analyzer flipped to `RawAnalyzer`.** New
