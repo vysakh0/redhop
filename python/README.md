@@ -28,9 +28,6 @@ answer = llm.generate(ctx.text())                  # any LLM — no lock-in
 That's it. `ctx.citations` tells you where the answer came from;
 `ctx.report` explains what was kept, dropped, and why.
 
-One self-contained wheel — no Python dependencies. The default lexical tier needs no
-model at all; the semantic/rerank tiers download a small model on first use (cached).
-
 ## How it compares
 
 Measured on identical documents + budgets + BM25 retrieval, RedHop **beats both

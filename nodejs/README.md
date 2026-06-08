@@ -30,8 +30,7 @@ for (const c of ctx.citations) { // where the answer's context came from
 console.log(ctx.report.rendered); // the Decision Report — what it kept, and why
 ```
 
-That's it. Native bindings for macOS, Linux, and Windows are downloaded with
-the npm package — no Rust toolchain or local build needed.
+That's it.
 
 ## How it compares
 

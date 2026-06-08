@@ -63,9 +63,6 @@ doc = redhop.Document.from_chunks(chunks)
 ctx = doc.context("how much did paying users spend last month")
 ```
 
-No model download for the default lexical tier. Semantic/rerank tiers
-auto-download a small ONNX model on first use (cached locally).
-
 ---
 
 RedHop is the layer between your documents and the LLM. It is **not** a vector
