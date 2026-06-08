@@ -3,14 +3,18 @@
 //! [`LocalRerankRetriever`] composes a lexical first stage (BM25) with a dense
 //! second stage: BM25 prunes the whole corpus to a candidate pool of
 //! `candidate_pool` chunks, then that pool is reordered by cosine of the query
-//! embedding against precomputed chunk embeddings, and the two rankings are
-//! **RRF-fused** to produce the final hybrid order. RRF guarantees the
-//! documented contract that hybrid is at least as large as either tier on its
-//! own — a chunk BM25 ranked highly never silently disappears just because the
-//! dense model didn't surface it. Matches a global dense retriever's recall on
-//! the validated workloads while touching the dense model on a bounded pool
-//! and needing **no ANN / vector index**.
-//! See `docs/findings/LOCAL_RERANK.md`.
+//! embedding against precomputed chunk embeddings. **The dense ordering wins**
+//! — top_k is taken from the dense-sorted pool. Any unembedded chunks (code,
+//! which is hybrid-routed to lexical-only) survive at the tail in their
+//! original BM25 order, so a BM25-strong code hit is never silently lost.
+//!
+//! See `docs/findings/LOCAL_RERANK.md` for the original local-rerank story
+//! and `docs/findings/MULTIHOP_CONSTANT_CHUNKING.md` for why we moved off
+//! Reciprocal Rank Fusion (RRF) in 0.3.1: under RRF the bridge passage on
+//! compositional multi-hop (low BM25 rank, high dense rank) got fused
+//! *down* — measured −10pt ≥0.8 retention vs pure-rerank on MuSiQue. Pure
+//! rerank is now the default; RRF lives in `crate::retrieval::hybrid` as
+//! `HybridRetriever::rrf` for callers who want explicit fan-out + fusion.
 //!
 //! It is **embedder-agnostic**: it takes any [`EmbeddingProvider`], so the ONNX
 //! dependency lives at the *construction site* (the caller builds the embedder),
@@ -28,7 +32,6 @@ use crate::core::{
 use async_trait::async_trait;
 
 use crate::retrieval::bm25::Bm25Retriever;
-use crate::retrieval::fusion::reciprocal_rank_fusion;
 
 /// A chunk routed to lexical-only retrieval (code): under the hybrid tier it's
 /// ranked by BM25 and never embedded, since general embedders are weak on code.
@@ -279,12 +282,34 @@ impl Retriever for LocalRerankRetriever {
             out.truncate(top_k.max(1));
             return Ok(out);
         }
-        // RRF-fuse the BM25 ranking with the dense reranking. This preserves
-        // the hybrid contract: a chunk ranked highly by BM25 is never dropped
-        // just because the dense model demoted it (issue #1). The previous
-        // prose-pool shortcut (return dense alone) silently lost BM25-only
-        // hits whenever cosine pushed them past `top_k`.
-        Ok(reciprocal_rank_fusion(&[cand, dense], 60.0, top_k.max(1)))
+        // Pure-rerank: top_k is taken from the dense-sorted pool, then any
+        // unembedded chunks from the BM25 pool (e.g. code chunks routed to
+        // lexical-only) are appended in BM25 order to fill the remainder.
+        //
+        // Why not RRF: on compositional multi-hop, the bridge passage
+        // (low BM25 rank + high dense rank) gets averaged-down by RRF and
+        // buried. See docs/findings/MULTIHOP_CONSTANT_CHUNKING.md:
+        // measured +10pt ≥0.8 retention on MuSiQue from this change, with
+        // no measurable HotpotQA regression. The "code chunks ranked
+        // highly by BM25" preservation that motivated RRF (issue #1) is
+        // kept here by the BM25-tail step below: code that BM25 selected
+        // can't be silently lost just because the dense model didn't see
+        // it (it never gets a dense score in the first place).
+        let target = top_k.max(1);
+        let mut out: Vec<RetrievalResult> = dense.into_iter().take(target).collect();
+        if out.len() < target {
+            let in_out: std::collections::HashSet<String> =
+                out.iter().map(|r| r.chunk.id.as_str().to_string()).collect();
+            for c in cand.iter() {
+                if out.len() >= target {
+                    break;
+                }
+                if !in_out.contains(c.chunk.id.as_str()) {
+                    out.push(c.clone());
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn name(&self) -> &'static str {
@@ -344,11 +369,8 @@ mod tests {
             let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
             r.index(&chunks()).await.unwrap();
             // Lexically matches all three; the embedding points at "gamma" —
-            // c is rank-1 in dense (only positive cosine). RRF puts c near
-            // the top, but the exact rank depends on BM25 micro-stats which
-            // can shift as the analyzer evolves; pin the structural invariant
-            // instead: top result was RRF-fused (method=Hybrid + fused
-            // breakdown) and c is in the result set.
+            // c is rank-1 in dense (only positive cosine). Under pure rerank
+            // (0.3.1+), c wins #1 because dense order takes the top-K.
             let q =
                 Query::new("alpha beta gamma").with_embedding(Embedding::from(vec![0.0, 0.0, 1.0]));
             let res = r.retrieve(&q, 3).await.unwrap();
@@ -357,10 +379,16 @@ mod tests {
                 "c (the dense favorite) must be in the top-3, got {:?}",
                 res.iter().map(|x| x.chunk.id.as_str()).collect::<Vec<_>>()
             );
-            assert_eq!(res[0].score.method, RetrievalMethod::Hybrid);
+            assert_eq!(
+                res[0].chunk.id.as_str(),
+                "c",
+                "pure rerank: dense winner ranks #1, got {:?}",
+                res.iter().map(|x| x.chunk.id.as_str()).collect::<Vec<_>>()
+            );
+            assert_eq!(res[0].score.method, RetrievalMethod::Rerank);
             assert!(
-                res[0].breakdown.fused.is_some(),
-                "RRF must populate the fused score on every result"
+                res[0].breakdown.dense.is_some(),
+                "pure rerank must populate the dense score on every result"
             );
         });
     }
@@ -371,13 +399,19 @@ mod tests {
     /// the documented hybrid contract that BM25 signal contributes to every
     /// result and that the result count never drops below lexical's.
     #[test]
-    fn hybrid_fuses_bm25_with_dense_when_dense_disagrees() {
+    fn pure_rerank_lets_dense_win_when_it_disagrees_with_bm25() {
+        // Pure rerank semantics (0.3.1+): when dense disagrees with BM25, the
+        // dense ordering wins on the top-K. This is the change that fixes
+        // MULTIHOP_CONSTANT_CHUNKING's MuSiQue bridge-passage problem — under
+        // the old RRF behavior, a chunk that ranked low on BM25 but high on
+        // dense got averaged-down and buried.
         rt().block_on(async {
             let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
-            // Five prose chunks all matching "alpha" to varying degrees; the
-            // dense embedder points at "gamma" so the cosine ranking is
-            // anti-correlated with the BM25 ranking — the worst case for
-            // dense-only retrieval.
+            // Five prose chunks all matching "alpha" to varying BM25 degrees;
+            // the dense embedder points at "gamma" so the cosine ranking is
+            // anti-correlated with BM25. Under RRF, RRF would split the
+            // difference and rank a middling-on-both chunk #1; under pure
+            // rerank, the dense winner (most gammas → highest cosine) wins.
             let cs = vec![
                 Chunk::new("a0", "alpha alpha alpha gamma", "doc", TokenCount(4)),
                 Chunk::new("a1", "alpha alpha gamma gamma", "doc", TokenCount(4)),
@@ -388,39 +422,42 @@ mod tests {
             r.index(&cs).await.unwrap();
             let q = Query::new("alpha").with_embedding(Embedding::from(vec![0.0, 0.0, 1.0]));
 
-            // Pre-fix structural marker #1: method was `Rerank` (dense-only).
-            // Post-fix: every result is `Hybrid` (RRF-fused).
-            let hyb = r.retrieve(&q, 3).await.unwrap();
-            assert!(
-                !hyb.is_empty(),
-                "hybrid must not be empty when pool is non-empty"
-            );
-            for r in &hyb {
+            // Top-3 is the dense-ranked top-3. Method is `Rerank` (not
+            // `Hybrid`) since no RRF fusion happens.
+            let out = r.retrieve(&q, 3).await.unwrap();
+            assert!(!out.is_empty(), "must not be empty when pool is non-empty");
+            for x in &out {
                 assert_eq!(
-                    r.score.method,
-                    RetrievalMethod::Hybrid,
-                    "issue #1: every hybrid result must carry the Hybrid method (RRF), \
-                     got {:?} for {}",
-                    r.score.method,
-                    r.chunk.id.as_str(),
+                    x.score.method,
+                    RetrievalMethod::Rerank,
+                    "pure rerank: method must be Rerank (dense-cosine), got {:?} for {}",
+                    x.score.method,
+                    x.chunk.id.as_str(),
                 );
                 assert!(
-                    r.breakdown.fused.is_some(),
-                    "issue #1: every hybrid result must have a fused RRF score, missing on {}",
-                    r.chunk.id.as_str(),
+                    x.breakdown.dense.is_some(),
+                    "pure rerank: every result must carry the dense score for traceability"
                 );
             }
+            // Bridge-passage property: the chunk with the most "gamma"
+            // tokens (highest cosine vs the query embedding pointing at
+            // gamma) wins #1, even though it's BM25-worst for "alpha".
+            assert_eq!(
+                out[0].chunk.id.as_str(),
+                "a2",
+                "pure rerank: dense winner (most 'gamma') must rank #1 even though BM25 ranks it last; got {:?}",
+                out.iter().map(|r| r.chunk.id.as_str()).collect::<Vec<_>>()
+            );
 
-            // Count parity across top_k values: RRF preserves the candidate
-            // count from the pool, never truncating below what lexical would
-            // return on the same indexed corpus.
+            // Count parity across top_k values is still preserved — the pool
+            // has 5 chunks, top_k≤pool yields top_k results.
             for k in [1usize, 2, 3, 5] {
                 let lex = r.bm25.retrieve(&q, k).await.unwrap();
                 let hyb = r.retrieve(&q, k).await.unwrap();
                 assert_eq!(
                     hyb.len(),
                     lex.len(),
-                    "issue #1: top_k={}: hybrid count {} != lexical count {}",
+                    "top_k={}: hybrid count {} != lexical count {}",
                     k,
                     hyb.len(),
                     lex.len(),

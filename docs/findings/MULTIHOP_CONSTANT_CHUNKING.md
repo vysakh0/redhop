@@ -92,34 +92,29 @@ facts. Bridge paragraphs frequently share *no* lexical content with
 the question (they connect via named entities to a different
 paragraph). BM25 buries them at rank 15+. RRF can't recover.
 
-## Actionable: a pure-rerank hybrid mode
+## Actionable, applied: pure rerank is now the default
 
-A single design change addresses two findings at once:
+**Fix landed in this branch.** `LocalRerankRetriever::retrieve` no
+longer RRF-fuses BM25 with dense; the top-K is taken from the
+dense-sorted candidate pool, with any unembedded (code) chunks from
+BM25 appended at the tail to preserve issue-#1 safety.
 
-| Finding | What it costs today | What pure-rerank would fix |
-|---|---|---|
-| [MULTIHOP_CONSTANT_CHUNKING](MULTIHOP_CONSTANT_CHUNKING.md) (this) | RRF buries bridge passages, −10 pts on MuSiQue hybrid | Pure dense sort surfaces them |
-| [HYBRID_LATENCY_PROFILE](HYBRID_LATENCY_PROFILE.md) | Hybrid eagerly embeds all chunks at index time, paying 220ms upfront per document | Pure-rerank only embeds the BM25 top-K (5-20 chunks) per query |
+| Workload | Before (RRF) ≥0.8 | After (pure rerank) ≥0.8 | Δ |
+|---|---:|---:|---:|
+| HotpotQA | 83% | 81% | **−2** |
+| MuSiQue | 26% | 34% | **+8** |
 
-Proposed: a new strategy option like
-`retrieval="hybrid_rerank"` (or `Document.from_text(..., retrieval="hybrid",
-hybrid_mode="pure_rerank")`) that:
+n=100 each, same bench harness, same bge-small embedder, same
+candidate_k=20, same 400-token budget. Predicted lift was +10 on
+MuSiQue (from the controlled-rerank measurement in this finding); we
+got +8, close enough. The HotpotQA −2 is the cost of dropping the RRF
+safety: when BM25 already ranks bridges OK (HotpotQA-shape), RRF was
+giving us a small lift. We chose to take that loss because the MuSiQue
+benefit (+8) is 4× larger than the HotpotQA cost.
 
-1. Builds BM25 index at `from_text()` time (cheap, already done).
-2. **Skips upfront chunk embedding.** No model load, no forward pass.
-3. At each query: BM25 retrieves top-K; embeds those K + the query;
-   sorts by cosine; returns.
-
-Expected impact on the two findings:
-
-- MuSiQue ≥0.8: 26% → ~36% (lift from constant-chunking matrix).
-- Per-query latency: 240-467ms → roughly 70-100ms (matches LangChain
-  hybrid in the competitor probe; same model, same workload size).
-
-**Not implemented in this finding** — this is the diagnostic. The
-design call (whether to keep RRF as the default, expose pure-rerank as
-an option, or switch defaults) belongs to a 0.3.2 release decision
-with a follow-up probe to confirm the predicted lift.
+Latency unchanged: this commit only swapped the fusion step. The
+parallel HYBRID_LATENCY_PROFILE finding (RedHop hybrid is 2-5× slower
+than competitors') remains open — lazy embedding is a separate change.
 
 ## What this changes in our positioning
 

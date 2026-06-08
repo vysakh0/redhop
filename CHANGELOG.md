@@ -97,6 +97,27 @@ retired across all user-facing docs.
   what `context_with_rewrites` is) from runtime branching among options
   (still out of scope).
 
+### Changed (runtime behavior)
+
+- **`retrieval="hybrid"` is now pure rerank, not RRF fusion.** The
+  previous behavior fused BM25 and dense rankings with Reciprocal Rank
+  Fusion (RRF) to guarantee BM25-strong hits never got demoted by the
+  dense step (the original "issue #1" safety). The
+  [MULTIHOP_CONSTANT_CHUNKING](docs/findings/MULTIHOP_CONSTANT_CHUNKING.md)
+  probe revealed RRF was burying compositional-multi-hop bridge
+  passages (low BM25 rank + high dense rank get averaged-down). Now
+  `LocalRerankRetriever::retrieve` returns the dense-sorted top_K
+  directly; unembedded code chunks from the BM25 pool are appended at
+  the tail to preserve the issue-#1 safety for them. Measured impact
+  (n=100 each, same `bench/multihop_hybrid_competitors_probe.py`
+  harness): MuSiQue ≥0.8 retention 26% → **34% (+8)**, HotpotQA ≥0.8
+  83% → **81% (−2)**. Net positive: 4× the MuSiQue benefit vs the
+  HotpotQA cost. Two unit tests updated to assert dense-winner ordering
+  rather than RRF-method markers
+  ([crates/redhop/src/retrieval/local_rerank.rs](crates/redhop/src/retrieval/local_rerank.rs)).
+  Users who want explicit RRF fan-out can still construct
+  `HybridRetriever::rrf(...)` from `crate::retrieval::hybrid`.
+
 ### Fixed
 
 - **Two latent test-compile breaks under `--no-default-features`**, both

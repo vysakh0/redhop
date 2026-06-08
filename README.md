@@ -81,16 +81,16 @@ multi-hop — the bottleneck is the lexical-vs-semantic gap on bridge
 passages, and only dense rerank pierces it.
 
 **Apples-to-apples hybrid vs LangChain/LlamaIndex** (same bge-small model
-on all three, n=100): HotpotQA — RedHop hybrid wins (83% ≥0.8 vs
-LangChain hybrid 77%, LlamaIndex hybrid 67%). MuSiQue — LangChain hybrid
-wins (39% ≥0.8 vs RedHop 26%). Constant-chunking 9-arm matrix isolated
-the cause: **the chunker is the lever** (RedHop's wins HotpotQA by 20pts;
-ties LangChain's on MuSiQue at 36%); the BM25 implementation barely
-matters. **The remaining 10-point MuSiQue gap is in RedHop's RRF-based
-hybrid fusion** — when a bridge passage has low BM25 rank but high dense
-rank, RRF averages them down. A pure-rerank mode would close it AND fix
-the 2-5× latency profile (no upfront chunk embedding). Tracked for
-0.3.2. See [`MULTIHOP_HYBRID_COMPETITORS.md`](docs/findings/MULTIHOP_HYBRID_COMPETITORS.md)
+on all three, n=100, post pure-rerank fix in this branch): HotpotQA —
+RedHop hybrid wins (**81%** ≥0.8 vs LangChain 77%, LlamaIndex 67%).
+MuSiQue — LangChain still leads narrowly (39% ≥0.8 vs RedHop **34%**,
+LlamaIndex 31%). The previously-published RedHop hybrid numbers
+(HotpotQA 83%, MuSiQue 26%) used RRF fusion, which buried compositional
+bridge passages — now replaced with pure dense rerank (BM25 top-K → dense
+sort, code chunks preserved at the tail). Net: −2 HotpotQA, +8 MuSiQue,
+closer to the frontrunner on both. Latency unchanged (2-5× slower than
+competitors' hybrid) — separate work. See
+[`MULTIHOP_HYBRID_COMPETITORS.md`](docs/findings/MULTIHOP_HYBRID_COMPETITORS.md)
 + [`MULTIHOP_CONSTANT_CHUNKING.md`](docs/findings/MULTIHOP_CONSTANT_CHUNKING.md)
 + [`HYBRID_LATENCY_PROFILE.md`](docs/findings/HYBRID_LATENCY_PROFILE.md).
 

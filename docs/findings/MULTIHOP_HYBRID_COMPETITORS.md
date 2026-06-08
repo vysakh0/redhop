@@ -1,23 +1,31 @@
 # Multi-hop hybrid retrieval — RedHop vs LangChain vs LlamaIndex with the same dense model
 
-> **Status:** **Confirmed-mixed.** Apples-to-apples six-arm comparison
-> (RedHop / LangChain / LlamaIndex × {BM25, BM25+bge-small rerank}) on
-> HotpotQA + MuSiQue, n=100, identical budget and candidate_k. Result is
-> workload-shape dependent:
+> **Status:** **Confirmed-mixed; primary cause fixed in 0.3.1.**
+> Apples-to-apples six-arm comparison (RedHop / LangChain / LlamaIndex
+> × {BM25, BM25+bge-small rerank}) on HotpotQA + MuSiQue, n=100,
+> identical budget and candidate_k.
 >
-> - **HotpotQA: RedHop hybrid wins** (≥0.8 retention 83% vs LangChain
->   hybrid 77%, LlamaIndex hybrid 67% — the latter showed zero lift over
->   its own BM25 baseline).
-> - **MuSiQue: LangChain hybrid wins** (≥0.8 39% vs LlamaIndex 31%,
->   RedHop hybrid only 26%). RedHop is the **weakest** hybrid here.
-> - **RedHop's hybrid is 2-5× slower** than the competitors' hybrid
->   (240-467ms p50 vs 60-100ms p50).
+> **Original measurement (RRF-fused hybrid):**
 >
-> The previous-pass headline ("RedHop's `retrieval="hybrid"` lifts +12
-> on HotpotQA") is reproduced, but the audit framing — "is +12 a
-> property of dense rerank generally?" — is now answered: it's both.
-> RedHop's BM25 candidate selection compounds with dense rerank on
-> HotpotQA's shape; LangChain's compounds better on MuSiQue's.
+> - HotpotQA: RedHop hybrid 83%, LangChain 77%, LlamaIndex 67% (no lift).
+> - MuSiQue: LangChain 39%, LlamaIndex 31%, **RedHop 26%** (worst).
+>
+> The MuSiQue gap was traced to RedHop's RRF fusion in
+> [`LocalRerankRetriever`](../../crates/redhop/src/retrieval/local_rerank.rs)
+> ([MULTIHOP_CONSTANT_CHUNKING](MULTIHOP_CONSTANT_CHUNKING.md) probe).
+> The fix landed in this branch (pure rerank now default).
+>
+> **Re-measured after fix (pure rerank, same probe):**
+>
+> - HotpotQA: RedHop hybrid **81%**, LangChain 77%, LlamaIndex 67%. Still
+>   winning, lead narrowed by 2pt (the cost of dropping RRF safety).
+> - MuSiQue: LangChain 39%, RedHop **34%** (was 26%, **+8 from fix**),
+>   LlamaIndex 31%. Closed most of the gap; LangChain still leads by 5
+>   on MuSiQue.
+>
+> Latency unchanged by this fix (240-467ms p50 RedHop vs 60-100ms p50
+> competitors). The latency profile remains the open follow-up
+> ([HYBRID_LATENCY_PROFILE](HYBRID_LATENCY_PROFILE.md)).
 
 ## TL;DR
 
