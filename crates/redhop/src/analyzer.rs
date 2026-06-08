@@ -300,6 +300,54 @@ impl Analyzer for SnowballAnalyzer {
     }
 }
 
+// ── RawAnalyzer ─────────────────────────────────────────────────────────────
+
+/// Minimal "no-language-processing" analyzer. The Tantivy pipeline is
+/// just `SimpleTokenizer` → `AsciiFoldingFilter` → `LowerCaser` — no
+/// CamelCase splitting, no RemoveLongFilter, no stopword filtering, no
+/// stemming.
+///
+/// **When to use this.** You want LangChain/`bm25s`-style warm-query
+/// latency (~0.5-1ms vs RedHop's default ~3ms) and you're willing to
+/// pay the recall cost:
+///
+/// - `"highlighting"` will NOT match a document containing `"highlight"`
+///   (no stem).
+/// - `"compressVideo"` will NOT match `"compress"` or `"video"` (no
+///   CamelCase split). Code-search workloads should keep the default.
+/// - Stopwords stay in both index and query, contributing to BM25
+///   scoring like any other token.
+///
+/// **What you keep.** Case-insensitive matching (`"Highlight"` matches
+/// `"highlight"`) and basic Unicode diacritic folding (`"café"` matches
+/// `"cafe"`). The minimum every BM25 implementation should do.
+///
+/// **Measured tradeoff** (see `docs/findings/FRAMEWORK_MULTIQUERY.md`):
+/// RedHop's default `SnowballAnalyzer::english()` lands at 3.3ms p50
+/// warm queries with 77% ≥0.8 CUAD retention; `RawAnalyzer` lands
+/// closer to 0.5ms but loses some recall on inflected forms. The
+/// chunker still dominates retention — see
+/// `docs/findings/MULTIHOP_CONSTANT_CHUNKING.md`.
+#[derive(Clone, Debug, Default)]
+pub struct RawAnalyzer;
+
+impl RawAnalyzer {
+    /// Construct the raw analyzer. Same as [`RawAnalyzer::default`].
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Analyzer for RawAnalyzer {
+    fn name(&self) -> &str {
+        "raw"
+    }
+
+    fn build_text_analyzer(&self) -> TextAnalyzer {
+        crate::retrieval::build_raw_pipeline()
+    }
+}
+
 // ── Shared "default English instance" ──────────────────────────────────────
 
 /// A process-wide cloned `Arc<dyn Analyzer>` pointing at

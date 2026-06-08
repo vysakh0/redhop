@@ -1,0 +1,21 @@
+/Users/vysakh/projects/neorag1/bench/compare_multiquery.py:39: DeprecationWarning: `langchain-community` is being sunset and is no longer actively maintained. See https://github.com/langchain-ai/langchain-community/issues/674 for details and migration guidance toward standalone integration packages.
+  from langchain_community.retrievers import BM25Retriever as LCBm25
+
+================================================================================================
+  CUAD multi-query — 10 contracts × 10 questions each = 100 queries
+  budget=2000 tok, candidate_k=40
+================================================================================================
+  system           cold p50   warm p50   warm p99      total   mean recall   ≥0.8
+  --------------------------------------------------------------------------------
+  redhop[topk]           1ms       3.1ms         9ms       400ms          0.87    77%
+  redhop[raw]            1ms       1.3ms         4ms       210ms          0.91    83%
+  langchain              4ms       0.3ms         1ms       118ms          0.83    67%
+  llamaindex            16ms       0.5ms         1ms       332ms          0.91    83%
+
+Interpretation:
+  - cold p50: per-doc index-build time. Paid ONCE per doc.
+  - warm p50: per-query time AFTER the index exists. Paid M times per doc.
+  - total:    end-to-end wall-clock for all docs × queries.
+    For the chatbot/KB pattern, this is the number that matters.
+  - mean recall + ≥0.8: same retention metric as bench/compare.py.
+    Verifies the multi-query split didn't drift the rankings.

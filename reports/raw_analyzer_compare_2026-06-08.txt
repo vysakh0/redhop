@@ -1,0 +1,34 @@
+
+==================================================================
+  RedHop default (English Snowball) vs language='raw' (no stem)
+==================================================================
+
+  CUAD (templated, exact-match queries)  (n=100, budget=2000, candidate_k=40)
+  analyzer              mean recall   ≥0.8   p50 ms
+  --------------------------------------------------------
+  english (default)            0.92    86%     6.4
+  raw                          0.97    91%     3.8
+  Δ (raw − english)           +0.04    +5     -2.6
+
+  HotpotQA (natural-language, 2-hop)  (n=100, budget=2000, candidate_k=40)
+  analyzer              mean recall   ≥0.8   p50 ms
+  --------------------------------------------------------
+  english (default)            1.00   100%     2.9
+  raw                          1.00   100%     2.3
+  Δ (raw − english)           +0.00    +0     -0.7
+
+  MuSiQue (natural-language, compositional)  (n=100, budget=2000, candidate_k=40)
+  analyzer              mean recall   ≥0.8   p50 ms
+  --------------------------------------------------------
+  english (default)            0.95    90%     3.4
+  raw                          0.99    97%     2.3
+  Δ (raw − english)           +0.04    +7     -1.1
+
+Interpretation:
+  - 'raw' should win CUAD: queries use exact clause names from
+    contracts; stemming adds noise (collisions like settles/settling)
+    without recovering any missed matches.
+  - 'raw' should LOSE on HotpotQA/MuSiQue: users paraphrase, so
+    'highlighted' vs 'highlight' matches need stemming to fire.
+  - If both predictions hold: 'language' becomes a real workload-
+    aware knob, not just an i18n parameter.

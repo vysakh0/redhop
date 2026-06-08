@@ -94,6 +94,23 @@ def redhop_query(doc, query: str) -> str:
     return doc.context(query).text()
 
 
+def redhop_raw_index(doc_text: str):
+    """Same as redhop_index but with language='raw' — minimal Tantivy
+    pipeline (no stemming, no stopword filter, no CamelCase). Opt-in path
+    for users who want LangChain-style warm-query latency."""
+    return redhop.Document.from_text(
+        doc_text,
+        strategy="raw_topk",
+        token_budget=BUDGET,
+        candidate_k=CANDIDATE_K,
+        language="raw",
+    )
+
+
+def redhop_raw_query(doc, query: str) -> str:
+    return doc.context(query).text()
+
+
 def langchain_index(doc_text: str):
     chunks = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_TOKENS * 4, chunk_overlap=40
@@ -130,6 +147,7 @@ def llamaindex_query(retr, query: str) -> str:
 
 SYSTEMS = [
     ("redhop[topk]", redhop_index, redhop_query),
+    ("redhop[raw]", redhop_raw_index, redhop_raw_query),
     ("langchain", langchain_index, langchain_query),
     ("llamaindex", llamaindex_index, llamaindex_query),
 ]

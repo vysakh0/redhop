@@ -30,6 +30,7 @@ pub use bm25::Bm25Retriever;
 // `crate::analyzer::SnowballAnalyzer::build_text_analyzer` to keep all the
 // generic intermediate Tantivy types private to bm25.rs.
 pub use bm25::build_redhop_pipeline;
+pub use bm25::build_raw_pipeline;
 pub use dense::DenseRetriever;
 pub use fusion::{reciprocal_rank_fusion, weighted_sum_fusion, FusionStrategy};
 pub use hybrid::HybridRetriever;

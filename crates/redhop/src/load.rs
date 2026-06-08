@@ -183,11 +183,14 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         None => base.context.strategy,
     };
     let chunk_size = o.chunk_size.unwrap_or(128);
-    // Route LoadOptions::language → SnowballAnalyzer builtin. Unknown names
+    // Route LoadOptions::language → SnowballAnalyzer builtin, or `"raw"` /
+    // `"none"` → RawAnalyzer (minimal pipeline; trades recall for warm-query
+    // latency, see docs/findings/FRAMEWORK_MULTIQUERY.md). Unknown names
     // error out so a typo can't silently fall back to English (which would
     // hide the misconfiguration).
-    let analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer> = match &o.language {
+    let analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer> = match o.language.as_deref() {
         None => base.context.analyzer.clone(),
+        Some("raw") | Some("none") => std::sync::Arc::new(crate::analyzer::RawAnalyzer::new()),
         Some(name) => match crate::analyzer::SnowballAnalyzer::by_name(name) {
             Some(a) => std::sync::Arc::new(a),
             None => {
@@ -195,7 +198,8 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
                     "unknown language {name:?}; supported: arabic, danish, dutch, \
                      english, finnish, french, german, greek, hungarian, italian, \
                      norwegian, portuguese, romanian, russian, spanish, swedish, \
-                     tamil, turkish"
+                     tamil, turkish — or 'raw' / 'none' for the minimal \
+                     no-stemming pipeline"
                 )));
             }
         },

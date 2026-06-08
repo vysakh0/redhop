@@ -111,6 +111,18 @@ pub fn build_redhop_pipeline(stopwords: Vec<String>, language: Language) -> Text
         .build()
 }
 
+/// The minimal Tantivy pipeline used by [`crate::analyzer::RawAnalyzer`]:
+/// `SimpleTokenizer` → `AsciiFoldingFilter` → `LowerCaser`. No CamelCase
+/// splitting, no RemoveLongFilter, no stopword filtering, no stemming.
+/// Use when warm-query latency matters more than inflectional recall —
+/// see `docs/findings/FRAMEWORK_MULTIQUERY.md` for the measured tradeoff.
+pub fn build_raw_pipeline() -> TextAnalyzer {
+    TextAnalyzer::builder(SimpleTokenizer::default())
+        .filter(AsciiFoldingFilter)
+        .filter(LowerCaser)
+        .build()
+}
+
 impl Bm25Retriever {
     /// Construct a new in-memory BM25 retriever using the default English
     /// Snowball analyzer (preserves the 0.1.4 behavior bit-for-bit). For a

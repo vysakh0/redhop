@@ -749,19 +749,24 @@ fn doc_config(
         Some(s) => strategy_from_str(&s)?,
         None => base.context.strategy,
     };
-    // Route language string → SnowballAnalyzer builtin. Errors on unknown
-    // names so a typo'd `"germann"` surfaces, not silently falls back to
-    // English ranking.
-    let analyzer: std::sync::Arc<dyn redhop::analyzer::Analyzer> = match language {
+    // Route language string → SnowballAnalyzer builtin, or `"raw"`/`"none"`
+    // → RawAnalyzer (minimal pipeline; faster warm queries, no stemming —
+    // see docs/findings/FRAMEWORK_MULTIQUERY.md). Errors on unknown names
+    // so a typo'd `"germann"` surfaces, not silently falls back.
+    let analyzer: std::sync::Arc<dyn redhop::analyzer::Analyzer> = match language.as_deref() {
         None => base.context.analyzer.clone(),
-        Some(name) => match redhop::analyzer::SnowballAnalyzer::by_name(&name) {
+        Some("raw") | Some("none") => {
+            std::sync::Arc::new(redhop::analyzer::RawAnalyzer::new())
+        }
+        Some(name) => match redhop::analyzer::SnowballAnalyzer::by_name(name) {
             Some(a) => std::sync::Arc::new(a),
             None => {
                 return Err(PyValueError::new_err(format!(
                     "unknown language '{name}'; supported: arabic, danish, dutch, \
                      english, finnish, french, german, greek, hungarian, italian, \
                      norwegian, portuguese, romanian, russian, spanish, swedish, \
-                     tamil, turkish"
+                     tamil, turkish — or 'raw' / 'none' for the minimal \
+                     no-stemming pipeline"
                 )));
             }
         },
