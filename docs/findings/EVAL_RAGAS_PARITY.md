@@ -4,7 +4,8 @@
 > gap to Ragas has landed three of four phases — Tier-1 lexical
 > proxies, the Judge trait scaffolding, and Tier-2 LLM-judged metrics
 > via Python `Judge.from_callable(...)`. Phase 4 adds `summarize()`
-> for test-set aggregation. Node Tier-2 callback surface deferred.
+> for test-set aggregation. Node Tier-2 callback surface ships in Phase 5
+> as the async `evaluateWithJudge(...)` entry-point.
 >
 > The goal isn't to BE Ragas — it's to **ship the Ragas metric set
 > plus what's distinctive about RedHop**, in-process with no extra
@@ -26,7 +27,7 @@
 | **Determinism in CI** | requires LLM (non-deterministic + paid) | Tier 1 deterministic, Tier 2 deterministic via `Judge.cached()` |
 | **In-process** | needs OpenAI/HF client setup | yes (Tier 1); yes with BYO client (Tier 2) |
 | **Single dependency** | Ragas + HF + pandas + LLM SDK | one package, optional LLM SDK only when using Tier 2 |
-| **Multi-language** | Python only | Python (full), Node (Tier 1 + read-only Tier 2 fields), Rust |
+| **Multi-language** | Python only | Python (full), Node (full — Tier 1 sync `evaluate`, Tier 2 async `evaluateWithJudge`), Rust |
 
 ## The two-tier model
 
@@ -70,6 +71,43 @@ report = redhop.evaluate(query, ctx, answer=ans, gold_answer=gold)
 report = redhop.evaluate(query, ctx, answer=ans, gold_answer=gold, judge=judge)
 # .faithfulness_lexical AND .faithfulness_judged both populated; compare them.
 ```
+
+### Using Tier 2 from Node.js
+
+Same `Judge.fromCallable(fn).cached()` shape; the only API difference
+is that Node's Tier-2 entry-point is **async** (returns a Promise)
+because JS callbacks can't fire during a sync napi call. Sync
+`evaluate(...)` still works for Tier-1-only callers.
+
+```javascript
+const { OpenAI } = require("openai");
+const client = new OpenAI();
+
+const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+  const resp = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: system ?? "" },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0,
+  });
+  return parseFloat(resp.choices[0].message.content.trim());
+}, "gpt-4o-mini").cached();
+
+// In CI — Tier 1 only, sync.
+const report1 = redhop.evaluate(query, ctx, { answer, goldAnswer });
+
+// With a judge — async, populates Tier 1 + Tier 2.
+const report2 = await redhop.evaluateWithJudge(query, ctx, judge, {
+  answer, goldAnswer,
+});
+// report2.faithfulnessJudged, .relevancyJudged, .correctnessJudged
+```
+
+A JS-side exception in the callable leaves the corresponding `_judged`
+metric as `null` (same semantics as Python) — failure is isolated, the
+process doesn't crash, lexical fields stay populated.
 
 ## Test-set aggregation: `summarize(reports)`
 
@@ -165,11 +203,12 @@ the counter makes that visible.
   numeric comparison against Ragas's prompts on a standard workload.
   That bench is the right follow-up; it doesn't change the API shape
   either way.
-- **Node Tier-2 is read-only.** The `_judged` fields exist on the Node
-  `EvalReport` (so the shape is forward-compatible) but currently
-  always `null` from Node — the napi-rs callback surface needs
-  ThreadsafeFunction work to wire up a JS judge. Python is the canonical
-  binding for Tier-2 today.
+- **Node Tier-2 lives on the async `evaluateWithJudge` path.** Sync
+  `evaluate(...)` always leaves `_judged` as `null` because JS callbacks
+  can't safely fire during a sync napi call (single-threaded JS).
+  `evaluateWithJudge` is async and returns a Promise; same
+  `Judge.fromCallable(fn).cached()` shape as Python under the hood. See
+  the Node example in the "Node availability" section.
 - **Single Judge call per metric.** We don't decompose the answer into
   individual claims before judging (Ragas does, for faithfulness).
   Simpler prompt, lower cost, but potentially lower precision than a

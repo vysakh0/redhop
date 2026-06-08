@@ -295,10 +295,10 @@ const chunksFor = (text, id = "a") => [new Chunk(text, { id })];
   );
 }
 
-// Tier-2 _judged fields are exposed on the report but always null from
-// Node (the Judge callback surface ships in a future release; the Python
-// binding has it today). Pin the current state so a future Phase-4 wiring
-// can flip these assertions in one place.
+// `evaluate()` is the SYNC entry-point: Tier-1 lexical fields work,
+// Tier-2 _judged fields are always null here because a JS judge can't
+// safely fire during a sync napi call. Tier-2 lives on the async
+// `evaluateWithJudge` path — tested in judge.cjs.
 {
   const ctx = buildContext(
     "refund window",
@@ -309,13 +309,11 @@ const chunksFor = (text, id = "a") => [new Chunk(text, { id })];
     answer: "Thirty days.",
     goldAnswer: "thirty days",
   });
-  // Tier-2 _judged fields are currently always null in Node — no judge
-  // can be supplied. The fields are exposed on the report so adding the
-  // Node Judge surface in a future release is non-breaking.
-  assert.ok(r.faithfulnessJudged == null, "no Judge surface in Node yet");
+  // sync evaluate() never populates _judged. (For Tier-2, see judge.cjs.)
+  assert.ok(r.faithfulnessJudged == null, "sync evaluate cannot populate judged");
   assert.ok(r.relevancyJudged == null);
   assert.ok(r.correctnessJudged == null);
-  // Tier-1 lexical fields still work as before.
+  // Tier-1 lexical fields are always populated when `answer` is supplied.
   assert.ok(r.faithfulnessLexical != null);
   assert.ok(r.relevancyLexical != null);
   assert.ok(r.correctnessLexical != null);

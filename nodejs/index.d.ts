@@ -461,6 +461,14 @@ export interface EvalReport {
  */
 export declare function evaluate(query: string, context: BuiltContext, options?: EvaluateOptions | undefined | null): EvalReport
 /**
+ * Options for [`evaluate_with_judge`] — same as `EvaluateOptions` plus
+ * a `judge` field. Distinct type because napi-rs doesn't allow object-
+ * type options with class-typed fields directly; we accept the Judge
+ * via the function-level signature instead and split the options into
+ * the existing struct (free of class types) + a separate Judge arg.
+ */
+export declare function evaluateWithJudge(query: string, context: BuiltContext, judge: Judge, options?: EvaluateOptions | undefined | null): Promise<EvalReport>
+/**
  * Optional fields for the [`Chunk`] constructor's options bag.
  *
  * `metadata` is an open object (JSON-compatible values). Known keys are
@@ -765,6 +773,49 @@ export declare class Vocabulary {
   enrich(chunk: string): EnrichResult
   /** Number of equivalence classes compiled. */
   get length(): number
+}
+/**
+ * Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
+ * pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
+ * pass to `evaluateWithJudge(..., { judge })`. Call `.cached()` to
+ * memoize identical prompts across `evaluateWithJudge` calls — useful
+ * for CI determinism and avoiding double-billing on re-runs.
+ *
+ * ```js
+ * // The callable: (prompt, system) → number in [0, 1] or a Promise of one.
+ * const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+ *   const resp = await openai.chat.completions.create({ ... });
+ *   return parseFloat(resp.choices[0].message.content.trim());
+ * }, "gpt-4o-mini").cached();
+ *
+ * const report = await redhop.evaluateWithJudge(query, ctx, {
+ *   answer: "Thirty days from purchase.",
+ *   goldAnswer: "thirty days",
+ *   judge,
+ * });
+ * ```
+ */
+export declare class Judge {
+  /**
+   * Wrap a JS callable as a Judge. The callable is invoked as
+   * `callable(prompt, system) -> number | Promise<number>`. The
+   * returned value is normalized to `[0, 1]` via the same parser
+   * the Rust core uses (`judge::parse_score` accepts floats,
+   * percentages, "yes"/"no").
+   *
+   * `name` namespaces the cache key — swap it when you swap models
+   * so cached `gpt-4o-mini` scores don't reappear under
+   * `claude-haiku`.
+   */
+  static fromCallable(callable: (err: Error | null, arg0: string, arg1?: string | undefined | null) => any, name?: string | undefined | null): Judge
+  /**
+   * Return a NEW Judge wrapping this one with an in-memory cache.
+   * Identical `(prompt, system)` pairs hit the cache instead of
+   * re-calling the JS callable.
+   */
+  cached(): Judge
+  /** Stable identifier used in the cache key. */
+  get name(): string
 }
 /**
  * One unit of content in a [`Document`] — the construction primitive

@@ -14,13 +14,21 @@ description = "Node.js bindings for RedHop context optimization"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", default-features = false, features = ["napi6", "serde-json"] }
+# napi6 + serde-json from before. tokio_rt gives us an embedded tokio
+# runtime for `#[napi]` async functions — used by `evaluateWithJudge` to
+# drive the Tier-2 LLM-judged metrics from a JS callable without
+# blocking the JS event loop (see EVAL_RAGAS_PARITY.md Phase 5).
+napi = { version = "2", default-features = false, features = ["napi6", "serde-json", "tokio_rt"] }
 napi-derive = "2"
 redhop = { path = "../crates/redhop", features = ["files", "semantic"] }
 # Used by `context_economics` to serialize the report as a JSON string for
 # the JS side to `JSON.parse`. Already a transitive dep via redhop, just
 # made explicit here.
 serde_json = "1"
+# tokio used by `evaluateWithJudge` to spawn the eval onto a blocking
+# worker so the JS event loop can service the judge callback. Same
+# runtime napi-rs already uses internally via the tokio_rt feature.
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
 
 [build-dependencies]
 napi-build = "2"

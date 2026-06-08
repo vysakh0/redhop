@@ -1015,10 +1015,14 @@ pub fn evaluate(
             gold_answer: a,
         },
     };
-    // Pass `None` for the judge — the Node binding doesn't surface the
-    // Judge callable wiring yet. Python parity for Tier-2 ships in this
-    // release; Node Tier-2 is queued for the next eval-roadmap phase.
+    // Sync evaluate intentionally passes `None` for the judge — JS
+    // callbacks can't safely fire during a sync napi call. Use
+    // `evaluateWithJudge` (async) for Tier-2 metrics.
     let r = redhop::evaluate(&q, &context.inner, opts.answer.as_deref(), gold, None);
+    eval_report_from_rust(r)
+}
+
+fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
     EvalReport {
         context_recall: r.context_recall.map(|v| v as f64),
         context_precision: r.context_precision.map(|v| v as f64),
@@ -1037,6 +1041,163 @@ pub fn evaluate(
         estimated_waste_tokens: r.estimated_waste_tokens as u32,
         overall: r.overall as f64,
     }
+}
+
+// ── Tier-2: JS-callable Judge for `evaluateWithJudge` ───────────────────────
+//
+// The Tier-2 metrics need a way for Rust to call into JS while
+// `redhop::evaluate` runs. JS is single-threaded — we can't call back
+// into the JS engine while Rust is holding the napi main-thread call.
+// Standard napi-rs pattern: wrap the JS function as a
+// `ThreadsafeFunction` (which is `Send + Sync` and can be called from
+// any thread) and run `redhop::evaluate` on a `spawn_blocking` worker
+// so the JS event loop is free to service the callback.
+
+use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
+
+/// Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
+/// pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
+/// pass to `evaluateWithJudge(..., { judge })`. Call `.cached()` to
+/// memoize identical prompts across `evaluateWithJudge` calls — useful
+/// for CI determinism and avoiding double-billing on re-runs.
+///
+/// ```js
+/// // The callable: (prompt, system) → number in [0, 1] or a Promise of one.
+/// const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+///   const resp = await openai.chat.completions.create({ ... });
+///   return parseFloat(resp.choices[0].message.content.trim());
+/// }, "gpt-4o-mini").cached();
+///
+/// const report = await redhop.evaluateWithJudge(query, ctx, {
+///   answer: "Thirty days from purchase.",
+///   goldAnswer: "thirty days",
+///   judge,
+/// });
+/// ```
+#[napi]
+pub struct Judge {
+    inner: std::sync::Arc<dyn redhop::judge::Judge>,
+}
+
+#[napi]
+impl Judge {
+    /// Wrap a JS callable as a Judge. The callable is invoked as
+    /// `callable(prompt, system) -> number | Promise<number>`. The
+    /// returned value is normalized to `[0, 1]` via the same parser
+    /// the Rust core uses (`judge::parse_score` accepts floats,
+    /// percentages, "yes"/"no").
+    ///
+    /// `name` namespaces the cache key — swap it when you swap models
+    /// so cached `gpt-4o-mini` scores don't reappear under
+    /// `claude-haiku`.
+    #[napi(factory)]
+    pub fn from_callable(
+        callable: ThreadsafeFunction<
+            (String, Option<String>),
+            ErrorStrategy::CalleeHandled,
+        >,
+        name: Option<String>,
+    ) -> Self {
+        let name = name.unwrap_or_else(|| "callable".to_string());
+        let tsfn = std::sync::Arc::new(callable);
+        let cb_name = name.clone();
+        let cb_tsfn = tsfn.clone();
+        let judge = redhop::judge::CallableJudge::with_name(
+            name,
+            move |req: &redhop::judge::JudgeRequest<'_>| {
+                let prompt = req.prompt.to_string();
+                let system = req.system.map(|s| s.to_string());
+                // Driving the JS callback from a `spawn_blocking` worker:
+                // call_async returns a Future the napi-rs runtime
+                // resolves on the JS main thread when the callback
+                // settles. block_on the future from this blocking
+                // thread is safe (we're not on the runtime's worker).
+                // A JS error / non-number return surfaces as Err(napi),
+                // which we convert to the Judge trait's Error.
+                let future = cb_tsfn.call_async::<f64>(Ok((prompt, system)));
+                let handle = tokio::runtime::Handle::current();
+                let score = handle.block_on(future).map_err(|e| {
+                    redhop::core::Error::Other(format!(
+                        "js judge future failed (thrown exception, \
+                         non-numeric return, or transport error): {e}"
+                    ))
+                })?;
+                Ok(redhop::judge::JudgeResponse {
+                    score: (score as f32).clamp(0.0, 1.0),
+                    raw_text: format!("{score}"),
+                    model: cb_name.clone(),
+                })
+            },
+        );
+        Self {
+            inner: std::sync::Arc::new(judge),
+        }
+    }
+
+    /// Return a NEW Judge wrapping this one with an in-memory cache.
+    /// Identical `(prompt, system)` pairs hit the cache instead of
+    /// re-calling the JS callable.
+    #[napi]
+    pub fn cached(&self) -> Self {
+        let arc_inner = self.inner.clone();
+        let forwarder = redhop::judge::CallableJudge::with_name(
+            self.inner.name().to_string(),
+            move |req: &redhop::judge::JudgeRequest<'_>| arc_inner.score(req),
+        );
+        let cached = redhop::judge::CachedJudge::new(forwarder);
+        Self {
+            inner: std::sync::Arc::new(cached),
+        }
+    }
+
+    /// Stable identifier used in the cache key.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+}
+
+/// Options for [`evaluate_with_judge`] — same as `EvaluateOptions` plus
+/// a `judge` field. Distinct type because napi-rs doesn't allow object-
+/// type options with class-typed fields directly; we accept the Judge
+/// via the function-level signature instead and split the options into
+/// the existing struct (free of class types) + a separate Judge arg.
+#[napi]
+pub async fn evaluate_with_judge(
+    query: String,
+    context: &BuiltContext,
+    judge: &Judge,
+    options: Option<EvaluateOptions>,
+) -> napi::Result<EvalReport> {
+    let opts = options.unwrap_or(EvaluateOptions {
+        answer: None,
+        gold_chunks: None,
+        gold_answer: None,
+    });
+    let ctx_inner = context.inner.clone();
+    let judge_inner = judge.inner.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let q = redhop::core::Query::new(&query);
+        let chunk_refs: Option<Vec<&str>> = opts
+            .gold_chunks
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect());
+        let gold = match (chunk_refs.as_deref(), opts.gold_answer.as_deref()) {
+            (None, None) => redhop::EvalGold::None,
+            (Some(c), None) => redhop::EvalGold::Chunks(c),
+            (None, Some(a)) => redhop::EvalGold::Answer(a),
+            (Some(c), Some(a)) => redhop::EvalGold::Both {
+                gold_chunk_ids: c,
+                gold_answer: a,
+            },
+        };
+        let judge_ref: Option<&dyn redhop::judge::Judge> =
+            Some(judge_inner.as_ref());
+        redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref)
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("evaluate join: {e}")))?;
+    Ok(eval_report_from_rust(result))
 }
 
 // ── Low-level context functions (caller brings their own chunks) ────────────
