@@ -1,3 +1,12 @@
+// Gated to the `files` feature: this integration suite assumes the
+// published build (files + semantic). The feature-matrix CI step runs
+// `cargo check -p redhop --no-default-features --all-targets`, and
+// quality_suite.rs uses `read_bytes_with` plus `serde_json::Value`
+// metadata-access patterns whose type inference relies on traits only
+// fully available under `files`. Lexical-only path is covered by
+// `--lib` tests in crates/redhop/src/*.
+#![cfg(feature = "files")]
+
 //! Retrieval quality suite — behavior-level tests organized by what a USER
 //! perceives, not by what the code looks like.
 //!

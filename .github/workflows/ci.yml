@@ -108,6 +108,22 @@ jobs:
         working-directory: nodejs
         run: npm test
 
+  feature-matrix:
+    # Sweeps the optional-feature combinations for the redhop core and
+    # the Python binding (the Node binding is single-config by design).
+    # The default `rust` job above only `cargo test`s the workspace at
+    # the default feature set; a bug behind `--no-default-features` or
+    # under `--features files` alone would slip through. The script also
+    # runs locally via `bash scripts/check_feature_matrix.sh`.
+    name: Feature matrix (Rust + Python bindings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run feature-matrix sweep
+        run: bash scripts/check_feature_matrix.sh
+
   ruff:
     name: Python lint + format (ruff)
     runs-on: ubuntu-latest

@@ -1,3 +1,9 @@
+// This whole test file exercises the `files` feature's extraction API
+// (`redhop::files::*`). Skip it when that feature is off — otherwise
+// `cargo check -p redhop --no-default-features --all-targets` fails on
+// unresolved imports.
+#![cfg(feature = "files")]
+
 use redhop::files::{extract, extract_bytes, ExtractError, MAX_FILE_BYTES};
 
 #[test]
