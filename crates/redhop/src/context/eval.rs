@@ -34,7 +34,7 @@
 //! let ctx = doc.context("refund window")?;
 //!
 //! // Self-evaluation only — no answer, no gold.
-//! let score = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None);
+//! let score = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
 //! println!("overall={:.2}  density={:.2}", score.overall, score.evidence_density);
 //!
 //! // With the LLM's answer — unlocks Tier-1 answer-quality proxies.
@@ -43,6 +43,7 @@
 //!     &ctx,
 //!     Some("Thirty days from purchase."),
 //!     EvalGold::Answer("thirty days"),
+//!     None,  // no judge — Tier-2 fields stay None
 //! );
 //! println!(
 //!     "faithfulness_lexical={:?}  correctness_lexical={:?}",
@@ -54,7 +55,71 @@
 use crate::analyzer::{default_english, Analyzer};
 use crate::context::{grounding_score, BuiltContext};
 use crate::core::Query;
+use crate::judge::{Judge, JudgeRequest};
 use std::collections::HashSet;
+
+// ── Tier-2 judge prompts ─────────────────────────────────────────────────
+//
+// Calibrated to be short, low-token, and parseable by `judge::parse_score`.
+// Every prompt asks for a single numeric reply ("Reply with the number
+// only.") so small models (gpt-4o-mini, claude-haiku, llama-8b) stay on
+// task. The system messages name a strict rubric so different vendors
+// interpret the task the same way.
+
+const FAITHFULNESS_SYSTEM: &str = "You are a strict, careful judge. Your job is to determine \
+    whether an ANSWER is supported by a given CONTEXT, with no claims beyond what the \
+    CONTEXT actually says. A claim is unsupported if it adds details not in the CONTEXT, \
+    even if those details are plausible.";
+
+const RELEVANCY_SYSTEM: &str = "You are a strict judge of whether an answer directly \
+    addresses a question. An off-topic, evasive, or partial-only answer should score below 1.0.";
+
+const CORRECTNESS_SYSTEM: &str = "You are a strict judge of factual correctness comparing a \
+    generated answer to a reference answer. Score on whether the generated answer conveys \
+    the same facts as the reference, allowing paraphrase but penalizing missing or \
+    contradictory facts.";
+
+fn faithfulness_prompt(context: &str, answer: &str) -> String {
+    format!(
+        "CONTEXT:\n{context}\n\nANSWER:\n{answer}\n\nIs every claim in the ANSWER supported \
+         by the CONTEXT? Reply with a single number from 0 (any claim fabricated or \
+         unsupported) to 1 (every claim supported). Reply with the number only."
+    )
+}
+
+fn relevancy_prompt(question: &str, answer: &str) -> String {
+    format!(
+        "QUESTION:\n{question}\n\nANSWER:\n{answer}\n\nDoes the ANSWER directly address the \
+         QUESTION? Reply with a single number from 0 (does not address) to 1 (fully \
+         addresses). Reply with the number only."
+    )
+}
+
+fn correctness_prompt(gold: &str, answer: &str) -> String {
+    format!(
+        "REFERENCE ANSWER:\n{gold}\n\nGENERATED ANSWER:\n{answer}\n\nDoes the GENERATED \
+         ANSWER convey the same facts as the REFERENCE ANSWER (paraphrase is fine; missing \
+         or contradicted facts hurt the score)? Reply with a single number from 0 \
+         (incorrect) to 1 (matches). Reply with the number only."
+    )
+}
+
+/// Call the judge with the given system + prompt, returning a normalized
+/// `[0, 1]` score (or `None` if the judge or the parser errors). The
+/// raw error is dropped because eval is best-effort — a single failed
+/// judge call shouldn't crash a whole evaluate(); the missing metric
+/// surfaces as `None` and the caller decides whether to retry or
+/// ignore.
+fn judge_score(judge: &dyn Judge, system: &str, prompt: &str) -> Option<f32> {
+    let req = JudgeRequest {
+        prompt,
+        system: Some(system),
+    };
+    match judge.score(&req) {
+        Ok(resp) => Some(resp.score.clamp(0.0, 1.0)),
+        Err(_) => None,
+    }
+}
 
 /// Naive sentence splitter for the lexical-faithfulness metric. Splits on
 /// `.`, `?`, `!` followed by whitespace, plus newlines. Drops empty
@@ -210,6 +275,32 @@ pub struct EvalReport {
     /// `gold_answer` were supplied.
     pub correctness_lexical: Option<f32>,
 
+    // ── Tier-2 LLM-judged answer-quality metrics ──
+    // Populated when the caller supplies BOTH an `answer` AND a `judge`.
+    // Each metric is one LLM call (cached by `CachedJudge` so re-runs are
+    // free). Stronger signals than the `_lexical` proxies above — catch
+    // paraphrase-correct answers, paraphrase-incorrect answers,
+    // confidently-wrong fabrications. A judge call that errors leaves
+    // the corresponding metric as `None`.
+    /// LLM-judged faithfulness: "is every claim in the answer supported
+    /// by the assembled context?" Score in `[0, 1]`. This is the real
+    /// hallucination-detection signal — strictly stronger than
+    /// `faithfulness_lexical`. `None` unless `answer` + `judge` were
+    /// supplied (and the judge call succeeded).
+    pub faithfulness_judged: Option<f32>,
+    /// LLM-judged relevancy: "does the answer directly address the
+    /// question?" Score in `[0, 1]`. Stronger than
+    /// `relevancy_lexical` (catches answers that share query terms
+    /// without actually answering). `None` unless `answer` + `judge`
+    /// were supplied.
+    pub relevancy_judged: Option<f32>,
+    /// LLM-judged correctness: "does the generated answer convey the
+    /// same facts as the gold answer?" Score in `[0, 1]`. Allows
+    /// paraphrase — strictly stronger than `correctness_lexical` which
+    /// only counts shared tokens. `None` unless `answer` + `gold_answer`
+    /// + `judge` were all supplied.
+    pub correctness_judged: Option<f32>,
+
     // ── self-evaluation metrics (always populated) ──
     /// Mean grounding score of the selected chunks against the query.
     /// Always in `[0, 1]`. The "how relevant is what we selected, on
@@ -260,6 +351,8 @@ pub struct EvalReport {
 /// | `gold` contains chunks | `context_recall`, `context_precision` |
 /// | `gold` contains an answer | `answer_token_recall` |
 /// | `answer` + `gold` contains an answer | `correctness_lexical` |
+/// | `answer` + `judge` | `faithfulness_judged`, `relevancy_judged` |
+/// | `answer` + `gold` contains an answer + `judge` | `correctness_judged` |
 ///
 /// **Self-eval vs gold-conditional — what evaluate actually tells you.**
 /// Without ground truth, `evaluate` populates *self-eval* fields. These
@@ -273,6 +366,7 @@ pub fn evaluate(
     ctx: &BuiltContext,
     answer: Option<&str>,
     gold: EvalGold<'_>,
+    judge: Option<&dyn Judge>,
 ) -> EvalReport {
     let analyzer = default_english();
 
@@ -365,6 +459,25 @@ pub fn evaluate(
         _ => None,
     };
 
+    // ── Tier-2 judged metrics ──
+    // Reuses the assembled-context string computed above for the
+    // lexical-faithfulness path so we don't re-concatenate.
+    let (faithfulness_judged, relevancy_judged, correctness_judged) = match (
+        answer.filter(|a| !a.trim().is_empty()),
+        judge,
+    ) {
+        (Some(a), Some(j)) => {
+            let assembled = assembled_for_answer.as_deref().unwrap_or("");
+            let f = judge_score(j, FAITHFULNESS_SYSTEM, &faithfulness_prompt(assembled, a));
+            let r = judge_score(j, RELEVANCY_SYSTEM, &relevancy_prompt(query.text.as_str(), a));
+            let c = gold_answer
+                .filter(|g| !g.trim().is_empty())
+                .and_then(|g| judge_score(j, CORRECTNESS_SYSTEM, &correctness_prompt(g, a)));
+            (f, r, c)
+        }
+        _ => (None, None, None),
+    };
+
     // ── Composite overall score ──
     // Weighted blend with gold-relative metrics dominating when present,
     // self-eval metrics dominating when not. Capped to [0, 1].
@@ -395,6 +508,21 @@ pub fn evaluate(
     if let Some(c) = correctness_lexical {
         add(c, 2.5);
     }
+    // Tier-2 judged metrics dominate when present (stronger signals than
+    // lexical proxies — they catch the failures lexical misses). When a
+    // _judged metric is present, its _lexical counterpart effectively
+    // becomes redundant; we still include both in the blend because
+    // _lexical is cheap and the disagreement between them is itself a
+    // signal the caller may want to see.
+    if let Some(f) = faithfulness_judged {
+        add(f, 4.0);
+    }
+    if let Some(r) = relevancy_judged {
+        add(r, 3.0);
+    }
+    if let Some(c) = correctness_judged {
+        add(c, 4.0);
+    }
     add(mean_grounding, 1.0);
     add(evidence_density, 1.0);
     add(retained_evidence_ratio, 1.0);
@@ -419,6 +547,9 @@ pub fn evaluate(
         faithfulness_lexical,
         relevancy_lexical,
         correctness_lexical,
+        faithfulness_judged,
+        relevancy_judged,
+        correctness_judged,
         mean_grounding,
         evidence_density,
         retained_evidence_ratio,
@@ -468,7 +599,7 @@ mod tests {
             "refund window",
             &[rr("a", "the refund window is thirty days")],
         );
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None);
+        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
         assert!(r.context_recall.is_none());
         assert!(r.context_precision.is_none());
         assert!(r.answer_token_recall.is_none());
@@ -495,6 +626,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Chunks(&["hit1", "hit2"]),
+        None,
         );
         assert_eq!(r.context_recall, Some(1.0));
         assert_eq!(r.context_precision, Some(1.0));
@@ -514,6 +646,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Chunks(&["hit", "missing"]), // "missing" never indexed
+            None,
         );
         assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold chunks present
         assert_eq!(r.context_precision, Some(0.5)); // 1 of 2 selected chunks is gold
@@ -533,6 +666,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("refunds within thirty days"),
+        None,
         );
         let recall = r.answer_token_recall.expect("answer recall populated");
         assert!(
@@ -557,6 +691,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::None,
+        None,
         );
         assert!(
             r.low_confidence,
@@ -575,7 +710,7 @@ mod tests {
         // chunks need to be retrieved" — vacuously perfect. Not the same as
         // EvalGold::None (which means "no gold available; skip the metric").
         let ctx = build("query", &[rr("a", "some text")]);
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&[]));
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&[]), None);
         assert_eq!(r.context_recall, Some(1.0));
         // precision is undefined when gold is empty — we report None here so
         // a caller doesn't accidentally treat 0 as a real precision number.
@@ -598,6 +733,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("thirty days"),
+        None,
         );
         assert!(r.context_recall.is_none());
         assert!(r.context_precision.is_none());
@@ -631,6 +767,7 @@ mod tests {
                 gold_chunk_ids: &["hit"],
                 gold_answer: "thirty days",
             },
+            None,
         );
         assert_eq!(r.context_recall, Some(1.0)); // "hit" is in the selection
         assert!(r.context_precision.is_some());
@@ -661,6 +798,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Chunks(&["hit", "missing"]),
+        None,
         );
         assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold present
         let p = r.context_precision.expect("precision populated");
@@ -692,13 +830,13 @@ mod tests {
         );
 
         // No gold — every self-eval field must be finite.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::None);
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::None, None);
         assert!(r.mean_grounding.is_finite());
         assert!(r.overall.is_finite());
         assert!((0.0..=1.0).contains(&r.overall));
 
         // Chunk-gold provided — recall must be 0 (nothing selected), not NaN.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&["expected"]));
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&["expected"]), None);
         assert_eq!(r.context_recall, Some(0.0));
         // precision on an empty selection is reported as 0.0 (not NaN) so
         // callers can treat the field as always-finite when chunk gold is
@@ -711,7 +849,7 @@ mod tests {
     #[test]
     fn tier1_metrics_none_when_no_answer_provided() {
         let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None);
+        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
         assert!(r.faithfulness_lexical.is_none());
         assert!(r.relevancy_lexical.is_none());
         assert!(r.correctness_lexical.is_none());
@@ -734,6 +872,7 @@ mod tests {
             &ctx,
             Some("The refund window is thirty days from purchase."),
             EvalGold::None,
+        None,
         );
         let f = r.faithfulness_lexical.expect("populated");
         assert!(
@@ -762,6 +901,7 @@ mod tests {
                   Schrödinger equations describe quantum states. \
                   Heisenberg uncertainty bounds measurement."),
             EvalGold::None,
+        None,
         );
         let f = r.faithfulness_lexical.expect("populated");
         assert!(
@@ -779,6 +919,7 @@ mod tests {
             &ctx,
             Some("The refund window is thirty days."),
             EvalGold::None,
+        None,
         );
         // Answer with zero query-term overlap — low relevancy.
         let off_topic = evaluate(
@@ -786,6 +927,7 @@ mod tests {
             &ctx,
             Some("Photosynthesis converts sunlight into glucose."),
             EvalGold::None,
+        None,
         );
         let r_on = on_topic.relevancy_lexical.expect("populated");
         let r_off = off_topic.relevancy_lexical.expect("populated");
@@ -804,6 +946,7 @@ mod tests {
             &ctx,
             Some("Thirty days from purchase."),
             EvalGold::None,
+        None,
         );
         assert!(r_answer_only.correctness_lexical.is_none());
 
@@ -813,6 +956,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("thirty days"),
+        None,
         );
         assert!(r_gold_only.correctness_lexical.is_none());
 
@@ -822,6 +966,7 @@ mod tests {
             &ctx,
             Some("Thirty days from purchase."),
             EvalGold::Answer("thirty days"),
+        None,
         );
         let c = r_both
             .correctness_lexical
@@ -839,6 +984,7 @@ mod tests {
             &ctx,
             Some("   "),
             EvalGold::Answer("thirty days"),
+        None,
         );
         assert!(r.faithfulness_lexical.is_none());
         assert!(r.relevancy_lexical.is_none());
@@ -869,5 +1015,171 @@ mod tests {
     fn split_sentences_empty_input() {
         let sents = split_sentences("");
         assert!(sents.is_empty());
+    }
+
+    // ── Tier-2 judged metrics (Phase 3) ─────────────────────────────────────
+
+    use crate::judge::{CallableJudge, Judge, JudgeRequest, JudgeResponse};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// Stub judge that returns a fixed score and counts invocations.
+    fn const_judge(score: f32, counter: Arc<AtomicUsize>) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync> {
+        CallableJudge::with_name("stub", move |_req| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(JudgeResponse {
+                score,
+                raw_text: format!("{score}"),
+                model: "stub".into(),
+            })
+        })
+    }
+
+    /// Stub judge that returns different scores per system prompt — so
+    /// faithfulness / relevancy / correctness can be distinguished.
+    fn keyed_judge(counter: Arc<AtomicUsize>) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync> {
+        CallableJudge::with_name("keyed", move |req| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            let score = match req.system.unwrap_or("") {
+                s if s.contains("supported by a given CONTEXT") => 0.7,  // faithfulness
+                s if s.contains("addresses a question") => 0.9,           // relevancy
+                s if s.contains("factual correctness") => 0.6,            // correctness
+                _ => 0.0,
+            };
+            Ok(JudgeResponse {
+                score,
+                raw_text: format!("{score}"),
+                model: "keyed".into(),
+            })
+        })
+    }
+
+    #[test]
+    fn tier2_metrics_none_when_no_judge() {
+        // Even with answer + gold supplied, _judged fields stay None
+        // unless a judge is passed.
+        let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("Thirty days."),
+            EvalGold::Answer("thirty days"),
+            None,
+        );
+        assert!(r.faithfulness_judged.is_none());
+        assert!(r.relevancy_judged.is_none());
+        assert!(r.correctness_judged.is_none());
+    }
+
+    #[test]
+    fn tier2_metrics_none_when_no_answer_even_with_judge() {
+        // Judge needs an answer to score — without one, no judged
+        // metrics are populated even if a judge is available.
+        let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = const_judge(1.0, counter.clone());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            None,
+            EvalGold::Answer("thirty days"),
+            Some(&judge),
+        );
+        assert!(r.faithfulness_judged.is_none());
+        assert!(r.relevancy_judged.is_none());
+        assert!(r.correctness_judged.is_none());
+        // And critically the judge wasn't called.
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn tier2_faithfulness_and_relevancy_fire_with_answer_and_judge() {
+        let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = keyed_judge(counter.clone());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("Thirty days from purchase."),
+            EvalGold::None,
+            Some(&judge),
+        );
+        assert_eq!(r.faithfulness_judged, Some(0.7));
+        assert_eq!(r.relevancy_judged, Some(0.9));
+        // correctness_judged requires a gold answer; without it stays None.
+        assert!(r.correctness_judged.is_none());
+        // Exactly 2 judge calls (faithfulness, relevancy).
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn tier2_correctness_judged_requires_gold_answer() {
+        let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = keyed_judge(counter.clone());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("Thirty days from purchase."),
+            EvalGold::Answer("thirty days"),
+            Some(&judge),
+        );
+        assert_eq!(r.correctness_judged, Some(0.6));
+        // 3 judge calls now (faithfulness, relevancy, correctness).
+        assert_eq!(counter.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn tier2_judge_error_leaves_metric_none_doesnt_panic() {
+        // A judge that always errors should not crash evaluate; the
+        // metric just stays None.
+        let ctx = build("refund window", &[rr("a", "refund window")]);
+        let judge = CallableJudge::with_name("err", |_req| {
+            Err(crate::core::Error::Other("transport".into()))
+        });
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("Thirty days."),
+            EvalGold::Answer("thirty days"),
+            Some(&judge),
+        );
+        assert!(r.faithfulness_judged.is_none());
+        assert!(r.relevancy_judged.is_none());
+        assert!(r.correctness_judged.is_none());
+        // The lexical and self-eval fields should still be populated.
+        assert!(r.faithfulness_lexical.is_some());
+        assert!(r.relevancy_lexical.is_some());
+        assert!(r.mean_grounding >= 0.0);
+    }
+
+    #[test]
+    fn tier2_judged_metrics_lift_overall_score() {
+        // A judge returning high scores should produce a higher overall
+        // than the same call without a judge — verifies the judged
+        // fields are actually wired into the composite.
+        let ctx = build("refund window", &[rr("a", "the refund window is thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let high_judge = const_judge(1.0, counter.clone());
+        let no_judge_overall = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("The refund window is thirty days."),
+            EvalGold::Answer("thirty days"),
+            None,
+        )
+        .overall;
+        let judge_overall = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("The refund window is thirty days."),
+            EvalGold::Answer("thirty days"),
+            Some(&high_judge),
+        )
+        .overall;
+        assert!(
+            judge_overall > no_judge_overall,
+            "perfect judged metrics must raise overall; judged={judge_overall}, no_judge={no_judge_overall}"
+        );
     }
 }

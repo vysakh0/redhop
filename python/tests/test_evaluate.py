@@ -381,3 +381,174 @@ def test_eval_report_tier1_field_types():
     assert isinstance(r.faithfulness_lexical, float)
     assert isinstance(r.relevancy_lexical, float)
     assert isinstance(r.correctness_lexical, float)
+
+
+# ─── Tier-2 LLM-judged metrics (Phase 3) ────────────────────────────────────
+# These use a stub callable judge so we never hit a real LLM in CI. The
+# Rust unit tests in crates/redhop/src/context/eval.rs are authoritative
+# on the metric semantics; here we guard the Judge.from_callable bridge
+# layer + the `judge=` kwarg on `evaluate`.
+
+
+def _stub_judge_returning(score: float, call_log: list):
+    """Build a Judge that always returns `score`, logging each call."""
+    def fn(prompt, system):
+        call_log.append((prompt, system))
+        return score
+    return redhop.Judge.from_callable(fn, name="stub")
+
+
+def test_tier2_metrics_none_when_no_judge():
+    """Without a judge, the _judged fields stay None even with all the
+    other ingredients present."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        gold_answer="thirty days",
+    )
+    assert r.faithfulness_judged is None
+    assert r.relevancy_judged is None
+    assert r.correctness_judged is None
+
+
+def test_tier2_metrics_populated_with_judge():
+    """Judge supplied → all three _judged metrics populated."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    calls = []
+    judge = _stub_judge_returning(0.85, calls)
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days from purchase.",
+        gold_answer="thirty days",
+        judge=judge,
+    )
+    assert r.faithfulness_judged is not None
+    assert r.relevancy_judged is not None
+    assert r.correctness_judged is not None
+    # 3 judge calls — one per metric.
+    assert len(calls) == 3
+    # All three metrics see the same stub score (clamped to [0,1]).
+    assert abs(r.faithfulness_judged - 0.85) < 0.01
+    assert abs(r.relevancy_judged - 0.85) < 0.01
+    assert abs(r.correctness_judged - 0.85) < 0.01
+
+
+def test_tier2_correctness_skipped_without_gold_answer():
+    """correctness_judged requires `gold_answer` AND `answer` AND `judge`.
+    Without gold, only faithfulness + relevancy fire (2 judge calls)."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    calls = []
+    judge = _stub_judge_returning(0.7, calls)
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        judge=judge,
+    )
+    assert r.faithfulness_judged is not None
+    assert r.relevancy_judged is not None
+    assert r.correctness_judged is None
+    assert len(calls) == 2
+
+
+def test_tier2_judge_cached_avoids_repeat_calls():
+    """Wrapping a judge in .cached() should serve identical
+    `(prompt, system)` pairs from cache on re-runs."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    calls = []
+    judge = _stub_judge_returning(0.9, calls).cached()
+    # First run — 3 calls.
+    redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        gold_answer="thirty days",
+        judge=judge,
+    )
+    assert len(calls) == 3
+    # Second run with identical inputs — cache should serve everything.
+    redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        gold_answer="thirty days",
+        judge=judge,
+    )
+    assert len(calls) == 3, f"cache should suppress re-calls; got {len(calls)} total"
+
+
+def test_tier2_judge_error_leaves_metric_none():
+    """A judge that raises an exception should leave the _judged fields
+    None — eval is best-effort, a transport error shouldn't crash."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+
+    def fail(prompt, system):
+        raise RuntimeError("transport error")
+
+    judge = redhop.Judge.from_callable(fail, name="err")
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        gold_answer="thirty days",
+        judge=judge,
+    )
+    assert r.faithfulness_judged is None
+    assert r.relevancy_judged is None
+    assert r.correctness_judged is None
+    # Lexical fields still populated — judge failure is isolated.
+    assert r.faithfulness_lexical is not None
+    assert r.relevancy_lexical is not None
+
+
+def test_tier2_judge_accepts_dict_return():
+    """The callable may return a dict {score, raw_text?, model?} instead
+    of a bare float — useful when the user wants to log raw_text."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+
+    def rich(prompt, system):
+        return {"score": 0.55, "raw_text": "0.55 because…", "model": "fake-gpt"}
+
+    judge = redhop.Judge.from_callable(rich, name="rich")
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        judge=judge,
+    )
+    assert r.faithfulness_judged is not None
+    assert abs(r.faithfulness_judged - 0.55) < 0.01
+
+
+def test_judge_repr_includes_name():
+    judge = redhop.Judge.from_callable(lambda p, s: 0.5, name="myname")
+    rep = repr(judge)
+    assert "Judge" in rep
+    assert "myname" in rep

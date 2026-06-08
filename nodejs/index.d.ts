@@ -396,6 +396,24 @@ export interface EvalReport {
    * `answer` and `goldAnswer` were supplied.
    */
   correctnessLexical?: number
+  /**
+   * **Tier-2**: LLM-judged faithfulness. Currently always `null` from
+   * the Node binding — the `Judge` callback surface is only exposed
+   * on the Python binding today. Use the Python wheel for Tier-2
+   * metrics; Node parity is on the roadmap (Phase 4 of the eval
+   * rollout). See docs/findings/EVAL_RAGAS_PARITY.md.
+   */
+  faithfulnessJudged?: number
+  /**
+   * **Tier-2**: LLM-judged relevancy. See `faithfulness_judged` for
+   * the Node availability note.
+   */
+  relevancyJudged?: number
+  /**
+   * **Tier-2**: LLM-judged correctness. See `faithfulness_judged` for
+   * the Node availability note.
+   */
+  correctnessJudged?: number
   /** Mean grounding over selected chunks, in `[0, 1]`. */
   meanGrounding: number
   /** Fraction of context tokens that are query-relevant. */

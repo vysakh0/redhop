@@ -199,16 +199,31 @@ where
 /// SQLite on `Drop`, but for the first version we keep the surface
 /// small. Users who want persistence across processes can save the
 /// `EvalReport` after every run and skip the cache layer entirely.
-pub struct CachedJudge<J: Judge> {
-    inner: J,
+pub struct CachedJudge {
+    inner: Box<dyn Judge>,
     cache: Mutex<HashMap<u64, JudgeResponse>>,
     hits: Mutex<usize>,
     misses: Mutex<usize>,
 }
 
-impl<J: Judge> CachedJudge<J> {
-    /// Wrap `inner` with a fresh in-memory cache.
-    pub fn new(inner: J) -> Self {
+impl CachedJudge {
+    /// Wrap `inner` with a fresh in-memory cache. Takes ownership; the
+    /// caller's `J` is boxed up internally so this works with any
+    /// concrete `Judge` (e.g. a `CallableJudge<F>` whose `F` is a
+    /// closure type unnameable in user code).
+    pub fn new<J: Judge + 'static>(inner: J) -> Self {
+        Self {
+            inner: Box::new(inner),
+            cache: Mutex::new(HashMap::new()),
+            hits: Mutex::new(0),
+            misses: Mutex::new(0),
+        }
+    }
+
+    /// Same as [`Self::new`] but for an already-boxed inner judge — the
+    /// shape Python/Node bindings reach for since they hold judges as
+    /// trait objects.
+    pub fn from_boxed(inner: Box<dyn Judge>) -> Self {
         Self {
             inner,
             cache: Mutex::new(HashMap::new()),
@@ -248,7 +263,7 @@ impl<J: Judge> CachedJudge<J> {
     }
 }
 
-impl<J: Judge> Judge for CachedJudge<J> {
+impl Judge for CachedJudge {
     fn score(&self, req: &JudgeRequest<'_>) -> Result<JudgeResponse> {
         let key = Self::cache_key(self.inner.name(), req.prompt, req.system);
         {

@@ -295,4 +295,30 @@ const chunksFor = (text, id = "a") => [new Chunk(text, { id })];
   );
 }
 
+// Tier-2 _judged fields are exposed on the report but always null from
+// Node (the Judge callback surface ships in a future release; the Python
+// binding has it today). Pin the current state so a future Phase-4 wiring
+// can flip these assertions in one place.
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor("the refund window is thirty days"),
+    { strategy: "raw_topk" },
+  );
+  const r = evaluate("refund window", ctx, {
+    answer: "Thirty days.",
+    goldAnswer: "thirty days",
+  });
+  // Tier-2 _judged fields are currently always null in Node — no judge
+  // can be supplied. The fields are exposed on the report so adding the
+  // Node Judge surface in a future release is non-breaking.
+  assert.ok(r.faithfulnessJudged == null, "no Judge surface in Node yet");
+  assert.ok(r.relevancyJudged == null);
+  assert.ok(r.correctnessJudged == null);
+  // Tier-1 lexical fields still work as before.
+  assert.ok(r.faithfulnessLexical != null);
+  assert.ok(r.relevancyLexical != null);
+  assert.ok(r.correctnessLexical != null);
+}
+
 console.log("evaluate.cjs: all assertions passed.");

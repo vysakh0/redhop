@@ -23,6 +23,9 @@ use redhop::core::{
 use redhop::document::{
     Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
 };
+use redhop::judge::{
+    CachedJudge as RhCachedJudge, CallableJudge, Judge as RhJudge, JudgeRequest, JudgeResponse,
+};
 
 /// Thin forwarder over [`redhop::strategy_from_str`] — the canonical
 /// string→enum mapping lives in the Rust crate so every binding shares it
@@ -1963,6 +1966,170 @@ struct EvalReport {
     inner: redhop::EvalReport,
 }
 
+// ── Tier-2 Judge bridge ─────────────────────────────────────────────────────
+//
+// A Python `Judge` wraps a user-supplied callable that maps
+// `(prompt: str, system: Optional[str]) → float | dict`. We hold the
+// Rust-side judge as a boxed trait object so the same `PyJudge` can wrap
+// either the raw callable adapter OR the cached wrapper, transparently.
+
+/// LLM-judge bridge for the Tier-2 answer-quality metrics. Wrap your
+/// LLM client (the `openai` SDK, `litellm`, the `anthropic` package,
+/// raw HTTP, etc.) as a callable that returns a `[0, 1]` score, then
+/// pass the judge into `redhop.evaluate(..., judge=judge)` to populate
+/// `faithfulness_judged` / `relevancy_judged` / `correctness_judged`.
+///
+/// ```python
+/// from openai import OpenAI
+/// client = OpenAI()
+///
+/// def score(prompt, system):
+///     resp = client.chat.completions.create(
+///         model="gpt-4o-mini",
+///         messages=[
+///             {"role": "system", "content": system or ""},
+///             {"role": "user", "content": prompt},
+///         ],
+///         temperature=0.0,
+///     )
+///     return float(resp.choices[0].message.content.strip())
+///
+/// judge = redhop.Judge.from_callable(score).cached()
+/// report = redhop.evaluate(query, ctx, answer=ans, judge=judge)
+/// ```
+///
+/// `from_callable` adapts any sync function; `.cached()` wraps it with
+/// an in-memory cache so identical prompts don't re-call the LLM —
+/// useful for CI determinism and avoiding double-billing on re-runs.
+#[pyclass(name = "Judge", module = "redhop")]
+struct PyJudge {
+    inner: std::sync::Arc<dyn RhJudge>,
+}
+
+impl Clone for PyJudge {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyJudge {
+    /// Wrap a Python callable as a Judge. The callable is invoked as
+    /// `callable(prompt: str, system: Optional[str]) -> float | dict`.
+    /// A returned `float` is the score (clamped to `[0, 1]`); a returned
+    /// `dict` may include `score` (required), `raw_text` (optional), and
+    /// `model` (optional) keys.
+    ///
+    /// `name` is used in the cache key namespacing — swap it when you
+    /// swap the underlying model so cached scores from `gpt-4o-mini`
+    /// don't reappear as `claude-haiku` scores.
+    #[staticmethod]
+    #[pyo3(signature = (callable, name=None))]
+    fn from_callable(
+        callable: PyObject,
+        name: Option<String>,
+    ) -> PyResult<Self> {
+        let name = name.unwrap_or_else(|| "callable".to_string());
+        let py_callable = std::sync::Arc::new(callable);
+        let cb = py_callable.clone();
+        let cb_name = name.clone();
+        let judge = CallableJudge::with_name(name, move |req: &JudgeRequest<'_>| {
+            Python::with_gil(|py| -> redhop::core::Result<JudgeResponse> {
+                let prompt = req.prompt.to_string();
+                let system: Option<String> = req.system.map(|s| s.to_string());
+                let result = cb
+                    .call1(py, (prompt, system))
+                    .map_err(|e| redhop::core::Error::Other(format!("python judge call: {e}")))?;
+                // Accept either a float or a dict { score, raw_text?, model? }.
+                if let Ok(score) = result.extract::<f32>(py) {
+                    return Ok(JudgeResponse {
+                        score: score.clamp(0.0, 1.0),
+                        raw_text: format!("{score}"),
+                        model: cb_name.clone(),
+                    });
+                }
+                if let Ok(dict) = result.downcast_bound::<PyDict>(py) {
+                    let score: f32 = dict
+                        .get_item("score")
+                        .map_err(|e| {
+                            redhop::core::Error::Other(format!(
+                                "python judge dict missing 'score': {e}"
+                            ))
+                        })?
+                        .ok_or_else(|| {
+                            redhop::core::Error::Other(
+                                "python judge dict missing 'score'".into(),
+                            )
+                        })?
+                        .extract()
+                        .map_err(|e| {
+                            redhop::core::Error::Other(format!(
+                                "python judge 'score' must be a number: {e}"
+                            ))
+                        })?;
+                    let raw_text: String = dict
+                        .get_item("raw_text")
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.extract().ok())
+                        .unwrap_or_else(|| format!("{score}"));
+                    let model: String = dict
+                        .get_item("model")
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.extract().ok())
+                        .unwrap_or_else(|| cb_name.clone());
+                    return Ok(JudgeResponse {
+                        score: score.clamp(0.0, 1.0),
+                        raw_text,
+                        model,
+                    });
+                }
+                Err(redhop::core::Error::Other(
+                    "python judge returned neither a float nor a dict with 'score'".into(),
+                ))
+            })
+        });
+        Ok(Self {
+            inner: std::sync::Arc::new(judge),
+        })
+    }
+
+    /// Return a NEW Judge that wraps `self` with an in-memory cache.
+    /// Identical `(prompt, system)` pairs hit the cache instead of
+    /// re-calling the inner callable. The cache lives only on the
+    /// returned object; pass it into `evaluate()` and keep the
+    /// reference alive for the duration of your eval run to reuse it
+    /// across queries.
+    fn cached(&self) -> Self {
+        // Wrap the existing inner (which is Arc<dyn Judge>) via an
+        // adapter — CachedJudge needs Box<dyn Judge>, so we box a
+        // lightweight forwarder that holds the Arc.
+        let arc_inner = self.inner.clone();
+        let forwarder = CallableJudge::with_name(
+            self.inner.name().to_string(),
+            move |req: &JudgeRequest<'_>| arc_inner.score(req),
+        );
+        let cached = RhCachedJudge::new(forwarder);
+        Self {
+            inner: std::sync::Arc::new(cached),
+        }
+    }
+
+    /// Stable identifier used in the cache key. Set via the `name=`
+    /// kwarg on `from_callable`.
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Judge(name={:?})", self.inner.name())
+    }
+}
+
 #[pymethods]
 impl EvalReport {
     /// Fraction of gold chunks that survived assembly. `None` unless
@@ -2006,6 +2173,29 @@ impl EvalReport {
     #[getter]
     fn correctness_lexical(&self) -> Option<f32> {
         self.inner.correctness_lexical
+    }
+    /// **Tier-2**: LLM-judged faithfulness — is every claim in the answer
+    /// supported by the assembled context? Strictly stronger than
+    /// `faithfulness_lexical`. `None` unless `answer=` AND `judge=` were
+    /// supplied (and the judge call succeeded).
+    #[getter]
+    fn faithfulness_judged(&self) -> Option<f32> {
+        self.inner.faithfulness_judged
+    }
+    /// **Tier-2**: LLM-judged relevancy — does the answer address the
+    /// question? Strictly stronger than `relevancy_lexical`. `None`
+    /// unless `answer=` AND `judge=` were supplied.
+    #[getter]
+    fn relevancy_judged(&self) -> Option<f32> {
+        self.inner.relevancy_judged
+    }
+    /// **Tier-2**: LLM-judged correctness — does the LLM's answer
+    /// convey the same facts as the gold answer (paraphrase-aware,
+    /// unlike `correctness_lexical`)? `None` unless `answer=` AND
+    /// `gold_answer=` AND `judge=` were all supplied.
+    #[getter]
+    fn correctness_judged(&self) -> Option<f32> {
+        self.inner.correctness_judged
     }
     /// Mean grounding score over selected chunks, in `[0, 1]`. Same scorer
     /// the runtime uses for `ContextStrategy::DistractorFiltered`.
@@ -2087,13 +2277,14 @@ impl EvalReport {
 /// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
 /// the "refraction not independent measurement" design choice.
 #[pyfunction]
-#[pyo3(signature = (query, context, *, answer=None, gold_chunks=None, gold_answer=None))]
+#[pyo3(signature = (query, context, *, answer=None, gold_chunks=None, gold_answer=None, judge=None))]
 fn evaluate(
     query: &str,
     context: &BuiltContext,
     answer: Option<&str>,
     gold_chunks: Option<Vec<String>>,
     gold_answer: Option<&str>,
+    judge: Option<&PyJudge>,
 ) -> EvalReport {
     let q = Query::new(query);
     // Borrow gold_chunks as &[&str] so it matches the redhop::EvalGold borrowed shape.
@@ -2109,8 +2300,9 @@ fn evaluate(
             gold_answer: a,
         },
     };
+    let judge_ref: Option<&dyn RhJudge> = judge.map(|j| j.inner.as_ref());
     EvalReport {
-        inner: redhop::evaluate(&q, &context.inner, answer, gold),
+        inner: redhop::evaluate(&q, &context.inner, answer, gold, judge_ref),
     }
 }
 
@@ -2123,6 +2315,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;
     m.add_class::<EvalReport>()?;
+    m.add_class::<PyJudge>()?;
     m.add_class::<RewriteRecord>()?;
     m.add_class::<Stripper>()?;
     m.add_class::<Vocabulary>()?;

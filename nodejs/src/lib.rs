@@ -934,6 +934,18 @@ pub struct EvalReport {
     /// for "did the LLM produce the right tokens". `null` unless BOTH
     /// `answer` and `goldAnswer` were supplied.
     pub correctness_lexical: Option<f64>,
+    /// **Tier-2**: LLM-judged faithfulness. Currently always `null` from
+    /// the Node binding — the `Judge` callback surface is only exposed
+    /// on the Python binding today. Use the Python wheel for Tier-2
+    /// metrics; Node parity is on the roadmap (Phase 4 of the eval
+    /// rollout). See docs/findings/EVAL_RAGAS_PARITY.md.
+    pub faithfulness_judged: Option<f64>,
+    /// **Tier-2**: LLM-judged relevancy. See `faithfulness_judged` for
+    /// the Node availability note.
+    pub relevancy_judged: Option<f64>,
+    /// **Tier-2**: LLM-judged correctness. See `faithfulness_judged` for
+    /// the Node availability note.
+    pub correctness_judged: Option<f64>,
     /// Mean grounding over selected chunks, in `[0, 1]`.
     pub mean_grounding: f64,
     /// Fraction of context tokens that are query-relevant.
@@ -1003,7 +1015,10 @@ pub fn evaluate(
             gold_answer: a,
         },
     };
-    let r = redhop::evaluate(&q, &context.inner, opts.answer.as_deref(), gold);
+    // Pass `None` for the judge — the Node binding doesn't surface the
+    // Judge callable wiring yet. Python parity for Tier-2 ships in this
+    // release; Node Tier-2 is queued for the next eval-roadmap phase.
+    let r = redhop::evaluate(&q, &context.inner, opts.answer.as_deref(), gold, None);
     EvalReport {
         context_recall: r.context_recall.map(|v| v as f64),
         context_precision: r.context_precision.map(|v| v as f64),
@@ -1011,6 +1026,9 @@ pub fn evaluate(
         faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f64),
         relevancy_lexical: r.relevancy_lexical.map(|v| v as f64),
         correctness_lexical: r.correctness_lexical.map(|v| v as f64),
+        faithfulness_judged: r.faithfulness_judged.map(|v| v as f64),
+        relevancy_judged: r.relevancy_judged.map(|v| v as f64),
+        correctness_judged: r.correctness_judged.map(|v| v as f64),
         mean_grounding: r.mean_grounding as f64,
         evidence_density: r.evidence_density as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,

@@ -56,26 +56,76 @@ snake_case / camelCase shift on Node):
 
 ## Two tiers of answer-quality metrics
 
-The `_lexical` suffix on three of the metrics above isn't decorative —
-it's a deliberate naming choice to keep users honest. There are two
-tiers in the eval API:
+The `_lexical` and `_judged` suffixes on six of the metrics above are a
+deliberate naming choice. There are two tiers in the eval API:
 
-- **Tier 1 (this module, deterministic).** Token-overlap proxies for
+- **Tier 1 (deterministic, in-process).** Token-overlap proxies for
   faithfulness / relevancy / correctness. Cheap, no LLM, no API key,
   runs in CI on every PR. Catches obvious failure modes (fabricated
   tokens, off-topic answers, wrong-token outputs) but won't catch a
   confidently-wrong paraphrase.
-- **Tier 2 (Phase 2 of the eval roadmap — `crate::judge`).** LLM-scored
-  faithfulness / relevancy / correctness, calibrated against Ragas's
-  published prompts. Same `EvalReport` shape; fields will be named with
-  the `_judged` suffix (e.g. `faithfulness_judged`). Mix-and-match: a
-  caller can compute both `faithfulness_lexical` and
+- **Tier 2 (LLM-judged, opt-in).** Real faithfulness / relevancy /
+  correctness scored by an LLM, calibrated against Ragas's published
+  prompts. Same `EvalReport` shape; fields suffixed `_judged`.
+  Mix-and-match: a caller can compute both `faithfulness_lexical` and
   `faithfulness_judged` in the same call and compare.
 
 The two tiers measure overlapping things from different angles. Use
 Tier 1 in CI (free, deterministic, catches regressions). Use Tier 2
 on sampled production traffic, or before promoting a configuration
 (costs LLM calls, catches the failures Tier 1 misses).
+
+### Using Tier 2 from Python
+
+The Tier-2 entry point is `redhop.Judge`. Wrap any LLM client (the
+`openai` SDK, `litellm`, `anthropic`, raw HTTP, etc.) as a callable
+that returns a `[0, 1]` score, then pass the judge into
+`redhop.evaluate(..., judge=judge)`:
+
+```python
+from openai import OpenAI
+
+client = OpenAI()
+
+def score(prompt: str, system: str | None) -> float:
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system or ""},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.0,
+    )
+    return float(resp.choices[0].message.content.strip())
+
+judge = redhop.Judge.from_callable(score, name="gpt-4o-mini").cached()
+report = redhop.evaluate(
+    "What's the refund window?",
+    ctx,
+    answer="Thirty days from purchase.",
+    gold_answer="thirty days",
+    judge=judge,
+)
+print(report.faithfulness_judged, report.relevancy_judged, report.correctness_judged)
+```
+
+`Judge.from_callable(fn, name=)` accepts any sync function that returns
+either a float (just the score) or a dict (`{score, raw_text?, model?}`).
+`.cached()` wraps the judge with an in-memory cache so identical
+`(prompt, system)` pairs don't re-call the LLM — useful for CI
+determinism and avoiding double-billing on re-runs.
+
+A judge call that errors leaves the corresponding `_judged` metric as
+`None` — eval is best-effort; a transport blip doesn't crash the run.
+
+### Node availability
+
+Tier-1 lexical metrics are available on Node identically to Python.
+The Tier-2 `Judge` callable surface ships only on the Python binding
+in this release; Node Tier-2 wiring is on the roadmap. The Node
+`EvalReport` already exposes the `faithfulnessJudged` /
+`relevancyJudged` / `correctnessJudged` fields (always `null` from Node
+today) so adding the Judge surface later is non-breaking.
 
 ## Design choice: refraction, not independent measurement
 
