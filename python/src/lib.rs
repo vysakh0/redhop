@@ -690,7 +690,11 @@ fn context_economics(
 }
 
 /// Query grounding of a chunk's text in [0,1] — the relevance signal the
-/// strategies use (stopword-removed, stemmed query-term overlap). Observability.
+/// strategies use (stopword-removed, Snowball-stemmed query-term overlap).
+/// Uses the English Snowball analyzer internally, fixed so the signal stays
+/// comparable across calls and independent of any Document's configured
+/// analyzer. (Since 0.3.2 the Document default is a minimal raw pipeline;
+/// for analyzer-aware grounding go through `Document.context(...).report`.)
 #[pyfunction]
 fn grounding_score(query: &str, text: &str) -> f32 {
     rh_grounding(query, text)

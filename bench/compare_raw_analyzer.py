@@ -12,8 +12,9 @@ PARAPHRASE the document vocabulary? HotpotQA and MuSiQue use natural-
 language questions that don't echo the document verbatim — stemming
 should help there.
 
-This probe runs RedHop's default (English Snowball) vs `language="raw"`
-on three workloads at n=100:
+This probe — the measurement that drove the 0.3.2 default flip — runs
+the previous English-Snowball default (`language="english"`) vs the new
+default (raw / `RawAnalyzer`) on three workloads at n=100:
   - CUAD (templated, exact-match)
   - HotpotQA (natural-language, 2-hop)
   - MuSiQue (natural-language, compositional)
@@ -130,10 +131,13 @@ def report(name: str, items_iter):
     print(f"  {name}  (n={n}, budget={BUDGET}, candidate_k={CANDIDATE_K})")
     print(f"  {'analyzer':<20} {'mean recall':>12} {'≥0.8':>6} {'p50 ms':>8}")
     print("  " + "-" * 56)
-    eng_r, eng_80, eng_ms = eval_arm(items_list, None, "english (default)")
-    raw_r, raw_80, raw_ms = eval_arm(items_list, "raw", "raw")
-    print(f"  {'english (default)':<20} {eng_r:>12.2f} {eng_80:>5.0f}% {eng_ms:>7.1f}")
-    print(f"  {'raw':<20} {raw_r:>12.2f} {raw_80:>5.0f}% {raw_ms:>7.1f}")
+    # Post-0.3.2: passing `language=None` to from_text gives the new raw
+    # default. Pass `"english"` explicitly to exercise the previous
+    # Snowball-stemming pipeline.
+    eng_r, eng_80, eng_ms = eval_arm(items_list, "english", "english (opt-in)")
+    raw_r, raw_80, raw_ms = eval_arm(items_list, None, "raw (default)")
+    print(f"  {'english (opt-in)':<20} {eng_r:>12.2f} {eng_80:>5.0f}% {eng_ms:>7.1f}")
+    print(f"  {'raw (default)':<20} {raw_r:>12.2f} {raw_80:>5.0f}% {raw_ms:>7.1f}")
     print(
         f"  {'Δ (raw − english)':<20} {raw_r - eng_r:>+12.2f} "
         f"{raw_80 - eng_80:>+5.0f}  {raw_ms - eng_ms:>+7.1f}"
@@ -143,7 +147,7 @@ def report(name: str, items_iter):
 def main() -> None:
     print()
     print("=" * 66)
-    print("  RedHop default (English Snowball) vs language='raw' (no stem)")
+    print("  language='english' (opt-in Snowball) vs new default (raw, no stem)")
     print("=" * 66)
 
     report("CUAD (templated, exact-match queries)", cuad_items(100))

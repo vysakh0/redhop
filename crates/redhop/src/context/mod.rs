@@ -1103,9 +1103,12 @@ pub fn context_economics(
 /// external/eval code can reuse the library's exact notion of relevance instead
 /// of reimplementing (and drifting from) it.
 ///
-/// Uses the default English analyzer ([`crate::analyzer::default_english`]).
-/// For non-English content, use `Document::context(...).report` which carries
-/// the configured analyzer end-to-end.
+/// Uses the English Snowball analyzer ([`crate::analyzer::default_english`]) —
+/// fixed here so the standalone signal stays comparable across calls,
+/// independent of any `Document`'s configured analyzer. (Since 0.3.2 the
+/// `Document` default is [`crate::analyzer::default_analyzer`] / `RawAnalyzer`;
+/// for analyzer-aware grounding use `Document::context(...).report`, which
+/// carries the configured analyzer end-to-end.)
 pub fn grounding_score(query: &str, text: &str) -> f32 {
     let a = crate::analyzer::default_english();
     grounding(&terms(query, a.as_ref()), &terms(text, a.as_ref()))
@@ -1115,8 +1118,10 @@ pub fn grounding_score(query: &str, text: &str) -> f32 {
 /// normalized terms — the chunk↔chunk bridge signal `ReasoningPreserving` uses
 /// to decide whether a low-relevance chunk is a rescuable second hop. In `[0, 1]`.
 ///
-/// Uses the default English analyzer. See [`grounding_score`] for the
-/// non-English path.
+/// Uses the English Snowball analyzer (same fixed choice as
+/// [`grounding_score`]) — independent of any `Document`'s configured
+/// analyzer, so the signal stays comparable across calls. For
+/// analyzer-aware linkage use the report on `Document::context(...)`.
 pub fn link_strength(a: &str, b: &str) -> f32 {
     let an = crate::analyzer::default_english();
     jaccard(&terms(a, an.as_ref()), &terms(b, an.as_ref()))

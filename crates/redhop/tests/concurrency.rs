@@ -157,10 +157,11 @@ fn build_context_is_thread_safe_with_caller_chunks() {
 
 #[test]
 fn shared_default_analyzer_handles_parallel_documents() {
-    // The default English analyzer is a process-wide cached
-    // `Arc<dyn Analyzer>`. If a future change makes it stateful in a
-    // non-thread-safe way (e.g. an unsynchronized lazy field on the
-    // stemmer), parallel queries from independent Documents would race.
+    // The default analyzer (0.3.2+: RawAnalyzer) is a process-wide
+    // cached `Arc<dyn Analyzer>`. If a future change makes it stateful
+    // in a non-thread-safe way (e.g. an unsynchronized lazy field on
+    // the tokenizer), parallel queries from independent Documents
+    // would race.
     //
     // We spawn 8 worker threads, each building its OWN Document from the
     // default config (so each pulls the cached Arc) and running the same

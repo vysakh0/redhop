@@ -132,10 +132,12 @@ if report.is_templated:
 - **Empty selection** is handled: zero selected chunks plus gold chunks
   given → `context_recall=Some(0.0)`, `context_precision=Some(0.0)`,
   not `NaN`. No `mean_grounding` panic.
-- **Stemming is on for `answer_token_recall`.** The runtime's
-  default-English Snowball Porter2 analyzer runs on both the gold
-  answer and the assembled context, so `"refunds"` in the gold matches
-  `"refund"` in the context. A test pins this.
+- **Stemming is on for `answer_token_recall`.** The metric goes
+  through `grounding_score`, which uses English Snowball Porter2
+  internally (fixed, independent of the `Document` default) — so
+  `"refunds"` in the gold matches `"refund"` in the context regardless
+  of whether the document was indexed with the 0.3.2 raw default or an
+  explicit `language="english"`. A test pins this.
 - **`low_confidence` caps `overall`.** If the runtime flagged the
   context as low-confidence, the composite is capped at 0.25 regardless
   of the other components — a deliberate floor to prevent a

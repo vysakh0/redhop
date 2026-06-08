@@ -18,11 +18,20 @@
 //! share a *single source of truth*, the Tantivy `TextAnalyzer`. There is no
 //! way for them to drift.
 //!
-//! ## Default — English Snowball Porter2
+//! ## Default — `RawAnalyzer` (0.3.2 flip)
 //!
-//! [`SnowballAnalyzer::english`] preserves the 0.1.4 hardcoded behavior bit-
-//! for-bit: SimpleTokenizer → RemoveLong(40) → CamelCaseSplitter →
-//! AsciiFolding → LowerCaser → StopWordFilter(English) → Porter2(English).
+//! The default analyzer ([`default_analyzer`], returning [`RawAnalyzer`]) is
+//! a minimal three-stage pipeline: SimpleTokenizer → AsciiFolding →
+//! LowerCaser. No stemming, no stopword filter, no CamelCase split. This
+//! beat the previous English-Snowball default on retention AND latency
+//! across three English workloads — see
+//! `docs/findings/RAW_ANALYZER.md` for the measurement.
+//!
+//! [`SnowballAnalyzer::english`] is the opt-in path for code search and
+//! inflection-heavy English, preserving the pre-0.3.2 default bit-for-bit:
+//! SimpleTokenizer → RemoveLong(40) → CamelCaseSplitter → AsciiFolding →
+//! LowerCaser → StopWordFilter(English) → Porter2(English). Reach it with
+//! `language="english"` or via `Document::with_analyzer`.
 //!
 //! ## Swapping languages
 //!
@@ -280,8 +289,11 @@ impl SnowballAnalyzer {
 }
 
 impl Default for SnowballAnalyzer {
-    /// The default analyzer is [`SnowballAnalyzer::english`] — preserves the
-    /// 0.1.4 behavior.
+    /// `SnowballAnalyzer::default()` returns [`SnowballAnalyzer::english`].
+    /// Note: this is NOT the `Document` default analyzer (that's
+    /// [`RawAnalyzer`] since 0.3.2 — see [`default_analyzer`]).
+    /// `SnowballAnalyzer::english` remains the canonical English pipeline,
+    /// reachable via `language="english"` or `Document::with_analyzer`.
     fn default() -> Self {
         Self::english()
     }

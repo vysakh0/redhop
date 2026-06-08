@@ -5,24 +5,44 @@ verified against the same probes used to write `crates/redhop/tests/quality_suit
 
 ## What the analyzer pipeline does
 
-The BM25 analyzer (and the parallel grounding scorer in
-`crate::context::normalize`) applies, in order:
+There are two pipelines. The 0.3.2 default is the minimal one;
+language-specific Snowball pipelines are opt-in.
+
+**Default (since 0.3.2 — `RawAnalyzer`, what you get with no
+`language=` argument).** Three stages:
 
 1. **Tokenize** on Unicode whitespace + punctuation
-   (`tantivy::SimpleTokenizer` / `unicode_segmentation::unicode_words`).
+   (`tantivy::SimpleTokenizer`).
+2. **ASCII-fold combining diacritics** (`é` → `e`, `ñ` → `n`, `ß` →
+   `ss`, plus ~100 more).
+3. **Lowercase**.
+
+That's it — no stemmer, no stopword filter, no camelCase split. Measured
+to beat the previous English-Snowball default on three English
+workloads on both retention and latency ([RAW_ANALYZER](findings/RAW_ANALYZER.md)).
+
+**English Snowball (opt-in via `language="english"`, pre-0.3.2 default).**
+Seven stages:
+
+1. **Tokenize** on Unicode whitespace + punctuation.
 2. **Drop overlong tokens** (> 40 chars).
 3. **Split camelCase / PascalCase / letter↔digit** boundaries
    (custom `CamelCaseSplitter`).
-4. **ASCII-fold combining diacritics** (`tantivy::AsciiFoldingFilter` /
-   `unicode_normalization::nfkd`). Handles `é` → `e`, `ñ` → `n`, `ß` →
-   `ss`, `ø` → `o`, plus ~100 more.
-5. **Lowercase** (`LowerCaser`).
+4. **ASCII-fold combining diacritics**.
+5. **Lowercase**.
 6. **Drop English stopwords** (the, and, is, of, in, …).
 7. **Stem** with Snowball Porter2 (English).
 
-Steps 1-5 are language-agnostic. Steps 6 and 7 are English-only.
+Opt back in for code search (CamelCase splitter helps `compressVideo`)
+or inflection-heavy English.
 
 ## What works for what
+
+The breakdown below describes the Snowball-per-language pipeline (the
+pre-0.3.2 default, reachable via `language="english"`, `"german"`,
+etc.). The raw default is the same as steps 1-5 minus camelCase split
+and overlong-drop, with no language-specific stemmer or stopword
+filter.
 
 | Family | Step that breaks | Practical impact |
 |---|---|---|

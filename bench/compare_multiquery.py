@@ -94,20 +94,22 @@ def redhop_query(doc, query: str) -> str:
     return doc.context(query).text()
 
 
-def redhop_raw_index(doc_text: str):
-    """Same as redhop_index but with language='raw' — minimal Tantivy
-    pipeline (no stemming, no stopword filter, no CamelCase). Opt-in path
-    for users who want LangChain-style warm-query latency."""
+def redhop_english_index(doc_text: str):
+    """Same as redhop_index but with language='english' — the full Snowball
+    pipeline (stemming, stopwords, CamelCase split). Opt-in path for code
+    search and inflection-heavy English content. Was the default through
+    0.3.1; 0.3.2 flipped to the lighter raw pipeline that `redhop_index`
+    above now uses."""
     return redhop.Document.from_text(
         doc_text,
         strategy="raw_topk",
         token_budget=BUDGET,
         candidate_k=CANDIDATE_K,
-        language="raw",
+        language="english",
     )
 
 
-def redhop_raw_query(doc, query: str) -> str:
+def redhop_english_query(doc, query: str) -> str:
     return doc.context(query).text()
 
 
@@ -146,8 +148,8 @@ def llamaindex_query(retr, query: str) -> str:
 
 
 SYSTEMS = [
-    ("redhop[topk]", redhop_index, redhop_query),
-    ("redhop[raw]", redhop_raw_index, redhop_raw_query),
+    ("redhop[default]", redhop_index, redhop_query),
+    ("redhop[english]", redhop_english_index, redhop_english_query),
     ("langchain", langchain_index, langchain_query),
     ("llamaindex", llamaindex_index, llamaindex_query),
 ]

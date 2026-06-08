@@ -226,16 +226,18 @@ export interface SkippedFile {
  * Query grounding of a chunk's text: stopword-removed, Snowball-stemmed
  * query-term overlap, in `[0, 1]`. The same relevance signal the strategies
  * use internally; exposed so external code reuses redhop's exact notion of
- * relevance instead of drifting from it. Uses the default English analyzer;
- * non-English content should reach grounding via `Document.context().report`
- * (which carries the configured analyzer end-to-end).
+ * relevance instead of drifting from it. Uses the English Snowball analyzer
+ * — fixed here so the signal stays comparable across calls, independent of
+ * any `Document`'s configured analyzer. (Since 0.3.2 the `Document` default
+ * is a minimal raw pipeline; for analyzer-aware grounding go through
+ * `Document.context().report`.)
  */
 export declare function groundingScore(query: string, text: string): number
 /**
  * Chunk↔chunk linkage strength: term-set Jaccard over the same normalized
  * terms — the bridge signal `reasoning_preserving` uses to decide whether
  * a low-relevance chunk is a rescuable second hop. In `[0, 1]`. Uses the
- * default English analyzer.
+ * English Snowball analyzer (same fixed choice as `groundingScore`).
  */
 export declare function linkStrength(a: string, b: string): number
 /**
