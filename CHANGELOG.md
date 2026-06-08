@@ -97,45 +97,6 @@ retired across all user-facing docs.
   what `context_with_rewrites` is) from runtime branching among options
   (still out of scope).
 
-### Attempted, reverted (documented for honesty)
-
-- **CoreML / OneDNN / XNNPACK / DirectML / CUDA Execution Provider
-  Cargo features.** Wired up `ep-*` feature flags for ORT's
-  per-platform Execution Providers to close the
-  [HYBRID_LATENCY_PROFILE](docs/findings/HYBRID_LATENCY_PROFILE.md)
-  ~30% gap to PyTorch MPS on Apple Silicon. Local CoreML measurement
-  on bge-small at ort 2.0.0-rc.10 showed a *regression* (HotpotQA
-  hybrid p50 240ms → 303ms). The other EPs were never measured (no
-  Linux/Windows CI runner with a meaningful EP-comparison probe).
-  Rather than ship paper-projected or measured-to-regress feature
-  flags as a maintainer footgun, ALL five EP feature flags were
-  removed from the codebase. The CPU EP remains the default and only
-  option. See `docs/design/HYBRID_ACCELERATION_PLAN.md` for the
-  full plan + measurement record. If a future ort release improves
-  CoreML, or someone benchmarks OneDNN on a Linux runner and finds a
-  real win, the right move is to re-introduce the *specific* flag
-  with the measurement attached.
-
-- **Lazy candidate-only embedding.** Tried making `index()` skip the
-  bulk embed and pushing it into per-query `retrieve()` on the BM25
-  top-K — the theory was matching LangChain's "embed only what's
-  needed" pattern would close the 2-5× latency gap measured in
-  [HYBRID_LATENCY_PROFILE](docs/findings/HYBRID_LATENCY_PROFILE.md).
-  The re-measurement at n=100 showed retention unchanged (good) but
-  latency got slightly *worse* (240ms → 309ms HotpotQA, 467ms →
-  499ms MuSiQue). Two reasons:
-  - The Retriever trait's `retrieve(&self)` is read-only, so lazy
-    retrieve couldn't update the embeddings cache. Each query
-    re-embedded the BM25 pool from scratch — no amortization across
-    queries on the same Document.
-  - For one-shot single-query patterns, total embedding work is the
-    same whether eager (index time) or lazy (query time); we just
-    moved cost between phases without reducing it.
-  Reverted. The honest latency story is now in HYBRID_LATENCY_PROFILE:
-  the 30% per-forward-pass gap is ORT CPU vs sentence-transformers
-  PyTorch MPS on Apple Silicon. CoreML EP for ORT is the right next
-  fix; not done in 0.3.1.
-
 ### Changed (runtime behavior)
 
 - **`retrieval="hybrid"` is now pure rerank, not RRF fusion.** The
