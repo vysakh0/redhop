@@ -60,10 +60,20 @@ What RedHop's CUAD recipe actually offers:
 - Not "RedHop beats LlamaIndex by 4.7 points." The retrieval engines are
   roughly comparable on contracts once preprocessing is held constant.
 
-RedHop's clearer architectural win is **multi-hop**: 80% on HotpotQA vs
-LlamaIndex 72%, LangChain 71% (n=300, no preprocessing). All without a
+RedHop's clearer architectural lead is **multi-hop retention**, replicated on
+two datasets at n=300 each:
+
+- **HotpotQA ≥0.8 retention:** RedHop 80% vs LlamaIndex 72%, LangChain 71% (+8).
+- **MuSiQue ≥0.8 retention** (compositional multi-hop, harder): RedHop 22% vs
+  LlamaIndex 17%, LangChain 19% (+3 to +5).
+
+Mean recall on MuSiQue is essentially tied with the other two — the ≥0.8
+lead is the durable part of the result. Note: `raw_topk` matches
+`reasoning_preserving` on both datasets, so the edge is from RedHop's
+chunking + BM25 defaults rather than the assembly strategy. All without a
 vector database, an agent framework, or model finetuning. Raw numbers and
-methodology: [`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md).
+methodology: [`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md)
++ [`MUSIQUE_MULTIHOP.md`](docs/findings/MUSIQUE_MULTIHOP.md).
 
 <p align="center">
   <img src=".github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">

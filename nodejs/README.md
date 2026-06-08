@@ -41,13 +41,18 @@ clause-name `Vocabulary` on top — but that recipe was not applied to
 LlamaIndex, and the +4.7 framing previously reported here is RedHop-with-
 recipe vs LlamaIndex-default, not a like-for-like comparison.
 
-RedHop's clearer architectural win is **multi-hop**: 80% on HotpotQA vs
-LlamaIndex 72%, LangChain 71% (n=300, no preprocessing). What RedHop's
-CUAD recipe offers is a reproducible, in-process, audited path from
-82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision
-Report — the primitives are reusable on any templated workload. See
+RedHop's clearer architectural lead is **multi-hop retention**, replicated on
+two datasets at n=300: **HotpotQA ≥0.8 retention 80% vs LlamaIndex 72%, LangChain
+71% (+8)**; **MuSiQue ≥0.8 retention 22% vs LlamaIndex 17%, LangChain 19% (+3 to
++5)** — compositional multi-hop is harder, the magnitude shrinks but the lead
+holds at the ≥0.8 threshold (mean recall is essentially tied). `raw_topk`
+matches `reasoning_preserving` on both, so the edge is RedHop's chunking + BM25
+defaults rather than the assembly strategy. What RedHop's CUAD recipe offers
+is a reproducible, in-process, audited path from 82% → 87.7% → 90.7% using
+`Stripper` + `Vocabulary` with a Decision Report — the primitives are reusable
+on any templated workload. See
 [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md)
-for the controlled three-arm run.
+and [MUSIQUE_MULTIHOP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MUSIQUE_MULTIHOP.md).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">

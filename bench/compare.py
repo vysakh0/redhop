@@ -176,6 +176,27 @@ def hotpot_items(limit: int):
             yield doc, ex["question"], gold
 
 
+def musique_items(limit: int):
+    """MuSiQue (compositional multi-hop): each example bundles 20 distractor
+    paragraphs around the ~2-4 supporting ones. Gold-evidence is the union
+    of the supporting paragraphs, mirroring HotpotQA's gold sentences. Same
+    word-recall metric — so the multi-hop retention story we tell on
+    HotpotQA can be checked on a second dataset."""
+    n = 0
+    with (REPO / "data/musique/dev.jsonl").open() as f:
+        for line in f:
+            if n >= limit:
+                return
+            ex = json.loads(line)
+            doc = "\n\n".join(p["paragraph_text"] for p in ex["paragraphs"])
+            gold = " ".join(
+                p["paragraph_text"] for p in ex["paragraphs"] if p.get("is_supporting")
+            )
+            if gold.strip() and ex.get("answerable", True):
+                yield doc, ex["question"], gold
+                n += 1
+
+
 # ── Fair-preprocessing comparison ────────────────────────────────────────
 # The default `evaluate` run above compares "RedHop with its assembly
 # strategies" vs "LangChain/LlamaIndex with their defaults" — the raw
@@ -222,6 +243,11 @@ def main() -> None:
     # HotpotQA: multi-hop; tight budget forces dropping paragraphs → tests whether
     # the gold supporting (incl. low-relevance bridge) sentences survive.
     evaluate(hotpot_items(300), budget=400, label="HotpotQA (multi-hop) — supporting-sentence retention")
+    # MuSiQue: compositional multi-hop (harder than HotpotQA — answers
+    # require 2-4 reasoning hops, with 20 distractor paragraphs per example).
+    # Second dataset for the multi-hop retention claim that previously
+    # rested on HotpotQA alone.
+    evaluate(musique_items(300), budget=400, label="MuSiQue (compositional multi-hop) — supporting-paragraph retention")
 
 
 if __name__ == "__main__":
