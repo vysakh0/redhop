@@ -1,0 +1,52 @@
+
+==============================================================================
+  code_neighbors_default probe
+  Does ±1 neighbor auto-pull actually surface implementation bodies?
+==============================================================================
+
+  RedHop Rust source (n=10 queries)
+  Each query's marker is a body-only phrase (not in def/docstring).
+  Marker present in ctx ⇒ user got the implementation, not just the signature.
+
+  budget = 128 tok
+  arm                                      body marker hits  avg ctx words   p50 ms
+  --------------------------------------------------------------------------------
+  A. neighbors=0 (no expansion)                3/10                         74.5     2.9
+  B. neighbors=1 (current default)             4/10                         97.5     2.6
+  C. neighbors=2                               4/10                        103.8     2.7
+  D. neighbors=3                               4/10                        104.8     2.5
+  Δ default − baseline: +1/10 marker hits, +23.0 ctx words, -0.3 ms
+
+  budget = 400 tok
+  arm                                      body marker hits  avg ctx words   p50 ms
+  --------------------------------------------------------------------------------
+  A. neighbors=0 (no expansion)                6/10                        263.0     2.5
+  B. neighbors=1 (current default)             6/10                        355.2     2.5
+  C. neighbors=2                               6/10                        374.5     2.5
+  D. neighbors=3                               6/10                        383.6     2.5
+  Δ default − baseline: +0/10 marker hits, +92.2 ctx words, +0.0 ms
+
+  budget = 1000 tok
+  arm                                      body marker hits  avg ctx words   p50 ms
+  --------------------------------------------------------------------------------
+  A. neighbors=0 (no expansion)                7/10                        319.9     2.5
+  B. neighbors=1 (current default)             8/10                        593.4     2.5
+  C. neighbors=2                               9/10                        764.5     2.6
+  D. neighbors=3                              10/10                        840.5     2.6
+  Δ default − baseline: +1/10 marker hits, +273.5 ctx words, +0.1 ms
+
+  budget = 4000 tok
+  arm                                      body marker hits  avg ctx words   p50 ms
+  --------------------------------------------------------------------------------
+  A. neighbors=0 (no expansion)                7/10                        319.9     2.5
+  B. neighbors=1 (current default)             8/10                        611.0     2.6
+  C. neighbors=2                               9/10                        891.8     2.6
+  D. neighbors=3                              10/10                       1147.9     2.7
+  Δ default − baseline: +1/10 marker hits, +291.1 ctx words, +0.1 ms
+
+Reading the result:
+  • Default has more hits than baseline → neighbors=1 is doing real work
+  • Hits ~equal, ctx larger → default just inflates; flip to 0
+  • Neighbors=2/3 same as default → 1 is enough; don't increase
+  • Hits keep rising with N → default may be under-allocated
+
