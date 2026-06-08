@@ -34,6 +34,18 @@ onnx = ["semantic"]
 # DOCX/PPTX/XLSX/PDF (text/markdown/code work without it).
 files = ["redhop/files"]
 
+# Per-platform Execution Provider (EP) opt-ins for the semantic tier. Each
+# pulls in the matching ort EP at build time; ORT falls back to CPU for any
+# op an EP can't run, so enabling these is safe. The published wheels per
+# platform pick the right one (see .github/workflows/release-python.yml):
+# Mac → ep-coreml, Linux x86_64 + Windows → ep-onednn, Linux aarch64 →
+# ep-xnnpack. See docs/design/HYBRID_ACCELERATION_PLAN.md.
+ep-coreml   = ["semantic", "redhop/ep-coreml"]
+ep-onednn   = ["semantic", "redhop/ep-onednn"]
+ep-xnnpack  = ["semantic", "redhop/ep-xnnpack"]
+ep-directml = ["semantic", "redhop/ep-directml"]
+ep-cuda     = ["semantic", "redhop/ep-cuda"]
+
 [dependencies]
 # Single consolidated dep. `default-features = false` keeps the base wheel
 # lean — `semantic` / `files` get pulled in only by the matching pyo3 features.

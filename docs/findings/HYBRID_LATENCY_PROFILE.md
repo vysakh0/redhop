@@ -103,12 +103,46 @@ index when the user doesn't query immediately) but not a latency cut.
 2. **Sentence-transformers via PyO3 PyTorch bridge** would eliminate
    it on Mac. Heavy dep change; probably not worth it for a per-call
    30% cut.
-3. **CoreML EP for ORT** is the cleanest Mac-specific fix. The `ort`
-   crate supports it. Tracked as the right next step.
+3. **~~CoreML EP for ORT~~ (tried, no measured win).** Wired up
+   `ep-coreml` end-to-end (Cargo feature, runtime EP registration,
+   CI matrix). Re-ran the n=100 hybrid-competitors probe on
+   Apple Silicon:
+
+   | | Before CoreML | With CoreML EP |
+   |---|---:|---:|
+   | RedHop hybrid HotpotQA p50 | 240 ms | **303 ms (worse)** |
+   | RedHop hybrid MuSiQue p50 | 467 ms | **513 ms (worse)** |
+
+   Multi-query-per-doc pattern (3 docs × 5 queries each):
+   CoreML on 945 ms total; CoreML off 915 ms — essentially tied.
+   Either the bge-small ONNX graph has ops that aren't accelerated
+   by ort 2.0.0-rc.10's CoreML EP, or CoreML's per-Document model-
+   compile overhead exceeds the per-query forward-pass savings.
+   **Code infrastructure kept** (Cargo features, EP registration in
+   `embeddings/onnx.rs`, `REDHOP_DISABLE_EP=1` escape hatch); the EP
+   is **not** enabled in published wheels until a measured win lands
+   on some platform.
 4. **Accept the gap as the price of pure-Rust ONNX.** Honest answer:
-   on Apple Silicon, RedHop hybrid is 30% slower than sentence-
-   transformers-PyTorch hybrid for the same model. The user should
-   know this when picking a configuration.
+   on Apple Silicon at ort 2.0.0-rc.10, RedHop hybrid is ~30% slower
+   than sentence-transformers-PyTorch hybrid for the same model.
+   The user should know this when picking a configuration.
+
+## What's still worth trying
+
+- **OneDNN on Linux x86_64 + Windows x64.** Wired up as `ep-onednn`,
+  not enabled in published wheels. The same single-platform sanity
+  probe should be run on a Linux x86 runner before any default
+  switch. Different op coverage than CoreML; the result may differ.
+- **XNNPACK on Linux aarch64.** Wired as `ep-xnnpack`. Same caveat.
+- **A newer ort release.** ort 2.0.0-rc.10 is a release candidate;
+  later RCs may have better EP op coverage. Worth re-running this
+  probe whenever the dep gets bumped.
+
+For users who want to experiment: every EP can be opted into via
+`cargo install redhop --features ep-coreml` (or `ep-onednn`, etc.).
+The user-facing recommendation is to measure on the specific
+workload before assuming any EP helps — three "predicted lift, didn't
+land" results in this branch suggest there's no shortcut.
 
 ## What this doesn't say
 

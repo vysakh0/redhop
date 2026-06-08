@@ -46,17 +46,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Per-platform `ep:` would select an ORT Execution Provider compiled
+        # into this wheel. All published wheels currently ship with the CPU
+        # EP only — local measurement of `ep-coreml` on Apple Silicon
+        # showed no benefit on bge-small (see
+        # docs/findings/HYBRID_LATENCY_PROFILE.md "What we tried" section).
+        # The Cargo features (`ep-coreml`, `ep-onednn`, `ep-xnnpack`,
+        # `ep-directml`, `ep-cuda`) are wired through end-to-end in case a
+        # future ort release improves CoreML behavior or someone measures
+        # OneDNN on a Linux runner and finds a real win. Until then, none
+        # are enabled in the published-wheel path. See
+        # docs/design/HYBRID_ACCELERATION_PLAN.md for the staged plan.
         platform:
           # manylinux_2_28 (AlmaLinux 8) ships OpenSSL 1.1.1, which openssl-sys needs
           # (manylinux2014/CentOS 7 has 1.0.2, which it rejects).
-          - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28' }
+          - { runner: ubuntu-latest,    target: x86_64,  manylinux: '2_28', ep: '' }
           # aarch64-Linux on a native ARM runner (no QEMU → ring compiles natively).
-          - { runner: ubuntu-24.04-arm, target: aarch64, manylinux: '2_28' }
+          - { runner: ubuntu-24.04-arm, target: aarch64, manylinux: '2_28', ep: '' }
           # Both macOS targets on the arm64 runner: aarch64 native, x86_64 cross
           # (Apple's toolchain cross-compiles cleanly) — avoids the scarce macos-13 queue.
-          - { runner: macos-14,         target: x86_64 }
-          - { runner: macos-14,         target: aarch64 }
-          - { runner: windows-latest,   target: x64 }
+          - { runner: macos-14,         target: x86_64,                     ep: '' }
+          - { runner: macos-14,         target: aarch64,                    ep: '' }
+          - { runner: windows-latest,   target: x64,                        ep: '' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,7 +80,9 @@ jobs:
           manylinux: ${{ matrix.platform.manylinux || 'auto' }}
           # The project lives in python/ (its own pyproject + Cargo.toml). Build the
           # one self-contained wheel with the semantic engine + file parsers compiled in.
-          args: --release --out dist -m python/Cargo.toml --features semantic,files
+          # `matrix.platform.ep` appends the platform's Execution Provider feature
+          # (e.g. ep-coreml on Mac); empty string when CPU EP only.
+          args: --release --out dist -m python/Cargo.toml --features semantic,files${{ matrix.platform.ep && format(',{0}', matrix.platform.ep) || '' }}
           # ort-sys's build script downloads the ONNX Runtime via ureq+native-tls, so
           # the (minimal) manylinux container needs OpenSSL headers + pkg-config to
           # compile it. This is build-time only — it is NOT linked into the wheel.

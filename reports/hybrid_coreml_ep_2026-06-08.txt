@@ -1,0 +1,56 @@
+/Users/vysakh/projects/neorag1/bench/multihop_hybrid_competitors_probe.py:43: DeprecationWarning: `langchain-community` is being sunset and is no longer actively maintained. See https://github.com/langchain-ai/langchain-community/issues/674 for details and migration guidance toward standalone integration packages.
+  from langchain_community.retrievers import BM25Retriever as LCBm25
+Loading bge-small (BAAI/bge-small-en-v1.5) for the dense rerank step...
+Model loaded.
+
+
+================================================================================================
+  HotpotQA (multi-hop) — RedHop vs LangChain vs LlamaIndex, BM25 vs +dense-rerank
+  n=100 queries, budget=400 tok, candidate_k=20
+================================================================================================
+  arm                                         mean recall   ≥0.5   ≥0.8   p50 ms
+  --------------------------------------------------------------------------------
+  redhop[topk]   BM25 baseline                       0.89    95%    71%     3.4
+  redhop[topk]   hybrid (bge-small)                  0.92    99%    81%   303.3
+  langchain      BM25 baseline                       0.86    97%    69%     0.4
+  langchain      + bge-small rerank                  0.92    98%    77%    73.4
+  llamaindex     BM25 baseline                       0.87    94%    67%     2.0
+  llamaindex     + bge-small rerank                  0.86    97%    67%    66.5
+
+================================================================================================
+  MuSiQue (compositional multi-hop) — RedHop vs LangChain vs LlamaIndex, BM25 vs +dense-rerank
+  n=100 queries, budget=400 tok, candidate_k=20
+================================================================================================
+  arm                                         mean recall   ≥0.5   ≥0.8   p50 ms
+  --------------------------------------------------------------------------------
+  redhop[topk]   BM25 baseline                       0.61    66%    23%     3.8
+  redhop[topk]   hybrid (bge-small)                  0.68    79%    34%   512.9
+  langchain      BM25 baseline                       0.60    68%    22%     0.5
+  langchain      + bge-small rerank                  0.71    82%    39%   103.4
+  llamaindex     BM25 baseline                       0.56    59%    16%     2.6
+  llamaindex     + bge-small rerank                  0.67    75%    31%    93.9
+
+================================================================================================
+  INTERPRETATION GUIDE
+================================================================================================
+
+  The question this probe answers: "Is the +12 lift on HotpotQA from
+  RedHop's `retrieval='hybrid'` a property of dense rerank generally, or
+  specific to RedHop?"
+
+  - If LangChain and LlamaIndex's BM25+rerank arms also lift to ~83% ≥0.8
+    on HotpotQA, the +12 is a property of dense rerank applied to the
+    multi-hop bridge-passage problem — not a RedHop architectural
+    advantage. The honest framing then: "dense rerank is the multi-hop
+    lever; RedHop ships it as one of its retrieval tiers."
+  - If LangChain/LlamaIndex's BM25+rerank arms lift to a noticeably lower
+    point (say ~76% ≥0.8), RedHop's BM25 candidate selection is producing
+    a better pool for the dense reranker — that's a chunking + BM25 win
+    that compounds with dense.
+  - If LangChain/LlamaIndex's BM25+rerank arms OVERSHOOT RedHop's hybrid
+    (e.g., to 85%+), then RedHop's hybrid implementation has room to
+    improve.
+
+  Same bge-small model on the dense step across all three. Differences
+  come from chunking + BM25 ranking only.
+

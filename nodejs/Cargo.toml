@@ -13,6 +13,17 @@ description = "Node.js bindings for RedHop context optimization"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# Per-platform ORT Execution Provider opt-ins. CI passes the right one
+# to `napi build` based on target in .github/workflows/release-node.yml.
+# Users who `npm install redhop` get the prebuilt native binary for their
+# platform with the matching EP. See docs/design/HYBRID_ACCELERATION_PLAN.md.
+ep-coreml   = ["redhop/ep-coreml"]
+ep-onednn   = ["redhop/ep-onednn"]
+ep-xnnpack  = ["redhop/ep-xnnpack"]
+ep-directml = ["redhop/ep-directml"]
+ep-cuda     = ["redhop/ep-cuda"]
+
 [dependencies]
 napi = { version = "2", default-features = false, features = ["napi6", "serde-json"] }
 napi-derive = "2"

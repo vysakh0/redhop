@@ -40,6 +40,19 @@ files = [
 # cross-encoder reranker. Shares one ONNX runtime / one tokenizers dep.
 semantic = ["dep:ort", "dep:tokenizers", "dep:hf-hub"]
 
+# ── Per-platform ORT Execution Provider (EP) opt-ins ──
+# Each registers an ONNX-runtime EP for `retrieval="hybrid"`/`semantic"`
+# at session creation. ORT falls back to CPU automatically when an EP
+# can't run an op or fails to initialize, so enabling these is safe;
+# the default-features wheel/install still works without any EP. See
+# docs/design/HYBRID_ACCELERATION_PLAN.md for the per-platform rationale
+# (which EP for which OS, projected lifts, wheel-size cost).
+ep-coreml   = ["semantic", "ort/coreml"]      # Apple Silicon + Intel Mac (system framework, no wheel-size cost)
+ep-onednn   = ["semantic", "ort/onednn"]      # Intel CPU on Linux/Windows (+15-25 MB wheel)
+ep-xnnpack  = ["semantic", "ort/xnnpack"]     # ARM CPU on Linux aarch64 (+5-10 MB wheel)
+ep-directml = ["semantic", "ort/directml"]    # Windows GPU (NVIDIA/AMD/Intel via DX12)
+ep-cuda     = ["semantic", "ort/cuda"]        # NVIDIA GPU; user-installed CUDA runtime required
+
 [dependencies]
 # ── always-on (the lexical-only build pulls only these) ──
 serde                = { workspace = true }
