@@ -55,6 +55,7 @@ pub mod chunking;
 pub mod context;
 pub mod core;
 pub mod document;
+pub mod judge;
 pub mod retrieval;
 pub mod rewrite;
 pub mod storage;
