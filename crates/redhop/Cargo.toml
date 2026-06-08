@@ -41,17 +41,28 @@ files = [
 semantic = ["dep:ort", "dep:tokenizers", "dep:hf-hub"]
 
 # ── Per-platform ORT Execution Provider (EP) opt-ins ──
-# Each registers an ONNX-runtime EP for `retrieval="hybrid"`/`semantic"`
-# at session creation. ORT falls back to CPU automatically when an EP
-# can't run an op or fails to initialize, so enabling these is safe;
-# the default-features wheel/install still works without any EP. See
-# docs/design/HYBRID_ACCELERATION_PLAN.md for the per-platform rationale
-# (which EP for which OS, projected lifts, wheel-size cost).
-ep-coreml   = ["semantic", "ort/coreml"]      # Apple Silicon + Intel Mac (system framework, no wheel-size cost)
-ep-onednn   = ["semantic", "ort/onednn"]      # Intel CPU on Linux/Windows (+15-25 MB wheel)
-ep-xnnpack  = ["semantic", "ort/xnnpack"]     # ARM CPU on Linux aarch64 (+5-10 MB wheel)
-ep-directml = ["semantic", "ort/directml"]    # Windows GPU (NVIDIA/AMD/Intel via DX12)
-ep-cuda     = ["semantic", "ort/cuda"]        # NVIDIA GPU; user-installed CUDA runtime required
+#
+# UNUSED IN PUBLISHED WHEELS as of 0.3.1. Each flag wires up an ORT EP
+# for `retrieval="hybrid"`/`"semantic"`, but **none is enabled in CI**
+# (.github/workflows/release-*.yml all set `ep: ''`). The wiring is kept
+# so a future contributor can re-measure once `ort` or a specific EP
+# improves. See docs/findings/HYBRID_LATENCY_PROFILE.md for what we
+# measured and docs/design/HYBRID_ACCELERATION_PLAN.md for the plan.
+#
+# DO NOT enable any of these in published artifacts without re-measuring
+# the latency probe (`bench/multihop_hybrid_competitors_probe.py`) on the
+# target platform. We measured `ep-coreml` on Apple Silicon at
+# ort 2.0.0-rc.10 + bge-small and it REGRESSED hybrid latency (240ms →
+# 303ms HotpotQA p50). The other EPs are paper-projected only.
+#
+# ORT does fall back to CPU per-op when an EP can't run an op, so
+# enabling these is technically safe — but the cross-EP boundary memory
+# copy can erode any speedup, which is why measurement is mandatory.
+ep-coreml   = ["semantic", "ort/coreml"]      # Apple Silicon — MEASURED REGRESSION at ort 2.0.0-rc.10 / bge-small
+ep-onednn   = ["semantic", "ort/onednn"]      # Intel CPU on Linux/Windows — unmeasured (+15-25 MB wheel if enabled)
+ep-xnnpack  = ["semantic", "ort/xnnpack"]     # ARM CPU on Linux aarch64 — unmeasured (+5-10 MB wheel if enabled)
+ep-directml = ["semantic", "ort/directml"]    # Windows GPU (NVIDIA/AMD/Intel via DX12) — unmeasured
+ep-cuda     = ["semantic", "ort/cuda"]        # NVIDIA GPU; user-installed CUDA runtime required — unmeasured
 
 [dependencies]
 # ── always-on (the lexical-only build pulls only these) ──
