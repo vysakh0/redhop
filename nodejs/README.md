@@ -11,12 +11,17 @@ Report. No vector database, no LLM, in-process. A native addon (napi-rs) over th
 RedHop Rust core; the embedding engine and document parsers are bundled — no extra
 deps.
 
+## Get started in 60 seconds
+
+```bash
+npm install redhop
+```
+
 ```js
 const { Document } = require("redhop");
 
-// Point it at a file — PDF, DOCX, PPTX, XLSX, or text/code — and ask.
-const doc = Document.fromFile("contract.pdf");
-const ctx = doc.context("What is the governing law?");
+const doc = Document.fromFile("contract.pdf");          // parses + chunks + indexes
+const ctx = doc.context("What is the governing law?");  // retrieves + assembles
 
 llm.generate(ctx.text);          // feed any provider — no lock-in
 for (const c of ctx.citations) { // where the answer's context came from
@@ -24,6 +29,9 @@ for (const c of ctx.citations) { // where the answer's context came from
 }
 console.log(ctx.report.rendered); // the Decision Report — what it kept, and why
 ```
+
+That's it. Native bindings for macOS, Linux, and Windows are downloaded with
+the npm package — no Rust toolchain or local build needed.
 
 ## How it compares
 

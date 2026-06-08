@@ -11,18 +11,22 @@ Hand it a document and a question. RedHop chunks, retrieves, and allocates the
 context your model should actually see — then tells you what it kept, what it dropped,
 and why, with citations back to the source. No vector database, no LLM, all in-process.
 
-```python
-import redhop
-
-doc = redhop.Document.from_file("contract.pdf")
-ctx = doc.context("What is the governing law?")
-
-answer = llm.generate(ctx.text())   # any LLM provider — no lock-in
-```
+## Get started in 60 seconds
 
 ```bash
 pip install redhop
 ```
+
+```python
+import redhop
+
+doc = redhop.Document.from_file("contract.pdf")    # parses + chunks + indexes
+ctx = doc.context("What is the governing law?")    # retrieves + assembles
+answer = llm.generate(ctx.text())                  # any LLM — no lock-in
+```
+
+That's it. `ctx.citations` tells you where the answer came from;
+`ctx.report` explains what was kept, dropped, and why.
 
 One self-contained wheel — no Python dependencies. The default lexical tier needs no
 model at all; the semantic/rerank tiers download a small model on first use (cached).

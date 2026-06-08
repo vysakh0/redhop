@@ -23,6 +23,51 @@ all in-process.
 
 ---
 
+## Get started in 60 seconds
+
+```bash
+pip install redhop                            # Python  — on PyPI
+# OR
+cargo add redhop --features files,semantic    # Rust    — on crates.io
+# OR
+npm install redhop                            # Node.js — on npm
+```
+
+```python
+import redhop
+
+doc = redhop.Document.from_file("contract.pdf")    # parses + chunks + indexes
+ctx = doc.context("What is the governing law?")    # retrieves + assembles
+answer = llm.generate(ctx.text())                  # any LLM — no lock-in
+```
+
+That's it. `ctx.citations` tells you where the answer came from;
+`ctx.report` explains what was kept, dropped, and why. Same three-line
+shape in Node and Rust:
+
+```js
+const doc = Document.fromFile("contract.pdf");
+const ctx = doc.context("What is the governing law?");
+```
+
+```rust
+let mut doc = redhop::read_file("contract.pdf")?;
+let ctx = doc.context("What is the governing law?")?;
+```
+
+Already chunked your own content? Skip the file step:
+
+```python
+chunks = [redhop.Chunk(text, source=...) for text in my_chunks]
+doc = redhop.Document.from_chunks(chunks)
+ctx = doc.context("how much did paying users spend last month")
+```
+
+No model download for the default lexical tier. Semantic/rerank tiers
+auto-download a small ONNX model on first use (cached locally).
+
+---
+
 RedHop is the layer between your documents and the LLM. It is **not** a vector
 database, an agent framework, or a workflow engine — it does one thing: turn a
 document and a query into the right prompt context, and explain the decision.
@@ -106,68 +151,6 @@ finetuning. Raw numbers and methodology:
 
 Methodology + raw runs: [`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md)
 · [`reports/framework_comparison_2026-06-06.txt`](reports/framework_comparison_2026-06-06.txt).
-
-## Install
-
-> **Alpha — 0.3.x.** Published on PyPI, crates.io, and npm.
-
-```bash
-pip install redhop                            # Python  — on PyPI
-cargo add redhop --features files,semantic    # Rust    — on crates.io
-npm install redhop                            # Node.js — on npm
-```
-
-The same surface is available in all three. The embedding/reranking models
-auto-download on first use; the default lexical tier needs no model at all.
-
-## The basic approach
-
-Point it at a file and ask. Parsing, chunking, retrieval, and token-budgeting all
-happen inside — you think in documents and queries, not retrieval infrastructure.
-
-```python
-import redhop
-
-doc = redhop.Document.from_file("contract.pdf")
-ctx = doc.context("What is the governing law?")
-
-answer = llm.generate(ctx.text())   # any LLM provider — no lock-in
-```
-
-`ctx` carries everything you need to prompt the model *and* show your work:
-`ctx.text()` (the assembled prompt), `ctx.report` (the decision), and
-`ctx.citations` (where it came from).
-
-Same call in Node and Rust:
-
-```js
-const doc = Document.fromFile("contract.pdf");
-const ctx = doc.context("What is the governing law?");
-```
-
-```rust
-let mut doc = redhop::read_file("contract.pdf")?;
-let ctx = doc.context("What is the governing law?")?;
-```
-
-Already have chunks from your own retriever? Wrap them in `redhop.Chunk`
-(typed, kwargs for `source` / `id` / open `metadata`) and hand them
-straight in with `Document.from_chunks([...])` — or the lower-level
-`redhop.build_context(...)`. Everything below still applies.
-
-```python
-chunks = [
-    redhop.Chunk(
-        "orders.amt (decimal) — order amount / revenue / spend in USD",
-        source="schema.sql",
-        id="orders.amt",
-        metadata={"table": "orders", "column": "amt"},
-    ),
-    # …one Chunk per row of your data dictionary
-]
-doc = redhop.Document.from_chunks(chunks)
-ctx = doc.context("how much did paying users spend last month")
-```
 
 ## How it works
 
