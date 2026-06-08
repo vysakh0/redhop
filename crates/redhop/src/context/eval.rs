@@ -560,6 +560,180 @@ pub fn evaluate(
     }
 }
 
+/// Aggregated statistics across a list of [`EvalReport`]s — the
+/// "what's my average score across the test set" answer. Each `Option`
+/// field is `None` only when *no* report in the input had that metric
+/// populated; otherwise it's the mean over the subset of reports that
+/// did. The `n_with_<metric>` counters surface how big each subset was
+/// so callers can spot "this number is computed from 3 out of 200
+/// reports" before reading too much into it.
+#[derive(Debug, Clone)]
+pub struct EvalSummary {
+    /// Total number of reports in the input.
+    pub n: usize,
+
+    // ── always-present metrics: mean + median over all n reports ──
+    /// Mean of `overall` across all `n` reports (0.0 if `n == 0`).
+    pub mean_overall: f32,
+    /// Median of `overall` across all `n` reports (0.0 if `n == 0`).
+    pub median_overall: f32,
+    /// Mean of `mean_grounding` over all `n` reports.
+    pub mean_grounding: f32,
+    /// Mean of `evidence_density` over all `n` reports.
+    pub mean_evidence_density: f32,
+    /// Fraction of reports where `low_confidence` was `true`. In `[0, 1]`.
+    pub low_confidence_rate: f32,
+
+    // ── conditionally-populated metrics: mean over the subset ──
+    // For each Optional<f32> field on EvalReport, summarize emits the
+    // mean over reports where it was Some(_) plus a counter of how
+    // many that was. The convention "None if zero present" lets callers
+    // distinguish "all reports had 0 score" from "no reports had the
+    // metric".
+    pub mean_context_recall: Option<f32>,
+    /// Number of reports where `context_recall` was populated.
+    pub n_with_context_recall: usize,
+    pub mean_context_precision: Option<f32>,
+    pub n_with_context_precision: usize,
+    pub mean_answer_token_recall: Option<f32>,
+    pub n_with_answer_token_recall: usize,
+    pub mean_faithfulness_lexical: Option<f32>,
+    pub n_with_faithfulness_lexical: usize,
+    pub mean_relevancy_lexical: Option<f32>,
+    pub n_with_relevancy_lexical: usize,
+    pub mean_correctness_lexical: Option<f32>,
+    pub n_with_correctness_lexical: usize,
+    pub mean_faithfulness_judged: Option<f32>,
+    pub n_with_faithfulness_judged: usize,
+    pub mean_relevancy_judged: Option<f32>,
+    pub n_with_relevancy_judged: usize,
+    pub mean_correctness_judged: Option<f32>,
+    pub n_with_correctness_judged: usize,
+}
+
+/// Aggregate a list of [`EvalReport`]s into an [`EvalSummary`]. Useful
+/// at the end of a test-set sweep — collect one report per `(query,
+/// answer, gold)` triple, then call `summarize(&reports)` to get the
+/// "how did the system do, overall" numbers.
+///
+/// On an empty input, returns a zero-shaped summary (`n=0`, all means
+/// zero, all conditional fields `None`).
+pub fn summarize(reports: &[EvalReport]) -> EvalSummary {
+    let n = reports.len();
+    if n == 0 {
+        return EvalSummary {
+            n: 0,
+            mean_overall: 0.0,
+            median_overall: 0.0,
+            mean_grounding: 0.0,
+            mean_evidence_density: 0.0,
+            low_confidence_rate: 0.0,
+            mean_context_recall: None,
+            n_with_context_recall: 0,
+            mean_context_precision: None,
+            n_with_context_precision: 0,
+            mean_answer_token_recall: None,
+            n_with_answer_token_recall: 0,
+            mean_faithfulness_lexical: None,
+            n_with_faithfulness_lexical: 0,
+            mean_relevancy_lexical: None,
+            n_with_relevancy_lexical: 0,
+            mean_correctness_lexical: None,
+            n_with_correctness_lexical: 0,
+            mean_faithfulness_judged: None,
+            n_with_faithfulness_judged: 0,
+            mean_relevancy_judged: None,
+            n_with_relevancy_judged: 0,
+            mean_correctness_judged: None,
+            n_with_correctness_judged: 0,
+        };
+    }
+
+    let n_f = n as f32;
+    let mean_overall: f32 = reports.iter().map(|r| r.overall).sum::<f32>() / n_f;
+    let mean_grounding: f32 = reports.iter().map(|r| r.mean_grounding).sum::<f32>() / n_f;
+    let mean_evidence_density: f32 =
+        reports.iter().map(|r| r.evidence_density).sum::<f32>() / n_f;
+    let low_confidence_rate: f32 =
+        reports.iter().filter(|r| r.low_confidence).count() as f32 / n_f;
+
+    // Median of overall — sort a copy.
+    let mut overalls: Vec<f32> = reports.iter().map(|r| r.overall).collect();
+    overalls.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_overall = if n % 2 == 1 {
+        overalls[n / 2]
+    } else {
+        // For even n, take the lower-of-the-two-middles (consistent with
+        // most stats libraries' "lower" tie-break). Avoids averaging
+        // which would imply more precision than we have.
+        overalls[n / 2 - 1]
+    };
+
+    fn mean_of_some<F>(reports: &[EvalReport], pick: F) -> (Option<f32>, usize)
+    where
+        F: Fn(&EvalReport) -> Option<f32>,
+    {
+        let mut sum = 0.0_f32;
+        let mut count = 0_usize;
+        for r in reports {
+            if let Some(v) = pick(r) {
+                sum += v;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            (None, 0)
+        } else {
+            (Some(sum / count as f32), count)
+        }
+    }
+
+    let (mean_context_recall, n_with_context_recall) = mean_of_some(reports, |r| r.context_recall);
+    let (mean_context_precision, n_with_context_precision) =
+        mean_of_some(reports, |r| r.context_precision);
+    let (mean_answer_token_recall, n_with_answer_token_recall) =
+        mean_of_some(reports, |r| r.answer_token_recall);
+    let (mean_faithfulness_lexical, n_with_faithfulness_lexical) =
+        mean_of_some(reports, |r| r.faithfulness_lexical);
+    let (mean_relevancy_lexical, n_with_relevancy_lexical) =
+        mean_of_some(reports, |r| r.relevancy_lexical);
+    let (mean_correctness_lexical, n_with_correctness_lexical) =
+        mean_of_some(reports, |r| r.correctness_lexical);
+    let (mean_faithfulness_judged, n_with_faithfulness_judged) =
+        mean_of_some(reports, |r| r.faithfulness_judged);
+    let (mean_relevancy_judged, n_with_relevancy_judged) =
+        mean_of_some(reports, |r| r.relevancy_judged);
+    let (mean_correctness_judged, n_with_correctness_judged) =
+        mean_of_some(reports, |r| r.correctness_judged);
+
+    EvalSummary {
+        n,
+        mean_overall,
+        median_overall,
+        mean_grounding,
+        mean_evidence_density,
+        low_confidence_rate,
+        mean_context_recall,
+        n_with_context_recall,
+        mean_context_precision,
+        n_with_context_precision,
+        mean_answer_token_recall,
+        n_with_answer_token_recall,
+        mean_faithfulness_lexical,
+        n_with_faithfulness_lexical,
+        mean_relevancy_lexical,
+        n_with_relevancy_lexical,
+        mean_correctness_lexical,
+        n_with_correctness_lexical,
+        mean_faithfulness_judged,
+        n_with_faithfulness_judged,
+        mean_relevancy_judged,
+        n_with_relevancy_judged,
+        mean_correctness_judged,
+        n_with_correctness_judged,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1015,6 +1189,80 @@ mod tests {
     fn split_sentences_empty_input() {
         let sents = split_sentences("");
         assert!(sents.is_empty());
+    }
+
+    // ── Phase 4: summarize(reports) ─────────────────────────────────────────
+
+    fn synthetic_report(overall: f32, faith_lex: Option<f32>) -> EvalReport {
+        EvalReport {
+            context_recall: None,
+            context_precision: None,
+            answer_token_recall: None,
+            faithfulness_lexical: faith_lex,
+            relevancy_lexical: None,
+            correctness_lexical: None,
+            faithfulness_judged: None,
+            relevancy_judged: None,
+            correctness_judged: None,
+            mean_grounding: 0.5,
+            evidence_density: 0.5,
+            retained_evidence_ratio: 0.5,
+            second_hop_rescues: 0,
+            low_confidence: false,
+            estimated_waste_tokens: 0,
+            overall,
+        }
+    }
+
+    #[test]
+    fn summarize_empty_returns_zeros_and_none() {
+        let s = summarize(&[]);
+        assert_eq!(s.n, 0);
+        assert_eq!(s.mean_overall, 0.0);
+        assert_eq!(s.median_overall, 0.0);
+        assert!(s.mean_faithfulness_lexical.is_none());
+        assert!(s.mean_faithfulness_judged.is_none());
+    }
+
+    #[test]
+    fn summarize_aggregates_overall_and_self_eval_always() {
+        let reports = vec![
+            synthetic_report(0.2, None),
+            synthetic_report(0.4, None),
+            synthetic_report(0.9, None),
+        ];
+        let s = summarize(&reports);
+        assert_eq!(s.n, 3);
+        assert!((s.mean_overall - 0.5).abs() < 1e-5);
+        assert_eq!(s.median_overall, 0.4);
+        assert_eq!(s.low_confidence_rate, 0.0); // no reports flagged
+    }
+
+    #[test]
+    fn summarize_optional_metrics_aggregate_over_present_subset() {
+        // 3 reports — only 2 of them have faithfulness_lexical populated.
+        let reports = vec![
+            synthetic_report(0.5, Some(0.8)),
+            synthetic_report(0.5, None),
+            synthetic_report(0.5, Some(0.6)),
+        ];
+        let s = summarize(&reports);
+        assert_eq!(s.n_with_faithfulness_lexical, 2);
+        // Mean is over the 2 reports that have it — (0.8 + 0.6) / 2 = 0.7
+        let f = s.mean_faithfulness_lexical.expect("at least one report has it");
+        assert!((f - 0.7).abs() < 1e-5);
+    }
+
+    #[test]
+    fn summarize_none_when_no_report_has_field() {
+        // 0 reports with faithfulness_lexical → mean is None.
+        let reports = vec![
+            synthetic_report(0.5, None),
+            synthetic_report(0.5, None),
+        ];
+        let s = summarize(&reports);
+        assert!(s.mean_faithfulness_lexical.is_none());
+        assert_eq!(s.n_with_faithfulness_lexical, 0);
     }
 
     // ── Tier-2 judged metrics (Phase 3) ─────────────────────────────────────

@@ -49,6 +49,7 @@ from ._redhop import (
     ContextReport,
     Document,
     EvalReport,
+    EvalSummary,
     Judge,
     QuerySetReport,
     RewriteRecord,
@@ -59,6 +60,7 @@ from ._redhop import (
     evaluate,
     grounding_score,
     link_strength,
+    summarize,
 )
 from ._redhop import (
     analyze_context as _analyze_context,
@@ -240,6 +242,7 @@ __all__ = [
     "ContextReport",
     "Document",
     "EvalReport",
+    "EvalSummary",
     "Judge",
     "QuerySetReport",
     "RewriteRecord",
@@ -256,4 +259,5 @@ __all__ = [
     "grounding_score",
     "link_strength",
     "report_to_dict",
+    "summarize",
 ]

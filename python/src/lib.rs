@@ -2306,6 +2306,158 @@ fn evaluate(
     }
 }
 
+/// Aggregated statistics across a list of [`EvalReport`]s — the
+/// "what's my average score across the test set" answer. Conditionally-
+/// populated metrics are aggregated only over the subset of reports
+/// where they were populated; the `n_with_<metric>` counters surface
+/// the subset size so a caller can spot "this number is computed from
+/// 3 out of 200 reports" before reading too much into it.
+///
+/// ```python
+/// reports = [
+///     redhop.evaluate(q, doc.context(q), answer=ans, gold_answer=gold, judge=judge)
+///     for q, ans, gold in test_set
+/// ]
+/// summary = redhop.summarize(reports)
+/// print(f"n={summary.n}  mean_overall={summary.mean_overall:.3f}")
+/// print(f"faithfulness_judged: mean={summary.mean_faithfulness_judged:.3f} "
+///       f"({summary.n_with_faithfulness_judged}/{summary.n} reports)")
+/// ```
+#[pyclass(module = "redhop")]
+#[derive(Clone)]
+struct EvalSummary {
+    inner: redhop::EvalSummary,
+}
+
+#[pymethods]
+impl EvalSummary {
+    /// Total number of reports in the input.
+    #[getter]
+    fn n(&self) -> usize {
+        self.inner.n
+    }
+    /// Mean of `overall` across all reports.
+    #[getter]
+    fn mean_overall(&self) -> f32 {
+        self.inner.mean_overall
+    }
+    /// Median of `overall` across all reports.
+    #[getter]
+    fn median_overall(&self) -> f32 {
+        self.inner.median_overall
+    }
+    /// Mean of `mean_grounding` across all reports.
+    #[getter]
+    fn mean_grounding(&self) -> f32 {
+        self.inner.mean_grounding
+    }
+    /// Mean of `evidence_density` across all reports.
+    #[getter]
+    fn mean_evidence_density(&self) -> f32 {
+        self.inner.mean_evidence_density
+    }
+    /// Fraction of reports where `low_confidence` was true. In `[0, 1]`.
+    #[getter]
+    fn low_confidence_rate(&self) -> f32 {
+        self.inner.low_confidence_rate
+    }
+
+    #[getter]
+    fn mean_context_recall(&self) -> Option<f32> {
+        self.inner.mean_context_recall
+    }
+    #[getter]
+    fn n_with_context_recall(&self) -> usize {
+        self.inner.n_with_context_recall
+    }
+    #[getter]
+    fn mean_context_precision(&self) -> Option<f32> {
+        self.inner.mean_context_precision
+    }
+    #[getter]
+    fn n_with_context_precision(&self) -> usize {
+        self.inner.n_with_context_precision
+    }
+    #[getter]
+    fn mean_answer_token_recall(&self) -> Option<f32> {
+        self.inner.mean_answer_token_recall
+    }
+    #[getter]
+    fn n_with_answer_token_recall(&self) -> usize {
+        self.inner.n_with_answer_token_recall
+    }
+    #[getter]
+    fn mean_faithfulness_lexical(&self) -> Option<f32> {
+        self.inner.mean_faithfulness_lexical
+    }
+    #[getter]
+    fn n_with_faithfulness_lexical(&self) -> usize {
+        self.inner.n_with_faithfulness_lexical
+    }
+    #[getter]
+    fn mean_relevancy_lexical(&self) -> Option<f32> {
+        self.inner.mean_relevancy_lexical
+    }
+    #[getter]
+    fn n_with_relevancy_lexical(&self) -> usize {
+        self.inner.n_with_relevancy_lexical
+    }
+    #[getter]
+    fn mean_correctness_lexical(&self) -> Option<f32> {
+        self.inner.mean_correctness_lexical
+    }
+    #[getter]
+    fn n_with_correctness_lexical(&self) -> usize {
+        self.inner.n_with_correctness_lexical
+    }
+    #[getter]
+    fn mean_faithfulness_judged(&self) -> Option<f32> {
+        self.inner.mean_faithfulness_judged
+    }
+    #[getter]
+    fn n_with_faithfulness_judged(&self) -> usize {
+        self.inner.n_with_faithfulness_judged
+    }
+    #[getter]
+    fn mean_relevancy_judged(&self) -> Option<f32> {
+        self.inner.mean_relevancy_judged
+    }
+    #[getter]
+    fn n_with_relevancy_judged(&self) -> usize {
+        self.inner.n_with_relevancy_judged
+    }
+    #[getter]
+    fn mean_correctness_judged(&self) -> Option<f32> {
+        self.inner.mean_correctness_judged
+    }
+    #[getter]
+    fn n_with_correctness_judged(&self) -> usize {
+        self.inner.n_with_correctness_judged
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "EvalSummary(n={}, mean_overall={:.3}, median_overall={:.3}, low_confidence_rate={:.3})",
+            self.inner.n,
+            self.inner.mean_overall,
+            self.inner.median_overall,
+            self.inner.low_confidence_rate,
+        )
+    }
+}
+
+/// Aggregate a list of `EvalReport`s into a single `EvalSummary`.
+/// Each conditionally-populated metric is averaged only over the
+/// subset of reports where it was populated.
+#[pyfunction]
+fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
+    let inner_reports: Vec<redhop::EvalReport> =
+        reports.into_iter().map(|r| r.inner).collect();
+    EvalSummary {
+        inner: redhop::summarize(&inner_reports),
+    }
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -2315,6 +2467,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;
     m.add_class::<EvalReport>()?;
+    m.add_class::<EvalSummary>()?;
     m.add_class::<PyJudge>()?;
     m.add_class::<RewriteRecord>()?;
     m.add_class::<Stripper>()?;
@@ -2327,5 +2480,6 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
+    m.add_function(wrap_pyfunction!(summarize, m)?)?;
     Ok(())
 }

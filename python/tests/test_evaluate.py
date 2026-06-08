@@ -552,3 +552,70 @@ def test_judge_repr_includes_name():
     rep = repr(judge)
     assert "Judge" in rep
     assert "myname" in rep
+
+
+# ─── Phase 4: summarize(reports) ────────────────────────────────────────────
+
+
+def _make_reports(n: int, with_answer: bool = True):
+    """Build n EvalReports against a tiny doc, varying the query so the
+    overall scores differ across reports."""
+    doc = redhop.Document.from_text(
+        "the refund window is thirty days. customers may return items in original packaging."
+    )
+    queries = [f"refund {i}" for i in range(n)]
+    reports = []
+    for q in queries:
+        ctx = doc.context(q)
+        if with_answer:
+            reports.append(
+                redhop.evaluate(q, ctx, answer="Thirty days from purchase.", gold_answer="thirty days")
+            )
+        else:
+            reports.append(redhop.evaluate(q, ctx))
+    return reports
+
+
+def test_summarize_empty_input_returns_zero_shape():
+    s = redhop.summarize([])
+    assert s.n == 0
+    assert s.mean_overall == 0.0
+    assert s.median_overall == 0.0
+    assert s.mean_faithfulness_lexical is None
+    assert s.n_with_faithfulness_lexical == 0
+    assert s.mean_faithfulness_judged is None
+
+
+def test_summarize_aggregates_self_eval_always():
+    reports = _make_reports(3, with_answer=False)
+    s = redhop.summarize(reports)
+    assert s.n == 3
+    # Self-eval and overall always populated.
+    assert 0.0 <= s.mean_overall <= 1.0
+    assert 0.0 <= s.median_overall <= 1.0
+    assert 0.0 <= s.low_confidence_rate <= 1.0
+    # No answer was supplied → all Tier-1 lexical fields stay None.
+    assert s.mean_faithfulness_lexical is None
+    assert s.n_with_faithfulness_lexical == 0
+
+
+def test_summarize_populates_lexical_when_reports_have_them():
+    reports = _make_reports(3, with_answer=True)
+    s = redhop.summarize(reports)
+    assert s.n == 3
+    # All 3 reports have answer set → faithfulness_lexical populated 3/3.
+    assert s.mean_faithfulness_lexical is not None
+    assert s.n_with_faithfulness_lexical == 3
+    assert 0.0 <= s.mean_faithfulness_lexical <= 1.0
+    # Tier-2 still None — no judge.
+    assert s.mean_faithfulness_judged is None
+    assert s.n_with_faithfulness_judged == 0
+
+
+def test_summarize_repr_includes_key_fields():
+    reports = _make_reports(2, with_answer=True)
+    s = redhop.summarize(reports)
+    rep = repr(s)
+    assert "EvalSummary" in rep
+    assert "n=2" in rep
+    assert "mean_overall" in rep
