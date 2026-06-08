@@ -77,6 +77,19 @@ pub struct LoadOptions {
     /// where chronology matters. Default `false`.
     /// See `crates/examples/examples/chat_rag.rs` for the worked pattern.
     pub preserve_order: Option<bool>,
+    /// When `Document.context(query)` retrieves a chunk classified as code
+    /// (`metadata["kind"]=="code"`), auto-pull this many adjacent chunks
+    /// on each side (i±1, … in the same file) so the implementation body
+    /// arrives with the signature. Default `1`; pass `0` to disable.
+    /// Measured tradeoff: helpful at very tight budgets, conservative at
+    /// loose budgets (see `docs/findings/CODE_NEIGHBORS_DEFAULT.md`).
+    pub code_neighbors_default: Option<usize>,
+    /// When `Document.context(query)` retrieves a prose chunk that carries
+    /// a `metadata["heading"]`, auto-attach the section's heading chunk
+    /// for context. Default `true`. Pass `false` to skip the attachment
+    /// (saves a small amount of budget when the heading isn't load-bearing).
+    /// See `docs/findings/PROSE_HEADING_DEFAULT.md` for the measurement.
+    pub prose_heading_default: Option<bool>,
 }
 
 /// Options for `read_folder_with` (plus the chunking/retrieval [`LoadOptions`]).
@@ -220,13 +233,12 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         rerank_pool: base.rerank_pool,
         context,
         min_candidates: o.min_candidates.unwrap_or(base.min_candidates),
-        // Inherits the Rust-side default (1 = on). Not exposed as a loader
-        // kwarg yet — the auto-expansion fires only on code-classified
-        // chunks anyway, so plain text/prose loaders see no change.
-        code_neighbors_default: base.code_neighbors_default,
-        // Inherits the Rust-side default (true). Fires only on chunks that
-        // carry a section heading (markdown / DOCX / PPTX / XLSX / PDF).
-        prose_heading_default: base.prose_heading_default,
+        code_neighbors_default: o
+            .code_neighbors_default
+            .unwrap_or(base.code_neighbors_default),
+        prose_heading_default: o
+            .prose_heading_default
+            .unwrap_or(base.prose_heading_default),
     })
 }
 

@@ -76,6 +76,21 @@ export interface Options {
    * `crates/examples/examples/chat_rag.rs` for the worked pattern.
    */
   preserveOrder?: boolean
+  /**
+   * When `Document.context(query)` retrieves a chunk classified as code
+   * (`metadata.kind === "code"`), auto-pull this many adjacent chunks
+   * (i±1, … in the same file) so the implementation body arrives with
+   * the signature. Default `1`; pass `0` to disable. See
+   * `docs/findings/CODE_NEIGHBORS_DEFAULT.md` for the measured tradeoff.
+   */
+  codeNeighborsDefault?: number
+  /**
+   * When `Document.context(query)` retrieves a prose chunk with a
+   * `metadata.heading`, auto-attach the section's heading chunk for
+   * context. Default `true`. See
+   * `docs/findings/PROSE_HEADING_DEFAULT.md` for the measurement.
+   */
+  proseHeadingDefault?: boolean
 }
 /** Extra options for `Document.fromFolder` (plus the chunking/retrieval `options`). */
 export interface FolderOptions {

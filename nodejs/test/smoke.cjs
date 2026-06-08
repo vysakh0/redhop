@@ -137,4 +137,37 @@ fs.rmSync(pdir, { recursive: true, force: true });
   assert.ok("evidence_density" in econ || "evidenceDensity" in econ, `contextEconomics object should include evidence_density: ${JSON.stringify(econ)}`);
 }
 
+// Document-config kwargs surfaced in 0.3.2 (codeNeighborsDefault, proseHeadingDefault).
+// See docs/findings/CODE_NEIGHBORS_DEFAULT.md and PROSE_HEADING_DEFAULT.md.
+{
+  // Re-create a code file (the earlier tmpdir was cleaned up around line 86).
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-kwargs-"));
+  const codeFile = path.join(tmp, "m.py");
+  fs.writeFileSync(
+    codeFile,
+    "def login(u):\n    return make_token(u)\n\ndef logout(u):\n    return revoke(u)\n",
+  );
+  const q = "make token login";
+
+  // Default: code chunks auto-pull neighbors=1 (matches Python parity).
+  const rDefault = Document.fromFile(codeFile, { tokenBudget: 400 })
+    .context(q).report;
+  // Explicit 0: no auto-expansion.
+  const rOff = Document.fromFile(codeFile, { tokenBudget: 400, codeNeighborsDefault: 0 })
+    .context(q).report;
+  assert.ok(
+    rOff.nExpanded === 0,
+    `codeNeighborsDefault=0 must suppress auto-expansion, got nExpanded=${rOff.nExpanded}`,
+  );
+  // On this tiny one-function file the default may or may not have neighbors to pull;
+  // what matters is that =0 produces nExpanded=0. The Python suite has the larger
+  // body-marker probe with multi-chunk files.
+
+  // proseHeadingDefault flag is accepted on every constructor and doesn't crash.
+  const dt = Document.fromText("the refund window is thirty days", { proseHeadingDefault: false });
+  assert.ok(dt.context("refund").chunks.length > 0, "proseHeadingDefault=false must still produce chunks");
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 console.log("✓ node smoke tests passed");

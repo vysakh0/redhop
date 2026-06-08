@@ -79,6 +79,17 @@ pub struct Options {
     /// where chronology matters. Default `false`. See
     /// `crates/examples/examples/chat_rag.rs` for the worked pattern.
     pub preserve_order: Option<bool>,
+    /// When `Document.context(query)` retrieves a chunk classified as code
+    /// (`metadata.kind === "code"`), auto-pull this many adjacent chunks
+    /// (i±1, … in the same file) so the implementation body arrives with
+    /// the signature. Default `1`; pass `0` to disable. See
+    /// `docs/findings/CODE_NEIGHBORS_DEFAULT.md` for the measured tradeoff.
+    pub code_neighbors_default: Option<u32>,
+    /// When `Document.context(query)` retrieves a prose chunk with a
+    /// `metadata.heading`, auto-attach the section's heading chunk for
+    /// context. Default `true`. See
+    /// `docs/findings/PROSE_HEADING_DEFAULT.md` for the measurement.
+    pub prose_heading_default: Option<bool>,
 }
 
 impl Options {
@@ -104,6 +115,8 @@ impl Options {
             min_candidates: u(self.min_candidates),
             language: self.language,
             preserve_order: self.preserve_order,
+            code_neighbors_default: u(self.code_neighbors_default),
+            prose_heading_default: self.prose_heading_default,
         }
     }
 }

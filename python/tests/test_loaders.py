@@ -383,3 +383,74 @@ def test_expansion_neighbors_adds_adjacent_in_document_order():
     assert len(expanded.chunks) > len(base.chunks)
     # the seed is still present
     assert any("xyzzy" in t.lower() for t in expanded.chunks)
+
+
+# --------------------------------------------------------------------------- #
+# Document-config kwargs: code_neighbors_default, prose_heading_default
+# Surfaced in 0.3.2 (audit follow-up — see docs/findings/CODE_NEIGHBORS_DEFAULT.md
+# and docs/findings/PROSE_HEADING_DEFAULT.md). Before this, the only way to
+# disable the auto-expansions from Python was the include_heading=True workaround.
+# --------------------------------------------------------------------------- #
+def test_code_neighbors_default_kwarg_disables_auto_pull():
+    """code_neighbors_default=0 must suppress the auto-±1 expansion on code
+    chunks. Default (=1) should fire it. The chunk must be classified as code
+    (metadata['kind']=='code') for the auto path to even consider firing —
+    file extension-based detection in from_file handles that."""
+    import os
+
+    rs_path = os.path.normpath(
+        os.path.join(HERE, "..", "..", "crates", "redhop", "src", "retrieval", "fusion.rs")
+    )
+    if not os.path.exists(rs_path):
+        pytest.skip("fusion.rs missing")
+    q = "reciprocal rank fusion"
+    d_default = redhop.Document.from_file(rs_path, token_budget=400, candidate_k=3)
+    d_off = redhop.Document.from_file(
+        rs_path, token_budget=400, candidate_k=3, code_neighbors_default=0
+    )
+    r_default = d_default.context(q).report
+    r_off = d_off.context(q).report
+    # Auto path fires only on code chunks; this file IS code via .rs extension.
+    assert r_default.n_expanded > 0, "default (=1) should auto-expand code neighbors"
+    assert r_off.n_expanded == 0, "code_neighbors_default=0 should suppress auto-expansion"
+
+
+def test_code_neighbors_default_kwarg_raises_value():
+    """code_neighbors_default=3 must produce more expansion than =1."""
+    import os
+
+    rs_path = os.path.normpath(
+        os.path.join(HERE, "..", "..", "crates", "redhop", "src", "retrieval", "fusion.rs")
+    )
+    if not os.path.exists(rs_path):
+        pytest.skip("fusion.rs missing")
+    q = "reciprocal rank fusion"
+    d_default = redhop.Document.from_file(rs_path, token_budget=2000, candidate_k=3)
+    d_more = redhop.Document.from_file(
+        rs_path, token_budget=2000, candidate_k=3, code_neighbors_default=3
+    )
+    r_default = d_default.context(q).report
+    r_more = d_more.context(q).report
+    assert r_more.n_expanded > r_default.n_expanded, (
+        f"code_neighbors_default=3 ({r_more.n_expanded}) must expand more than "
+        f"=1 default ({r_default.n_expanded}) when budget allows"
+    )
+
+
+def test_prose_heading_default_kwarg_passes_through():
+    """prose_heading_default flag plumbs through from_text. The flag is
+    accepted (no error) and the default behavior matches what code path 1
+    produces — exhaustive on-vs-off behavior depends on having distinct
+    heading and body chunks in the same (source, heading) group, which
+    requires the file-parsing tier for markdown."""
+    text = "the refund window is thirty days from purchase"
+    # Default kwarg
+    d_default = redhop.Document.from_text(text)
+    # Explicit True (matches default)
+    d_on = redhop.Document.from_text(text, prose_heading_default=True)
+    # Explicit False (the new opt-out path)
+    d_off = redhop.Document.from_text(text, prose_heading_default=False)
+    # All three configurations must build a working document and respond to a query.
+    for d in (d_default, d_on, d_off):
+        ctx = d.context("refund window")
+        assert ctx.chunks, "context() must return chunks regardless of prose_heading_default"

@@ -747,6 +747,8 @@ fn doc_config(
     retrieval_mode: RetrievalMode,
     language: Option<String>,
     preserve_order: bool,
+    code_neighbors_default: usize,
+    prose_heading_default: bool,
 ) -> PyResult<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match strategy {
@@ -796,14 +798,8 @@ fn doc_config(
         // kwarg once a real user asks; for now the issue-#1 fix in Phase 1
         // restored the documented hybrid contract on its own.
         min_candidates: base.min_candidates,
-        // Inherits the Rust-side default (1 = on for code chunks). The
-        // auto-expansion only fires on code-classified chunks, so a
-        // Python user on a text/prose corpus sees no change.
-        code_neighbors_default: base.code_neighbors_default,
-        // Inherits the Rust-side default (true). Fires only on chunks that
-        // carry a section heading — attaches the section's opening chunk
-        // for prose-with-headings contexts.
-        prose_heading_default: base.prose_heading_default,
+        code_neighbors_default,
+        prose_heading_default,
     })
 }
 
@@ -1039,6 +1035,8 @@ fn build_text_doc(
     rerank: Option<String>,
     language: Option<String>,
     preserve_order: bool,
+    code_neighbors_default: usize,
+    prose_heading_default: bool,
 ) -> PyResult<RhDocument> {
     let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
     let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
@@ -1051,6 +1049,8 @@ fn build_text_doc(
         mode,
         language,
         preserve_order,
+        code_neighbors_default,
+        prose_heading_default,
     )?;
     let mut inner = to_py(RhDocument::from_sources_with(files, cfg))?;
     if needs_embedder {
@@ -1102,7 +1102,7 @@ impl Document {
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false))]
+                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
         text: &str,
@@ -1125,6 +1125,8 @@ impl Document {
 
         language: Option<String>,
         preserve_order: bool,
+        code_neighbors_default: usize,
+        prose_heading_default: bool,
     ) -> PyResult<Self> {
         let sections = vec![RhSection {
             text: text.to_string(),
@@ -1151,6 +1153,8 @@ impl Document {
             rerank,
             language,
             preserve_order,
+            code_neighbors_default,
+            prose_heading_default,
         )?;
         Ok(Self::single(inner))
     }
@@ -1168,7 +1172,7 @@ impl Document {
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false))]
+                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_file(
         path: &str,
@@ -1190,6 +1194,8 @@ impl Document {
 
         language: Option<String>,
         preserve_order: bool,
+        code_neighbors_default: usize,
+        prose_heading_default: bool,
     ) -> PyResult<Self> {
         let (source, sections) = extract_file_text(path)?;
         let inner = build_text_doc(
@@ -1211,6 +1217,8 @@ impl Document {
             rerank,
             language,
             preserve_order,
+            code_neighbors_default,
+            prose_heading_default,
         )?;
         Ok(Self::single(inner))
     }
@@ -1229,7 +1237,7 @@ impl Document {
                         embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
                         embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false))]
+                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_bytes(
         data: Vec<u8>,
@@ -1252,6 +1260,8 @@ impl Document {
 
         language: Option<String>,
         preserve_order: bool,
+        code_neighbors_default: usize,
+        prose_heading_default: bool,
     ) -> PyResult<Self> {
         let (source, sections) = extract_bytes_sections(&data, source)?;
         let inner = build_text_doc(
@@ -1273,6 +1283,8 @@ impl Document {
             rerank,
             language,
             preserve_order,
+            code_neighbors_default,
+            prose_heading_default,
         )?;
         Ok(Self::single(inner))
     }
@@ -1306,7 +1318,7 @@ impl Document {
                         embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50,
                         ignore=None, gitignore=true, rerank=None, language=None,
-                        preserve_order=false))]
+                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_folder(
         path: &str,
@@ -1333,6 +1345,8 @@ impl Document {
 
         language: Option<String>,
         preserve_order: bool,
+        code_neighbors_default: usize,
+        prose_heading_default: bool,
     ) -> PyResult<Self> {
         // The walk + persist + cache-format + skipped-tracking all live in
         // Rust's `redhop::read_folder_with` so Python and Node share one
@@ -1367,6 +1381,8 @@ impl Document {
                     min_candidates: None,
                     language,
                     preserve_order: Some(preserve_order),
+                    code_neighbors_default: Some(code_neighbors_default),
+                    prose_heading_default: Some(prose_heading_default),
                 },
             };
             let inner = to_py(redhop::read_folder_with(path, &fo))?;
@@ -1399,6 +1415,8 @@ impl Document {
                 rerank,
                 language,
                 preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
             );
             Err(PyValueError::new_err(
                 "from_folder requires the file-parsing tier. The standard \
@@ -1415,7 +1433,7 @@ impl Document {
                         retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
                         embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
                         embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false))]
+                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
         chunks: &Bound<'_, PyAny>,
@@ -1435,6 +1453,8 @@ impl Document {
 
         language: Option<String>,
         preserve_order: bool,
+        code_neighbors_default: usize,
+        prose_heading_default: bool,
     ) -> PyResult<Self> {
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
@@ -1442,7 +1462,18 @@ impl Document {
             .collect();
         let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
         let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(strategy, token_budget, candidate_k, 256, 1, mode, language, preserve_order)?;
+        let cfg = doc_config(
+            strategy,
+            token_budget,
+            candidate_k,
+            256,
+            1,
+            mode,
+            language,
+            preserve_order,
+            code_neighbors_default,
+            prose_heading_default,
+        )?;
         let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
         if needs_embedder {
             inner = apply_dense_embedder(
