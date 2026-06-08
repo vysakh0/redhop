@@ -468,6 +468,10 @@ mod tests {
 
     #[test]
     fn code_chunks_stay_lexical_and_survive_in_hybrid() {
+        // Tests the "code chunks are routed lexical-only" contract: prose
+        // chunks get embedded by the eager index() pass; code chunks don't,
+        // but still survive retrieve via the BM25-tail fallback under pure
+        // rerank.
         rt().block_on(async {
             let mut r = LocalRerankRetriever::new(Arc::new(StubEmbedder), 10).unwrap();
             let mut code = Chunk::new("code", "alpha gamma", "main.py", TokenCount(2));
@@ -484,8 +488,9 @@ mod tests {
             assert!(embs.get("code").is_none(), "code should not be embedded");
             assert!(embs.get("prose").is_some(), "prose should be embedded");
 
-            // A query matching the code chunk's terms still returns it (BM25 → RRF),
-            // even though it has no embedding.
+            // A query matching the code chunk's terms still returns it
+            // (BM25-tail fallback under pure rerank), even though it has no
+            // embedding.
             let res = r.retrieve(&Query::new("alpha gamma"), 5).await.unwrap();
             assert!(
                 res.iter().any(|x| x.chunk.id.as_str() == "code"),

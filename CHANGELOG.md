@@ -97,6 +97,28 @@ retired across all user-facing docs.
   what `context_with_rewrites` is) from runtime branching among options
   (still out of scope).
 
+### Attempted, reverted (documented for honesty)
+
+- **Lazy candidate-only embedding.** Tried making `index()` skip the
+  bulk embed and pushing it into per-query `retrieve()` on the BM25
+  top-K — the theory was matching LangChain's "embed only what's
+  needed" pattern would close the 2-5× latency gap measured in
+  [HYBRID_LATENCY_PROFILE](docs/findings/HYBRID_LATENCY_PROFILE.md).
+  The re-measurement at n=100 showed retention unchanged (good) but
+  latency got slightly *worse* (240ms → 309ms HotpotQA, 467ms →
+  499ms MuSiQue). Two reasons:
+  - The Retriever trait's `retrieve(&self)` is read-only, so lazy
+    retrieve couldn't update the embeddings cache. Each query
+    re-embedded the BM25 pool from scratch — no amortization across
+    queries on the same Document.
+  - For one-shot single-query patterns, total embedding work is the
+    same whether eager (index time) or lazy (query time); we just
+    moved cost between phases without reducing it.
+  Reverted. The honest latency story is now in HYBRID_LATENCY_PROFILE:
+  the 30% per-forward-pass gap is ORT CPU vs sentence-transformers
+  PyTorch MPS on Apple Silicon. CoreML EP for ORT is the right next
+  fix; not done in 0.3.1.
+
 ### Changed (runtime behavior)
 
 - **`retrieval="hybrid"` is now pure rerank, not RRF fusion.** The

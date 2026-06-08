@@ -62,30 +62,53 @@ embedding amortizes — measured warm second query: **7.8ms**. If each
 query gets a new Document (the bench pattern; common in stateless
 single-doc QA), the upfront cost is paid each time.
 
-## What to do about it
+## What we tried, what worked, what didn't
 
-**Three potential fixes, ranked by impact-per-effort:**
+**Lazy embedding (attempted in 0.3.1, reverted):** built a mode where
+`index()` skips bulk embed and `retrieve()` embeds the BM25 top-K on
+the fly. Predicted ~50% latency cut for single-query workloads
+because we'd embed fewer chunks per query.
 
-1. **Lazy embedding option.** A new flag/strategy where dense
-   embeddings are computed only over the BM25 top-K instead of every
-   chunk. Matches LangChain's pattern. Single-query: faster.
-   Many-query: slower (no amortization). Honest tradeoff to expose.
-   Estimated impact: 30-40% latency cut on single-query workloads.
+**Re-measured with lazy on, n=100, same probe:** RedHop hybrid
+HotpotQA latency 240ms → **309ms (worse by 70ms)**. MuSiQue 467ms →
+**499ms (also worse)**. **Reverted.**
 
-2. **CoreML execution provider for ORT on Apple Silicon.** The `ort`
-   crate supports EPs; we currently use the default CPU EP. CoreML
-   would route through Apple's accelerators. Estimated impact: 20-40%
-   on the forward pass on Mac. Has no effect on Linux/Windows. Adds
-   a Mac-specific build path.
+Why the prediction was wrong:
 
-3. **Batched candidate-only rerank** under hybrid: instead of
-   pre-embedding the full chunk index, embed only top-K BM25
-   candidates per query. Same idea as #1 but as an internal strategy
-   tweak. Estimated impact: same as #1.
+- The Retriever trait's `retrieve(&self, ...)` is read-only — `&self`
+  not `&mut self`. So lazy retrieve couldn't update `self.embeddings`
+  on first query. Without a cache update path, every query re-embeds
+  the same candidates from scratch.
+- For one-shot single-query patterns, total embed work is roughly
+  identical between lazy and eager (you embed the same total number
+  of tokens; just at different times).
+- For multi-query-per-doc patterns, lazy DESTROYED the warm-query
+  benefit: eager warm queries hit ~8ms (cached cosine); lazy warm
+  queries hit ~200ms (re-embed the pool each time).
+- So lazy was strictly worse: equal or slightly slower on the first
+  query, dramatically slower on warm queries.
 
-None implemented in this finding — this is a profile/diagnosis, not a
-fix. The architectural call (eager vs lazy embedding) should be made
-deliberately, with the tradeoff documented.
+Adding interior mutability (Mutex around the embeddings HashMap) would
+recover the warm-query benefit but only delivers a "deferred eager"
+win — push the first embed cost from `from_text()` to first
+`context()`. Same total wall-clock time. Worth doing for UX (faster
+index when the user doesn't query immediately) but not a latency cut.
+
+**What actually moves the number:**
+
+1. **The ORT vs sentence-transformers MPS gap is the real bottleneck.**
+   Same model, same 8-chunk × 165-token workload, same hardware:
+   sentence-transformers PyTorch MPS 171ms; ORT CPU 220ms. ~30% per
+   forward pass. On Linux without MPS this gap closes substantially.
+2. **Sentence-transformers via PyO3 PyTorch bridge** would eliminate
+   it on Mac. Heavy dep change; probably not worth it for a per-call
+   30% cut.
+3. **CoreML EP for ORT** is the cleanest Mac-specific fix. The `ort`
+   crate supports it. Tracked as the right next step.
+4. **Accept the gap as the price of pure-Rust ONNX.** Honest answer:
+   on Apple Silicon, RedHop hybrid is 30% slower than sentence-
+   transformers-PyTorch hybrid for the same model. The user should
+   know this when picking a configuration.
 
 ## What this doesn't say
 
