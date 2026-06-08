@@ -54,8 +54,15 @@ strategy.
 **Push multi-hop further with `retrieval="hybrid"`**: measured +12 ≥0.8 on
 HotpotQA (71% → 83%) and +8 ≥0.5 on MuSiQue (66% → 74%) at n=100, at
 ~90-120× per-query latency (3ms → 250-400ms). Stripper and candidate_k tuning
-don't help on multi-hop — the bottleneck is lexical-vs-semantic mismatch on
-bridge passages, and only dense rerank pierces it.
+don't help on multi-hop — only dense rerank pierces the lexical-vs-semantic
+gap on bridge passages.
+
+**Apples-to-apples hybrid vs LangChain/LlamaIndex (same bge-small, n=100):**
+HotpotQA — RedHop hybrid wins (83% ≥0.8 vs LangChain 77%, LlamaIndex 67%).
+MuSiQue — LangChain hybrid wins (39% vs RedHop 26%, LlamaIndex 31%); our
+128-token chunks fit HotpotQA but lose on compositional multi-hop. RedHop
+hybrid is also 2-5× slower than competitors' hybrid. Test on your own
+workload. See [MULTIHOP_HYBRID_COMPETITORS.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID_COMPETITORS.md).
 
 What RedHop's CUAD recipe offers is a reproducible, in-process, audited path
 from 82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision

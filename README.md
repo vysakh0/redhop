@@ -75,11 +75,22 @@ chunking + BM25 defaults rather than the assembly strategy.
 **Want to push multi-hop further?** Switch to `retrieval="hybrid"` (BM25
 candidate pool reranked with a small local dense embedder). Measured
 lift over RedHop's own BM25 default: **HotpotQA ≥0.8 71% → 83% (+12)**,
-**MuSiQue ≥0.5 66% → 74% (+8)** at n=100. Latency cost is real —
-~90-120× per-query (BM25 ~3ms; hybrid ~250-400ms p50). The Stripper
-and candidate_k knobs **don't help** on multi-hop — the bottleneck is
-the lexical-vs-semantic gap on bridge passages, and only dense rerank
-pierces it. See [`MULTIHOP_HYBRID.md`](docs/findings/MULTIHOP_HYBRID.md).
+**MuSiQue ≥0.5 66% → 74% (+8)** at n=100. Latency cost: ~90-120× per-query
+(3ms → 250-400ms p50). Stripper and candidate_k tuning don't help on
+multi-hop — the bottleneck is the lexical-vs-semantic gap on bridge
+passages, and only dense rerank pierces it.
+
+**Apples-to-apples hybrid vs LangChain/LlamaIndex** (same bge-small model
+on all three, n=100): **HotpotQA — RedHop hybrid wins** (83% ≥0.8 vs
+LangChain hybrid 77%, LlamaIndex hybrid 67%, the latter showing no lift
+over its own BM25). **MuSiQue — LangChain hybrid wins** (39% ≥0.8 vs
+RedHop hybrid 26%, LlamaIndex hybrid 31%); RedHop's 128-token chunks fit
+HotpotQA's short-paragraph shape but lose to LangChain's larger chunks
+on MuSiQue's compositional 2-4 hop reasoning. **RedHop hybrid is also
+2-5× slower** than competitors' hybrid (240-467ms vs 60-100ms p50) — a
+known concern, follow-up tracked. The honest read: test on your own
+workload before committing. See [`MULTIHOP_HYBRID.md`](docs/findings/MULTIHOP_HYBRID.md)
++ [`MULTIHOP_HYBRID_COMPETITORS.md`](docs/findings/MULTIHOP_HYBRID_COMPETITORS.md).
 
 All without a vector database, an agent framework, or model
 finetuning. Raw numbers and methodology:
