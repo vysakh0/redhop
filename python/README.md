@@ -47,14 +47,22 @@ RedHop's clearer architectural lead is **multi-hop retention**, replicated on
 two datasets at n=300: **HotpotQA ≥0.8 retention 80% vs LlamaIndex 72%, LangChain
 71% (+8)**; **MuSiQue ≥0.8 retention 22% vs LlamaIndex 17%, LangChain 19% (+3 to
 +5)** — compositional multi-hop is harder, the magnitude shrinks but the lead
-holds at the ≥0.8 threshold (mean recall is essentially tied). `raw_topk`
-matches `reasoning_preserving` on both, so the edge is RedHop's chunking + BM25
-defaults rather than the assembly strategy. What RedHop's CUAD recipe offers
-is a reproducible, in-process, audited path from 82% → 87.7% → 90.7% using
-`Stripper` + `Vocabulary` with a Decision Report — the primitives are reusable
-on any templated workload. See
-[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md)
-and [MUSIQUE_MULTIHOP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MUSIQUE_MULTIHOP.md).
+holds at the ≥0.8 threshold. `raw_topk` matches `reasoning_preserving` on both,
+so the edge is RedHop's chunking + BM25 defaults rather than the assembly
+strategy.
+
+**Push multi-hop further with `retrieval="hybrid"`**: measured +12 ≥0.8 on
+HotpotQA (71% → 83%) and +8 ≥0.5 on MuSiQue (66% → 74%) at n=100, at
+~90-120× per-query latency (3ms → 250-400ms). Stripper and candidate_k tuning
+don't help on multi-hop — the bottleneck is lexical-vs-semantic mismatch on
+bridge passages, and only dense rerank pierces it.
+
+What RedHop's CUAD recipe offers is a reproducible, in-process, audited path
+from 82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision
+Report — the primitives are reusable on any templated workload. See
+[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md),
+[MUSIQUE_MULTIHOP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MUSIQUE_MULTIHOP.md),
+and [MULTIHOP_HYBRID.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID.md).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">

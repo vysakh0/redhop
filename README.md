@@ -70,10 +70,22 @@ two datasets at n=300 each:
 Mean recall on MuSiQue is essentially tied with the other two — the ≥0.8
 lead is the durable part of the result. Note: `raw_topk` matches
 `reasoning_preserving` on both datasets, so the edge is from RedHop's
-chunking + BM25 defaults rather than the assembly strategy. All without a
-vector database, an agent framework, or model finetuning. Raw numbers and
-methodology: [`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md)
-+ [`MUSIQUE_MULTIHOP.md`](docs/findings/MUSIQUE_MULTIHOP.md).
+chunking + BM25 defaults rather than the assembly strategy.
+
+**Want to push multi-hop further?** Switch to `retrieval="hybrid"` (BM25
+candidate pool reranked with a small local dense embedder). Measured
+lift over RedHop's own BM25 default: **HotpotQA ≥0.8 71% → 83% (+12)**,
+**MuSiQue ≥0.5 66% → 74% (+8)** at n=100. Latency cost is real —
+~90-120× per-query (BM25 ~3ms; hybrid ~250-400ms p50). The Stripper
+and candidate_k knobs **don't help** on multi-hop — the bottleneck is
+the lexical-vs-semantic gap on bridge passages, and only dense rerank
+pierces it. See [`MULTIHOP_HYBRID.md`](docs/findings/MULTIHOP_HYBRID.md).
+
+All without a vector database, an agent framework, or model
+finetuning. Raw numbers and methodology:
+[`docs/findings/FRAMEWORK_COMPARISON.md`](docs/findings/FRAMEWORK_COMPARISON.md)
++ [`MUSIQUE_MULTIHOP.md`](docs/findings/MUSIQUE_MULTIHOP.md)
++ [`MULTIHOP_HYBRID.md`](docs/findings/MULTIHOP_HYBRID.md).
 
 <p align="center">
   <img src=".github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">

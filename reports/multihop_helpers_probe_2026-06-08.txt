@@ -1,0 +1,55 @@
+
+================================================================================================
+  HotpotQA (multi-hop) — helper arms
+================================================================================================
+  analyze_query_set says: is_templated=False, template_word_share=0.000, boilerplate_count=0, dilution=none
+  → Stripper recommendation: NO (not templated; expect Stripper no-op)
+  n = 100 queries, budget = 400 tok
+
+  arm                                               mean recall   ≥0.5   ≥0.8   p50 ms
+  --------------------------------------------------------------------------------------
+  A. BM25 baseline (raw_topk, k=20)                        0.89    95%    71%     2.7
+  B. BM25 + Stripper (query-side)                          0.89    95%    71%     2.6
+  D. BM25 with candidate_k=60 (3x default)                 0.89    95%    71%     2.6
+  C. retrieval='hybrid' (BM25 + dense rerank)              0.93    97%    83%   236.7
+
+================================================================================================
+  MuSiQue (compositional multi-hop) — helper arms
+================================================================================================
+  analyze_query_set says: is_templated=False, template_word_share=0.113, boilerplate_count=1, dilution=none
+  → Stripper recommendation: NO (not templated; expect Stripper no-op)
+  n = 100 queries, budget = 400 tok
+
+  arm                                               mean recall   ≥0.5   ≥0.8   p50 ms
+  --------------------------------------------------------------------------------------
+  A. BM25 baseline (raw_topk, k=20)                        0.61    66%    23%     3.2
+  B. BM25 + Stripper (query-side)                          0.61    66%    23%     3.2
+  D. BM25 with candidate_k=60 (3x default)                 0.61    66%    23%     3.3
+  C. retrieval='hybrid' (BM25 + dense rerank)              0.65    74%    26%   386.2
+
+================================================================================================
+  INTERPRETATION GUIDE
+================================================================================================
+
+  - Arm A is the BM25 baseline. Compare every other arm against this.
+  - Arm B (Stripper) is the no-op verification. If retention shifts more
+    than ~1 point, it means the analyzer-token Stripper is touching
+    something it shouldn't on non-templated queries — that would be a
+    bug, not a feature.
+  - Arm C (hybrid) is the real test. If dense rerank rescues bridge
+    passages, retention should climb 2-10 points. If it doesn't, the
+    multi-hop ceiling is set by something other than the BM25 ranker.
+  - Arm D (larger candidate_k) is the cheap-knob alternative. If it
+    matches or beats hybrid, the answer is "more candidates, not denser
+    candidates."
+
+  What this probe does NOT test:
+  - Vocabulary.apply: would need an independent synonym corpus to avoid
+    curator conflict on these open-domain workloads. Out of scope.
+  - Vocabulary.enrich on chunks: predicted null-or-harm by the
+    four-corner observation (workload-pervasive signal on prose). Not
+    measured to save runtime; predicted negative.
+  - Cross-encoder rerank on top of hybrid: would slow per-query latency
+    ~10x; probably out of scope for production multi-hop where the user
+    cares about latency.
+
