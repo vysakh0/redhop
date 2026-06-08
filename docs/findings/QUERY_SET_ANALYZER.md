@@ -1,14 +1,24 @@
 # `analyze_query_set` — cross-workload validation of a templated-query diagnostic
 
-> **Status:** **Confirmed** (calibration probe: 5 workloads × n=300
-> queries; precision 1.00, recall 1.00 at the shipped thresholds).
-> The heuristic correctly identifies the two known templated workloads
-> (CUAD and a synthetic support-ticket frame) and stays quiet on three
-> diverse natural-language sets (HotpotQA, MuSiQue, synthetic free-text)
-> with no false positives. The boilerplate-term extraction surfaces the
-> actual template tokens (`highlight, contract, details, lawyer` for
-> CUAD; `account, broken, help, immediate` for the support frame), not
-> corpus-pervasive function words.
+> **Status:** **Confirmed on the extremes; boundary behavior bounded
+> but unmeasured.** Calibration probe: 7 workloads × n=300 queries.
+>
+> - **Obviously-distinct workloads (5):** precision 1.00, recall 1.00.
+>   The two templated workloads (CUAD; a synthetic support-ticket
+>   frame) fire; the three diverse natural-language workloads (HotpotQA,
+>   MuSiQue, synthetic free-text) stay quiet. Boilerplate-term
+>   extraction surfaces the actual template tokens, not corpus-pervasive
+>   function words.
+> - **Boundary-adjacent workloads (2):** both stay quiet at
+>   `template_word_share` 0.291 and 0.334 — comfortably below the 0.50
+>   threshold. The shipped threshold is on the **conservative** side:
+>   workloads with a short fixed prefix (≤30% shared words) won't trigger
+>   a recommendation. Whether that's "the right call" depends on
+>   measurement against the user's own corpus.
+>
+> **What the calibration does NOT tell you:** the exact crossover point.
+> All measured workloads are either well above 0.50 (fire) or well below
+> 0.50 (quiet). The space 0.334–0.50 is unprobed.
 >
 > **TL;DR:** [CUAD_RECALL_GAP](CUAD_RECALL_GAP.md) showed that template
 > stripping at the query boundary lifts CUAD ≥0.8 retention 82% → 88%,
@@ -145,9 +155,12 @@ crate root.
 ## Calibration (added in 0.3.1 audit, 2026-06-08)
 
 Run via `bench/.venv/bin/python bench/query_set_analyzer_calibration.py`.
-Five workloads — two positives (CUAD + a synthetic support-ticket
-template), three negatives (HotpotQA + MuSiQue + a synthetic free-text
-control). All n=300.
+Seven workloads — five obviously-distinct (two positives + three
+negatives) plus two **boundary-adjacent** workloads designed to land
+near the threshold so we learn where the heuristic actually flips.
+All n=300.
+
+### Obviously-distinct workloads
 
 | workload                              | label    | fires | template_word_share | boilerplate count | dilution |
 |---------------------------------------|----------|-------|--------------------:|------------------:|----------|
@@ -157,21 +170,47 @@ control). All n=300.
 | MuSiQue                               | negative | —     | 0.118               | 1                 | none     |
 | Synthetic diverse                     | negative | —     | 0.000               | 0                 | none     |
 
-Confusion: TP=2, FP=0, FN=0, TN=3 → **precision 1.00, recall 1.00** at
-the shipped thresholds (`is_templated = (template_word_share ≥ 0.50 AND
-boilerplate_count ≥ 2)`). The CUAD score (0.663) is comfortably above
-the 0.50 threshold; MuSiQue's 0.118 (a tiny shared "what" frame in some
-hops) is well below it. No threshold tuning required — the heuristic
-discriminates the templated/diverse boundary cleanly on every workload
-we have data for.
+**On the extremes:** Confusion TP=2 / FP=0 / FN=0 / TN=3 → precision
+1.00, recall 1.00. The 0.50 `template_word_share` threshold cleanly
+separates these — but P=R=1.00 here only tells you the heuristic
+distinguishes obviously-templated from obviously-diverse. It does
+**not** tell you where the boundary breaks down.
+
+### Boundary-adjacent workloads (where does it actually flip?)
+
+| workload                                 | fires | template_word_share | boilerplate count |
+|------------------------------------------|-------|--------------------:|------------------:|
+| Boundary synthetic (~30% prefix share)   | quiet | 0.291               | 2                 |
+| HotpotQA / "What is" prefix-filtered     | quiet | 0.334               | 4                 |
+
+Both stay below the 0.50 threshold and don't fire. **The threshold sits
+on the conservative side**: a workload where ~30% of words are shared
+(a brief fixed prefix on otherwise-varied content) won't trigger a
+Stripper recommendation. The closest measured firing point is CUAD at
+0.663, the closest measured quiet point is HotpotQA-What-is at 0.334.
+The actual crossover sits somewhere in `0.334 < threshold ≤ 0.50` (the
+hard cutoff); we haven't probed it with finer-grained workloads.
+
+What this means practically:
+
+- If your workload has a short fixed prefix (≤4 shared opening words
+  on an otherwise-diverse body), the analyzer will be quiet. Whether
+  that's the right call depends on whether stripping a 4-word prefix
+  would actually lift retention on your corpus — measure with
+  `evaluate(..., gold_chunks=...)` rather than relying on the analyzer
+  alone.
+- If your workload has CUAD-style ≥50% boilerplate, the analyzer fires
+  reliably.
+- The space in between (40%-50% shared) is **measurement-undetermined**
+  in this calibration. The shipped threshold won't fire there; whether
+  that's a feature (avoids spurious recommendations) or a bug (misses
+  light templates) requires a workload near that boundary, which we
+  haven't tested.
 
 The synthetic positive (`Please help me with my <topic> issue, my
-account is broken and I would like immediate assistance regarding this
-matter, thank you.`) is a deliberately heavier-boilerplate
-support-ticket frame than CUAD's 24-word legal template. It tests the
-"fires on workloads heavier than CUAD" direction; the synthetic negative
-(natural-language Q's with no shared frame) tests "doesn't fire on
-zero-template" direction. Both directions hold.
+account is broken…`) is a deliberately heavier-boilerplate support-
+ticket frame than CUAD's 24-word legal template, confirming the
+heuristic fires on workloads heavier than CUAD too.
 
 ## Honest limits
 
