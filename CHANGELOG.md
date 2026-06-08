@@ -99,6 +99,23 @@ retired across all user-facing docs.
 
 ### Attempted, reverted (documented for honesty)
 
+- **CoreML / OneDNN / XNNPACK / DirectML / CUDA Execution Provider
+  Cargo features.** Wired up `ep-*` feature flags for ORT's
+  per-platform Execution Providers to close the
+  [HYBRID_LATENCY_PROFILE](docs/findings/HYBRID_LATENCY_PROFILE.md)
+  ~30% gap to PyTorch MPS on Apple Silicon. Local CoreML measurement
+  on bge-small at ort 2.0.0-rc.10 showed a *regression* (HotpotQA
+  hybrid p50 240ms → 303ms). The other EPs were never measured (no
+  Linux/Windows CI runner with a meaningful EP-comparison probe).
+  Rather than ship paper-projected or measured-to-regress feature
+  flags as a maintainer footgun, ALL five EP feature flags were
+  removed from the codebase. The CPU EP remains the default and only
+  option. See `docs/design/HYBRID_ACCELERATION_PLAN.md` for the
+  full plan + measurement record. If a future ort release improves
+  CoreML, or someone benchmarks OneDNN on a Linux runner and finds a
+  real win, the right move is to re-introduce the *specific* flag
+  with the measurement attached.
+
 - **Lazy candidate-only embedding.** Tried making `index()` skip the
   bulk embed and pushing it into per-query `retrieve()` on the BM25
   top-K — the theory was matching LangChain's "embed only what's

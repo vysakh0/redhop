@@ -103,12 +103,12 @@ index when the user doesn't query immediately) but not a latency cut.
 2. **Sentence-transformers via PyO3 PyTorch bridge** would eliminate
    it on Mac. Heavy dep change; probably not worth it for a per-call
    30% cut.
-3. **~~CoreML EP for ORT~~ (tried, no measured win).** Wired up
-   `ep-coreml` end-to-end (Cargo feature, runtime EP registration,
+3. **~~CoreML EP for ORT~~ (tried, no measured win, removed).** Wired
+   up `ep-coreml` end-to-end (Cargo feature, runtime EP registration,
    CI matrix). Re-ran the n=100 hybrid-competitors probe on
    Apple Silicon:
 
-   | | Before CoreML | With CoreML EP |
+   | | Without EP (CPU) | With CoreML EP |
    |---|---:|---:|
    | RedHop hybrid HotpotQA p50 | 240 ms | **303 ms (worse)** |
    | RedHop hybrid MuSiQue p50 | 467 ms | **513 ms (worse)** |
@@ -116,33 +116,49 @@ index when the user doesn't query immediately) but not a latency cut.
    Multi-query-per-doc pattern (3 docs × 5 queries each):
    CoreML on 945 ms total; CoreML off 915 ms — essentially tied.
    Either the bge-small ONNX graph has ops that aren't accelerated
-   by ort 2.0.0-rc.10's CoreML EP, or CoreML's per-Document model-
-   compile overhead exceeds the per-query forward-pass savings.
-   **Code infrastructure kept** (Cargo features, EP registration in
-   `embeddings/onnx.rs`, `REDHOP_DISABLE_EP=1` escape hatch); the EP
-   is **not** enabled in published wheels until a measured win lands
-   on some platform.
+   by ort 2.0.0-rc.10's CoreML EP (op fallbacks cause cross-EP
+   memory copies), or CoreML's per-Document model-compile overhead
+   exceeds the per-query forward-pass savings.
+
+   **The `ep-coreml`, `ep-onednn`, `ep-xnnpack`, `ep-directml`,
+   `ep-cuda` Cargo features have been removed** in the same audit
+   commit that measured this. Reasoning: only `ep-coreml` was
+   measured (and it regressed); the others were paper projections.
+   Keeping unmeasured/regressed flags in the public surface is a
+   maintainer footgun (someone reads "no wheel-size cost" and flips
+   the flag without re-measuring). When a future ort release lands
+   real CoreML improvements, or when someone benchmarks OneDNN on
+   a Linux runner, the right move is to re-introduce the *specific*
+   flag with the measurement attached. See
+   docs/design/HYBRID_ACCELERATION_PLAN.md for the historical record.
 4. **Accept the gap as the price of pure-Rust ONNX.** Honest answer:
    on Apple Silicon at ort 2.0.0-rc.10, RedHop hybrid is ~30% slower
    than sentence-transformers-PyTorch hybrid for the same model.
    The user should know this when picking a configuration.
 
-## What's still worth trying
+## What's still worth trying (separate work, not in 0.3.1)
 
-- **OneDNN on Linux x86_64 + Windows x64.** Wired up as `ep-onednn`,
-  not enabled in published wheels. The same single-platform sanity
-  probe should be run on a Linux x86 runner before any default
-  switch. Different op coverage than CoreML; the result may differ.
-- **XNNPACK on Linux aarch64.** Wired as `ep-xnnpack`. Same caveat.
 - **A newer ort release.** ort 2.0.0-rc.10 is a release candidate;
-  later RCs may have better EP op coverage. Worth re-running this
-  probe whenever the dep gets bumped.
+  later RCs may have better CoreML op coverage. If a future ort
+  bump lands, re-run this probe. If it shows a win, add `ep-coreml`
+  back as an opt-in.
+- **Candle backend.** Hugging Face's pure-Rust ML framework has a
+  Metal backend that uses Apple's Accelerate.framework directly
+  (the same path PyTorch MPS uses). HF's Text Embeddings Inference
+  uses Candle for exactly this reason. Bringing Candle in as an
+  alternative to ORT would be a 0.4-scale effort but is the path
+  most likely to close the gap.
+- **Pre-computed embeddings via `Document.from_chunks(...)`.** Users
+  who care about latency more than zero-dep convenience can compute
+  vectors with sentence-transformers (or any embedder) and hand them
+  to RedHop via `Chunk(text, embedding=...)`. The hybrid path picks
+  up pre-attached embeddings without re-computing — already supported.
 
-For users who want to experiment: every EP can be opted into via
-`cargo install redhop --features ep-coreml` (or `ep-onednn`, etc.).
-The user-facing recommendation is to measure on the specific
-workload before assuming any EP helps — three "predicted lift, didn't
-land" results in this branch suggest there's no shortcut.
+Three "predicted lift, didn't land" results in this branch (lazy
+embed, bigger chunks, CoreML EP) suggest there's no quick shortcut
+through ORT. The pragmatic path is one of the three above, or
+accepting the gap and leaning into the Stripper/Vocabulary lexical
+path which is already competitive on most workloads.
 
 ## What this doesn't say
 

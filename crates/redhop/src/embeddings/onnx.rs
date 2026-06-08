@@ -86,63 +86,12 @@ impl OnnxEmbedder {
                     .map(|n| n.get())
                     .unwrap_or(1)
             });
-        // Build the session with platform-specific Execution Providers (EPs)
-        // when they're compiled in. ORT auto-falls-back to CPU for any op an
-        // EP can't run, so registering an EP is always safe — if it fails to
-        // initialize (wrong hardware, OS version mismatch), the CPU EP picks
-        // up the work. We register EPs in priority order; CoreML before
-        // OneDNN/XNNPACK before DirectML before CUDA. See
-        // docs/design/HYBRID_ACCELERATION_PLAN.md for the per-platform plan.
-        //
-        // Set `REDHOP_DISABLE_EP=1` to force the CPU EP even when an
-        // accelerator is compiled in (useful for parity tests + isolating
-        // numerical drift from EP differences vs other changes).
-        let mut builder = Session::builder()
+        let session = Session::builder()
             .map_err(|e| Error::Embedding(format!("ort builder: {e}")))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| Error::Embedding(format!("ort opt level: {e}")))?
             .with_intra_threads(intra_threads)
-            .map_err(|e| Error::Embedding(format!("ort intra threads: {e}")))?;
-
-        let ep_disabled = std::env::var("REDHOP_DISABLE_EP")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        #[allow(unused_mut)]
-        let mut eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
-        if !ep_disabled {
-            #[cfg(feature = "ep-coreml")]
-            {
-                use ort::execution_providers::CoreMLExecutionProvider;
-                eps.push(CoreMLExecutionProvider::default().build());
-            }
-            #[cfg(feature = "ep-onednn")]
-            {
-                use ort::execution_providers::OneDNNExecutionProvider;
-                eps.push(OneDNNExecutionProvider::default().build());
-            }
-            #[cfg(feature = "ep-xnnpack")]
-            {
-                use ort::execution_providers::XNNPACKExecutionProvider;
-                eps.push(XNNPACKExecutionProvider::default().build());
-            }
-            #[cfg(feature = "ep-directml")]
-            {
-                use ort::execution_providers::DirectMLExecutionProvider;
-                eps.push(DirectMLExecutionProvider::default().build());
-            }
-            #[cfg(feature = "ep-cuda")]
-            {
-                use ort::execution_providers::CUDAExecutionProvider;
-                eps.push(CUDAExecutionProvider::default().build());
-            }
-        }
-        if !eps.is_empty() {
-            builder = builder
-                .with_execution_providers(eps)
-                .map_err(|e| Error::Embedding(format!("ort EP registration: {e}")))?;
-        }
-
-        let session = builder
+            .map_err(|e| Error::Embedding(format!("ort intra threads: {e}")))?
             .commit_from_file(model_path.as_ref())
             .map_err(|e| Error::Embedding(format!("ort load: {e}")))?;
 

@@ -56,22 +56,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # `ep:` would select an ORT Execution Provider compiled in per
-        # target. Currently empty everywhere — local measurement of
-        # `ep-coreml` on Apple Silicon showed no benefit on bge-small (see
-        # docs/findings/HYBRID_LATENCY_PROFILE.md). Cargo feature flags
-        # are wired through if a future EP measurement lands a win.
         settings:
           # Both macOS targets on the arm64 runner (x86_64 cross-compiles cleanly with
           # Apple's toolchain) — avoids the scarce/queued macos-13 Intel runners.
-          - { host: macos-14,         target: x86_64-apple-darwin,         ep: '' }
-          - { host: macos-14,         target: aarch64-apple-darwin,        ep: '' }
-          - { host: ubuntu-latest,    target: x86_64-unknown-linux-gnu,    ep: '' }
+          - { host: macos-14,         target: x86_64-apple-darwin }
+          - { host: macos-14,         target: aarch64-apple-darwin }
+          - { host: ubuntu-latest,    target: x86_64-unknown-linux-gnu }
           # aarch64-Linux on a native ARM runner (no QEMU → ring compiles natively),
           # matching the PyPI wheels. Requires the repo be public OR an ARM-runner
           # billing plan — GitHub silently drops this matrix entry otherwise.
-          - { host: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu,   ep: '' }
-          - { host: windows-latest,   target: x86_64-pc-windows-msvc,      ep: '' }
+          - { host: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { host: windows-latest,   target: x86_64-pc-windows-msvc }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -85,13 +80,7 @@ jobs:
           workspaces: nodejs
       - run: npm install
       - name: Build
-        run: |
-          if [ -n "${{ matrix.settings.ep }}" ]; then
-            npx napi build --platform --release --target ${{ matrix.settings.target }} --features ${{ matrix.settings.ep }}
-          else
-            npx napi build --platform --release --target ${{ matrix.settings.target }}
-          fi
-        shell: bash
+        run: npx napi build --platform --release --target ${{ matrix.settings.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}

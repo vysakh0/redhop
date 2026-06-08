@@ -40,29 +40,18 @@ files = [
 # cross-encoder reranker. Shares one ONNX runtime / one tokenizers dep.
 semantic = ["dep:ort", "dep:tokenizers", "dep:hf-hub"]
 
-# ── Per-platform ORT Execution Provider (EP) opt-ins ──
+# ── No ORT Execution Provider (EP) features are exposed ──
 #
-# UNUSED IN PUBLISHED WHEELS as of 0.3.1. Each flag wires up an ORT EP
-# for `retrieval="hybrid"`/`"semantic"`, but **none is enabled in CI**
-# (.github/workflows/release-*.yml all set `ep: ''`). The wiring is kept
-# so a future contributor can re-measure once `ort` or a specific EP
-# improves. See docs/findings/HYBRID_LATENCY_PROFILE.md for what we
-# measured and docs/design/HYBRID_ACCELERATION_PLAN.md for the plan.
-#
-# DO NOT enable any of these in published artifacts without re-measuring
-# the latency probe (`bench/multihop_hybrid_competitors_probe.py`) on the
-# target platform. We measured `ep-coreml` on Apple Silicon at
-# ort 2.0.0-rc.10 + bge-small and it REGRESSED hybrid latency (240ms →
-# 303ms HotpotQA p50). The other EPs are paper-projected only.
-#
-# ORT does fall back to CPU per-op when an EP can't run an op, so
-# enabling these is technically safe — but the cross-EP boundary memory
-# copy can erode any speedup, which is why measurement is mandatory.
-ep-coreml   = ["semantic", "ort/coreml"]      # Apple Silicon — MEASURED REGRESSION at ort 2.0.0-rc.10 / bge-small
-ep-onednn   = ["semantic", "ort/onednn"]      # Intel CPU on Linux/Windows — unmeasured (+15-25 MB wheel if enabled)
-ep-xnnpack  = ["semantic", "ort/xnnpack"]     # ARM CPU on Linux aarch64 — unmeasured (+5-10 MB wheel if enabled)
-ep-directml = ["semantic", "ort/directml"]    # Windows GPU (NVIDIA/AMD/Intel via DX12) — unmeasured
-ep-cuda     = ["semantic", "ort/cuda"]        # NVIDIA GPU; user-installed CUDA runtime required — unmeasured
+# We tried `ep-coreml` on Apple Silicon at ort 2.0.0-rc.10 + bge-small
+# and measured a regression (HotpotQA hybrid p50 240ms → 303ms; see
+# docs/findings/HYBRID_LATENCY_PROFILE.md). The other ort EPs (onednn,
+# xnnpack, directml, cuda) were never measured. Rather than ship a
+# feature flag for an unmeasured-or-regressed code path, the EP
+# wiring has been removed. If a future ort release improves CoreML
+# coverage — or if someone benchmarks OneDNN on a Linux x86_64 runner
+# and finds a real win — the right move is to re-introduce the specific
+# flag with the measurement attached, not to keep paper-projected flags
+# in the public surface.
 
 [dependencies]
 # ── always-on (the lexical-only build pulls only these) ──
