@@ -20,10 +20,12 @@
 
 The [CUAD_RECALL_GAP](CUAD_RECALL_GAP.md) finding closed most of the
 4-point CUAD deficit to LlamaIndex by **subtracting** low-IDF
-boilerplate from the query (82% → 88%). The
+boilerplate from the query (the prototype-preprocessor run reported
+82% → 88%; the controlled three-arm run below re-measures the shipped
+`Stripper` primitive at 81.3% → 87.7%). The
 [CUAD_CHUNK_FRAGMENTATION_NULL](CUAD_CHUNK_FRAGMENTATION_NULL.md)
 finding then ruled out the chunker as the remaining lever — gold spans
-already fit inside single chunks. So the remaining gap (88% to the
+already fit inside single chunks. So the remaining gap (87.7% to the
 ~98% retrieval ceiling) lives at the BM25 ranking layer, which is two
 things in one: term-frequency on the query side, and inverse-document-
 frequency on the corpus side.
@@ -147,9 +149,14 @@ Deltas:
   measurable value on top.
 
 **RedHop with the full detect → strip → vocabulary workflow lands at
-90.7% on CUAD, +4 over LlamaIndex's 86%.** The 88% from
-CUAD_RECALL_GAP was already past LlamaIndex by 2; this finding extends
-that lead.
+90.7% on CUAD, +4.7 over LlamaIndex's 86%.** The 87.7% from arm B above
+(Stripper alone) was already past LlamaIndex by 1.7; this finding
+extends that lead. Caveat (added in the 0.3.1 audit): the +4.7 is
+RedHop with workload-curated preprocessing vs LlamaIndex with its
+default retriever; the same `Stripper + Vocabulary` preprocessing is
+not applied to LlamaIndex in this measurement. See
+`bench/compare.py`'s fair-preprocessing arm for the comparison where
+all three systems get the same Stripper.
 
 ## Why this works (mechanism, sharp)
 

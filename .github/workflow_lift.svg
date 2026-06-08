@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" role="img" aria-label="CUAD retention lift across the detect → Stripper → Vocabulary workflow">
   <title>CUAD retention lift across the workflow (≥0.8 word-recall, n=300)</title>
-  <desc>Horizontal-bar chart showing CUAD ≥0.8 retention rising from 81.3% on the raw 24-word template, to 87.7% after Stripper(boilerplate_terms), to 90.7% after also using Vocabulary(synonyms). LlamaIndex's 86% is shown as a vertical reference line. Note: this is RedHop with a workload-curated Vocabulary dictionary (34 keys, 121 synonyms compiled against CUAD's clause names) vs LlamaIndex with its default retriever; the same preprocessing is not applied to LlamaIndex in this comparison.</desc>
+  <desc>Horizontal-bar chart showing RedHop CUAD ≥0.8 retention rising from 81.3% on the raw 24-word template, to 87.7% after Stripper(boilerplate_terms), to 90.7% after also using Vocabulary(synonyms). LlamaIndex's 86% is shown as a vertical reference line for the raw-template default-vs-default comparison. Fair-preprocessing footnote (n=300, bench/compare.py): the same Stripper applied to every system lifts LlamaIndex to 94%, RedHop to 88%, LangChain to 79% — LlamaIndex benefits more from the Stripper than RedHop does. The 90.7% RedHop result adds workload-curated Vocabulary on top of Stripper; the Vocabulary recipe was not applied to other systems, so the 90.7% vs 86% comparison is not like-for-like.</desc>
 
   <defs>
     <linearGradient id="bar-raw" x1="0" y1="0" x2="1" y2="0">

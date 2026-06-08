@@ -1705,21 +1705,25 @@ impl Stripper {
     /// with: `original`, `stripped`, `original_tokens`, `stripped_tokens`
     /// (the analyzer's view, which is what Stripper actually matches
     /// against), `removed_terms` (configured boilerplate that fired on
-    /// this query), and `unused_boilerplate` (configured boilerplate
-    /// that did NOT fire — either absent from the query or stem-mismatched).
+    /// this query), `unused_boilerplate` (configured boilerplate that did
+    /// NOT fire), and `probable_silent_no_op` (the subset of unused
+    /// where the term's raw substring DOES appear in the query — the
+    /// actual bug).
     ///
-    /// A long entry in `unused_boilerplate` on what you thought was a
-    /// representative query usually means either the boilerplate isn't
-    /// actually in your workload, or the analyzer's stem of your term
-    /// isn't matching the analyzer's stem of the query token (the
-    /// silent-no-op failure mode).
+    /// Read `probable_silent_no_op` first: a non-empty list means you
+    /// configured a term, the raw query contains it, but the analyzer
+    /// stemmed/normalized it away from the query's tokens. Empty list
+    /// means every configured term that should have fired, did. The
+    /// long-tail `unused_boilerplate` is informational (terms genuinely
+    /// absent from this input).
     ///
     /// ```python
     /// s = redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"])
     /// effect = s.is_effective_on("highlight the parts of office hours")
-    /// print(effect["removed_terms"])         # ['highlight', 'the', 'of']
-    /// print(effect["unused_boilerplate"])    # ['antidisestablishmentarianism']
-    /// print(effect["stripped"])              # 'parts office hours' — 'of' inside 'office' preserved
+    /// print(effect["removed_terms"])           # ['highlight', 'the', 'of']
+    /// print(effect["unused_boilerplate"])      # ['antidisestablishmentarianism']
+    /// print(effect["probable_silent_no_op"])   # []  — every present term fired
+    /// print(effect["stripped"])                # 'parts office hours' — 'of' inside 'office' preserved
     /// ```
     fn is_effective_on<'py>(
         &self,
@@ -1734,6 +1738,7 @@ impl Stripper {
         dict.set_item("stripped_tokens", effect.stripped_tokens)?;
         dict.set_item("removed_terms", effect.removed_terms)?;
         dict.set_item("unused_boilerplate", effect.unused_boilerplate)?;
+        dict.set_item("probable_silent_no_op", effect.probable_silent_no_op)?;
         Ok(dict)
     }
     fn __len__(&self) -> usize {

@@ -122,6 +122,7 @@ process.stdin.on("end", () => {
           stripped_tokens: e.strippedTokens,
           removed_terms: e.removedTerms,
           unused_boilerplate: e.unusedBoilerplate,
+          probable_silent_no_op: e.probableSilentNoOp,
         };
         break;
       }

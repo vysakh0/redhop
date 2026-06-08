@@ -31,16 +31,25 @@ model at all; the semantic/rerank tiers download a small model on first use (cac
 
 Measured on identical documents + budgets + BM25 retrieval, RedHop **beats both
 frameworks on multi-hop evidence retention** (80% vs LangChain 71%, LlamaIndex 72%)
-and **beats LangChain on contracts** (82% vs 73%). It trails LlamaIndex by 4 points
-on CUAD's raw-template query — that gap is mechanism-known and closeable in two
-steps: `Stripper(boilerplate)` alone reaches **87.7%** (+1.7 over LlamaIndex,
-near-zero-effort: ~12 stopword-like terms); adding a workload-curated
-`Vocabulary` dictionary (34 keys, 121 synonyms hand-authored against CUAD's
-clause names) reaches **90.7%** (+4.7). The +4.7 is "RedHop with workload-curated
-preprocessing" vs "LlamaIndex with its default retriever" — the same preprocessing
-is not applied to LlamaIndex; see [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md)
-for the controlled three-arm run. All without a vector database, an agent
-framework, or model finetuning.
+and **beats LangChain on contracts** (82% vs 73%). On CUAD's raw-template query
+LlamaIndex leads by 4 (LlamaIndex 86% vs RedHop 82% ≥0.8 retention).
+
+**Honest fair-preprocessing result** (`bench/compare.py`, n=300, 2026-06-08):
+applying `Stripper(boilerplate)` to every system's query lifts everyone:
+LlamaIndex 86% → 94%, RedHop 82% → 88%, LangChain 73% → 79%. LlamaIndex
+actually benefits more from the same Stripper than RedHop does. RedHop
+reaches **90.7%** by additionally layering a hand-authored 34-key
+clause-name `Vocabulary` on top — but that recipe was not applied to
+LlamaIndex, and the +4.7 framing previously reported here is RedHop-with-
+recipe vs LlamaIndex-default, not a like-for-like comparison.
+
+RedHop's clearer architectural win is **multi-hop**: 80% on HotpotQA vs
+LlamaIndex 72%, LangChain 71% (n=300, no preprocessing). What RedHop's
+CUAD recipe offers is a reproducible, in-process, audited path from
+82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision
+Report — the primitives are reusable on any templated workload. See
+[CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md)
+for the controlled three-arm run.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/retention_vs_frameworks.svg" alt="Evidence retention vs LangChain vs LlamaIndex" width="100%">
@@ -221,7 +230,7 @@ closing it doesn't need a vector DB or a different retriever — it needs two
 small preprocessing helpers on the query side.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="CUAD retention rises 81.3% → 87.7% → 90.7% across the detect → Stripper → Vocabulary workflow; LlamaIndex is at 86%. RedHop uses a workload-curated 34-key Vocabulary dictionary; the same preprocessing is not applied to LlamaIndex." width="100%">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="RedHop CUAD retention rises 81.3% → 87.7% → 90.7% via Stripper then Vocabulary; LlamaIndex is at 86% (raw template). Fair-preprocessing footnote: the same Stripper applied to LlamaIndex's query lifts it to 94%; the Vocabulary recipe was not applied to LlamaIndex." width="100%">
 </p>
 
 **Measured** on the CUAD framework comparison (n=300, BM25, budget 2,000 tok):

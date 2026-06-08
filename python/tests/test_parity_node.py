@@ -430,6 +430,7 @@ def test_stripper_is_effective_on_parity():
     assert py["stripped_tokens"] == node["stripped_tokens"]
     assert sorted(py["removed_terms"]) == sorted(node["removed_terms"])
     assert sorted(py["unused_boilerplate"]) == sorted(node["unused_boilerplate"])
+    assert sorted(py["probable_silent_no_op"]) == sorted(node["probable_silent_no_op"])
 
 
 def test_vocabulary_apply_parity():

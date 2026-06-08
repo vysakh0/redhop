@@ -626,21 +626,23 @@ impl Stripper {
         self.inner.apply(&query).text
     }
     /// Diagnose how this Stripper would act on `query`. Returns an object
-    /// with the analyzer's view of the input (which is what Stripper
-    /// actually matches against) and the configured boilerplate terms
-    /// that did and did not fire on this query.
+    /// with the analyzer's view of the input and the configured boilerplate
+    /// terms that did / did not fire / are silent no-ops.
     ///
-    /// Use to catch silent-no-op cases: a long `unusedBoilerplate` array
-    /// on what you thought was a representative query usually means the
-    /// boilerplate isn't present in your workload, or the analyzer's stem
-    /// of your term isn't matching the analyzer's stem of the query token.
+    /// Read `probableSilentNoOp` first: a non-empty list means you
+    /// configured a term, the raw query contains it, but the analyzer
+    /// stemmed/normalized it away from the query's tokens (the actual
+    /// bug). Empty list means every configured term that should have
+    /// fired, did. The long-tail `unusedBoilerplate` is informational
+    /// (terms genuinely absent from this input).
     ///
     /// ```js
     /// const s = new redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"]);
     /// const effect = s.isEffectiveOn("highlight the parts of office hours");
-    /// console.log(effect.removedTerms);        // [ 'highlight', 'the', 'of' ]
-    /// console.log(effect.unusedBoilerplate);   // [ 'antidisestablishmentarianism' ]
-    /// console.log(effect.stripped);            // 'parts office hours'
+    /// console.log(effect.removedTerms);           // [ 'highlight', 'the', 'of' ]
+    /// console.log(effect.unusedBoilerplate);      // [ 'antidisestablishmentarianism' ]
+    /// console.log(effect.probableSilentNoOp);     // [] — every present term fired
+    /// console.log(effect.stripped);               // 'parts office hours'
     /// ```
     #[napi]
     pub fn is_effective_on(&self, query: String) -> StripperEffect {
@@ -652,6 +654,7 @@ impl Stripper {
             stripped_tokens: e.stripped_tokens,
             removed_terms: e.removed_terms,
             unused_boilerplate: e.unused_boilerplate,
+            probable_silent_no_op: e.probable_silent_no_op,
         }
     }
     /// Number of distinct boilerplate surface forms compiled.
@@ -679,10 +682,16 @@ pub struct StripperEffect {
     pub stripped_tokens: Vec<String>,
     /// Configured surface forms that fired on this query.
     pub removed_terms: Vec<String>,
-    /// Configured surface forms that did NOT fire on this query — either
-    /// they aren't present in the input, or the analyzer is stemming them
-    /// away from the query's tokens.
+    /// Configured surface forms that did NOT fire on this query. Includes
+    /// both "absent from input" and "present but mis-analyzed"; see
+    /// `probableSilentNoOp` for the actual-bug subset.
     pub unused_boilerplate: Vec<String>,
+    /// Subset of `unusedBoilerplate` where the term's lowercased raw
+    /// substring DOES appear in the query. These are the surprising
+    /// ones — terms the user expected to fire (the input contains them)
+    /// that nonetheless didn't strip. Usually a Snowball-stemming or
+    /// analyzer-token boundary mismatch. Empty list = no silent no-ops.
+    pub probable_silent_no_op: Vec<String>,
 }
 
 /// Compiled workload-curated equivalence classes (term → synonyms). Each

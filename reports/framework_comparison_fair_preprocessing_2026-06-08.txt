@@ -1,0 +1,29 @@
+/Users/vysakh/projects/neorag1/bench/compare.py:35: DeprecationWarning: `langchain-community` is being sunset and is no longer actively maintained. See https://github.com/langchain-ai/langchain-community/issues/674 for details and migration guidance toward standalone integration packages.
+  from langchain_community.retrievers import BM25Retriever as LCBm25
+
+==== CUAD (contracts) — raw template, all systems default  (budget 2000 tok, BM25, n=300) ====
+  system           avg tokens  mean recall   ≥0.5   ≥0.8
+  ------------------------------------------------------
+  redhop[reason]         1882         0.88    93%    77%
+  redhop[density]        1885         0.85    91%    72%
+  redhop[topk]           1887         0.91    94%    82%
+  langchain              1813         0.87    93%    73%
+  llamaindex             1806         0.93    96%    86%
+
+==== CUAD (contracts) — Stripper applied to query for ALL systems (fair preprocessing)  (budget 2000 tok, BM25, n=300) ====
+  system           avg tokens  mean recall   ≥0.5   ≥0.8
+  ------------------------------------------------------
+  redhop[reason]         1691         0.93    97%    86%
+  redhop[density]        1712         0.92    97%    85%
+  redhop[topk]           1713         0.94    97%    88%
+  langchain              1816         0.90    96%    79%
+  llamaindex             1807         0.96    98%    94%
+
+==== HotpotQA (multi-hop) — supporting-sentence retention  (budget 400 tok, BM25, n=300) ====
+  system           avg tokens  mean recall   ≥0.5   ≥0.8
+  ------------------------------------------------------
+  redhop[reason]          352         0.90    98%    77%
+  redhop[density]         353         0.78    86%    52%
+  redhop[topk]            350         0.91    97%    80%
+  langchain               328         0.88    96%    71%
+  llamaindex              329         0.88    96%    72%

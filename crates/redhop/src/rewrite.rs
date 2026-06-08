@@ -202,24 +202,28 @@ impl Stripper {
         self.surface_forms.is_empty()
     }
 
-    /// Diagnose how this Stripper acts on `query`. Surfaces three things
+    /// Diagnose how this Stripper acts on `query`. Surfaces four things
     /// the bare [`apply`] return value buries:
     ///
     /// - **`original_tokens` / `stripped_tokens`** — the analyzer's view
     ///   of the query before and after stripping. Stripper matches
     ///   post-analyzer tokens, so this is what determines whether a
-    ///   boilerplate term will actually fire. If your `Stripper(["the"])`
-    ///   tokens to `[]` (because the analyzer drops `"the"` as a stopword)
-    ///   the tier-2 surface-form fallback still kicks in — but seeing the
-    ///   token streams makes it explicit when that's happening.
+    ///   boilerplate term will actually fire.
     /// - **`removed_terms`** — configured surface forms that actually
     ///   matched something in this query.
     /// - **`unused_boilerplate`** — configured surface forms that did
-    ///   **not** match anything in this query. A long entry here on what
-    ///   you thought was a representative query usually means either the
-    ///   boilerplate isn't actually present in your workload, or the
-    ///   analyzer's stem of your term isn't matching the analyzer's stem
-    ///   of the query token (the silent-no-op failure mode).
+    ///   not fire on this query. Either (a) the term is genuinely
+    ///   absent from the input, or (b) the term is *present* but the
+    ///   analyzer is stemming/normalizing it away from the query's
+    ///   tokens (the silent-no-op failure mode). The next field
+    ///   distinguishes (a) from (b).
+    /// - **`probable_silent_no_op`** — the subset of `unused_boilerplate`
+    ///   whose lowercased raw substring **does** appear in the query.
+    ///   These are the terms you configured *expecting* them to strip,
+    ///   that the raw query *contains*, that nonetheless didn't fire.
+    ///   That's the actual bug — usually a Snowball-stemming mismatch
+    ///   or a phrase-vs-token analyzer difference. An empty list here
+    ///   means everything that was supposed to fire, did.
     ///
     /// Returns a [`StripperEffect`]; nothing in the audit trail or
     /// retrieval pipeline observes this call.
@@ -232,6 +236,8 @@ impl Stripper {
     /// assert!(effect.removed_terms.contains(&"of".to_string()));
     /// // "this" wasn't in the query → reported as unused so you can prune it
     /// assert!(effect.unused_boilerplate.contains(&"this".to_string()));
+    /// // "this" wasn't in the raw query either → NOT a silent no-op
+    /// assert!(effect.probable_silent_no_op.is_empty());
     /// // "of" inside "office" is NOT erased — word-boundary safety holds
     /// assert!(effect.stripped.contains("office"));
     /// ```
@@ -256,6 +262,22 @@ impl Stripper {
             }
         }
 
+        // probable_silent_no_op: unused terms whose lowercased raw substring
+        // is present in the query (so the user expected them to fire). This
+        // is the actual bug the helper exists to surface — the analyzer
+        // stemmed/normalized the configured term away from the query's
+        // tokens. Pure absence (term not in query at all) is informational,
+        // not a bug, so we exclude it from this list.
+        let query_lower = query.to_lowercase();
+        let probable_silent_no_op: Vec<String> = unused_boilerplate
+            .iter()
+            .filter(|form| {
+                let lc = form.to_lowercase();
+                !lc.is_empty() && query_lower.contains(&lc)
+            })
+            .cloned()
+            .collect();
+
         StripperEffect {
             original: query.to_string(),
             stripped: result.text,
@@ -263,17 +285,20 @@ impl Stripper {
             stripped_tokens,
             removed_terms,
             unused_boilerplate,
+            probable_silent_no_op,
         }
     }
 }
 
 /// Diagnostic output of [`Stripper::is_effective_on`].
 ///
-/// Self-describing: every configured boilerplate term lands in exactly one
-/// of [`removed_terms`](Self::removed_terms) or
-/// [`unused_boilerplate`](Self::unused_boilerplate). The token streams
-/// expose the analyzer's view of the input so users can debug
-/// "my Stripper compiled but seems to do nothing" without reading source.
+/// Every configured boilerplate term lands in exactly one of
+/// [`removed_terms`](Self::removed_terms) (fired on this query) or
+/// [`unused_boilerplate`](Self::unused_boilerplate) (didn't fire). The
+/// [`probable_silent_no_op`](Self::probable_silent_no_op) list is the
+/// subset of `unused_boilerplate` where the user has the most reason to
+/// be surprised — terms present in the raw query that nonetheless didn't
+/// fire. The token streams expose the analyzer's view of the input.
 #[derive(Debug, Clone)]
 pub struct StripperEffect {
     /// The query passed in, verbatim.
@@ -287,10 +312,19 @@ pub struct StripperEffect {
     /// Configured surface forms that fired on this query.
     pub removed_terms: Vec<String>,
     /// Configured surface forms that did **not** fire on this query.
-    /// Either they aren't present in the input, or the analyzer is
-    /// stemming them away from the query's tokens — the most common
-    /// silent-no-op failure mode.
+    /// Includes both "absent from input" and "present but mis-analyzed";
+    /// see [`probable_silent_no_op`](Self::probable_silent_no_op) for the
+    /// subset that's actually a bug.
     pub unused_boilerplate: Vec<String>,
+    /// Subset of [`unused_boilerplate`](Self::unused_boilerplate) where
+    /// the term's lowercased raw substring **does** appear in the query.
+    /// These are the surprising ones — terms the user expected to fire
+    /// (the input contains them) that nonetheless didn't strip. Usually
+    /// caused by Snowball stemming or analyzer-token boundary mismatch
+    /// between the configured term and the query token. An empty list
+    /// means every configured term that should have fired on this query,
+    /// did.
+    pub probable_silent_no_op: Vec<String>,
 }
 
 impl QueryRewrite for Stripper {
@@ -801,6 +835,42 @@ mod tests {
             "stripping should not add tokens: {:?} → {:?}",
             effect.original_tokens,
             effect.stripped_tokens
+        );
+        // Absent term ("antidisestablishmentarianism") is NOT in the raw
+        // query, so it should NOT show up as probable_silent_no_op —
+        // that list is reserved for the actual bug (present-but-mis-analyzed).
+        assert!(
+            effect.probable_silent_no_op.is_empty(),
+            "absent terms should not be flagged as silent no-ops: {:?}",
+            effect.probable_silent_no_op
+        );
+    }
+
+    #[test]
+    fn is_effective_on_flags_real_silent_no_op() {
+        // The bug this helper is meant to catch: a configured term IS in
+        // the raw query but the analyzer-token match doesn't fire.
+        // Construct it by giving the stripper a substring that's part of
+        // a longer query word — the analyzer treats them as different
+        // tokens, so the stripper doesn't fire, but the raw substring
+        // *is* there. A user who reads removed_terms vs unused_boilerplate
+        // alone would assume their term is just absent; probable_silent_no_op
+        // surfaces that it's actually present-and-broken.
+        let s = Stripper::new(&["office"]);
+        let effect = s.is_effective_on("the antioffice argument is weak");
+        // "office" is NOT a standalone word in this query — it's a
+        // substring of "antioffice". Word-boundary safety means the
+        // stripper does NOT fire. But the raw substring "office" IS
+        // present, so this lands in probable_silent_no_op.
+        assert!(
+            effect.unused_boilerplate.contains(&"office".to_string()),
+            "office should be in unused (didn't fire): {:?}",
+            effect.unused_boilerplate
+        );
+        assert!(
+            effect.probable_silent_no_op.contains(&"office".to_string()),
+            "office should be flagged as silent no-op (raw substring present, did not fire): {:?}",
+            effect.probable_silent_no_op
         );
     }
 

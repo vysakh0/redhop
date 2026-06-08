@@ -265,9 +265,9 @@ def test_context_with_rewrites_rejects_non_rewrite_objects():
 
 def test_stripper_is_effective_on_reports_used_and_unused():
     """is_effective_on surfaces which configured boilerplate fired on this
-    query vs which sat silent. The silent-no-op failure mode (a configured
-    term that doesn't actually exist in the workload) becomes visible
-    instead of being lost in the audit-trail noise."""
+    query vs which sat silent. Pure absence (term not in the input at
+    all) should land in unused_boilerplate but NOT in probable_silent_no_op
+    — that list is reserved for the actual bug (present-but-mis-analyzed)."""
     s = redhop.Stripper(["highlight", "the", "of", "antidisestablishmentarianism"])
     effect = s.is_effective_on("highlight the parts of office hours")
     assert effect["stripped"] == "parts office hours" or "parts" in effect["stripped"]
@@ -280,3 +280,19 @@ def test_stripper_is_effective_on_reports_used_and_unused():
     assert "office" in effect["stripped"]
     # Token streams are exposed (analyzer's view of the input).
     assert len(effect["original_tokens"]) >= len(effect["stripped_tokens"])
+    # Absent term is informational, NOT a silent no-op.
+    assert effect["probable_silent_no_op"] == []
+
+
+def test_stripper_is_effective_on_flags_real_silent_no_op():
+    """The actual bug the helper exists to catch: a configured term is a
+    substring of a longer query word, so word-boundary safety means the
+    stripper doesn't fire — but the raw substring IS present. A reader of
+    removed_terms vs unused_boilerplate alone would think their term is
+    just absent. probable_silent_no_op surfaces 'present and broken'."""
+    s = redhop.Stripper(["office"])
+    effect = s.is_effective_on("the antioffice argument is weak")
+    # "office" did NOT fire (it's inside "antioffice"; word-boundary protects it).
+    assert "office" in effect["unused_boilerplate"]
+    # The raw substring "office" IS in the query → flagged as silent no-op.
+    assert "office" in effect["probable_silent_no_op"]

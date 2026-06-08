@@ -266,4 +266,27 @@ console.log("rewrite: OK");
     effect.originalTokens.length >= effect.strippedTokens.length,
     `stripping must not add tokens; got ${effect.originalTokens.length} → ${effect.strippedTokens.length}`,
   );
+  // Absent term is informational, NOT a silent no-op.
+  assert.deepStrictEqual(
+    effect.probableSilentNoOp,
+    [],
+    `absent terms should not flag as silent no-ops; got: ${JSON.stringify(effect.probableSilentNoOp)}`,
+  );
+}
+
+// is_effective_on flags the actual bug: configured term IS in the raw query
+// (as a substring of a longer word), word-boundary protects it from firing,
+// helper surfaces it via probableSilentNoOp instead of letting the user
+// assume the term is just absent.
+{
+  const s = new Stripper(["office"]);
+  const effect = s.isEffectiveOn("the antioffice argument is weak");
+  assert.ok(
+    effect.unusedBoilerplate.includes("office"),
+    `'office' should be in unusedBoilerplate (didn't fire); got: ${JSON.stringify(effect.unusedBoilerplate)}`,
+  );
+  assert.ok(
+    effect.probableSilentNoOp.includes("office"),
+    `'office' should be flagged as silent no-op (substring of 'antioffice' present); got: ${JSON.stringify(effect.probableSilentNoOp)}`,
+  );
 }
