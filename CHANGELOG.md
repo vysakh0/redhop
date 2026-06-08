@@ -7,67 +7,112 @@ minor releases may break; breaking changes are noted here).
 
 ## [0.3.1] — 2026-06-08
 
-The **post-release honesty audit**. After 0.3.0 shipped, a critical review
-of the public claims surfaced ten methodological issues — curator-conflict
-on SPIDER_ENRICH, over-strong generalization in the "four-corner rule"
-language, an apples-to-oranges comparison in the 90.7% headline number,
-numeric drift between docs, and an undocumented silent-no-op failure
-mode in `Stripper`. This release addresses each one without changing
-runtime behavior, except for one small additive helper.
+The **post-release honesty audit**. After 0.3.0 shipped, a critical
+review of the public claims surfaced ten methodological issues, then
+a second reviewer pass surfaced five follow-ups. This release addresses
+all of them. The most consequential change is a measurement, not code:
+running `bench/compare.py` at n=300 with the same Stripper applied to
+*every* system showed that LlamaIndex actually benefits more from the
+same preprocessing than RedHop does — so the previously-published
+"+4.7 over LlamaIndex" framing was apples-to-oranges and has been
+retired across all user-facing docs.
 
 ### Added
 
 - **`Stripper::is_effective_on(query)`** (Rust + Python + Node): returns
-  a `StripperEffect` (Rust struct / Python dict / Node object) reporting
-  the analyzer's view of the query (`original_tokens` / `stripped_tokens`)
-  plus which configured boilerplate terms fired (`removed_terms`) vs sat
-  silent (`unused_boilerplate`). Surfaces the silent-no-op failure mode
-  where a configured term stems to the same form as surrounding query
-  tokens. Tests: 1 Rust + 1 Python + 1 Node.
+  a `StripperEffect` reporting the analyzer's view of the query
+  (`original_tokens` / `stripped_tokens`), which configured boilerplate
+  terms fired (`removed_terms`) vs sat silent (`unused_boilerplate`),
+  AND a `probable_silent_no_op` list — the subset of unused boilerplate
+  whose raw lowercased substring DOES appear in the query (= the actual
+  bug). Empty `probable_silent_no_op` means every configured term that
+  should have fired, did. 2 Rust + 2 Python + 2 Node tests, plus parity
+  test asserting the field matches across bindings.
+- **`bench/compare.py` fair-preprocessing arm.** New
+  `cuad_stripped_items(n)` iterator applies `redhop.Stripper(CUAD_BOILERPLATE)`
+  to every system's CUAD query before retrieval. The fair n=300 result:
+  LlamaIndex 86% → 94%, RedHop topk 82% → 88%, LangChain 73% → 79%.
+  Raw run persisted at `reports/framework_comparison_fair_preprocessing_2026-06-08.txt`.
+- **`bench/query_set_analyzer_calibration.py`.** 7-workload calibration:
+  5 obviously-distinct (P=R=1.00 on these) + 2 boundary-adjacent. Both
+  boundary cases at template_word_share 0.291 and 0.334 stay quiet — the
+  shipped 0.50 threshold is conservative; the actual crossover lives in
+  `0.334 < threshold ≤ 0.50` (unprobed).
+- **`scripts/check_feature_matrix.sh`** + matching `feature-matrix` job
+  in `.github/workflows/ci.yml`. Sweeps 4 feature combinations × 2 crates
+  = 8 `cargo check --all-targets` runs (redhop core; Python binding;
+  the Node binding ships single-config by design). Found and fixed two
+  latent test-compile breaks under `--no-default-features` (see Fixed).
+- **6 new cross-binding parity tests** covering the 0.3.0 surface:
+  Stripper.apply, Stripper.is_effective_on, Vocabulary.apply,
+  Vocabulary.enrich, analyze_query_set, context_with_rewrites. The
+  pre-0.3.1 parity coverage only touched build_context and friends.
 
-### Changed (documentation only, no behavior change)
+### Changed (claim corrections; no runtime behavior change)
 
+- **CUAD framing rewritten** in README.md, python/README.md,
+  nodejs/README.md, comparison.mdx, benchmarks.md, overview.mdx,
+  alternatives/llamaindex.mdx, llms.txt §"Why this matters", SVG alt
+  texts + `<desc>`. The "+4.7 over LlamaIndex" headline is retired
+  because the fair-preprocessing measurement disproved its like-for-like
+  reading. The recipe's value is now framed as a **reproducible
+  in-process workflow** (audit trail + Decision Report + `evaluate`),
+  not an architectural retrieval lead. RedHop's clearer architectural
+  win is called out separately: multi-hop (80% on HotpotQA vs LlamaIndex
+  72%, n=300, no preprocessing).
 - **SPIDER_ENRICH downgraded from "Confirmed" to "Suggestive"** and
   restructured to separate the cleanly-measured algorithmic lift
   (arm B, +0.128 mean recall, deterministic enrichment from schema
   metadata) from the curator-conflicted marginal lift (arm C, +0.067
   on top, hand-curated synonyms by the author of the questions). New
   Methodology Limitations section names the conflict, sample-schema
-  selection bias, and what the probe *does* vs *does not* support.
+  selection bias, and what the probe does vs does not support.
   `VOCABULARY_ENRICH` header flipped from "bidirectional measured
   evidence" → "asymmetric measured evidence (negative clean; positive
   suggestive)".
-- **"Four-corner rule" renamed to "four-corner observation"** in
-  findings/README, SPIDER_ENRICH, CUAD_HYBRID_RERANK,
-  CUAD_ENRICH_DEFINITIONS_NULL, SUB_IDF_AUTO_DROP_NULL, examples
-  README, and the cuad_hybrid_rerank probe comment. The cleanly-falsified
-  corners are the load-bearing evidence; the curated corners are CUAD-only
-  with author-curator overlap on the positive arms, so the universal-rule
-  framing wasn't warranted.
-- **CUAD 90.7% headline split into two claims** in all three READMEs,
-  `comparison.mdx`, `benchmarks.md`, `overview.mdx`, and `llms.txt`:
-  - `Stripper(boilerplate)` alone reaches **87.7%** (+1.7 over LlamaIndex,
-    near-zero-effort: ~12 boilerplate terms).
-  - Adding a workload-curated `Vocabulary` (34 keys, 121 synonyms
-    hand-authored against CUAD's clause-name list) reaches **90.7%**
-    (+4.7).
-  The +4.7 is "RedHop with workload-curated preprocessing" vs
-  "LlamaIndex with its default retriever" — the same preprocessing is
-  *not* applied to LlamaIndex; this caveat now appears in the same
-  paragraph as the number.
+- **"Four-corner rule" → "four-corner observation"** in findings/README,
+  SPIDER_ENRICH, CUAD_HYBRID_RERANK, CUAD_ENRICH_DEFINITIONS_NULL,
+  SUB_IDF_AUTO_DROP_NULL, examples README, the cuad_hybrid_rerank probe
+  comment, plus the memory file (renamed). The cleanly-falsified
+  corners are the load-bearing evidence; the curated corners are
+  CUAD-only with author-curator overlap on the positive arms — a
+  universal-rule framing wasn't warranted.
+- **`analyze_query_set` calibration headline rewritten** from "P=R=1.00
+  on 5 workloads" (true but uninformative — all 5 sat at obvious
+  extremes) to "**Confirmed on the extremes; boundary behavior bounded
+  but unmeasured**." QUERY_SET_ANALYZER.md now leads with the honest
+  scope and includes the boundary table.
 - **Stripper-alone retention aligned to 87.7%** (from `CUAD_CLAUSE_EXPANSION`'s
-  controlled three-arm run) across all forward-looking surfaces; the
-  rounded 88% from `CUAD_RECALL_GAP`'s original prototype probe stays in
-  that historical finding doc but no longer appears in user-facing docs.
+  controlled three-arm run) across all forward-looking surfaces.
 - **`evaluate` docstrings** (Rust, Python, Node) now distinguish
-  self-eval (always populated, measures *focus*) from gold-conditional
-  (measures *correctness*). Without gold, evaluate's metrics describe
-  how query-focused the context is, not whether the right answer is in
-  there.
-- **`Stripper`'s analyzer-token semantics** documented in the new helper's
-  rustdoc + Python/Node docstrings + `llms.txt`. The silent-no-op failure
-  mode (where a configured term shares a stem with surrounding words) is
-  now explicitly named alongside the fix (use `is_effective_on`).
+  self-eval (measures *focus*) from gold-conditional (measures
+  *correctness*). Without gold, evaluate's metrics tell you whether the
+  context is query-focused, not whether the right answer is in there.
+- **`Stripper`'s analyzer-token semantics** documented in the new
+  helper's rustdoc + Python/Node docstrings + `llms.txt`. The
+  silent-no-op failure mode is now explicitly named alongside the fix.
+- **`feedback_discipline` memory refined.** The "bounded architecture"
+  rule used to forbid "chains" wholesale; refined to distinguish
+  composition of compiled deterministic rewrites (in scope — that's
+  what `context_with_rewrites` is) from runtime branching among options
+  (still out of scope).
+
+### Fixed
+
+- **Two latent test-compile breaks under `--no-default-features`**, both
+  caught by the new feature-matrix sweep:
+  - `crates/redhop/tests/files_extract.rs` imported `redhop::files::*`
+    unconditionally — gated with `#![cfg(feature = "files")]`.
+  - `crates/redhop/tests/quality_suite.rs` imported `redhop::read_bytes`
+    and used `serde_json::Value` metadata-access patterns whose type
+    inference relies on `files`-gated traits — gated with the same
+    attribute. CI now runs `cargo test -p redhop --features files,semantic`
+    in addition to the default-features `cargo test --workspace` so these
+    integration tests don't silently never execute.
+- **3 stale numbers in `docs/findings/CUAD_CLAUSE_EXPANSION.md`** (lines
+  23, 26, 150) that contradicted the same file's header — aligned to
+  81.3% → 87.7% / +4.7 with the fair-preprocessing caveat next to the
+  +4.7 number.
 
 ## [0.3.0] — 2026-06-07
 

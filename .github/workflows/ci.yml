@@ -27,8 +27,15 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build (all targets)
         run: cargo build --workspace --all-targets
-      - name: Test
+      - name: Test (default features)
         run: cargo test --workspace
+      # The redhop crate has `default = []`, but the integration test
+      # suites `quality_suite.rs` + `files_extract.rs` are gated to
+      # `#[cfg(feature = "files")]` because they exercise the
+      # files-feature loaders. Without this explicit run, those
+      # integration tests would silently never execute in CI.
+      - name: Test (--features files,semantic — published-wheel feature set)
+        run: cargo test -p redhop --features files,semantic
 
   python:
     name: Python wheel + smoke

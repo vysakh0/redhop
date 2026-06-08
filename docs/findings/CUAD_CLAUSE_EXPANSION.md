@@ -149,14 +149,17 @@ Deltas:
   measurable value on top.
 
 **RedHop with the full detect → strip → vocabulary workflow lands at
-90.7% on CUAD, +4.7 over LlamaIndex's 86%.** The 87.7% from arm B above
-(Stripper alone) was already past LlamaIndex by 1.7; this finding
-extends that lead. Caveat (added in the 0.3.1 audit): the +4.7 is
-RedHop with workload-curated preprocessing vs LlamaIndex with its
-default retriever; the same `Stripper + Vocabulary` preprocessing is
-not applied to LlamaIndex in this measurement. See
-`bench/compare.py`'s fair-preprocessing arm for the comparison where
-all three systems get the same Stripper.
+90.7% on CUAD.** Compared to LlamaIndex's 86% with its default
+retriever, that's a 4.7-point gap — but the 0.3.1 audit's
+fair-preprocessing measurement (`bench/compare.py`, n=300, 2026-06-08)
+showed that applying the *same* Stripper to LlamaIndex lifts its
+result to **94%**, more than RedHop's 88% under the same Stripper.
+So the 4.7-point gap is RedHop-with-recipe vs LlamaIndex-default and
+should not be read as a retrieval-engine advantage. The recipe's value
+on a workload like CUAD is the reproducible in-process workflow —
+detect with `analyze_query_set`, compile with `Stripper` / `Vocabulary`,
+audit via `ctx.report.query_rewrites`, A/B with `evaluate` — not an
+architectural lead in BM25 ranking.
 
 ## Why this works (mechanism, sharp)
 
