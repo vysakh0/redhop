@@ -1,0 +1,63 @@
+
+==============================================================================================================
+  MuSiQue (compositional multi-hop)  (n=100, budget=400, candidate_k=20)
+==============================================================================================================
+
+  BM25-only baseline at varying chunk sizes:
+  redhop BM25                                    chunk_size= 128  mean=0.61 ≥0.5= 66% ≥0.8= 23% chunks/doc≈16.1  p50=3ms
+  redhop BM25                                    chunk_size= 256  mean=0.53 ≥0.5= 57% ≥0.8= 15% chunks/doc≈7.0  p50=3ms
+  redhop BM25                                    chunk_size= 384  mean=0.56 ≥0.5= 58% ≥0.8= 19% chunks/doc≈4.5  p50=3ms
+  redhop BM25                                    chunk_size= 512  mean=0.27 ≥0.5= 22% ≥0.8=  7% chunks/doc≈3.5  p50=3ms
+
+  Hybrid (BM25 + bge-small rerank) at varying chunk sizes:
+  redhop hybrid                                  chunk_size= 128  mean=0.64 ≥0.5= 73% ≥0.8= 26% chunks/doc≈16.1  p50=426ms
+  redhop hybrid                                  chunk_size= 256  mean=0.55 ≥0.5= 63% ≥0.8= 14% chunks/doc≈7.0  p50=430ms
+  redhop hybrid                                  chunk_size= 384  mean=0.60 ≥0.5= 69% ≥0.8= 22% chunks/doc≈4.5  p50=432ms
+  redhop hybrid                                  chunk_size= 512  mean=0.27 ≥0.5= 22% ≥0.8=  7% chunks/doc≈3.5  p50=380ms
+
+==============================================================================================================
+  HotpotQA (multi-hop)  (n=100, budget=400, candidate_k=20)
+==============================================================================================================
+
+  BM25-only baseline at varying chunk sizes:
+  redhop BM25                                    chunk_size= 128  mean=0.89 ≥0.5= 95% ≥0.8= 71% chunks/doc≈10.2  p50=3ms
+  redhop BM25                                    chunk_size= 256  mean=0.83 ≥0.5= 93% ≥0.8= 58% chunks/doc≈4.6  p50=3ms
+  redhop BM25                                    chunk_size= 384  mean=0.84 ≥0.5= 97% ≥0.8= 65% chunks/doc≈3.1  p50=3ms
+  redhop BM25                                    chunk_size= 512  mean=0.46 ≥0.5= 46% ≥0.8= 17% chunks/doc≈2.3  p50=3ms
+
+  Hybrid (BM25 + bge-small rerank) at varying chunk sizes:
+  redhop hybrid                                  chunk_size= 128  mean=0.93 ≥0.5= 97% ≥0.8= 83% chunks/doc≈10.2  p50=266ms
+  redhop hybrid                                  chunk_size= 256  mean=0.83 ≥0.5= 93% ≥0.8= 61% chunks/doc≈4.6  p50=242ms
+  redhop hybrid                                  chunk_size= 384  mean=0.82 ≥0.5= 95% ≥0.8= 61% chunks/doc≈3.1  p50=252ms
+  redhop hybrid                                  chunk_size= 512  mean=0.46 ≥0.5= 46% ≥0.8= 17% chunks/doc≈2.3  p50=198ms
+
+==============================================================================================================
+  INTERPRETATION GUIDE
+==============================================================================================================
+
+  Reference numbers from MULTIHOP_HYBRID_COMPETITORS.md (n=100, same budget,
+  same candidate_k, identical bge-small):
+
+    MuSiQue ≥0.8:
+      RedHop hybrid (chunk_size=128)  26%      ← current default
+      LangChain    hybrid              39%      ← winner
+      LlamaIndex   hybrid              31%
+
+    HotpotQA ≥0.8:
+      RedHop hybrid (chunk_size=128)  83%      ← current default, winner
+      LangChain    hybrid              77%
+      LlamaIndex   hybrid              67%
+
+  What we expect to see in this sweep:
+
+  - If MuSiQue chunk_size=256 lifts RedHop to ~35-40% ≥0.8, the gap
+    was chunking — switching default for compositional multi-hop is a
+    one-flag fix.
+  - If MuSiQue stays ~26% across chunk sizes, the gap is in retrieval
+    or rerank ordering, not chunking. Different problem.
+  - If HotpotQA at chunk_size=256 stays ~83%, the bigger chunks don't
+    hurt the original win — bigger could become the new default
+    safely.
+  - If HotpotQA at chunk_size=256 drops, there's a real tradeoff to
+    expose: 128 wins HotpotQA but loses MuSiQue.
+

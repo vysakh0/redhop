@@ -59,10 +59,13 @@ gap on bridge passages.
 
 **Apples-to-apples hybrid vs LangChain/LlamaIndex (same bge-small, n=100):**
 HotpotQA — RedHop hybrid wins (83% ≥0.8 vs LangChain 77%, LlamaIndex 67%).
-MuSiQue — LangChain hybrid wins (39% vs RedHop 26%, LlamaIndex 31%); our
-128-token chunks fit HotpotQA but lose on compositional multi-hop. RedHop
-hybrid is also 2-5× slower than competitors' hybrid. Test on your own
-workload. See [MULTIHOP_HYBRID_COMPETITORS.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID_COMPETITORS.md).
+MuSiQue — LangChain wins (39% vs RedHop 26%). A constant-chunking matrix
+narrowed the cause: **the chunker is the lever** (BM25 implementation
+flat across the three), and **10 of the 13-point MuSiQue gap is in
+RedHop's RRF-based hybrid fusion** — RRF buries bridge passages with low
+BM25 + high dense rank. A pure-rerank mode would close it AND fix the
+2-5× latency. Tracked for 0.3.2. See [MULTIHOP_HYBRID_COMPETITORS.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID_COMPETITORS.md)
++ [MULTIHOP_CONSTANT_CHUNKING.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_CONSTANT_CHUNKING.md).
 
 What RedHop's CUAD recipe offers is a reproducible, in-process, audited path
 from 82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision
