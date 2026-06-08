@@ -889,12 +889,18 @@ pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
 // ── In-process evaluation (no LLM judge) ────────────────────────────────────
 // Backed by `redhop::evaluate`. See `docs/findings/EVALUATE_API.md`.
 
-/// Optional gold signals for [`evaluate`]. Any combination of fields is
-/// supported — pass `goldChunks` to unlock `contextRecall` /
-/// `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
-/// pass both for all three. Omit both for self-eval only.
+/// Optional inputs for [`evaluate`]. Any combination of fields is
+/// supported — pass `answer` to unlock the Tier-1 answer-quality
+/// proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
+/// to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
+/// unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
+/// `correctnessLexical`. Omit all for self-eval only.
 #[napi(object)]
 pub struct EvaluateOptions {
+    /// The LLM's answer text (what the model produced from the context).
+    /// Unlocks the Tier-1 answer-quality proxies. Distinct from
+    /// `goldAnswer`, which is the ground truth.
+    pub answer: Option<String>,
     /// IDs of chunks that should appear in the assembled context.
     pub gold_chunks: Option<Vec<String>>,
     /// Ground-truth answer text.
@@ -915,6 +921,19 @@ pub struct EvalReport {
     /// Fraction of stemmed content terms in the gold answer that appear in
     /// the assembled context. `null` unless `goldAnswer` was supplied.
     pub answer_token_recall: Option<f64>,
+    /// Sentence-level token-overlap proxy for faithfulness: fraction of
+    /// the answer's sentences with at least half their content terms in
+    /// the assembled context. **Lexical proxy, NOT real faithfulness** —
+    /// an LLM judge is the right tool. `null` unless `answer` was supplied.
+    pub faithfulness_lexical: Option<f64>,
+    /// Token-overlap between the query and the answer (Snowball-stemmed,
+    /// stopword-filtered). Proxy for "did the answer address the question".
+    /// `null` unless `answer` was supplied.
+    pub relevancy_lexical: Option<f64>,
+    /// Token-overlap between the LLM's answer and the gold answer. Proxy
+    /// for "did the LLM produce the right tokens". `null` unless BOTH
+    /// `answer` and `goldAnswer` were supplied.
+    pub correctness_lexical: Option<f64>,
     /// Mean grounding over selected chunks, in `[0, 1]`.
     pub mean_grounding: f64,
     /// Fraction of context tokens that are query-relevant.
@@ -966,6 +985,7 @@ pub fn evaluate(
     options: Option<EvaluateOptions>,
 ) -> EvalReport {
     let opts = options.unwrap_or(EvaluateOptions {
+        answer: None,
         gold_chunks: None,
         gold_answer: None,
     });
@@ -983,11 +1003,14 @@ pub fn evaluate(
             gold_answer: a,
         },
     };
-    let r = redhop::evaluate(&q, &context.inner, gold);
+    let r = redhop::evaluate(&q, &context.inner, opts.answer.as_deref(), gold);
     EvalReport {
         context_recall: r.context_recall.map(|v| v as f64),
         context_precision: r.context_precision.map(|v| v as f64),
         answer_token_recall: r.answer_token_recall.map(|v| v as f64),
+        faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f64),
+        relevancy_lexical: r.relevancy_lexical.map(|v| v as f64),
+        correctness_lexical: r.correctness_lexical.map(|v| v as f64),
         mean_grounding: r.mean_grounding as f64,
         evidence_density: r.evidence_density as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,

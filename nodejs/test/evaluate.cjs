@@ -200,4 +200,99 @@ const chunksFor = (text, id = "a") => [new Chunk(text, { id })];
   assert.strictEqual(typeof r.overall, "number");
 }
 
+// ── Tier-1 lexical answer-quality metrics (added in Phase 1 of the
+// Ragas-parity work). The Rust unit tests are authoritative on the metric
+// semantics; the JS checks below guard the binding surface — that the new
+// kwargs and getters are wired up identically to Python.
+
+// Tier-1 fields are null when `answer` is omitted.
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor("the refund window is thirty days"),
+    { strategy: "raw_topk" },
+  );
+  const r = evaluate("refund window", ctx);
+  assert.strictEqual(r.faithfulnessLexical, undefined, "no answer ⇒ faithfulnessLexical null");
+  assert.strictEqual(r.relevancyLexical, undefined);
+  assert.strictEqual(r.correctnessLexical, undefined);
+}
+
+// faithfulnessLexical is high when the answer paraphrases the context.
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor(
+      "the refund window is thirty days from purchase. customers may return items.",
+    ),
+    { strategy: "raw_topk" },
+  );
+  const r = evaluate("refund window", ctx, {
+    answer: "The refund window is thirty days from purchase.",
+  });
+  assert.ok(
+    r.faithfulnessLexical != null && r.faithfulnessLexical >= 0.9,
+    `paraphrasing answer should score near 1.0; got ${r.faithfulnessLexical}`,
+  );
+}
+
+// faithfulnessLexical drops on fabricated answers (no context overlap).
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor("the refund window is thirty days from purchase"),
+    { strategy: "raw_topk" },
+  );
+  const r = evaluate("refund window", ctx, {
+    answer:
+      "Quantum chromodynamics couples gluons. " +
+      "Schrödinger equations describe quantum states. " +
+      "Heisenberg uncertainty bounds measurement.",
+  });
+  assert.ok(
+    r.faithfulnessLexical != null && r.faithfulnessLexical <= 0.5,
+    `fabricated answer should score low; got ${r.faithfulnessLexical}`,
+  );
+}
+
+// relevancyLexical is higher for on-topic than off-topic answers.
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor("the refund window is thirty days"),
+    { strategy: "raw_topk" },
+  );
+  const onTopic = evaluate("refund window", ctx, {
+    answer: "The refund window is thirty days.",
+  }).relevancyLexical;
+  const offTopic = evaluate("refund window", ctx, {
+    answer: "Photosynthesis converts sunlight into glucose.",
+  }).relevancyLexical;
+  assert.ok(
+    onTopic > offTopic,
+    `on-topic answer should beat off-topic; on=${onTopic} off=${offTopic}`,
+  );
+}
+
+// correctnessLexical needs BOTH answer and goldAnswer.
+{
+  const ctx = buildContext(
+    "refund window",
+    chunksFor("the refund window is thirty days"),
+    { strategy: "raw_topk" },
+  );
+  const r1 = evaluate("refund window", ctx, { answer: "Thirty days." });
+  assert.strictEqual(r1.correctnessLexical, undefined, "answer only ⇒ null");
+  const r2 = evaluate("refund window", ctx, { goldAnswer: "thirty days" });
+  assert.strictEqual(r2.correctnessLexical, undefined, "goldAnswer only ⇒ null");
+  const r3 = evaluate("refund window", ctx, {
+    answer: "Thirty days from purchase.",
+    goldAnswer: "thirty days",
+  });
+  assert.ok(
+    r3.correctnessLexical != null && r3.correctnessLexical > 0,
+    `both answer + goldAnswer ⇒ positive correctness; got ${r3.correctnessLexical}`,
+  );
+}
+
 console.log("evaluate.cjs: all assertions passed.");

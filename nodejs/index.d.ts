@@ -341,12 +341,20 @@ export interface EnrichResult {
  */
 export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
 /**
- * Optional gold signals for [`evaluate`]. Any combination of fields is
- * supported — pass `goldChunks` to unlock `contextRecall` /
- * `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
- * pass both for all three. Omit both for self-eval only.
+ * Optional inputs for [`evaluate`]. Any combination of fields is
+ * supported — pass `answer` to unlock the Tier-1 answer-quality
+ * proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
+ * to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
+ * unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
+ * `correctnessLexical`. Omit all for self-eval only.
  */
 export interface EvaluateOptions {
+  /**
+   * The LLM's answer text (what the model produced from the context).
+   * Unlocks the Tier-1 answer-quality proxies. Distinct from
+   * `goldAnswer`, which is the ground truth.
+   */
+  answer?: string
   /** IDs of chunks that should appear in the assembled context. */
   goldChunks?: Array<string>
   /** Ground-truth answer text. */
@@ -369,6 +377,25 @@ export interface EvalReport {
    * the assembled context. `null` unless `goldAnswer` was supplied.
    */
   answerTokenRecall?: number
+  /**
+   * Sentence-level token-overlap proxy for faithfulness: fraction of
+   * the answer's sentences with at least half their content terms in
+   * the assembled context. **Lexical proxy, NOT real faithfulness** —
+   * an LLM judge is the right tool. `null` unless `answer` was supplied.
+   */
+  faithfulnessLexical?: number
+  /**
+   * Token-overlap between the query and the answer (Snowball-stemmed,
+   * stopword-filtered). Proxy for "did the answer address the question".
+   * `null` unless `answer` was supplied.
+   */
+  relevancyLexical?: number
+  /**
+   * Token-overlap between the LLM's answer and the gold answer. Proxy
+   * for "did the LLM produce the right tokens". `null` unless BOTH
+   * `answer` and `goldAnswer` were supplied.
+   */
+  correctnessLexical?: number
   /** Mean grounding over selected chunks, in `[0, 1]`. */
   meanGrounding: number
   /** Fraction of context tokens that are query-relevant. */

@@ -1983,6 +1983,30 @@ impl EvalReport {
     fn answer_token_recall(&self) -> Option<f32> {
         self.inner.answer_token_recall
     }
+    /// Sentence-level token-overlap proxy for faithfulness: fraction of the
+    /// answer's sentences with at least half their content terms appearing
+    /// in the assembled context. **Lexical proxy, NOT real faithfulness** —
+    /// an LLM judge is the right tool for hallucination detection. `None`
+    /// unless `answer=` was supplied.
+    #[getter]
+    fn faithfulness_lexical(&self) -> Option<f32> {
+        self.inner.faithfulness_lexical
+    }
+    /// Token-overlap between the query and the answer (Snowball-stemmed,
+    /// stopword-filtered). A proxy for "did the answer address the
+    /// question". `None` unless `answer=` was supplied.
+    #[getter]
+    fn relevancy_lexical(&self) -> Option<f32> {
+        self.inner.relevancy_lexical
+    }
+    /// Token-overlap between the LLM's answer and the gold answer. A proxy
+    /// for "did the LLM produce the right tokens"; strict and easily fooled
+    /// by paraphrase. `None` unless BOTH `answer=` and `gold_answer=` were
+    /// supplied.
+    #[getter]
+    fn correctness_lexical(&self) -> Option<f32> {
+        self.inner.correctness_lexical
+    }
     /// Mean grounding score over selected chunks, in `[0, 1]`. Same scorer
     /// the runtime uses for `ContextStrategy::DistractorFiltered`.
     #[getter]
@@ -2063,10 +2087,11 @@ impl EvalReport {
 /// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
 /// the "refraction not independent measurement" design choice.
 #[pyfunction]
-#[pyo3(signature = (query, context, *, gold_chunks=None, gold_answer=None))]
+#[pyo3(signature = (query, context, *, answer=None, gold_chunks=None, gold_answer=None))]
 fn evaluate(
     query: &str,
     context: &BuiltContext,
+    answer: Option<&str>,
     gold_chunks: Option<Vec<String>>,
     gold_answer: Option<&str>,
 ) -> EvalReport {
@@ -2085,7 +2110,7 @@ fn evaluate(
         },
     };
     EvalReport {
-        inner: redhop::evaluate(&q, &context.inner, gold),
+        inner: redhop::evaluate(&q, &context.inner, answer, gold),
     }
 }
 

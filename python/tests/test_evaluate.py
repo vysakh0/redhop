@@ -234,3 +234,150 @@ def test_eval_report_field_types():
     assert isinstance(r.low_confidence, bool)
     assert isinstance(r.estimated_waste_tokens, int)
     assert isinstance(r.overall, float)
+
+
+# ─── Tier-1 lexical answer-quality metrics ──────────────────────────────────
+# Added in Phase 1 of the eval-parity work. These are deterministic
+# token-overlap proxies for faithfulness/relevancy/correctness — useful for
+# CI regression detection but explicitly NOT a substitute for an LLM judge.
+# The Rust unit tests in crates/redhop/src/context/eval.rs are authoritative
+# on the metric semantics; these guard the Python binding surface and
+# kwarg names.
+
+
+def test_tier1_none_when_answer_omitted():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days from purchase"),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate("refund window", ctx)
+    assert r.faithfulness_lexical is None
+    assert r.relevancy_lexical is None
+    assert r.correctness_lexical is None
+
+
+def test_faithfulness_lexical_high_when_answer_grounded():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for(
+            "the refund window is thirty days from purchase. customers may return items."
+        ),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="The refund window is thirty days from purchase.",
+    )
+    assert r.faithfulness_lexical is not None
+    assert (
+        r.faithfulness_lexical >= 0.9
+    ), f"answer paraphrasing the context should score near 1.0; got {r.faithfulness_lexical}"
+
+
+def test_faithfulness_lexical_low_when_answer_fabricated():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days from purchase"),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer=(
+            "Quantum chromodynamics couples gluons. "
+            "Schrödinger equations describe quantum states. "
+            "Heisenberg uncertainty bounds measurement."
+        ),
+    )
+    assert r.faithfulness_lexical is not None
+    assert r.faithfulness_lexical <= 0.5, (
+        "fabricated answer with no context overlap should score low; "
+        f"got {r.faithfulness_lexical}"
+    )
+
+
+def test_relevancy_lexical_higher_for_on_topic_answer():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    on_topic = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="The refund window is thirty days.",
+    ).relevancy_lexical
+    off_topic = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Photosynthesis converts sunlight into glucose.",
+    ).relevancy_lexical
+    assert on_topic is not None and off_topic is not None
+    assert (
+        on_topic > off_topic
+    ), f"on-topic answer must score higher; on={on_topic}, off={off_topic}"
+
+
+def test_correctness_lexical_requires_both_answer_and_gold_answer():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    # Answer only — no correctness.
+    r1 = redhop.evaluate(
+        "refund window", ctx, answer="Thirty days from purchase."
+    )
+    assert r1.correctness_lexical is None
+
+    # Gold answer only — also no correctness.
+    r2 = redhop.evaluate("refund window", ctx, gold_answer="thirty days")
+    assert r2.correctness_lexical is None
+
+    # Both — correctness populated and positive on overlap.
+    r3 = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days from purchase.",
+        gold_answer="thirty days",
+    )
+    assert r3.correctness_lexical is not None
+    assert r3.correctness_lexical > 0.0
+
+
+def test_empty_answer_treated_as_no_answer():
+    """A whitespace-only `answer=` is the same as not passing it."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("refund window thirty days"),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="   ",
+        gold_answer="thirty days",
+    )
+    assert r.faithfulness_lexical is None
+    assert r.relevancy_lexical is None
+    assert r.correctness_lexical is None
+
+
+def test_eval_report_tier1_field_types():
+    """Type pin: Tier-1 metric getters return Optional[float] consistently."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Thirty days.",
+        gold_answer="thirty days",
+    )
+    assert isinstance(r.faithfulness_lexical, float)
+    assert isinstance(r.relevancy_lexical, float)
+    assert isinstance(r.correctness_lexical, float)

@@ -49,7 +49,33 @@ snake_case / camelCase shift on Node):
 | `context_recall` | `gold_chunks` provided | `|selected ∩ gold| / |gold|` |
 | `context_precision` | `gold_chunks` provided | `|selected ∩ gold| / |selected|` |
 | `answer_token_recall` | `gold_answer` provided | fraction of stemmed gold-answer terms in the assembled context |
+| `faithfulness_lexical` | `answer` provided | **Tier-1**: fraction of answer sentences with ≥half their content terms in the context (lexical proxy — not real hallucination detection; use an LLM judge for that) |
+| `relevancy_lexical` | `answer` provided | **Tier-1**: token-overlap between query and answer (Snowball-stemmed). Proxy for "did the answer address the question" |
+| `correctness_lexical` | `answer` + `gold_answer` | **Tier-1**: token-overlap between LLM answer and gold answer. Proxy for "did the LLM produce the right tokens" |
 | `overall` | always | composite in `[0, 1]` blending whichever fields above are populated |
+
+## Two tiers of answer-quality metrics
+
+The `_lexical` suffix on three of the metrics above isn't decorative —
+it's a deliberate naming choice to keep users honest. There are two
+tiers in the eval API:
+
+- **Tier 1 (this module, deterministic).** Token-overlap proxies for
+  faithfulness / relevancy / correctness. Cheap, no LLM, no API key,
+  runs in CI on every PR. Catches obvious failure modes (fabricated
+  tokens, off-topic answers, wrong-token outputs) but won't catch a
+  confidently-wrong paraphrase.
+- **Tier 2 (Phase 2 of the eval roadmap — `crate::judge`).** LLM-scored
+  faithfulness / relevancy / correctness, calibrated against Ragas's
+  published prompts. Same `EvalReport` shape; fields will be named with
+  the `_judged` suffix (e.g. `faithfulness_judged`). Mix-and-match: a
+  caller can compute both `faithfulness_lexical` and
+  `faithfulness_judged` in the same call and compare.
+
+The two tiers measure overlapping things from different angles. Use
+Tier 1 in CI (free, deterministic, catches regressions). Use Tier 2
+on sampled production traffic, or before promoting a configuration
+(costs LLM calls, catches the failures Tier 1 misses).
 
 ## Design choice: refraction, not independent measurement
 
