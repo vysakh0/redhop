@@ -1,4 +1,4 @@
-// Tier-2 LLM-judged metrics via the async `evaluateWithJudge` path.
+// LLM-judged metrics via the async `evaluateWithJudge` path.
 // JS is single-threaded so the judge callback can't fire during a sync
 // napi call — the binding moves the eval onto a tokio spawn_blocking
 // worker, calls back into JS via a ThreadsafeFunction, and blocks the
@@ -91,27 +91,26 @@ const chunkText = "the refund window is thirty days from purchase. customers may
     assert.strictEqual(judge.cached().name, "myname");
   }
 
-  // 6. Phase 6: claim-decomposition path. With decomposeFaithfulness:true
-  //    the judge gets an extraction prompt first (system contains "Decompose
-  //    answers") and is expected to RETURN A STRING — the raw LLM text,
-  //    which is parsed into one-per-line claims; then verification prompts
-  //    return numeric scores per claim.
-  //
-  //    The Node binding accepts either a number (score-only fast path) or a
-  //    string (raw text — what's needed for the extraction call to populate
-  //    raw_text downstream). Python's Judge.from_callable accepts a dict
-  //    with explicit `raw_text`; for Node we keep the surface simpler by
-  //    treating any string return as raw text + numeric-parsed score.
+  // 6. claim-decomposition path. With decomposeFaithfulness:true the
+  //    judge is called once for extraction (system mentions "Decompose
+  //    answers") to return raw claim text, once for batched verification
+  //    (returns one `N: SCORE` line per claim), and once for relevancy.
+  //    Three total LLM calls regardless of how many claims were extracted.
   {
     const ctx = Document.fromText(chunkText).context("refund window");
     let extractionCalls = 0;
-    let verificationCalls = 0;
+    let batchedVerificationCalls = 0;
     const judge = Judge.fromCallable((err, prompt, system) => {
       if (system && system.includes("Decompose answers")) {
         extractionCalls++;
         return "claim a\nclaim b\nclaim c";
       }
-      verificationCalls++;
+      // Batched verification: return one `N: score` per claim.
+      if (prompt.includes("Claims to verify")) {
+        batchedVerificationCalls++;
+        return "1: 0.8\n2: 0.8\n3: 0.8";
+      }
+      // Other arms (relevancy, etc.)
       return 0.8;
     }, "decomposer");
     const r = await evaluateWithJudge("refund window", ctx, judge, {
@@ -124,10 +123,10 @@ const chunkText = "the refund window is thirty days from purchase. customers may
     assert.strictEqual(r.nFaithfulnessClaimsExtracted, 3);
     assert.strictEqual(r.nFaithfulnessClaimsSupported, 3, "0.8 >= 0.5 → all supported");
     assert.strictEqual(extractionCalls, 1, "exactly 1 extraction call");
-    assert.strictEqual(verificationCalls, 4, "3 verifications + 1 relevancy");
+    assert.strictEqual(batchedVerificationCalls, 1, "exactly 1 batched verification call");
   }
 
-  // 7. Phase 6: zero claims extracted → metric stays null.
+  // 7. Zero claims extracted → metric stays null.
   {
     const ctx = Document.fromText(chunkText).context("refund window");
     const judge = Judge.fromCallable((err, prompt, system) => {

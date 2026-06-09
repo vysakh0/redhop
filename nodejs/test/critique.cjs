@@ -1,4 +1,4 @@
-// Phase 7: aspect-critique smoke / behavior tests via the async
+// : aspect-critique smoke / behavior tests via the async
 // `critique` napi entry-point. Same Judge surface as
 // `evaluateWithJudge`; one judge call per aspect; polarity-corrected
 // scores so high = good across the report regardless of an aspect's

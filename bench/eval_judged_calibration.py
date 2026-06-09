@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Calibration probe for RedHop's Tier-2 LLM-judged metrics + optional
-side-by-side comparison against Ragas.
+"""Calibration probe for the LLM-judged eval surface, with optional
+side-by-side against the Ragas eval library.
 
-What this script does
-─────────────────────
-
-Runs RedHop's full Tier-2 surface (faithfulness_judged, relevancy_judged,
+Runs the full judged surface (faithfulness_judged, relevancy_judged,
 correctness_judged, faithfulness with claim decomposition, and a
-critique aspect bundle) on a hand-curated test set with known
+critique aspect bundle) on a 5-case hand-curated test set with known
 expected characteristics:
 
   case             | expected behavior
@@ -23,20 +20,19 @@ expected characteristics:
   REFUSAL          | answer refuses to engage
                    | → faithfulness/relevancy LOW, correctness 0
 
-For each case, the script runs the metrics through one of two judges:
+Two judge modes:
 
-  • OpenAI (if `OPENAI_API_KEY` is set): real, paid LLM calls.
-    Outputs honest numbers you can quote.
+  • OpenAI (if `OPENAI_API_KEY` is set + `openai` is installed): real,
+    paid LLM calls. Outputs honest numbers you can quote.
   • Deterministic stub (default — no key, no network): the stub
-    returns synthetic scores calibrated to MATCH the expected
-    behavior table above. Useful for CI, for verifying the wiring
-    end-to-end, and for showing the shape of the output without
-    burning tokens.
+    returns synthetic scores from token-overlap on the prompt blocks.
+    Useful for CI, for verifying the wiring end-to-end, and for
+    showing the shape of the output without burning tokens.
 
-Optionally, if Ragas is installed (`pip install ragas`), the script
-runs the same workload through Ragas's faithfulness +
-answer_relevancy + answer_similarity and reports a pairwise
-agreement matrix (Pearson r, mean abs error, per-case disagreement).
+Optionally, if `ragas` is installed AND `OPENAI_API_KEY` is set, the
+script also runs the same dataset through Ragas's faithfulness +
+answer_relevancy + answer_similarity and prints a pairwise agreement
+matrix (Pearson r, mean absolute error).
 
 Run:
   bench/.venv/bin/python bench/eval_judged_calibration.py
@@ -47,20 +43,6 @@ With a real LLM:
 With Ragas comparison:
   pip install ragas
   OPENAI_API_KEY=sk-... bench/.venv/bin/python bench/eval_judged_calibration.py
-
-Honest limits
-─────────────
-- Hand-curated n=5. The probe verifies the SHAPE of the output is
-  sensible; it's not a benchmark of either framework's absolute
-  accuracy. A larger workload (HotpotQA-50, CUAD-50) would tighten
-  the agreement numbers.
-- Calls aren't batched; both frameworks pay per-query LLM cost.
-  Ragas's `evaluate(dataset, metrics)` may batch internally; RedHop's
-  cache makes re-runs free but a fresh run is 4-8 LLM calls per case.
-- "Agreement" between frameworks isn't ground truth — both are
-  LLM-judged and both have prompt-specific variance. Big divergence
-  is interesting; full agreement is also interesting; neither
-  validates "the metric is correct."
 """
 
 from __future__ import annotations
@@ -363,12 +345,13 @@ def run_redhop_on_case(case: TestCase, judge: redhop.Judge) -> CaseResult:
     )
 
 
-# ── Run Ragas (optional) ────────────────────────────────────────────────────
+# ── Optional side-by-side via the Ragas eval library ───────────────────────
 
 
 def run_ragas_if_available(test_set: list[TestCase], model: str = MODEL_DEFAULT):
-    """Returns a dict of per-case Ragas scores, or None if Ragas isn't
-    installed. Real LLM calls — needs `OPENAI_API_KEY`."""
+    """Returns a list of per-case dicts {label, faithfulness, relevancy,
+    similarity} from Ragas, or None if Ragas isn't installed. Real LLM
+    calls — needs `OPENAI_API_KEY`."""
     try:
         from ragas import evaluate as ragas_evaluate  # type: ignore
         from ragas.metrics import (  # type: ignore
@@ -393,7 +376,6 @@ def run_ragas_if_available(test_set: list[TestCase], model: str = MODEL_DEFAULT)
         dataset=ds,
         metrics=[r_faithfulness, r_relevancy, r_similarity],
     )
-    # Convert to per-case dict.
     df = result.to_pandas()
     return [
         {
@@ -418,7 +400,7 @@ def fmt_score(s) -> str:
 def print_redhop_table(results: list[CaseResult]):
     print()
     print("=" * 88)
-    print("  RedHop Tier-2 metrics (one row per case)")
+    print("  RedHop metrics (one row per case)")
     print("=" * 88)
     print(
         f"  {'case':<14} {'faith':>7} {'relev':>7} {'corr':>7} "
@@ -478,15 +460,10 @@ def print_calibration_check(results: list[CaseResult], cases: list[TestCase]):
             )
 
 
-def print_ragas_comparison(redhop_results: list[CaseResult], ragas_scores):
-    if ragas_scores is None:
-        print()
-        print("Ragas comparison: SKIPPED (pip install ragas; set OPENAI_API_KEY)")
-        return
-
+def print_ragas_comparison(redhop_results: list[CaseResult], ragas_scores: list[dict]):
     print()
     print("=" * 88)
-    print("  Side-by-side: RedHop vs Ragas (single-prompt path)")
+    print("  Side-by-side: RedHop vs Ragas (per-case scores)")
     print("=" * 88)
     print(
         f"  {'case':<14} "
@@ -503,7 +480,6 @@ def print_ragas_comparison(redhop_results: list[CaseResult], ragas_scores):
             f"{fmt_score(rh.redhop_correctness)} {fmt_score(rg['similarity'])}"
         )
 
-    # Pearson r + MAE on the diagonal-pair metrics.
     def pearson(xs, ys):
         n = len(xs)
         if n < 2:
@@ -549,7 +525,7 @@ def main() -> None:
     print()
     print("=" * 88)
     banner_judge = f"OpenAI {MODEL_DEFAULT}" if use_openai else "deterministic stub"
-    print(f"  RedHop Tier-2 calibration — judge = {banner_judge}")
+    print(f"  RedHop calibration — judge = {banner_judge}")
     print("=" * 88)
 
     if use_openai:
@@ -569,18 +545,16 @@ def main() -> None:
 
     print_redhop_table(results)
     print_calibration_check(results, TEST_SET)
-    print(f"\nRedHop total time: {elapsed_redhop:.2f}s")
+    print(f"\nTotal time: {elapsed_redhop:.2f}s")
 
-    # Ragas side, if installed + key present.
+    # Optional side-by-side comparison via the Ragas eval library.
     ragas_scores = None
-    elapsed_ragas = None
     if use_openai:
-        t0 = time.perf_counter()
         ragas_scores = run_ragas_if_available(TEST_SET)
-        elapsed_ragas = time.perf_counter() - t0
-    print_ragas_comparison(results, ragas_scores)
-    if elapsed_ragas is not None and ragas_scores is not None:
-        print(f"\nRagas total time:  {elapsed_ragas:.2f}s")
+        if ragas_scores is None:
+            print("\nRagas comparison: SKIPPED (`pip install ragas` to enable)")
+        else:
+            print_ragas_comparison(results, ragas_scores)
 
     # Persist a machine-readable snapshot for downstream tooling.
     out = REPO / "reports" / "eval_judged_calibration.json"
@@ -588,6 +562,7 @@ def main() -> None:
     out.write_text(json.dumps(
         {
             "judge": "openai" if use_openai else "stub",
+            "ragas": ragas_scores,
             "results": [
                 {
                     "label": r.label,
@@ -601,7 +576,6 @@ def main() -> None:
                 }
                 for r in results
             ],
-            "ragas": ragas_scores,
         },
         indent=2,
         default=lambda o: None,

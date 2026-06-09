@@ -799,7 +799,7 @@ fn doc_config(
         rerank_pool: base.rerank_pool,
         context,
         // Inherits the Rust-side default (0 = off). Surface this as a Python
-        // kwarg once a real user asks; for now the issue-#1 fix in Phase 1
+        // kwarg once a real user asks; for now the issue-#1 fix
         // restored the documented hybrid contract on its own.
         min_candidates: base.min_candidates,
         code_neighbors_default,
@@ -1967,14 +1967,14 @@ struct EvalReport {
     inner: redhop::EvalReport,
 }
 
-// ── Tier-2 Judge bridge ─────────────────────────────────────────────────────
+// ── judged Judge bridge ─────────────────────────────────────────────────────
 //
 // A Python `Judge` wraps a user-supplied callable that maps
 // `(prompt: str, system: Optional[str]) → float | dict`. We hold the
 // Rust-side judge as a boxed trait object so the same `PyJudge` can wrap
 // either the raw callable adapter OR the cached wrapper, transparently.
 
-/// LLM-judge bridge for the Tier-2 answer-quality metrics. Wrap your
+/// LLM-judge bridge for the judged answer-quality metrics. Wrap your
 /// LLM client (the `openai` SDK, `litellm`, the `anthropic` package,
 /// raw HTTP, etc.) as a callable that returns a `[0, 1]` score, then
 /// pass the judge into `redhop.evaluate(..., judge=judge)` to populate
@@ -2175,7 +2175,7 @@ impl EvalReport {
     fn correctness_lexical(&self) -> Option<f32> {
         self.inner.correctness_lexical
     }
-    /// **Tier-2**: LLM-judged faithfulness — is every claim in the answer
+    /// **judged**: LLM-judged faithfulness — is every claim in the answer
     /// supported by the assembled context? Strictly stronger than
     /// `faithfulness_lexical`. `None` unless `answer=` AND `judge=` were
     /// supplied (and the judge call succeeded).
@@ -2183,22 +2183,42 @@ impl EvalReport {
     fn faithfulness_judged(&self) -> Option<f32> {
         self.inner.faithfulness_judged
     }
-    /// **Tier-2**: LLM-judged relevancy — does the answer address the
+    /// **judged**: LLM-judged relevancy — does the answer address the
     /// question? Strictly stronger than `relevancy_lexical`. `None`
     /// unless `answer=` AND `judge=` were supplied.
     #[getter]
     fn relevancy_judged(&self) -> Option<f32> {
         self.inner.relevancy_judged
     }
-    /// **Tier-2**: LLM-judged correctness — does the LLM's answer
-    /// convey the same facts as the gold answer (paraphrase-aware,
-    /// unlike `correctness_lexical`)? `None` unless `answer=` AND
+    /// LLM-judged correctness — does the LLM's answer convey the same
+    /// facts as the gold answer (paraphrase-aware, unlike
+    /// `correctness_lexical`)? `None` unless `answer=` AND
     /// `gold_answer=` AND `judge=` were all supplied.
     #[getter]
     fn correctness_judged(&self) -> Option<f32> {
         self.inner.correctness_judged
     }
-    /// **Phase-6 diagnostic**: number of atomic claims the judge
+    /// Number of claims in the answer directly supported by a
+    /// reference claim. Populated only when
+    /// `decompose_correctness=True` AND the classification pass
+    /// succeeded.
+    #[getter]
+    fn n_correctness_tp(&self) -> Option<usize> {
+        self.inner.n_correctness_tp
+    }
+    /// Number of claims in the answer NOT supported by any reference
+    /// claim. Same population conditions as `n_correctness_tp`.
+    #[getter]
+    fn n_correctness_fp(&self) -> Option<usize> {
+        self.inner.n_correctness_fp
+    }
+    /// Number of claims in the reference NOT covered by the answer.
+    /// Same population conditions as `n_correctness_tp`.
+    #[getter]
+    fn n_correctness_fn(&self) -> Option<usize> {
+        self.inner.n_correctness_fn
+    }
+    /// **diagnostic**: number of atomic claims the judge
     /// extracted from the answer when `decompose_faithfulness=True`.
     /// `None` when claim decomposition wasn't requested OR the
     /// extraction pass returned zero claims.
@@ -2206,7 +2226,7 @@ impl EvalReport {
     fn n_faithfulness_claims_extracted(&self) -> Option<usize> {
         self.inner.n_faithfulness_claims_extracted
     }
-    /// **Phase-6 diagnostic**: number of those claims the judge scored
+    /// **diagnostic**: number of those claims the judge scored
     /// ≥ 0.5 against the context (the per-claim "supported" threshold).
     /// `None` under the same conditions as
     /// `n_faithfulness_claims_extracted`.
@@ -2297,7 +2317,7 @@ impl EvalReport {
 #[pyo3(signature = (
     query, context, *,
     answer=None, gold_chunks=None, gold_answer=None, judge=None,
-    decompose_faithfulness=false,
+    decompose_faithfulness=false, decompose_correctness=false,
 ))]
 fn evaluate(
     query: &str,
@@ -2307,6 +2327,7 @@ fn evaluate(
     gold_answer: Option<&str>,
     judge: Option<&PyJudge>,
     decompose_faithfulness: bool,
+    decompose_correctness: bool,
 ) -> EvalReport {
     let q = Query::new(query);
     // Borrow gold_chunks as &[&str] so it matches the redhop::EvalGold borrowed shape.
@@ -2325,6 +2346,7 @@ fn evaluate(
     let judge_ref: Option<&dyn RhJudge> = judge.map(|j| j.inner.as_ref());
     let config = redhop::EvalConfig {
         decompose_faithfulness,
+        decompose_correctness,
     };
     EvalReport {
         inner: redhop::evaluate(&q, &context.inner, answer, gold, judge_ref, config),
@@ -2483,7 +2505,7 @@ fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
     }
 }
 
-// ── Tier-2 aspect critique (Phase 7) ────────────────────────────────────────
+// ── judged aspect critique ────────────────────────────────────────
 
 /// One qualitative dimension to score the answer on. The judge sees
 /// `definition` verbatim; pick `high_is_good=False` for "negative"

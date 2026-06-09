@@ -1,17 +1,17 @@
-# Eval Tier-2 — calibration probe + Ragas comparison harness
+# Judged-eval calibration probe
 
-> **Status: bench shipped (Phase 8). Real-LLM numbers pending an API
-> key.** A 5-case hand-curated test set demonstrates the full Tier-2
-> surface (`evaluate(..., judge=...)`, `decompose_faithfulness=True`,
+> **Status: bench shipped.** A 5-case hand-curated test set
+> demonstrates the full judged surface (`evaluate(..., judge=...)`,
+> `decompose_faithfulness=True`, `decompose_correctness=True`,
 > `critique(...)`) end-to-end. With a deterministic stub judge,
 > **13 of 15 bucket checks pass** (`high`/`mid`/`low` against
 > per-case expectations) — and the 2 misses are the cases where a
-> token-overlap proxy *should* fail. Validates the wiring; the LLM
+> token-overlap proxy *should* fail. Validates the wiring; a real LLM
 > judge is what closes the calibration gap.
 
 ## What's in the bench
 
-`bench/eval_judged_calibration.py` runs RedHop's full Tier-2 surface
+`bench/eval_judged_calibration.py` runs RedHop's full judged surface
 on a 5-case test set:
 
 | case | what's special | expected behavior |
@@ -23,9 +23,9 @@ on a 5-case test set:
 | `REFUSAL` | answer is "I cannot answer that question" | all metrics low |
 
 For each case, the script computes:
-- Single-prompt Tier-2 metrics (faithfulness_judged, relevancy_judged, correctness_judged)
-- Claim-decomposed faithfulness (Phase 6)
-- Two-aspect critique bundle (Phase 7): conciseness + harmfulness
+- Single-prompt judged metrics (`faithfulness_judged`, `relevancy_judged`, `correctness_judged`)
+- Claim-decomposed faithfulness
+- Two-aspect critique bundle (conciseness + harmfulness)
 
 …then checks whether each metric landed in the expected `high` /
 `mid` / `low` bucket.
@@ -65,62 +65,41 @@ The 2 misses are both on `WRONG_FACT`:
 This is **exactly where a token-overlap proxy breaks** — the answer
 shares almost all its tokens with the context and the gold; only one
 number differs. A real LLM judge would catch the contradiction. The
-2 misses are themselves evidence that the upgrade from Tier-1
-(`_lexical`) → Tier-2 (`_judged`) matters for fact-correctness
+2 misses are themselves evidence that the upgrade from lexical
+(`_lexical`) → judged (`_judged`) matters for fact-correctness
 workloads.
 
 The critique scores all sit at 0.5 because the stub returns a neutral
-constant for aspect prompts (there's no obvious token-overlap proxy
-for "is this concise" or "is this harmful" — those need a real
-judge by definition).
-
-## Side-by-side with Ragas
-
-The bench is wired to also run Ragas's `faithfulness`,
-`answer_relevancy`, and `answer_similarity` on the same dataset when
-both Ragas and an `OPENAI_API_KEY` are present:
-
-```bash
-pip install ragas
-OPENAI_API_KEY=sk-... bench/.venv/bin/python bench/eval_judged_calibration.py
-```
-
-When both run, the script prints:
-- The full per-case table for both frameworks side-by-side.
-- Per-metric **Pearson correlation** and **mean absolute error**
-  between RedHop and Ragas on the matching pairs
-  (`faithfulness_judged` vs Ragas faithfulness,
-  `relevancy_judged` vs `answer_relevancy`,
-  `correctness_judged` vs `answer_similarity`).
-- Total wallclock for each framework.
-
-That's the real "Ragas parity validation" run. We didn't include the
-numeric output in this commit because (a) it costs money to run and
-(b) the bench is run-able by anyone with a key; canning specific
-numbers from one run-with-one-model would imply more authority than
-the run deserves.
+constant for aspect prompts — there's no obvious token-overlap proxy
+for "is this concise" or "is this harmful." Those need a real LLM
+judge by definition.
 
 ## Honest limits
 
 - **n=5 hand-curated.** Verifies the SHAPE of the output is sensible.
-  A larger workload (HotpotQA-50, CUAD-50) would tighten any
-  agreement numbers from the Ragas comparison.
+  A larger workload (HotpotQA-50, CUAD-50) would tighten any absolute
+  numbers.
 - **Single LLM model.** The bench defaults to `gpt-4o-mini` for
   cost. Different judge models will produce somewhat different
-  scores; that's true for both frameworks.
-- **"Agreement" isn't ground truth.** Both frameworks are LLM-judged
-  and both have prompt-specific variance. Big divergence is
-  interesting; full agreement is also interesting; neither validates
-  "the metric is correct" in an absolute sense.
+  scores.
 - **Critique scores are stub-neutral.** The stub returns 0.5 for all
   critique prompts because "is this concise" / "is this harmful"
   don't have a sensible token-overlap proxy. Real LLM runs will
   produce real critique scores; the stub is here for wiring
   validation only.
-- **No batching.** Both frameworks pay per-query LLM cost. Ragas's
-  `evaluate(dataset, metrics)` may batch internally; RedHop's
-  cache makes re-runs free but a fresh run is 4-8 LLM calls per
-  case.
+
+## Side-by-side with Ragas (optional)
+
+When `ragas` is installed and `OPENAI_API_KEY` is set, the script also
+runs Ragas's `faithfulness` + `answer_relevancy` + `answer_similarity`
+on the same dataset and prints a pairwise agreement matrix (Pearson r,
+mean absolute error per matching metric). Useful for confirming the
+two libraries agree on the easy cases and disagree on the hard ones in
+ways that make sense.
+
+We don't can specific numbers here because they vary with the judge
+model — `gpt-4o-mini` numbers from one run aren't authoritative.
+Anyone with a key can reproduce in a minute.
 
 ## Reproduce
 
@@ -131,7 +110,7 @@ bench/.venv/bin/python bench/eval_judged_calibration.py
 # Real OpenAI mode (costs a few cents per run)
 OPENAI_API_KEY=sk-... bench/.venv/bin/python bench/eval_judged_calibration.py
 
-# With Ragas side-by-side
+# Real OpenAI + side-by-side with Ragas
 pip install ragas
 OPENAI_API_KEY=sk-... bench/.venv/bin/python bench/eval_judged_calibration.py
 ```
@@ -144,9 +123,9 @@ Raw stub run kept at
 
 ## See also
 
-- [`EVAL_RAGAS_PARITY.md`](EVAL_RAGAS_PARITY.md) — the overall
-  Phase-1-through-Phase-7 surface and side-by-side with Ragas as a
-  conceptual comparison.
+- [`ANSWER_QUALITY_EVAL.md`](ANSWER_QUALITY_EVAL.md) — the full
+  judged surface (faithfulness / relevancy / correctness / critique
+  / summarize) it exercises.
 - `bench/eval_judged_calibration.py` — the script. Self-documents its
   test set, its expected buckets, and its stub-judge methodology.
 - `crates/redhop/src/critique.rs` and `crates/redhop/src/context/eval.rs`

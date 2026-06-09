@@ -236,8 +236,8 @@ def test_eval_report_field_types():
     assert isinstance(r.overall, float)
 
 
-# ─── Tier-1 lexical answer-quality metrics ──────────────────────────────────
-# Added in Phase 1 of the eval-parity work. These are deterministic
+# ─── lexical answer-quality metrics ──────────────────────────────────
+# Added in of the eval surface. These are deterministic
 # token-overlap proxies for faithfulness/relevancy/correctness — useful for
 # CI regression detection but explicitly NOT a substitute for an LLM judge.
 # The Rust unit tests in crates/redhop/src/context/eval.rs are authoritative
@@ -366,7 +366,7 @@ def test_empty_answer_treated_as_no_answer():
 
 
 def test_eval_report_tier1_field_types():
-    """Type pin: Tier-1 metric getters return Optional[float] consistently."""
+    """Type pin: metric getters return Optional[float] consistently."""
     ctx = redhop.build_context(
         "refund window",
         _chunks_for("the refund window is thirty days"),
@@ -383,7 +383,7 @@ def test_eval_report_tier1_field_types():
     assert isinstance(r.correctness_lexical, float)
 
 
-# ─── Tier-2 LLM-judged metrics (Phase 3) ────────────────────────────────────
+# ─── LLM-judged metrics ────────────────────────────────────
 # These use a stub callable judge so we never hit a real LLM in CI. The
 # Rust unit tests in crates/redhop/src/context/eval.rs are authoritative
 # on the metric semantics; here we guard the Judge.from_callable bridge
@@ -554,7 +554,7 @@ def test_judge_repr_includes_name():
     assert "myname" in rep
 
 
-# ─── Phase 4: summarize(reports) ────────────────────────────────────────────
+# ─── : summarize(reports) ────────────────────────────────────────────
 
 
 def _make_reports(n: int, with_answer: bool = True):
@@ -594,7 +594,7 @@ def test_summarize_aggregates_self_eval_always():
     assert 0.0 <= s.mean_overall <= 1.0
     assert 0.0 <= s.median_overall <= 1.0
     assert 0.0 <= s.low_confidence_rate <= 1.0
-    # No answer was supplied → all Tier-1 lexical fields stay None.
+    # No answer was supplied → all lexical fields stay None.
     assert s.mean_faithfulness_lexical is None
     assert s.n_with_faithfulness_lexical == 0
 
@@ -607,7 +607,7 @@ def test_summarize_populates_lexical_when_reports_have_them():
     assert s.mean_faithfulness_lexical is not None
     assert s.n_with_faithfulness_lexical == 3
     assert 0.0 <= s.mean_faithfulness_lexical <= 1.0
-    # Tier-2 still None — no judge.
+    # judged still None — no judge.
     assert s.mean_faithfulness_judged is None
     assert s.n_with_faithfulness_judged == 0
 
@@ -621,20 +621,26 @@ def test_summarize_repr_includes_key_fields():
     assert "mean_overall" in rep
 
 
-# ─── Phase 6: claim decomposition for faithfulness ──────────────────────────
+# ─── : claim decomposition for faithfulness ──────────────────────────
 
 
 def _decomposer_judge(claims: list[str], verification_score: float, call_log: list):
-    """Stub judge that returns the claim list as raw_text on the extraction
-    pass, and a numeric score on verification passes. The Rust core
-    routes between the two by the system prompt content."""
+    """Stub judge for the decomposed-faithfulness path. The Rust core
+    routes calls by the system prompt content:
+    - "Decompose answers" → returns claim list as raw_text
+    - "single CLAIM"-style system + a batched prompt → returns one
+      `N: score` line per claim
+    """
     extracted_text = "\n".join(claims)
+    n_claims = len(claims)
 
     def fn(prompt, system):
         call_log.append((prompt[:60], system[:60] if system else None))
         if system and "Decompose answers" in system:
             return {"score": 0.0, "raw_text": extracted_text, "model": "stub"}
-        return verification_score
+        # Batched verification: return one `N: score` per claim.
+        body = "\n".join(f"{i+1}: {verification_score}" for i in range(n_claims))
+        return {"score": 0.0, "raw_text": body, "model": "stub"}
 
     return redhop.Judge.from_callable(fn, name="decomposer")
 
@@ -687,8 +693,8 @@ def test_decomposition_extracts_and_verifies():
     assert r.n_faithfulness_claims_extracted == 3
     # 0.8 ≥ 0.5 → all supported.
     assert r.n_faithfulness_claims_supported == 3
-    # Calls: 1 extraction + 3 verifications + 1 relevancy = 5.
-    assert len(calls) == 5
+    # Calls (batched): 1 extraction + 1 batched verification + 1 relevancy = 3.
+    assert len(calls) == 3
 
 
 def test_decomposition_zero_claims_returns_none():
@@ -737,7 +743,7 @@ def test_decomposition_unsupported_threshold():
     assert r.n_faithfulness_claims_supported == 0  # all below 0.5
 
 
-# ─── Phase 7: aspect critique ──────────────────────────────────────────────
+# ─── : aspect critique ──────────────────────────────────────────────
 
 
 def test_aspect_constructor_and_getters():

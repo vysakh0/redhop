@@ -17,9 +17,9 @@
 
 ```rust
 pub fn evaluate(
-    query: &Query,
-    ctx: &BuiltContext,
-    gold: EvalGold<'_>,
+ query: &Query,
+ ctx: &BuiltContext,
+ gold: EvalGold<'_>,
 ) -> EvalReport;
 ```
 
@@ -49,88 +49,25 @@ snake_case / camelCase shift on Node):
 | `context_recall` | `gold_chunks` provided | `|selected ∩ gold| / |gold|` |
 | `context_precision` | `gold_chunks` provided | `|selected ∩ gold| / |selected|` |
 | `answer_token_recall` | `gold_answer` provided | fraction of stemmed gold-answer terms in the assembled context |
-| `faithfulness_lexical` | `answer` provided | **Tier-1**: fraction of answer sentences with ≥half their content terms in the context (lexical proxy — not real hallucination detection; use an LLM judge for that) |
-| `relevancy_lexical` | `answer` provided | **Tier-1**: token-overlap between query and answer (Snowball-stemmed). Proxy for "did the answer address the question" |
-| `correctness_lexical` | `answer` + `gold_answer` | **Tier-1**: token-overlap between LLM answer and gold answer. Proxy for "did the LLM produce the right tokens" |
+| `faithfulness_lexical` | `answer` provided | **lexical**: fraction of answer sentences with ≥half their content terms in the context (lexical proxy — not real hallucination detection; use an LLM judge for that) |
+| `relevancy_lexical` | `answer` provided | **lexical**: token-overlap between query and answer (Snowball-stemmed). Proxy for "did the answer address the question" |
+| `correctness_lexical` | `answer` + `gold_answer` | **lexical**: token-overlap between LLM answer and gold answer. Proxy for "did the LLM produce the right tokens" |
 | `overall` | always | composite in `[0, 1]` blending whichever fields above are populated |
 
-## Two tiers of answer-quality metrics
+## Lexical vs judged answer-quality metrics
 
 The `_lexical` and `_judged` suffixes on six of the metrics above are a
-deliberate naming choice. There are two tiers in the eval API:
-
-- **Tier 1 (deterministic, in-process).** Token-overlap proxies for
-  faithfulness / relevancy / correctness. Cheap, no LLM, no API key,
-  runs in CI on every PR. Catches obvious failure modes (fabricated
-  tokens, off-topic answers, wrong-token outputs) but won't catch a
-  confidently-wrong paraphrase.
-- **Tier 2 (LLM-judged, opt-in).** Real faithfulness / relevancy /
-  correctness scored by an LLM, calibrated against Ragas's published
-  prompts. Same `EvalReport` shape; fields suffixed `_judged`.
-  Mix-and-match: a caller can compute both `faithfulness_lexical` and
-  `faithfulness_judged` in the same call and compare.
-
-The two tiers measure overlapping things from different angles. Use
-Tier 1 in CI (free, deterministic, catches regressions). Use Tier 2
-on sampled production traffic, or before promoting a configuration
-(costs LLM calls, catches the failures Tier 1 misses).
-
-### Using Tier 2 from Python
-
-The Tier-2 entry point is `redhop.Judge`. Wrap any LLM client (the
-`openai` SDK, `litellm`, `anthropic`, raw HTTP, etc.) as a callable
-that returns a `[0, 1]` score, then pass the judge into
-`redhop.evaluate(..., judge=judge)`:
-
-```python
-from openai import OpenAI
-
-client = OpenAI()
-
-def score(prompt: str, system: str | None) -> float:
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system or ""},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.0,
-    )
-    return float(resp.choices[0].message.content.strip())
-
-judge = redhop.Judge.from_callable(score, name="gpt-4o-mini").cached()
-report = redhop.evaluate(
-    "What's the refund window?",
-    ctx,
-    answer="Thirty days from purchase.",
-    gold_answer="thirty days",
-    judge=judge,
-)
-print(report.faithfulness_judged, report.relevancy_judged, report.correctness_judged)
-```
-
-`Judge.from_callable(fn, name=)` accepts any sync function that returns
-either a float (just the score) or a dict (`{score, raw_text?, model?}`).
-`.cached()` wraps the judge with an in-memory cache so identical
-`(prompt, system)` pairs don't re-call the LLM — useful for CI
-determinism and avoiding double-billing on re-runs.
-
-A judge call that errors leaves the corresponding `_judged` metric as
-`None` — eval is best-effort; a transport blip doesn't crash the run.
-
-### Node availability
-
-Tier-1 lexical metrics are available on Node identically to Python.
-The Tier-2 `Judge` callable surface ships only on the Python binding
-in this release; Node Tier-2 wiring is on the roadmap. The Node
-`EvalReport` already exposes the `faithfulnessJudged` /
-`relevancyJudged` / `correctnessJudged` fields (always `null` from Node
-today) so adding the Judge surface later is non-breaking.
+deliberate naming choice. The lexical fields are deterministic
+token-overlap proxies — cheap, no LLM, runs in CI on every PR. The
+judged fields are LLM-scored and unlocked by passing a `Judge`. The
+full surface is documented in
+[ANSWER_QUALITY_EVAL.md](ANSWER_QUALITY_EVAL.md); this doc focuses on
+the underlying design choice.
 
 ## Design choice: refraction, not independent measurement
 
-The deliberate distinction from LLM-judge eval frameworks (RAGAS,
-Trulens, Phoenix's `RetrievalQA` evaluator) is **`evaluate` is computed
+The deliberate distinction from external LLM-judge eval libraries is
+**`evaluate` is computed
 from the same primitives the runtime already uses to make its Decision
 Report.** `mean_grounding` calls the same `grounding_score` that
 `ContextStrategy::DistractorFiltered` uses to decide what to drop.
@@ -150,23 +87,17 @@ own metadata as a 0–1 score the caller can compare across queries.
 This is the right design when:
 
 - You want a **fast, cheap, deterministic** eval that runs at indexing
-  speed and never costs you a token.
+ speed and never costs you a token.
 - You're comparing **arm A vs arm B of the same pipeline** (e.g.,
-  templated query vs stripped query, see CUAD_RECALL_GAP), where
-  consistency of the metric across the comparison matters more than
-  absolute calibration to human judgment.
+ templated query vs stripped query, see CUAD_RECALL_GAP), where
+ consistency of the metric across the comparison matters more than
+ absolute calibration to human judgment.
 - You want an eval that **never disagrees** with the runtime's
-  self-assessment, so production alerting on `low_confidence` and
-  offline A/B reporting on `overall` always tell the same story.
+ self-assessment, so production alerting on `low_confidence` and
+ offline A/B reporting on `overall` always tell the same story.
 
 This is **not** the right design when:
 
-- You want to score the **generated answer** (faithfulness,
-  answer-relevance to the question, hallucination detection). Those
-  signals require an LLM judge that reads the answer; `evaluate` only
-  scores retrieval + assembly. Use RAGAS / Trulens / your own LLM
-  judge on top of the assembled context if you need answer-quality
-  measurement.
 - You want **calibrated absolute scores** comparable across pipelines
   with completely different retrieval engines. The composite is
   consistent within RedHop; it's not a benchmark number.
@@ -183,41 +114,41 @@ your own scorer*. With `evaluate`, the workflow now ends with a call:
 report = redhop.analyze_query_set(my_queries[:300])
 
 if report.is_templated:
-    # 2. Strip
-    def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
+ # 2. Strip
+ def strip(q): return redhop.drop_template_terms(q, report.boilerplate_terms)
 
-    # 3. A/B — the new bit. No LLM judge, no extra dependencies.
-    doc = redhop.Document.from_text(your_document)
-    eval_a = redhop.evaluate(
-        user_query, doc.context(user_query, strategy="raw_topk"),
-        gold_chunks=your_gold_chunk_ids,
-    )
-    eval_b = redhop.evaluate(
-        strip(user_query), doc.context(strip(user_query), strategy="raw_topk"),
-        gold_chunks=your_gold_chunk_ids,
-    )
-    print(eval_b.overall - eval_a.overall)   # the lift, deterministically
+ # 3. A/B — the new bit. No LLM judge, no extra dependencies.
+ doc = redhop.Document.from_text(your_document)
+ eval_a = redhop.evaluate(
+ user_query, doc.context(user_query, strategy="raw_topk"),
+ gold_chunks=your_gold_chunk_ids,
+ )
+ eval_b = redhop.evaluate(
+ strip(user_query), doc.context(strip(user_query), strategy="raw_topk"),
+ gold_chunks=your_gold_chunk_ids,
+ )
+ print(eval_b.overall - eval_a.overall) # the lift, deterministically
 ```
 
 ## API contract details worth knowing
 
 - **`gold_chunks=[]` vs `gold_chunks=None`** are different. `[]` means
-  "no chunks need to be retrieved" — vacuously perfect recall, undefined
-  precision (`None`). `None` means "no gold available; skip the metric."
-  Tests pin this.
+ "no chunks need to be retrieved" — vacuously perfect recall, undefined
+ precision (`None`). `None` means "no gold available; skip the metric."
+ Tests pin this.
 - **Empty selection** is handled: zero selected chunks plus gold chunks
-  given → `context_recall=Some(0.0)`, `context_precision=Some(0.0)`,
-  not `NaN`. No `mean_grounding` panic.
+ given → `context_recall=Some(0.0)`, `context_precision=Some(0.0)`,
+ not `NaN`. No `mean_grounding` panic.
 - **Stemming is on for `answer_token_recall`.** The metric goes
-  through `grounding_score`, which uses English Snowball Porter2
-  internally (fixed, independent of the `Document` default) — so
-  `"refunds"` in the gold matches `"refund"` in the context regardless
-  of whether the document was indexed with the 0.3.2 raw default or an
-  explicit `language="english"`. A test pins this.
+ through `grounding_score`, which uses English Snowball Porter2
+ internally (fixed, independent of the `Document` default) — so
+ `"refunds"` in the gold matches `"refund"` in the context regardless
+ of whether the document was indexed with the 0.3.2 raw default or an
+ explicit `language="english"`. A test pins this.
 - **`low_confidence` caps `overall`.** If the runtime flagged the
-  context as low-confidence, the composite is capped at 0.25 regardless
-  of the other components — a deliberate floor to prevent a
-  weak-retrieval-but-high-density situation from scoring well.
+ context as low-confidence, the composite is capped at 0.25 regardless
+ of the other components — a deliberate floor to prevent a
+ weak-retrieval-but-high-density situation from scoring well.
 
 ## Rust tests (10 total)
 
@@ -240,10 +171,10 @@ not just the math:
 ## Binding-surface tests
 
 - **Python**: `python/tests/test_evaluate.py`, 11 pytest functions
-  including the full detect → strip → evaluate workflow as an
-  end-to-end smoke test.
+ including the full detect → strip → evaluate workflow as an
+ end-to-end smoke test.
 - **Node**: `nodejs/test/evaluate.cjs`, 9 assertion blocks wired into
-  `npm test`.
+ `npm test`.
 
 Both mirror the Rust contract tests through the FFI boundary, so a
 dropped field on `EvalReport`, a wrong `gold_chunks` kwarg shape, or a
@@ -253,37 +184,37 @@ code.
 ## Honest limits
 
 - **`overall` is not a benchmark number.** It's an internally-consistent
-  score for comparing arms of the same pipeline. Comparing
-  `evaluate.overall` across pipelines with different retrievers or
-  rerankers tells you something about *RedHop's* preferences, not about
-  retrieval quality in an absolute sense.
+ score for comparing arms of the same pipeline. Comparing
+ `evaluate.overall` across pipelines with different retrievers or
+ rerankers tells you something about *RedHop's* preferences, not about
+ retrieval quality in an absolute sense.
 - **No CIs.** Single-call evaluation; no bootstrap variance. Pair with
-  a sufficient n on your A/B sample if you want statistical
-  significance.
+ a sufficient n on your A/B sample if you want statistical
+ significance.
 - **English-default analyzer assumed for `answer_token_recall`.**
-  Non-English workloads will produce a less informative answer-recall
-  number until we surface the analyzer language through this API too.
+ Non-English workloads will produce a less informative answer-recall
+ number until we surface the analyzer language through this API too.
 - **No generated-answer evaluation.** This is retrieval + assembly
-  only. Answer-quality scoring needs an LLM judge or a downstream
-  benchmark; `evaluate` is silent about it.
+ only. Answer-quality scoring needs an LLM judge or a downstream
+ benchmark; `evaluate` is silent about it.
 - **The composite formula is fixed.** No way for the caller to
-  reweight the components today. If your workload cares disproportionately
-  about (say) `evidence_density`, read the field directly instead of
-  the `overall`.
+ reweight the components today. If your workload cares disproportionately
+ about (say) `evidence_density`, read the field directly instead of
+ the `overall`.
 
 ## What this changes
 
 - New public API in all three bindings:
-  - Rust: `redhop::evaluate`, `redhop::EvalGold`, `redhop::EvalReport`
-  - Python: `redhop.evaluate(query, ctx, gold_chunks=None, gold_answer=None) -> EvalReport`
-  - Node: `redhop.evaluate(query, ctx, options?) -> EvalReport`
+ - Rust: `redhop::evaluate`, `redhop::EvalGold`, `redhop::EvalReport`
+ - Python: `redhop.evaluate(query, ctx, gold_chunks=None, gold_answer=None) -> EvalReport`
+ - Node: `redhop.evaluate(query, ctx, options?) -> EvalReport`
 - Node `BuiltContext` converted from `#[napi(object)]` to `#[napi]`
-  class to carry the underlying Rust struct. Field reads
-  (`ctx.text`, `ctx.chunks`, `ctx.citations`, `ctx.report`) are
-  preserved as getters; existing JS code continues to work.
+ class to carry the underlying Rust struct. Field reads
+ (`ctx.text`, `ctx.chunks`, `ctx.citations`, `ctx.report`) are
+ preserved as getters; existing JS code continues to work.
 - `docs/CHOOSING_A_CONFIG.md` step 3 ("Templated queries with heavy
-  boilerplate") now ends in a concrete `redhop.evaluate(...)` call
-  instead of the phrase "measure recall against your gold spans."
+ boilerplate") now ends in a concrete `redhop.evaluate(...)` call
+ instead of the phrase "measure recall against your gold spans."
 - The detect → strip → A/B workflow documented in the READMEs
-  (root + python + nodejs) is end-to-end runnable from the public API
-  for the first time.
+ (root + python + nodejs) is end-to-end runnable from the public API
+ for the first time.

@@ -1,11 +1,11 @@
 
 ========================================================================================
-  RedHop Tier-2 calibration — judge = deterministic stub
+  RedHop calibration — judge = deterministic stub
 ========================================================================================
   (OPENAI_API_KEY is set but `openai` not installed — falling back to stub)
 
 ========================================================================================
-  RedHop Tier-2 metrics (one row per case)
+  RedHop metrics (one row per case)
 ========================================================================================
   case             faith   relev    corr  faith_d     claims             critique
   ------------------------------------------------------------------------------------
@@ -38,8 +38,6 @@
   REFUSAL        relevancy       low         0.000    low   ✓
   REFUSAL        correctness     low         0.000    low   ✓
 
-RedHop total time: 0.22s
-
-Ragas comparison: SKIPPED (pip install ragas; set OPENAI_API_KEY)
+Total time: 0.13s
 
 Wrote machine-readable snapshot → /Users/vysakh/projects/neorag1/reports/eval_judged_calibration.json

@@ -342,7 +342,7 @@ export interface EnrichResult {
 export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
 /**
  * Optional inputs for [`evaluate`]. Any combination of fields is
- * supported — pass `answer` to unlock the Tier-1 answer-quality
+ * supported — pass `answer` to unlock the lexical answer-quality
  * proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
  * to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
  * unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
@@ -351,7 +351,7 @@ export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
 export interface EvaluateOptions {
   /**
    * The LLM's answer text (what the model produced from the context).
-   * Unlocks the Tier-1 answer-quality proxies. Distinct from
+   * Unlocks the lexical answer-quality proxies. Distinct from
    * `goldAnswer`, which is the ground truth.
    */
   answer?: string
@@ -360,15 +360,23 @@ export interface EvaluateOptions {
   /** Ground-truth answer text. */
   goldAnswer?: string
   /**
-   * **Phase 6, opt-in**: compute `faithfulness_judged` via 2-pass
-   * Ragas-style claim decomposition. Extracts atomic claims from
-   * the answer, then verifies each against the context; the mean
-   * of per-claim scores is the final faithfulness number. More
-   * accurate than the single-prompt default but costs +N LLM calls
-   * per evaluate. Only meaningful when a `judge` is also supplied
-   * (via `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+   * **Opt-in**: compute `faithfulness_judged` via two-pass claim
+   * decomposition — extract atomic claims, verify them in a single
+   * batched LLM call, return the mean score. More accurate than
+   * the single-prompt default but costs +1 LLM call per evaluate.
+   * Only meaningful when a `judge` is also supplied (via
+   * `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
    */
   decomposeFaithfulness?: boolean
+  /**
+   * **Opt-in**: compute `correctness_judged` via three-pass
+   * classification — extract claims from the answer, extract from
+   * the gold, classify each as TP / FP / FN, return F1. Also
+   * populates the diagnostic counters `nCorrectnessTp`,
+   * `nCorrectnessFp`, `nCorrectnessFn` on the report so callers
+   * can debug which facts were missed vs hallucinated.
+   */
+  decomposeCorrectness?: boolean
 }
 /**
  * In-process evaluation report for one (query, BuiltContext) pair.
@@ -407,36 +415,50 @@ export interface EvalReport {
    */
   correctnessLexical?: number
   /**
-   * **Tier-2**: LLM-judged faithfulness. Currently always `null` from
-   * the Node binding — the `Judge` callback surface is only exposed
-   * on the Python binding today. Use the Python wheel for Tier-2
-   * metrics; Node parity is on the roadmap (Phase 4 of the eval
-   * rollout). See docs/findings/EVAL_RAGAS_PARITY.md.
+   * LLM-judged faithfulness. Populated by the async `evaluateWithJudge`
+   * path; always `null` from the sync `evaluate` (JS callbacks can't
+   * fire during a sync napi call). See `Judge.fromCallable(...)` for
+   * how to wire a JS LLM client.
    */
   faithfulnessJudged?: number
   /**
-   * **Tier-2**: LLM-judged relevancy. See `faithfulness_judged` for
-   * the Node availability note.
+   * LLM-judged relevancy. See `faithfulness_judged` for the sync vs
+   * async note.
    */
   relevancyJudged?: number
   /**
-   * **Tier-2**: LLM-judged correctness. See `faithfulness_judged` for
-   * the Node availability note.
+   * LLM-judged correctness. See `faithfulness_judged` for the sync
+   * vs async note.
    */
   correctnessJudged?: number
   /**
-   * **Phase-6 diagnostic**: number of atomic claims the judge
-   * extracted when `decomposeFaithfulness: true` was passed and a
-   * judge was supplied. `null` otherwise (single-prompt path or
-   * zero claims extracted).
+   * Number of atomic claims the judge extracted when
+   * `decomposeFaithfulness: true` was passed and a judge was
+   * supplied. `null` otherwise.
    */
   nFaithfulnessClaimsExtracted?: number
   /**
-   * **Phase-6 diagnostic**: number of those claims the judge scored
-   * ≥ 0.5 against the context. `null` under the same conditions as
+   * Number of those claims the judge scored ≥ 0.5 against the
+   * context. `null` under the same conditions as
    * `nFaithfulnessClaimsExtracted`.
    */
   nFaithfulnessClaimsSupported?: number
+  /**
+   * Number of answer-claims supported by a reference claim.
+   * Populated only when `decomposeCorrectness: true` was passed
+   * and the classification pass succeeded.
+   */
+  nCorrectnessTp?: number
+  /**
+   * Number of answer-claims NOT supported by any reference claim.
+   * Same population conditions as `nCorrectnessTp`.
+   */
+  nCorrectnessFp?: number
+  /**
+   * Number of reference-claims NOT covered by the answer. Same
+   * population conditions as `nCorrectnessTp`.
+   */
+  nCorrectnessFn?: number
   /** Mean grounding over selected chunks, in `[0, 1]`. */
   meanGrounding: number
   /** Fraction of context tokens that are query-relevant. */
@@ -858,7 +880,7 @@ export declare class Vocabulary {
   get length(): number
 }
 /**
- * Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
+ * judged Judge: wraps a JS callable that scores a (prompt, system)
  * pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
  * pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
  * `.cached()` to memoize identical prompts across calls — useful for

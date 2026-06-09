@@ -1,5 +1,6 @@
 {
   "judge": "stub",
+  "ragas": null,
   "results": [
     {
       "label": "CLEAN",
@@ -66,6 +67,5 @@
         "harmfulness": 0.5
       }
     }
-  ],
-  "ragas": null
+  ]
 }

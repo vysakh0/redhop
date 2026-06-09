@@ -890,7 +890,7 @@ pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
 // Backed by `redhop::evaluate`. See `docs/findings/EVALUATE_API.md`.
 
 /// Optional inputs for [`evaluate`]. Any combination of fields is
-/// supported — pass `answer` to unlock the Tier-1 answer-quality
+/// supported — pass `answer` to unlock the lexical answer-quality
 /// proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
 /// to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
 /// unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
@@ -898,21 +898,27 @@ pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
 #[napi(object)]
 pub struct EvaluateOptions {
     /// The LLM's answer text (what the model produced from the context).
-    /// Unlocks the Tier-1 answer-quality proxies. Distinct from
+    /// Unlocks the lexical answer-quality proxies. Distinct from
     /// `goldAnswer`, which is the ground truth.
     pub answer: Option<String>,
     /// IDs of chunks that should appear in the assembled context.
     pub gold_chunks: Option<Vec<String>>,
     /// Ground-truth answer text.
     pub gold_answer: Option<String>,
-    /// **Phase 6, opt-in**: compute `faithfulness_judged` via 2-pass
-    /// Ragas-style claim decomposition. Extracts atomic claims from
-    /// the answer, then verifies each against the context; the mean
-    /// of per-claim scores is the final faithfulness number. More
-    /// accurate than the single-prompt default but costs +N LLM calls
-    /// per evaluate. Only meaningful when a `judge` is also supplied
-    /// (via `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+    /// **Opt-in**: compute `faithfulness_judged` via two-pass claim
+    /// decomposition — extract atomic claims, verify them in a single
+    /// batched LLM call, return the mean score. More accurate than
+    /// the single-prompt default but costs +1 LLM call per evaluate.
+    /// Only meaningful when a `judge` is also supplied (via
+    /// `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
     pub decompose_faithfulness: Option<bool>,
+    /// **Opt-in**: compute `correctness_judged` via three-pass
+    /// classification — extract claims from the answer, extract from
+    /// the gold, classify each as TP / FP / FN, return F1. Also
+    /// populates the diagnostic counters `nCorrectnessTp`,
+    /// `nCorrectnessFp`, `nCorrectnessFn` on the report so callers
+    /// can debug which facts were missed vs hallucinated.
+    pub decompose_correctness: Option<bool>,
 }
 
 /// In-process evaluation report for one (query, BuiltContext) pair.
@@ -942,27 +948,35 @@ pub struct EvalReport {
     /// for "did the LLM produce the right tokens". `null` unless BOTH
     /// `answer` and `goldAnswer` were supplied.
     pub correctness_lexical: Option<f64>,
-    /// **Tier-2**: LLM-judged faithfulness. Currently always `null` from
-    /// the Node binding — the `Judge` callback surface is only exposed
-    /// on the Python binding today. Use the Python wheel for Tier-2
-    /// metrics; Node parity is on the roadmap (Phase 4 of the eval
-    /// rollout). See docs/findings/EVAL_RAGAS_PARITY.md.
+    /// LLM-judged faithfulness. Populated by the async `evaluateWithJudge`
+    /// path; always `null` from the sync `evaluate` (JS callbacks can't
+    /// fire during a sync napi call). See `Judge.fromCallable(...)` for
+    /// how to wire a JS LLM client.
     pub faithfulness_judged: Option<f64>,
-    /// **Tier-2**: LLM-judged relevancy. See `faithfulness_judged` for
-    /// the Node availability note.
+    /// LLM-judged relevancy. See `faithfulness_judged` for the sync vs
+    /// async note.
     pub relevancy_judged: Option<f64>,
-    /// **Tier-2**: LLM-judged correctness. See `faithfulness_judged` for
-    /// the Node availability note.
+    /// LLM-judged correctness. See `faithfulness_judged` for the sync
+    /// vs async note.
     pub correctness_judged: Option<f64>,
-    /// **Phase-6 diagnostic**: number of atomic claims the judge
-    /// extracted when `decomposeFaithfulness: true` was passed and a
-    /// judge was supplied. `null` otherwise (single-prompt path or
-    /// zero claims extracted).
+    /// Number of atomic claims the judge extracted when
+    /// `decomposeFaithfulness: true` was passed and a judge was
+    /// supplied. `null` otherwise.
     pub n_faithfulness_claims_extracted: Option<u32>,
-    /// **Phase-6 diagnostic**: number of those claims the judge scored
-    /// ≥ 0.5 against the context. `null` under the same conditions as
+    /// Number of those claims the judge scored ≥ 0.5 against the
+    /// context. `null` under the same conditions as
     /// `nFaithfulnessClaimsExtracted`.
     pub n_faithfulness_claims_supported: Option<u32>,
+    /// Number of answer-claims supported by a reference claim.
+    /// Populated only when `decomposeCorrectness: true` was passed
+    /// and the classification pass succeeded.
+    pub n_correctness_tp: Option<u32>,
+    /// Number of answer-claims NOT supported by any reference claim.
+    /// Same population conditions as `nCorrectnessTp`.
+    pub n_correctness_fp: Option<u32>,
+    /// Number of reference-claims NOT covered by the answer. Same
+    /// population conditions as `nCorrectnessTp`.
+    pub n_correctness_fn: Option<u32>,
     /// Mean grounding over selected chunks, in `[0, 1]`.
     pub mean_grounding: f64,
     /// Fraction of context tokens that are query-relevant.
@@ -1018,6 +1032,7 @@ pub fn evaluate(
         gold_chunks: None,
         gold_answer: None,
         decompose_faithfulness: None,
+        decompose_correctness: None,
     });
     let q = redhop::core::Query::new(&query);
     let chunk_refs: Option<Vec<&str>> = opts
@@ -1035,8 +1050,9 @@ pub fn evaluate(
     };
     // Sync evaluate intentionally passes `None` for the judge — JS
     // callbacks can't safely fire during a sync napi call. Use
-    // `evaluateWithJudge` (async) for Tier-2 metrics; the
-    // decomposeFaithfulness option is meaningless without a judge.
+    // `evaluateWithJudge` (async) for judged metrics; the
+    // decomposeFaithfulness / decomposeCorrectness options are
+    // meaningless without a judge.
     let r = redhop::evaluate(
         &q,
         &context.inner,
@@ -1061,6 +1077,9 @@ fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
         correctness_judged: r.correctness_judged.map(|v| v as f64),
         n_faithfulness_claims_extracted: r.n_faithfulness_claims_extracted.map(|v| v as u32),
         n_faithfulness_claims_supported: r.n_faithfulness_claims_supported.map(|v| v as u32),
+        n_correctness_tp: r.n_correctness_tp.map(|v| v as u32),
+        n_correctness_fp: r.n_correctness_fp.map(|v| v as u32),
+        n_correctness_fn: r.n_correctness_fn.map(|v| v as u32),
         mean_grounding: r.mean_grounding as f64,
         evidence_density: r.evidence_density as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,
@@ -1071,9 +1090,9 @@ fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
     }
 }
 
-// ── Tier-2: JS-callable Judge for `evaluateWithJudge` ───────────────────────
+// ── judged: JS-callable Judge for `evaluateWithJudge` ───────────────────────
 //
-// The Tier-2 metrics need a way for Rust to call into JS while
+// The judged metrics need a way for Rust to call into JS while
 // `redhop::evaluate` runs. JS is single-threaded — we can't call back
 // into the JS engine while Rust is holding the napi main-thread call.
 // Standard napi-rs pattern: wrap the JS function as a
@@ -1083,7 +1102,7 @@ fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
 
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 
-/// Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
+/// judged Judge: wraps a JS callable that scores a (prompt, system)
 /// pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
 /// pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
 /// `.cached()` to memoize identical prompts across calls — useful for
@@ -1168,7 +1187,7 @@ impl Judge {
                 // which we convert to the Judge trait's Error.
                 // Accept either a numeric return (the score-only happy
                 // path) or a string return (raw LLM text — needed by the
-                // Phase-6 claim-decomposition extraction call, where the
+                // claim-decomposition extraction call, where the
                 // judge response is a list of claims rather than a score).
                 let future = cb_tsfn.call_async::<Either<f64, String>>(
                     Ok((prompt, system)),
@@ -1249,6 +1268,7 @@ pub async fn evaluate_with_judge(
         gold_chunks: None,
         gold_answer: None,
         decompose_faithfulness: None,
+        decompose_correctness: None,
     });
     let ctx_inner = context.inner.clone();
     let judge_inner = judge.inner.clone();
@@ -1271,6 +1291,7 @@ pub async fn evaluate_with_judge(
             Some(judge_inner.as_ref());
         let config = redhop::EvalConfig {
             decompose_faithfulness: opts.decompose_faithfulness.unwrap_or(false),
+            decompose_correctness: opts.decompose_correctness.unwrap_or(false),
         };
         redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref, config)
     })
@@ -1279,7 +1300,7 @@ pub async fn evaluate_with_judge(
     Ok(eval_report_from_rust(result))
 }
 
-// ── Phase 7: aspect critique ────────────────────────────────────────────────
+// ── Aspect critique ─────────────────────────────────────────────────────────
 //
 // One judge call per aspect. Same Judge type used by `evaluateWithJudge`;
 // cached judges memoize identical aspect prompts across runs.

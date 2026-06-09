@@ -1,4 +1,4 @@
-//! LLM-judged aspect critique — Ragas-style "score this answer on
+//! LLM-judged aspect critique — per-aspect "score this answer on
 //! these qualitative dimensions."
 //!
 //! `redhop::evaluate` covers the closed set of metrics every RAG

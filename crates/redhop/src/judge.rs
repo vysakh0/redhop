@@ -1,8 +1,8 @@
-//! LLM-judge scaffolding for Tier-2 answer-quality metrics.
+//! LLM-judge scaffolding for judged answer-quality metrics.
 //!
 //! This module is the bridge layer between RedHop's deterministic eval
-//! (Tier 1, in `crate::context::eval`) and an external LLM that scores
-//! generated answers (Tier 2). The design is deliberately boring: a
+//! (lexical metrics, in `crate::context::eval`) and an external LLM that scores
+//! generated answers (judged metrics). The design is deliberately boring: a
 //! [`Judge`] is anything that maps a prompt to a numeric score; we ship
 //! a wrapper that caches identical prompts and an adapter that wraps a
 //! caller-supplied closure. **We do not ship a built-in HTTP client to
@@ -23,7 +23,7 @@
 //!
 //! What we DO ship: the trait, a stable cache (so judged metrics are
 //! deterministic across re-runs without paying for the LLM twice), and
-//! conversion adapters at the Python/Node binding layer (Phase 3) so a
+//! conversion adapters at the Python/Node binding layer so a
 //! Python `def score(prompt, system) -> float:` becomes a [`Judge`]
 //! transparently.
 //!
@@ -53,7 +53,7 @@
 //! assert_eq!(resp.score, 1.0);
 //! ```
 //!
-//! Phase 3 (next) plumbs an `Option<&dyn Judge>` parameter into
+//! A separate module plumbs an `Option<&dyn Judge>` parameter into
 //! [`crate::evaluate`] and implements the `faithfulness_judged` /
 //! `relevancy_judged` / `correctness_judged` metrics on top of it.
 
@@ -71,11 +71,11 @@ use crate::core::{Error, Result};
 /// embed them in `prompt` or wrap the underlying client.
 #[derive(Debug, Clone, Copy)]
 pub struct JudgeRequest<'a> {
-    /// The user-facing prompt sent to the LLM. RedHop's Tier-2 metrics
-    /// (Phase 3) construct prompts of the shape "Is this sentence
+    /// The user-facing prompt sent to the LLM. RedHop's judged metrics
+    /// construct prompts of the shape "Is this sentence
     /// supported by this context? Reply 0..1."
     pub prompt: &'a str,
-    /// Optional system instruction. RedHop's Tier-2 metrics pass a
+    /// Optional system instruction. RedHop's judged metrics pass a
     /// stable system prompt naming the scoring rubric so different
     /// vendors interpret the task the same way.
     pub system: Option<&'a str>,
@@ -114,8 +114,8 @@ pub struct JudgeResponse {
 /// judge async would force the whole eval surface async.
 pub trait Judge: Send + Sync {
     /// Score one prompt. Returns `Err` on transport / authentication /
-    /// parse errors — the caller (e.g. `evaluate` Phase 3) decides
-    /// whether to retry, surface, or leave the metric as `None`.
+    /// parse errors — the caller decides whether to retry, surface,
+    /// or leave the metric as `None`.
     fn score(&self, req: &JudgeRequest<'_>) -> Result<JudgeResponse>;
 
     /// Score multiple prompts. Default impl serializes; vendors with
@@ -138,7 +138,7 @@ pub trait Judge: Send + Sync {
 /// This is the path users will reach for from Python / Node: their LLM
 /// client (OpenAI SDK, LiteLLM, the `anthropic` Python package, etc.)
 /// gives them a `(prompt, system) -> float` function; they wrap it
-/// in `CallableJudge`. The Python/Node bindings (Phase 3) construct a
+/// in `CallableJudge`. The Python/Node bindings construct a
 /// `CallableJudge` over a user-supplied callable transparently.
 pub struct CallableJudge<F>
 where
@@ -291,7 +291,7 @@ impl Judge for CachedJudge {
 }
 
 /// Parse an LLM's text response into a `[0, 1]` score. Handles the
-/// three common Tier-2 output shapes: a plain float (`"0.8"`), a 0/1
+/// three common judged output shapes: a plain float (`"0.8"`), a 0/1
 /// classification (`"yes"`, `"no"`, `"1"`, `"0"`), and a percentage
 /// (`"80%"`, `"80"`). Returns `Err(Error::Other)` when the response
 /// has no parseable numeric content, with the raw text in the
