@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use redhop::core::{Chunk, ChunkId, Query, TokenCount};
-use redhop::{evaluate, Document, EvalGold, Stripper, Vocabulary};
+use redhop::{evaluate, Document, EvalConfig, EvalGold, Stripper, Vocabulary};
 use serde_json::json;
 
 struct Section {
@@ -127,7 +127,14 @@ fn evaluate_arm(label: &str, use_rewrites: bool) -> anyhow::Result<f32> {
             doc.context(query)?
         };
         let q = Query::new(query);
-        let r = evaluate(&q, &ctx, EvalGold::Chunks(gold_ids));
+        let r = evaluate(
+            &q,
+            &ctx,
+            None,
+            EvalGold::Chunks(gold_ids),
+            None,
+            EvalConfig::default(),
+        );
         n += 1;
         total_recall += r.context_recall.unwrap_or(0.0);
         total_precision += r.context_precision.unwrap_or(0.0);
