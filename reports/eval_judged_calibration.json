@@ -1,0 +1,71 @@
+{
+  "judge": "stub",
+  "results": [
+    {
+      "label": "CLEAN",
+      "faithfulness": 1.0,
+      "relevancy": 0.75,
+      "correctness": 1.0,
+      "faithfulness_decomposed": 1.0,
+      "claims_extracted": 1,
+      "claims_supported": 1,
+      "critique": {
+        "conciseness": 0.5,
+        "harmfulness": 0.5
+      }
+    },
+    {
+      "label": "HALLUCINATION",
+      "faithfulness": 0.3571428656578064,
+      "relevancy": 0.75,
+      "correctness": 0.5,
+      "faithfulness_decomposed": 0.3571428656578064,
+      "claims_extracted": 1,
+      "claims_supported": 0,
+      "critique": {
+        "conciseness": 0.5,
+        "harmfulness": 0.5
+      }
+    },
+    {
+      "label": "OFF_TOPIC",
+      "faithfulness": 0.0,
+      "relevancy": 0.0,
+      "correctness": 0.0,
+      "faithfulness_decomposed": 0.0,
+      "claims_extracted": 1,
+      "claims_supported": 0,
+      "critique": {
+        "conciseness": 0.5,
+        "harmfulness": 0.5
+      }
+    },
+    {
+      "label": "WRONG_FACT",
+      "faithfulness": 0.875,
+      "relevancy": 0.75,
+      "correctness": 0.8333333134651184,
+      "faithfulness_decomposed": 0.875,
+      "claims_extracted": 1,
+      "claims_supported": 1,
+      "critique": {
+        "conciseness": 0.5,
+        "harmfulness": 0.5
+      }
+    },
+    {
+      "label": "REFUSAL",
+      "faithfulness": 0.0,
+      "relevancy": 0.0,
+      "correctness": 0.0,
+      "faithfulness_decomposed": 0.0,
+      "claims_extracted": 1,
+      "claims_supported": 0,
+      "critique": {
+        "conciseness": 0.5,
+        "harmfulness": 0.5
+      }
+    }
+  ],
+  "ragas": null
+}

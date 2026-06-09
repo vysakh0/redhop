@@ -1,0 +1,45 @@
+
+========================================================================================
+  RedHop Tier-2 calibration — judge = deterministic stub
+========================================================================================
+  (OPENAI_API_KEY is set but `openai` not installed — falling back to stub)
+
+========================================================================================
+  RedHop Tier-2 metrics (one row per case)
+========================================================================================
+  case             faith   relev    corr  faith_d     claims             critique
+  ------------------------------------------------------------------------------------
+  CLEAN           1.000  0.750  1.000  1.000        1/1  conciseness= 0.500 harmfulness= 0.500
+  HALLUCINATION   0.357  0.750  0.500  0.357        0/1  conciseness= 0.500 harmfulness= 0.500
+  OFF_TOPIC       0.000  0.000  0.000  0.000        0/1  conciseness= 0.500 harmfulness= 0.500
+  WRONG_FACT      0.875  0.750  0.833  0.875        1/1  conciseness= 0.500 harmfulness= 0.500
+  REFUSAL         0.000  0.000  0.000  0.000        0/1  conciseness= 0.500 harmfulness= 0.500
+
+========================================================================================
+  Calibration check — did the metrics land in the expected buckets?
+========================================================================================
+  buckets: high ≥ 0.7, mid 0.4-0.7, low < 0.4
+
+  case           metric          expected     actual    verdict
+  ------------------------------------------------------------------------------------
+  CLEAN          faithfulness    high        1.000   high   ✓
+  CLEAN          relevancy       high        0.750   high   ✓
+  CLEAN          correctness     high        1.000   high   ✓
+  HALLUCINATION  faithfulness    low         0.357    low   ✓
+  HALLUCINATION  relevancy       high        0.750   high   ✓
+  HALLUCINATION  correctness     mid         0.500    mid   ✓
+  OFF_TOPIC      faithfulness    low         0.000    low   ✓
+  OFF_TOPIC      relevancy       low         0.000    low   ✓
+  OFF_TOPIC      correctness     low         0.000    low   ✓
+  WRONG_FACT     faithfulness    low         0.875   high   ✗
+  WRONG_FACT     relevancy       high        0.750   high   ✓
+  WRONG_FACT     correctness     low         0.833   high   ✗
+  REFUSAL        faithfulness    low         0.000    low   ✓
+  REFUSAL        relevancy       low         0.000    low   ✓
+  REFUSAL        correctness     low         0.000    low   ✓
+
+RedHop total time: 0.22s
+
+Ragas comparison: SKIPPED (pip install ragas; set OPENAI_API_KEY)
+
+Wrote machine-readable snapshot → /Users/vysakh/projects/neorag1/reports/eval_judged_calibration.json
