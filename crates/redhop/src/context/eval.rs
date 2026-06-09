@@ -92,17 +92,22 @@ const CLAIM_VERIFICATION_SYSTEM: &str = "You are a strict, careful judge. Determ
     actually says.";
 
 fn claim_extraction_prompt(answer: &str) -> String {
-    // Few-shot prompt — small models (gpt-4o-mini, claude-haiku, llama-8b)
-    // produce noticeably more consistent extractions when shown what a
-    // good decomposition looks like. The example is two-pass:
-    // pronoun-resolved, atomic, no commentary.
+    // Few-shot prompt with TWO examples. The simple example shows
+    // pronoun resolution + dropping filler. The second example shows
+    // that compound attributions ("X did Y in Z") must stay as a SINGLE
+    // claim — splitting them into innocent components lets a true part
+    // ("Z is a real thing") dilute a false core claim ("X did Y").
+    // The HotpotQA-traced regression that motivated this is captured
+    // in docs/findings/EVAL_JUDGED_CALIBRATION.md.
     format!(
-        "Decompose an ANSWER into atomic factual claims. Each claim must be \
-         self-contained — resolve pronouns, drop conversational filler. Output \
-         one claim per line, no numbering, no introduction. If the ANSWER \
-         makes no verifiable factual claims (refusal, pure opinion, \
-         meta-commentary), output nothing.\n\n\
-         EXAMPLE\n\
+        "Decompose an ANSWER into atomic factual claims for verification. \
+         Each claim must be self-contained — resolve pronouns, drop \
+         conversational filler. Keep COMPOUND attributions ('X did Y in Z') \
+         as a single claim — do NOT split into innocent components, which \
+         would dilute a false core claim. Output one claim per line, no \
+         numbering, no introduction. If the ANSWER makes no verifiable \
+         factual claims (refusal, pure opinion), output nothing.\n\n\
+         EXAMPLE 1 — simple\n\
          ANSWER: He was a German-born theoretical physicist best known for \
          developing the theory of relativity. He also made important \
          contributions to quantum mechanics.\n\
@@ -110,6 +115,11 @@ fn claim_extraction_prompt(answer: &str) -> String {
          Albert Einstein was a German-born theoretical physicist.\n\
          Albert Einstein was best known for developing the theory of relativity.\n\
          Albert Einstein made important contributions to quantum mechanics.\n\n\
+         EXAMPLE 2 — apposition with compound attribution\n\
+         ANSWER: The singer of 'A', Jim Cummings, voiced Tails in 'Sonic'.\n\
+         CLAIMS:\n\
+         Jim Cummings is the singer of 'A'.\n\
+         Jim Cummings voiced Tails in 'Sonic'.\n\n\
          NOW DO THIS ONE\n\
          ANSWER: {answer}\n\
          CLAIMS:"
@@ -134,17 +144,48 @@ fn claim_verification_batched_prompt(context: &str, claims: &[String]) -> String
     for (i, claim) in claims.iter().enumerate() {
         numbered.push_str(&format!("{}. {claim}\n", i + 1));
     }
+    // The rubric, the outside-knowledge ban, and the two worked
+    // examples (one positive, one negative) all fix a class of failure
+    // where the verifier was returning "supported" for claims the
+    // CONTEXT didn't actually mention — relying on world knowledge
+    // instead. The comparative-claims rule fixes the specific HotpotQA
+    // case where "X is older than Y" was passing even when the context
+    // only had X's birth date. Output format unchanged for parser
+    // compatibility; the example shows REASONING is suppressed in the
+    // final output.
     format!(
-        "CONTEXT:\n{context}\n\nClaims to verify against the CONTEXT:\n{numbered}\n\
-         For EACH numbered claim, output ONE line in this exact format:\n\
+        "Judge whether each CLAIM is supported by the CONTEXT. The CONTEXT \
+         is the ONLY source of truth — outside / world knowledge does NOT \
+         count as support. If the CONTEXT does not mention a fact the claim \
+         asserts, the score is 0, even if you know it to be true.\n\n\
+         Scoring rubric:\n\
+         \u{2003}1.0 — every part of the claim is explicitly stated or directly entailed by the CONTEXT.\n\
+         \u{2003}0.5 — partial support: some parts in the CONTEXT, others absent.\n\
+         \u{2003}0.0 — at least one part is NOT in the CONTEXT or is contradicted.\n\n\
+         For comparative claims (older than, before, larger than): the \
+         CONTEXT must contain enough information about BOTH sides to make \
+         the comparison. If one side's underlying attribute is missing, \
+         score 0.\n\n\
+         EXAMPLE 1\n\
+         CONTEXT: Annie Morton (born October 8, 1970) is an American model.\n\
+         CLAIM: Annie Morton is older than Terry Richardson.\n\
+         REASONING: Context gives Annie Morton's birth date but says nothing about Terry Richardson's date of birth. Comparison cannot be made from CONTEXT alone.\n\
+         SCORE: 0\n\n\
+         EXAMPLE 2\n\
+         CONTEXT: WINNER is a South Korean boy group formed in 2014 by YG Entertainment.\n\
+         CLAIM: WINNER was formed by YG Entertainment.\n\
+         REASONING: Explicitly stated in CONTEXT.\n\
+         SCORE: 1\n\n\
+         CONTEXT:\n{context}\n\n\
+         Claims to verify against the CONTEXT:\n{numbered}\n\
+         Now for EACH numbered claim above, output ONE line in this exact format:\n\
          N: SCORE\n\
-         where N is the claim number and SCORE is a number from 0 (unsupported \
-         or contradicted) to 1 (fully supported). No commentary. No grouping. \
-         One line per claim, in the same order.\n\n\
+         where N is the claim number and SCORE is from 0 to 1. No commentary, \
+         no reasoning in the output — score only. One line per claim, in order.\n\n\
          Example output for 3 claims:\n\
-         1: 0.9\n\
-         2: 0.2\n\
-         3: 0.7"
+         1: 1.0\n\
+         2: 0.0\n\
+         3: 0.5"
     )
 }
 

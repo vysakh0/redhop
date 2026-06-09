@@ -1,0 +1,77 @@
+Loaded 25 cases from reports/eval_correlation_hotpot_n25.json
+Asking Claude haiku for an independent faithfulness score on each…
+  [1/25] 5a8c7595554299585d9e36b6: Claude→1.000
+  [2/25] 5a85ea095542994775f606a8: Claude→0.950
+  [3/25] 5a8e3ea95542995a26add48d: Claude→1.000
+  [4/25] 5abd94525542992ac4f382d2: Claude→1.000
+  [5/25] 5a85b2d95542997b5ce40028: Claude→1.000
+  [6/25] 5a87ab905542996e4f3088c1: Claude→1.000
+  [7/25] 5a7bbb64554299042af8f7cc: Claude→0.000
+  [8/25] 5a7166395542994082a3e814: Claude→1.000
+  [9/25] 5a877e5d5542993e715abf7d: Claude→1.000
+  [10/25] 5ab3b0bf5542992ade7c6e39: Claude→0.800
+  [11/25] 5ab6d09255429954757d337d: Claude→1.000
+  [12/25] 5a75e05c55429976ec32bc5f: Claude→0.500
+  [13/25] 5ab3e45655429976abd1bcd4: Claude→1.000
+  [14/25] 5ae0d4c9554299603e418468: Claude→1.000
+  [15/25] 5a8133725542995ce29dcbdb: Claude→1.000
+  [16/25] 5ae7a8175542993210983ed8: Claude→0.000
+  [17/25] 5ae6050f55429929b0807a5e: Claude→0.000
+  [18/25] 5adddccd5542997dc7907069: Claude→1.000
+  [19/25] 5ae2070a5542994d89d5b313: Claude→1.000
+  [20/25] 5ae22b8d554299234fd0440f: Claude→1.000
+  [21/25] 5a722b8655429971e9dc9329: Claude→1.000
+  [22/25] 5adf37a95542995ec70e8f97: Claude→0.000
+  [23/25] 5a828c8355429966c78a6a50: Claude→1.000
+  [24/25] 5a8a3e745542996c9b8d5e70: Claude→0.000
+  [25/25] 5ac23ff0554299636651994d: Claude→1.000
+
+Total Claude time: 244.0s
+
+========================================================================================
+  Faithfulness — three-way: RedHop / Ragas / Claude haiku
+========================================================================================
+  qid                        RedHop S   RedHop D    Ragas   Claude
+  ----------------------------------------------------------------
+  5a8c7595554299585d9e36b6      1.000      1.000    1.000    1.000
+  5a85ea095542994775f606a8      0.000      0.667    0.400    0.950
+  5a8e3ea95542995a26add48d      1.000      1.000    1.000    1.000
+  5abd94525542992ac4f382d2      1.000      1.000    1.000    1.000
+  5a85b2d95542997b5ce40028      1.000      0.833    0.667    1.000
+  5a87ab905542996e4f3088c1      1.000      1.000    1.000    1.000
+  5a7bbb64554299042af8f7cc      1.000      0.500    0.000    0.000
+  5a7166395542994082a3e814      1.000      1.000    1.000    1.000
+  5a877e5d5542993e715abf7d      1.000      0.667    0.667    1.000
+  5ab3b0bf5542992ade7c6e39      1.000      0.667    1.000    0.800
+  5ab6d09255429954757d337d      1.000      0.500    0.500    1.000
+  5a75e05c55429976ec32bc5f      0.000      0.500    0.500    0.500
+  5ab3e45655429976abd1bcd4      1.000      0.500    1.000    1.000
+  5ae0d4c9554299603e418468      1.000      1.000    1.000    1.000
+  5a8133725542995ce29dcbdb      1.000      1.000    0.000    1.000
+  5ae7a8175542993210983ed8      0.000      0.667    0.500    0.000
+  5ae6050f55429929b0807a5e      0.000      0.000    1.000    0.000
+  5adddccd5542997dc7907069      1.000      1.000    1.000    1.000
+  5ae2070a5542994d89d5b313      1.000       null    0.000    1.000
+  5ae22b8d554299234fd0440f      1.000      1.000    1.000    1.000
+  5a722b8655429971e9dc9329      1.000      1.000    1.000    1.000
+  5adf37a95542995ec70e8f97      1.000      1.000    1.000    0.000
+  5a828c8355429966c78a6a50      1.000      1.000    1.000    1.000
+  5a8a3e745542996c9b8d5e70      1.000      0.500    0.500    0.000
+  5ac23ff0554299636651994d      1.000       null    0.000    1.000
+
+  Mean absolute error vs Claude (third-judge tie-breaker):
+  RedHop single-prompt → Claude:  MAE=0.186  (n=25)
+  RedHop decomposed    → Claude:  MAE=0.199  (n=23)
+  Ragas                → Claude:  MAE=0.317  (n=25)
+
+  Closer to Claude: RedHop decomposed (by +0.117 MAE)
+
+  Contested cases (|RedHop_d - Ragas| ≥ 0.5): n=4
+    5a7bbb64554299042af8f7cc  RedHop_d=0.50  Ragas=0.00  Claude=0.00  → Rg closer
+    5ab3e45655429976abd1bcd4  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a8133725542995ce29dcbdb  RedHop_d=1.00  Ragas=0.00  Claude=1.00  → RH closer
+    5ae6050f55429929b0807a5e  RedHop_d=0.00  Ragas=1.00  Claude=0.00  → RH closer
+  Claude is closer to RedHop_decomposed:  2/4
+  Claude is closer to Ragas:              2/4
+
+  → /Users/vysakh/projects/neorag1/reports/eval_third_judge_eval_correlation_hotpot_n25.json

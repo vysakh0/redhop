@@ -144,6 +144,64 @@ Breakdown of decomposed-vs-Ragas agreement on n=25:
   than Ragas's. Worth investigating in a follow-up if absolute
   calibration to Ragas matters.
 
+### Prompt iteration — v0 → v2
+
+The first n=25 trace exposed three structural failure cases where
+`redhop_decomposed` over-scored faithfulness vs Claude haiku as the
+third judge:
+
+| qid | what's special | v0 → Claude |
+|---|---|---|
+| `5a7bbb64…` ("Annie Morton older than Terry Richardson") | comparative; context only has one side's birthdate | RedHop=1.0, Claude=0.0 |
+| `5a8a3e74…` ("Arena of Khazan designed by Ken St. Andre") | compound attribution; designer attribution unsupported | RedHop=1.0, Claude=0.0 |
+| `5ae6050f…` ("Jim Cummings voiced Tails in Sonic") | apposition + cross-attribution; cross-attribution unsupported | RedHop=0.67, Claude=0.0 |
+
+Diagnostic trace (`bench/eval_faith_trace.py`) revealed: the
+verifier was occasionally returning 1.0 for claims the CONTEXT
+didn't actually support — relying on world knowledge instead.
+
+**Two prompt changes** (commit, `crates/redhop/src/context/eval.rs`):
+
+1. *Extraction* — added an explicit rule and worked example: compound
+   attributions ("X did Y in Z") must stay as a single claim. Splitting
+   them into innocent components (e.g. "Z is a real thing") lets a true
+   part dilute a false core claim. (Lesson from the case-C regression
+   under an over-aggressive v1 prompt.)
+2. *Verification* — added an explicit ban on outside knowledge plus
+   two worked examples (one positive, one negative). The negative
+   example shows that "context does not mention X" must score 0, not
+   1, even when the model knows the answer. Added an explicit rule
+   for comparatives: both sides must be grounded in the CONTEXT.
+
+The batched output format (`N: SCORE`) is unchanged for parser
+compatibility — the new prompt only changes the rubric and examples.
+
+**v2 results on the same n=25:**
+
+| qid | v0 RedHop_d | **v2 RedHop_d** | Claude | move |
+|---|---:|---:|---:|---|
+| Annie Morton | 1.000 | **0.500** | 0.000 | closer |
+| Arena of Khazan | 1.000 | **0.500** | 0.000 | closer (matches Ragas) |
+| Jim Cummings | 0.667 | **0.000** | 0.000 | perfect |
+
+Aggregate:
+
+| metric | v0 | **v2** |
+|---|---:|---:|
+| MAE(RedHop_d, Ragas) on n=25 | 0.187 | **0.157** |
+| MAE(RedHop_d, Claude haiku) | 0.212 | **0.199** |
+| Pearson r(RedHop_d, Ragas) | +0.559 | +0.565 |
+| Refusal handling ("I don't know") | extracted as a single bogus claim, scored 0.0 | correctly produces `None` (0 claims extracted) |
+
+Side-effect: "I don't know" answers now return `None` for
+decomposed faithfulness because no claims can be extracted from a
+refusal. Bench code treats `None` as 0.0 for correlation; downstream
+callers should do the same or treat `None` as "not applicable."
+
+One slight regression: `5ab3e456…` (a fully-supported answer) now
+scores 0.5 instead of 1.0 — our new strictness overshoots on that
+case. Worth a follow-up but doesn't move the aggregate.
+
 ### Third-judge tie-breaker (Claude haiku via `claude -p`)
 
 Two LLM-judge libraries disagreeing doesn't tell us which one is
