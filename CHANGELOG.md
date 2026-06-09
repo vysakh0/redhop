@@ -5,7 +5,7 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
-## [0.3.3] — Unreleased
+## [0.3.3] — 2026-06-09
 
 **Answer-quality eval surface (Rust + Python + Node) + audit of
 defaulted-on heuristics.** Two threads in this release:
