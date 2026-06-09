@@ -180,7 +180,9 @@ const report = await evaluateWithJudge(userQuery, ctx, judge, {
 
 For user-defined aspects (harmfulness, conciseness, brand voice…),
 `critique(answer, aspects, judge)` runs one judge call per aspect
-with polarity-corrected scores.
+with polarity-corrected scores. Aggregate a test set via
+`summarize(reports)` — same shape as Python's `redhop.summarize`,
+returns means + medians + per-metric subset counters.
 
 Full API + field list:
 [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md).
@@ -399,6 +401,7 @@ if (report.isTemplated) {
 | `doc.contextWithRewrites(query, [stripper, vocab])` | Runs the chain through retrieval; per-stage audit lands on `report.queryRewrites` | (same finding as above) |
 | `evaluate(query, ctx, { goldChunks, goldAnswer })` · `evaluateWithJudge(query, ctx, judge, { answer, goldAnswer, decomposeFaithfulness, decomposeCorrectness })` | A/B scoring against gold. Sync `evaluate` is deterministic-only (no LLM); async `evaluateWithJudge` opts into LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
 | `critique(answer, aspects, judge)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect; polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
+| `summarize(reports)` | Test-set aggregation — means + medians + per-metric subset counts (`meanOverall`, `meanFaithfulnessJudged` + `nWithFaithfulnessJudged`, …). Same shape as Python's `redhop.summarize` and Rust's `redhop::summarize(&[…])` | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).

@@ -1090,6 +1090,118 @@ fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
     }
 }
 
+/// Reverse of `eval_report_from_rust`. Needed by `summarize(reports)` so we
+/// can reconstruct redhop::EvalReport from the napi surface form.
+fn eval_report_to_rust(r: &EvalReport) -> redhop::EvalReport {
+    redhop::EvalReport {
+        context_recall: r.context_recall.map(|v| v as f32),
+        context_precision: r.context_precision.map(|v| v as f32),
+        answer_token_recall: r.answer_token_recall.map(|v| v as f32),
+        faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f32),
+        relevancy_lexical: r.relevancy_lexical.map(|v| v as f32),
+        correctness_lexical: r.correctness_lexical.map(|v| v as f32),
+        faithfulness_judged: r.faithfulness_judged.map(|v| v as f32),
+        relevancy_judged: r.relevancy_judged.map(|v| v as f32),
+        correctness_judged: r.correctness_judged.map(|v| v as f32),
+        n_faithfulness_claims_extracted: r.n_faithfulness_claims_extracted.map(|v| v as usize),
+        n_faithfulness_claims_supported: r.n_faithfulness_claims_supported.map(|v| v as usize),
+        n_correctness_tp: r.n_correctness_tp.map(|v| v as usize),
+        n_correctness_fp: r.n_correctness_fp.map(|v| v as usize),
+        n_correctness_fn: r.n_correctness_fn.map(|v| v as usize),
+        mean_grounding: r.mean_grounding as f32,
+        evidence_density: r.evidence_density as f32,
+        retained_evidence_ratio: r.retained_evidence_ratio as f32,
+        second_hop_rescues: r.second_hop_rescues as usize,
+        low_confidence: r.low_confidence,
+        estimated_waste_tokens: r.estimated_waste_tokens as usize,
+        overall: r.overall as f32,
+    }
+}
+
+/// Test-set aggregation. Pass an array of `EvalReport`s (typically one per
+/// `(query, ctx, answer, gold)` triple in your test set) and get back means,
+/// medians, and conditionally-present subset counts. Always-present metrics
+/// are means/medians over all reports; optional metrics (gold-relative
+/// scores, judged scores) are means over only the subset where they were
+/// populated, with an `nWith…` companion so callers can spot "this number is
+/// computed from 3 of 200 reports" before reading too much into it.
+///
+/// Mirrors `redhop.summarize(reports)` in Python and `redhop::summarize(&[...])`
+/// in Rust.
+#[napi]
+pub fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
+    let inner_reports: Vec<redhop::EvalReport> =
+        reports.iter().map(eval_report_to_rust).collect();
+    let s = redhop::summarize(&inner_reports);
+    EvalSummary {
+        n: s.n as u32,
+        mean_overall: s.mean_overall as f64,
+        median_overall: s.median_overall as f64,
+        mean_grounding: s.mean_grounding as f64,
+        mean_evidence_density: s.mean_evidence_density as f64,
+        low_confidence_rate: s.low_confidence_rate as f64,
+        mean_context_recall: s.mean_context_recall.map(|v| v as f64),
+        n_with_context_recall: s.n_with_context_recall as u32,
+        mean_context_precision: s.mean_context_precision.map(|v| v as f64),
+        n_with_context_precision: s.n_with_context_precision as u32,
+        mean_answer_token_recall: s.mean_answer_token_recall.map(|v| v as f64),
+        n_with_answer_token_recall: s.n_with_answer_token_recall as u32,
+        mean_faithfulness_lexical: s.mean_faithfulness_lexical.map(|v| v as f64),
+        n_with_faithfulness_lexical: s.n_with_faithfulness_lexical as u32,
+        mean_relevancy_lexical: s.mean_relevancy_lexical.map(|v| v as f64),
+        n_with_relevancy_lexical: s.n_with_relevancy_lexical as u32,
+        mean_correctness_lexical: s.mean_correctness_lexical.map(|v| v as f64),
+        n_with_correctness_lexical: s.n_with_correctness_lexical as u32,
+        mean_faithfulness_judged: s.mean_faithfulness_judged.map(|v| v as f64),
+        n_with_faithfulness_judged: s.n_with_faithfulness_judged as u32,
+        mean_relevancy_judged: s.mean_relevancy_judged.map(|v| v as f64),
+        n_with_relevancy_judged: s.n_with_relevancy_judged as u32,
+        mean_correctness_judged: s.mean_correctness_judged.map(|v| v as f64),
+        n_with_correctness_judged: s.n_with_correctness_judged as u32,
+    }
+}
+
+/// Aggregate stats for a test set. Returned by `summarize(reports)`.
+/// Always-present metrics are means/medians over all `n` reports;
+/// conditionally-present metrics (gold-relative + LLM-judged) are means
+/// over only the subset where each was populated. `nWith…` reports the
+/// subset size so a caller can spot a number computed from 3 of 200
+/// reports before reading too much into it.
+#[napi(object)]
+pub struct EvalSummary {
+    /// Total number of reports in the input.
+    pub n: u32,
+    /// Mean of `overall` across all reports.
+    pub mean_overall: f64,
+    /// Median of `overall` across all reports.
+    pub median_overall: f64,
+    /// Mean of `meanGrounding` across all reports.
+    pub mean_grounding: f64,
+    /// Mean of `evidenceDensity` across all reports.
+    pub mean_evidence_density: f64,
+    /// Fraction of reports where `lowConfidence` was true, in `[0, 1]`.
+    pub low_confidence_rate: f64,
+    pub mean_context_recall: Option<f64>,
+    /// Number of reports where `contextRecall` was populated.
+    pub n_with_context_recall: u32,
+    pub mean_context_precision: Option<f64>,
+    pub n_with_context_precision: u32,
+    pub mean_answer_token_recall: Option<f64>,
+    pub n_with_answer_token_recall: u32,
+    pub mean_faithfulness_lexical: Option<f64>,
+    pub n_with_faithfulness_lexical: u32,
+    pub mean_relevancy_lexical: Option<f64>,
+    pub n_with_relevancy_lexical: u32,
+    pub mean_correctness_lexical: Option<f64>,
+    pub n_with_correctness_lexical: u32,
+    pub mean_faithfulness_judged: Option<f64>,
+    pub n_with_faithfulness_judged: u32,
+    pub mean_relevancy_judged: Option<f64>,
+    pub n_with_relevancy_judged: u32,
+    pub mean_correctness_judged: Option<f64>,
+    pub n_with_correctness_judged: u32,
+}
+
 // ── judged: JS-callable Judge for `evaluateWithJudge` ───────────────────────
 //
 // The judged metrics need a way for Rust to call into JS while

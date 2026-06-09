@@ -506,6 +506,60 @@ export interface EvalReport {
  */
 export declare function evaluate(query: string, context: BuiltContext, options?: EvaluateOptions | undefined | null): EvalReport
 /**
+ * Test-set aggregation. Pass an array of `EvalReport`s (typically one per
+ * `(query, ctx, answer, gold)` triple in your test set) and get back means,
+ * medians, and conditionally-present subset counts. Always-present metrics
+ * are means/medians over all reports; optional metrics (gold-relative
+ * scores, judged scores) are means over only the subset where they were
+ * populated, with an `nWith…` companion so callers can spot "this number is
+ * computed from 3 of 200 reports" before reading too much into it.
+ *
+ * Mirrors `redhop.summarize(reports)` in Python and `redhop::summarize(&[...])`
+ * in Rust.
+ */
+export declare function summarize(reports: Array<EvalReport>): EvalSummary
+/**
+ * Aggregate stats for a test set. Returned by `summarize(reports)`.
+ * Always-present metrics are means/medians over all `n` reports;
+ * conditionally-present metrics (gold-relative + LLM-judged) are means
+ * over only the subset where each was populated. `nWith…` reports the
+ * subset size so a caller can spot a number computed from 3 of 200
+ * reports before reading too much into it.
+ */
+export interface EvalSummary {
+  /** Total number of reports in the input. */
+  n: number
+  /** Mean of `overall` across all reports. */
+  meanOverall: number
+  /** Median of `overall` across all reports. */
+  medianOverall: number
+  /** Mean of `meanGrounding` across all reports. */
+  meanGrounding: number
+  /** Mean of `evidenceDensity` across all reports. */
+  meanEvidenceDensity: number
+  /** Fraction of reports where `lowConfidence` was true, in `[0, 1]`. */
+  lowConfidenceRate: number
+  meanContextRecall?: number
+  /** Number of reports where `contextRecall` was populated. */
+  nWithContextRecall: number
+  meanContextPrecision?: number
+  nWithContextPrecision: number
+  meanAnswerTokenRecall?: number
+  nWithAnswerTokenRecall: number
+  meanFaithfulnessLexical?: number
+  nWithFaithfulnessLexical: number
+  meanRelevancyLexical?: number
+  nWithRelevancyLexical: number
+  meanCorrectnessLexical?: number
+  nWithCorrectnessLexical: number
+  meanFaithfulnessJudged?: number
+  nWithFaithfulnessJudged: number
+  meanRelevancyJudged?: number
+  nWithRelevancyJudged: number
+  meanCorrectnessJudged?: number
+  nWithCorrectnessJudged: number
+}
+/**
  * Options for [`evaluate_with_judge`] — same as `EvaluateOptions` plus
  * a `judge` field. Distinct type because napi-rs doesn't allow object-
  * type options with class-typed fields directly; we accept the Judge
