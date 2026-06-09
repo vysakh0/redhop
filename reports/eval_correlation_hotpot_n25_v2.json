@@ -6,21 +6,21 @@
     {
       "qid": "5a8c7595554299585d9e36b6",
       "redhop_single": 1.0,
-      "redhop_decomposed": null,
-      "n_claims_extracted": null,
-      "n_claims_supported": null,
-      "ragas_faithfulness": 0.0,
-      "answer": "I don't know.",
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Shirley Temple Black held the position of United States ambassador to Ghana and to Czechoslovakia.",
       "gold_answer": "Chief of Protocol"
     },
     {
       "qid": "5a85ea095542994775f606a8",
       "redhop_single": 0.0,
-      "redhop_decomposed": 0.5,
-      "n_claims_extracted": 2,
-      "n_claims_supported": 1,
-      "ragas_faithfulness": 0.25,
-      "answer": "The Animorphs series is the science fantasy young adult series that has companion books narrating the stories of enslaved worlds and alien species.",
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.4,
+      "answer": "The Animorphs series is a science fantasy young adult series told in first person, with companion books narrating the stories of enslaved worlds and alien species.",
       "gold_answer": "Animorphs"
     },
     {
@@ -46,11 +46,11 @@
     {
       "qid": "5a85b2d95542997b5ce40028",
       "redhop_single": 1.0,
-      "redhop_decomposed": 1.0,
-      "n_claims_extracted": 2,
-      "n_claims_supported": 2,
-      "ragas_faithfulness": 1.0,
-      "answer": "Eenasul Fateh was known by his stage name Aladin and is a former international management consultant.",
+      "redhop_decomposed": 0.8333333134651184,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner and former international management consultant.",
       "gold_answer": "Eenasul Fateh"
     },
     {
@@ -66,9 +66,9 @@
     {
       "qid": "5a7bbb64554299042af8f7cc",
       "redhop_single": 1.0,
-      "redhop_decomposed": 0.0,
+      "redhop_decomposed": 0.5,
       "n_claims_extracted": 1,
-      "n_claims_supported": 0,
+      "n_claims_supported": 1,
       "ragas_faithfulness": 0.0,
       "answer": "Annie Morton is older than Terry Richardson.",
       "gold_answer": "Terry Richardson"
@@ -86,9 +86,9 @@
     {
       "qid": "5a877e5d5542993e715abf7d",
       "redhop_single": 1.0,
-      "redhop_decomposed": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
       "n_claims_extracted": 3,
-      "n_claims_supported": 3,
+      "n_claims_supported": 2,
       "ragas_faithfulness": 0.6666666666666666,
       "answer": "David Weissman co-wrote \"The Family Man,\" which stars Nicolas Cage and T\u00e9a Leoni.",
       "gold_answer": "David Weissman"
@@ -96,9 +96,9 @@
     {
       "qid": "5ab3b0bf5542992ade7c6e39",
       "redhop_single": 1.0,
-      "redhop_decomposed": 0.5,
-      "n_claims_extracted": 2,
-      "n_claims_supported": 1,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
       "ragas_faithfulness": 1.0,
       "answer": "Guns N' Roses performed a promo for the movie \"End of Days,\" which starred Arnold Schwarzenegger, in 1999.",
       "gold_answer": "1999"
@@ -106,11 +106,11 @@
     {
       "qid": "5ab6d09255429954757d337d",
       "redhop_single": 1.0,
-      "redhop_decomposed": 0.75,
+      "redhop_decomposed": 0.5,
       "n_claims_extracted": 2,
-      "n_claims_supported": 2,
+      "n_claims_supported": 1,
       "ragas_faithfulness": 0.5,
-      "answer": "The football manager who recruited David Beckham, Alex Ferguson, managed Manchester United from 1986 to 2013.",
+      "answer": "The football manager who recruited David Beckham, Sir Alex Ferguson, managed Manchester United from 1986 to 2013.",
       "gold_answer": "from 1986 to 2013"
     },
     {
@@ -139,7 +139,7 @@
       "redhop_decomposed": 1.0,
       "n_claims_extracted": 2,
       "n_claims_supported": 2,
-      "ragas_faithfulness": 0.6666666666666666,
+      "ragas_faithfulness": 1.0,
       "answer": "Roger O. Egeberg was Assistant Secretary for Health and Scientific Affairs during the Nixon administration, which lasted from 1969 to 1974.",
       "gold_answer": "1969 until 1974"
     },
@@ -156,11 +156,11 @@
     {
       "qid": "5ae7a8175542993210983ed8",
       "redhop_single": 0.0,
-      "redhop_decomposed": 0.5,
-      "n_claims_extracted": 2,
-      "n_claims_supported": 1,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
       "ragas_faithfulness": 0.5,
-      "answer": "Pedro Rodr\u00edguez is the other Mexican Formula One race car driver who has held the podium.",
+      "answer": "Pedro Rodr\u00edguez is the other Mexican Formula One driver who has held the podium, being the only one to have won a grand prix.",
       "gold_answer": "Pedro Rodr\u00edguez"
     },
     {
@@ -169,7 +169,7 @@
       "redhop_decomposed": 0.0,
       "n_claims_extracted": 2,
       "n_claims_supported": 0,
-      "ragas_faithfulness": 0.6666666666666666,
+      "ragas_faithfulness": 1.0,
       "answer": "The singer of \"A Rather Blustery Day,\" Jim Cummings, voiced Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog.\"",
       "gold_answer": "Sonic"
     },
@@ -210,7 +210,7 @@
       "n_claims_extracted": 2,
       "n_claims_supported": 2,
       "ragas_faithfulness": 1.0,
-      "answer": "The writer of \"These Boots Are Made for Walkin'\" is Lee Hazlewood, and he died in 2007.",
+      "answer": "The writer of \"These Boots Are Made for Walkin'\" is Lee Hazlewood, who died in 2007.",
       "gold_answer": "Barton Lee Hazlewood"
     },
     {
@@ -255,11 +255,11 @@
     }
   ],
   "pearson": {
-    "redhop_single_vs_ragas": 0.19040338929657888,
-    "redhop_decomposed_vs_ragas": 0.7026501348694134
+    "redhop_single_vs_ragas": 0.12807826121346563,
+    "redhop_decomposed_vs_ragas": 0.564820180624226
   },
   "mae": {
-    "redhop_single_vs_ragas": 0.3433333333333334,
-    "redhop_decomposed_vs_ragas": 0.15333333333333335
+    "redhop_single_vs_ragas": 0.32266666666666666,
+    "redhop_decomposed_vs_ragas": 0.15733333412806194
   }
 }

@@ -144,7 +144,7 @@ Breakdown of decomposed-vs-Ragas agreement on n=25:
   than Ragas's. Worth investigating in a follow-up if absolute
   calibration to Ragas matters.
 
-### Prompt iteration — v0 → v2
+### Prompt iteration — v0 → v4
 
 The first n=25 trace exposed three structural failure cases where
 `redhop_decomposed` over-scored faithfulness vs Claude haiku as the
@@ -176,31 +176,48 @@ didn't actually support — relying on world knowledge instead.
 The batched output format (`N: SCORE`) is unchanged for parser
 compatibility — the new prompt only changes the rubric and examples.
 
-**v2 results on the same n=25:**
+**v2 introduced one over-correction.** A fully-supported answer
+("David Weissman co-wrote The Family Man", context says "written by
+David Diamond and David Weissman") consistently scored 0.667 because
+the verifier read "explicitly stated" too literally and rejected
+paraphrase. Diagnosing this needed a second prompt iteration: **v4
+adds a paraphrase-positive example and two negative substitution
+examples** (wrong character, wrong attribution level), keeping
+paraphrase as support without re-opening the world-knowledge
+loophole.
 
-| qid | v0 RedHop_d | **v2 RedHop_d** | Claude | move |
-|---|---:|---:|---:|---|
-| Annie Morton | 1.000 | **0.500** | 0.000 | closer |
-| Arena of Khazan | 1.000 | **0.500** | 0.000 | closer (matches Ragas) |
-| Jim Cummings | 0.667 | **0.000** | 0.000 | perfect |
+**v4 case-level scores:**
 
-Aggregate:
+| qid | v0 | v2 | **v4** | Claude | notes |
+|---|---:|---:|---:|---:|---|
+| Annie Morton (comparative) | 1.000 | 0.500 | **0.000** | 0.000 | perfect — comparative rule fires |
+| Arena of Khazan (attribution level) | 1.000 | 0.500 | **0.500** | 0.000 | matches Ragas's split-the-difference |
+| Jim Cummings (wrong entity) | 0.667 | 0.000 | **0.000** / 0.500 | 0.000 | varies per run — extraction sometimes makes 2 claims, sometimes 1; either is informative |
+| David Weissman (paraphrase) | 1.000 | 0.667 | **1.000** | 1.000 | v4 fixes the v2 regression |
+| controls (Adriana, WINNER) | 1.000 | 1.000 | **1.000** | 1.000 | no regression |
 
-| metric | v0 | **v2** |
-|---|---:|---:|
-| MAE(RedHop_d, Ragas) on n=25 | 0.187 | **0.157** |
-| MAE(RedHop_d, Claude haiku) | 0.212 | **0.199** |
-| Pearson r(RedHop_d, Ragas) | +0.559 | +0.565 |
-| Refusal handling ("I don't know") | extracted as a single bogus claim, scored 0.0 | correctly produces `None` (0 claims extracted) |
+**Aggregate on n=25 HotpotQA (same generated answers each time, gpt-4o-mini):**
 
-Side-effect: "I don't know" answers now return `None` for
-decomposed faithfulness because no claims can be extracted from a
-refusal. Bench code treats `None` as 0.0 for correlation; downstream
-callers should do the same or treat `None` as "not applicable."
+| metric | v0 | v2 | **v4** |
+|---|---:|---:|---:|
+| Pearson r(RedHop_d, Ragas) | +0.559 | +0.565 | **+0.703** |
+| MAE(RedHop_d, Ragas) | 0.187 | 0.157 | **0.153** |
+| MAE(RedHop_d, Claude haiku) | 0.212 | 0.199 | **0.130** |
+| MAE(Ragas, Claude haiku) | 0.262 | 0.317 | 0.339 |
+| RedHop's edge over Ragas in MAE-to-Claude | +0.050 | +0.117 | **+0.210** |
+| Contested cases (|RH_d − Ragas| ≥ 0.5) where Claude favors RedHop | 2/4 | 2/4 | **3/4** |
+| Refusal handling ("I don't know") | scored 0.0 via bogus extraction | `None` (0 claims) | `None` (0 claims) |
 
-One slight regression: `5ab3e456…` (a fully-supported answer) now
-scores 0.5 instead of 1.0 — our new strictness overshoots on that
-case. Worth a follow-up but doesn't move the aggregate.
+Side-effect (v2 onward): "I don't know" answers now return `None`
+for decomposed faithfulness because no claims can be extracted from
+a refusal. Bench code treats `None` as 0.0 for correlation;
+downstream callers should do the same or treat `None` as "not
+applicable."
+
+The substitution examples in the v4 verifier prompt use
+abstracted entities (Mira Vance / Echo / Lumen / Starlight Coast;
+Cinderpeak / Lana Ortiz / Caverns of Ash) to teach the principle
+without contaminating with the actual test set.
 
 ### Third-judge tie-breaker (Claude haiku via `claude -p`)
 

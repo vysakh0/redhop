@@ -292,10 +292,130 @@ def claim_verification_batched_v2(context: str, claims: list[str]) -> str:
     )
 
 
+def claim_verification_batched_v3(context: str, claims: list[str]) -> str:
+    """v3: v2 plus an entailment-positive example. v2's "explicitly
+    stated or directly entailed" rubric was being read too literally on
+    paraphrase cases (e.g. context says "written by X and Y", claim says
+    "X co-wrote" — verifier scored 0). Adding a worked entailment
+    example pulls the model back toward accepting paraphrase as
+    support, without re-opening the world-knowledge loophole.
+    """
+    numbered = "".join(f"{i+1}. {c}\n" for i, c in enumerate(claims))
+    return (
+        "Judge whether each CLAIM is supported by the CONTEXT. The CONTEXT "
+        "is the ONLY source of truth — outside / world knowledge does NOT "
+        "count as support. If the CONTEXT does not mention a fact the claim "
+        "asserts, the score is 0, even if you know it to be true. But "
+        "PARAPHRASE counts as support: if the claim restates a fact from "
+        "the CONTEXT in different words, that is SCORE 1.\n\n"
+        "Scoring rubric:\n"
+        "  1.0 — every part of the claim is explicitly stated, paraphrased, or directly entailed by the CONTEXT.\n"
+        "  0.5 — partial support: some parts in the CONTEXT, others absent.\n"
+        "  0.0 — at least one part is NOT in the CONTEXT or is contradicted.\n\n"
+        "For comparative claims (older than, before, larger than): the "
+        "CONTEXT must contain enough information about BOTH sides to make "
+        "the comparison. If one side's underlying attribute is missing, "
+        "score 0.\n\n"
+        "EXAMPLE 1 — comparative claim, only one side in CONTEXT\n"
+        "CONTEXT: Annie Morton (born October 8, 1970) is an American model.\n"
+        "CLAIM: Annie Morton is older than Terry Richardson.\n"
+        "REASONING: Context gives Annie Morton's birth date but says nothing about Terry Richardson's date of birth. Comparison cannot be made from CONTEXT alone.\n"
+        "SCORE: 0\n\n"
+        "EXAMPLE 2 — claim is explicitly stated\n"
+        "CONTEXT: WINNER is a South Korean boy group formed in 2014 by YG Entertainment.\n"
+        "CLAIM: WINNER was formed by YG Entertainment.\n"
+        "REASONING: Explicitly stated in CONTEXT.\n"
+        "SCORE: 1\n\n"
+        "EXAMPLE 3 — paraphrase / entailment counts as support\n"
+        "CONTEXT: The Family Man is a 2000 film written by David Diamond and David Weissman, and starring Nicolas Cage.\n"
+        "CLAIM: David Weissman co-wrote The Family Man.\n"
+        "REASONING: 'written by David Diamond and David Weissman' directly entails 'David Weissman co-wrote'. Same fact, different surface form.\n"
+        "SCORE: 1\n\n"
+        f"CONTEXT:\n{context}\n\n"
+        f"Claims to verify against the CONTEXT:\n{numbered}\n"
+        "Now for EACH numbered claim above, output ONE line in this exact format:\n"
+        "N: SCORE\n"
+        "where N is the claim number and SCORE is from 0 to 1. No commentary, "
+        "no reasoning in the output — score only. One line per claim, in order.\n\n"
+        "Example output for 3 claims:\n"
+        "1: 1.0\n"
+        "2: 0.0\n"
+        "3: 0.5"
+    )
+
+
+def claim_verification_batched_v4(context: str, claims: list[str]) -> str:
+    """v4: v3 plus a NEGATIVE entailment example. v3's paraphrase rule
+    swung the verifier too lenient on wrong-entity attributions
+    (e.g. context says X designed game G, claim says X designed
+    adventure A for G — different entity; or context says X voiced
+    character A in series S, claim says X voiced character B in series
+    S — different character). The negative example shows that
+    SUBSTITUTING the subject or object of an attribution breaks
+    support, even if other parts of the claim are present in the
+    CONTEXT.
+    """
+    numbered = "".join(f"{i+1}. {c}\n" for i, c in enumerate(claims))
+    return (
+        "Judge whether each CLAIM is supported by the CONTEXT. The CONTEXT "
+        "is the ONLY source of truth — outside / world knowledge does NOT "
+        "count as support. PARAPHRASE counts as support: same fact in "
+        "different words is SCORE 1. But SUBSTITUTION does not: if the "
+        "claim swaps the subject, object, or attribute for a similar-but-"
+        "different one (different game, different character, different "
+        "person), that is SCORE 0 even if the surrounding facts are in "
+        "the CONTEXT.\n\n"
+        "Scoring rubric:\n"
+        "  1.0 — every part of the claim is explicitly stated, paraphrased, or directly entailed by the CONTEXT.\n"
+        "  0.5 — partial support: some parts in the CONTEXT, others absent.\n"
+        "  0.0 — at least one part is NOT in the CONTEXT, is contradicted, or substitutes a different entity.\n\n"
+        "For comparative claims (older than, before, larger than): the "
+        "CONTEXT must contain enough information about BOTH sides to make "
+        "the comparison. If one side's underlying attribute is missing, "
+        "score 0.\n\n"
+        "EXAMPLE 1 — comparative, only one side in CONTEXT\n"
+        "CONTEXT: Annie Morton (born October 8, 1970) is an American model.\n"
+        "CLAIM: Annie Morton is older than Terry Richardson.\n"
+        "REASONING: Context gives Annie's birth date but says nothing about Terry's. Comparison cannot be made.\n"
+        "SCORE: 0\n\n"
+        "EXAMPLE 2 — explicit\n"
+        "CONTEXT: WINNER is a South Korean boy group formed in 2014 by YG Entertainment.\n"
+        "CLAIM: WINNER was formed by YG Entertainment.\n"
+        "SCORE: 1\n\n"
+        "EXAMPLE 3 — paraphrase / entailment\n"
+        "CONTEXT: The Family Man is a 2000 film written by David Diamond and David Weissman.\n"
+        "CLAIM: David Weissman co-wrote The Family Man.\n"
+        "REASONING: 'written by Diamond and Weissman' directly entails 'Weissman co-wrote'. Same fact, paraphrased.\n"
+        "SCORE: 1\n\n"
+        "EXAMPLE 4 — wrong entity substitution\n"
+        "CONTEXT: Voice actor Mira Vance is known for voicing the character Echo in the animated series 'Starlight Coast'.\n"
+        "CLAIM: Mira Vance voiced the character Lumen in 'Starlight Coast'.\n"
+        "REASONING: Context says Echo, claim says Lumen. Different character. Substituting the object of the attribution breaks support.\n"
+        "SCORE: 0\n\n"
+        "EXAMPLE 5 — attribution to a related but different thing\n"
+        "CONTEXT: The role-playing game 'Cinderpeak' was designed by Lana Ortiz. 'Caverns of Ash' is an adventure module for 'Cinderpeak' published by Riverstone.\n"
+        "CLAIM: 'Caverns of Ash' was designed by Lana Ortiz.\n"
+        "REASONING: Context says Ortiz designed the GAME, not the adventure module. The adventure's designer is not specified.\n"
+        "SCORE: 0\n\n"
+        f"CONTEXT:\n{context}\n\n"
+        f"Claims to verify against the CONTEXT:\n{numbered}\n"
+        "Now for EACH numbered claim above, output ONE line in this exact format:\n"
+        "N: SCORE\n"
+        "where N is the claim number and SCORE is from 0 to 1. No commentary, "
+        "no reasoning in the output — score only. One line per claim, in order.\n\n"
+        "Example output for 3 claims:\n"
+        "1: 1.0\n"
+        "2: 0.0\n"
+        "3: 0.5"
+    )
+
+
 VARIANTS: dict[str, tuple[Callable[[str], str], Callable[[str, list[str]], str]]] = {
     "v0": (claim_extraction_v0, claim_verification_batched_v0),
     "v1": (claim_extraction_v1, claim_verification_batched_v1),
     "v2": (claim_extraction_v2, claim_verification_batched_v2),
+    "v3": (claim_extraction_v2, claim_verification_batched_v3),
+    "v4": (claim_extraction_v2, claim_verification_batched_v4),
 }
 
 
