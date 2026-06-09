@@ -144,6 +144,50 @@ Breakdown of decomposed-vs-Ragas agreement on n=25:
   than Ragas's. Worth investigating in a follow-up if absolute
   calibration to Ragas matters.
 
+### Third-judge tie-breaker (Claude haiku via `claude -p`)
+
+Two LLM-judge libraries disagreeing doesn't tell us which one is
+"correct." So we ran the same 25 (context, answer) pairs through a
+third, independent judge: **Claude haiku**, invoked via the local
+`claude -p --model haiku` CLI. The bench is
+[`bench/eval_third_judge.py`](../../bench/eval_third_judge.py); raw
+output at
+[`reports/eval_third_judge_n25.txt`](../../reports/eval_third_judge_n25.txt).
+
+For each library we compute MAE to Claude's score — lower means
+closer to an independent third opinion.
+
+| library | MAE to Claude haiku | n |
+|---|---:|---:|
+| RedHop decomposed | **0.212** | 24 |
+| Ragas | 0.262 | 24 |
+| RedHop single-prompt | 0.175 | 24 |
+
+(One case dropped: Claude's reply was unparseable as a single
+number.)
+
+**Read carefully:**
+
+1. **RedHop decomposed is ~0.05 closer to Claude than Ragas is.** Not
+   a huge margin, but consistent.
+2. **Single-prompt's low MAE is misleading here.** This n=25 has
+   mostly non-refusal answers where single-prompt scores 1.0 and
+   Claude also tends toward 1.0; the vacuous-truth failure on
+   refusals (visible in the n=15 distractor-only run) is what
+   actually rules it out.
+3. **On the 4 contested cases** (|RedHop_decomp − Ragas| ≥ 0.5),
+   Claude is closer to RedHop on 2 and closer to Ragas on 2 — a tie.
+   The genuine disagreements split down the middle, so neither
+   library's verdict is consistently the "right" one in the third
+   judge's view.
+
+**What it doesn't prove.** Claude haiku and RedHop's judge
+(`gpt-4o-mini`) are both modern LLMs and may share calibration habits
+that Ragas's older verifier prompt doesn't. So the result is
+"RedHop is not *worse* than Ragas under an independent LLM's view,"
+not "RedHop is correct." A human ground-truth pass on the contested
+cases would close that gap.
+
 ### Honest limits
 
 - **n=25.** A reasonable sanity check but not a benchmark. n=200 with
