@@ -1,0 +1,265 @@
+{
+  "provider": "OpenRouter",
+  "model": "openai/gpt-4o-mini",
+  "n": 25,
+  "cases": [
+    {
+      "qid": "5a8c7595554299585d9e36b6",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Shirley Temple Black, who portrayed Corliss Archer, held the position of United States ambassador to Ghana and to Czechoslovakia.",
+      "gold_answer": "Chief of Protocol"
+    },
+    {
+      "qid": "5a85ea095542994775f606a8",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6000000238418579,
+      "n_claims_extracted": 5,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.4,
+      "answer": "The Animorphs series is a science fantasy young adult series told in first person, which includes companion books narrating the stories of enslaved worlds and alien species.",
+      "gold_answer": "Animorphs"
+    },
+    {
+      "qid": "5a8e3ea95542995a26add48d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The director of \"Big Stone Gap,\" Adriana Trigiani, is based in Greenwich Village, New York City.",
+      "gold_answer": "Greenwich Village, New York City"
+    },
+    {
+      "qid": "5abd94525542992ac4f382d2",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment.",
+      "gold_answer": "YG Entertainment"
+    },
+    {
+      "qid": "5a85b2d95542997b5ce40028",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner and former international management consultant.",
+      "gold_answer": "Eenasul Fateh"
+    },
+    {
+      "qid": "5a87ab905542996e4f3088c1",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 3,677 people.",
+      "gold_answer": "3,677 seated"
+    },
+    {
+      "qid": "5a7bbb64554299042af8f7cc",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.0,
+      "answer": "Annie Morton is older than Terry Richardson.",
+      "gold_answer": "Terry Richardson"
+    },
+    {
+      "qid": "5a7166395542994082a3e814",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The fight song of the University of Kansas is called \"Kansas Song (We\u2019re From Kansas).\"",
+      "gold_answer": "Kansas Song"
+    },
+    {
+      "qid": "5a877e5d5542993e715abf7d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "David Weissman co-wrote \"The Family Man,\" which stars Nicolas Cage and T\u00e9a Leoni.",
+      "gold_answer": "David Weissman"
+    },
+    {
+      "qid": "5ab3b0bf5542992ade7c6e39",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 1.0,
+      "answer": "Guns N' Roses performed a promo for the movie \"End of Days,\" which starred Arnold Schwarzenegger, in 1999.",
+      "gold_answer": "1999"
+    },
+    {
+      "qid": "5ab6d09255429954757d337d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.5,
+      "answer": "The football manager who recruited David Beckham, Alex Ferguson, managed Manchester United from 1986 to 2013.",
+      "gold_answer": "from 1986 to 2013"
+    },
+    {
+      "qid": "5a75e05c55429976ec32bc5f",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "Brown State Fishing Lake is in the United States, which has a population of over 300 million inhabitants.",
+      "gold_answer": "9,984"
+    },
+    {
+      "qid": "5ab3e45655429976abd1bcd4",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Vermont Catamounts men's soccer team currently competes in the America East Conference, which was formerly known as the North Atlantic Conference from 1988 to 1996.",
+      "gold_answer": "the North Atlantic Conference"
+    },
+    {
+      "qid": "5ae0d4c9554299603e418468",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Roger O. Egeberg was Assistant Secretary for Health and Scientific Affairs during the Nixon administration, which lasted from 1969 to 1974.",
+      "gold_answer": "1969 until 1974"
+    },
+    {
+      "qid": "5a8133725542995ce29dcbdb",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.0,
+      "answer": "Robert Erskine Childers was from England.",
+      "gold_answer": "Robert Erskine Childers DSC"
+    },
+    {
+      "qid": "5ae7a8175542993210983ed8",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.6000000238418579,
+      "n_claims_extracted": 5,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.75,
+      "answer": "Pedro Rodr\u00edguez is the other Mexican Formula One driver who has held the podium besides Sergio P\u00e9rez.",
+      "gold_answer": "Pedro Rodr\u00edguez"
+    },
+    {
+      "qid": "5ae6050f55429929b0807a5e",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The singer of \"A Rather Blustery Day,\" Jim Cummings, voiced Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog.\"",
+      "gold_answer": "Sonic"
+    },
+    {
+      "qid": "5adddccd5542997dc7907069",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Front Row media program can also be controlled by the keyboard function keys.",
+      "gold_answer": "keyboard function keys"
+    },
+    {
+      "qid": "5ae2070a5542994d89d5b313",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Badly Drawn Boy"
+    },
+    {
+      "qid": "5ae22b8d554299234fd0440f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Kasper Schmeichel's father, Peter Schmeichel, was voted the IFFHS World's Best Goalkeeper in 1992.",
+      "gold_answer": "World's Best Goalkeeper"
+    },
+    {
+      "qid": "5a722b8655429971e9dc9329",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The writer of \"These Boots Are Made for Walkin'\" is Lee Hazlewood, and Barton Lee Hazlewood died in 2007.",
+      "gold_answer": "Barton Lee Hazlewood"
+    },
+    {
+      "qid": "5adf37a95542995ec70e8f97",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Virginia Commonwealth University was founded in 1838.",
+      "gold_answer": "1838"
+    },
+    {
+      "qid": "5a828c8355429966c78a6a50",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Yes, Kaiser Ventures corporation was founded by Henry J. Kaiser, who became known as the father of modern American shipbuilding.",
+      "gold_answer": "Henry J. Kaiser"
+    },
+    {
+      "qid": "5a8a3e745542996c9b8d5e70",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "Arena of Khazan is the adventure in \"Tunnels & Trolls\" designed by Ken St. Andre.",
+      "gold_answer": "Arena of Khazan"
+    },
+    {
+      "qid": "5ac23ff0554299636651994d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "2000"
+    }
+  ],
+  "pearson": {
+    "redhop_single_vs_ragas": -0.05866930770167499,
+    "redhop_decomposed_vs_ragas": 0.5585043459076696
+  },
+  "mae": {
+    "redhop_single_vs_ragas": 0.36733333333333335,
+    "redhop_decomposed_vs_ragas": 0.18733333333333335
+  }
+}

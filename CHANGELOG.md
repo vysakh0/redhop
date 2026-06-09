@@ -7,13 +7,104 @@ minor releases may break; breaking changes are noted here).
 
 ## [0.3.3] — Unreleased
 
-**Audit of defaulted-on heuristics — five measured, one already-flipped
-(raw analyzer, 0.3.2), four left alone with documented reasons.** The
-audit found two **API smells** in the structural-expansion defaults that
-this release fixes by exposing the underlying knobs as Python kwargs
-and Node options:
+**Answer-quality eval surface (Rust + Python + Node) + audit of
+defaulted-on heuristics.** Two threads in this release:
+(1) a new in-process `evaluate(...)` / `critique(...)` surface for
+closed-set answer-quality metrics — lexical + LLM-judged, with
+claim-decomposed faithfulness and TP/FP/FN correctness; calibrated
+against Ragas at n=200 HotpotQA (r=+0.664, MAE=0.151);
+(2) the defaulted-on heuristics audit (five measured, one
+already-flipped in 0.3.2, two API smells fixed).
 
-### Added
+### Added — eval surface
+
+- **`evaluate(query, ctx, answer=, gold_answer=, judge=, decompose_faithfulness=, decompose_correctness=)`** —
+  in-process answer-quality eval that returns one `EvalReport` blending
+  lexical (CI-deterministic) and LLM-judged metrics. Available in Rust
+  (`redhop::evaluate(...)`), Python (`redhop.evaluate(...)`), and Node
+  (`evaluateWithJudge(...)` for the async judge path). Faithfulness,
+  relevancy, correctness in `_lexical` (no LLM) and `_judged` (opt-in)
+  flavors; gold-relative metrics (`context_recall`,
+  `context_precision`, `answer_token_recall`) when `gold` is provided.
+- **`critique(answer, aspects, judge=, context=, query=)`** — open-ended
+  user-defined dimensions (harmfulness, conciseness, brand voice,
+  etc.). One LLM call per aspect; polarity-corrected scores so high =
+  good across the report regardless of `highIsGood`. Returns a
+  `CritiqueReport` with per-aspect scores in input order.
+- **`summarize(reports)`** — aggregates a sequence of per-case
+  `EvalReport`s into a means + N + share-flagged summary, the same
+  shape RedHop's runtime uses for its Decision Report.
+- **Judge surface** — `Judge.from_callable(fn).cached()` (Python),
+  `Judge.fromCallable(fn, name).cached()` (Node), and the Rust
+  `Judge` trait with `CachedJudge` and `CallableJudge` wrappers. One
+  caching layer for any user-supplied LLM caller; an LRU sized by
+  the caller. Single primitive supports faithfulness, relevancy,
+  correctness, critique, and decomposed paths.
+- **Claim-decomposed faithfulness** (`decompose_faithfulness=True`):
+  extracts atomic claims via a few-shot LLM call, then batch-verifies
+  all of them in a single second LLM call. Two LLM calls regardless
+  of how many claims were extracted. `gpt-4o-mini` correlates with
+  Ragas's faithfulness at r=+0.664 on n=200 HotpotQA (see
+  [docs/findings/EVAL_JUDGED_CALIBRATION.md](docs/findings/EVAL_JUDGED_CALIBRATION.md)).
+  Verifier prompt includes paraphrase-positive examples + negative
+  entity-substitution examples to balance strictness and recall.
+- **TP/FP/FN correctness** (`decompose_correctness=True`): mirrors
+  decomposed-faithfulness on the answer-vs-gold axis. Extracts
+  claims from both the answer and the gold answer, classifies each as
+  TP / FP / FN, returns F₁. Diagnostic counters
+  (`n_correctness_tp/fp/fn`) surface the intermediate categorisation.
+- **Refusal-aware decomposition** — "I don't know" answers correctly
+  produce `mean_faithfulness_judged = None` (0 claims extracted)
+  instead of being scored as a vacuous 1.0. Surfaces refusals as a
+  distinct category, not as faithfulness=1.
+- **Diagnostic counters** on `EvalReport`:
+  `n_faithfulness_claims_extracted`, `n_faithfulness_claims_supported`,
+  `n_correctness_tp`, `n_correctness_fp`, `n_correctness_fn`. Surface
+  intermediate classifier counts so callers can debug WHY a metric
+  landed where it did.
+
+### Added — eval evidence
+
+- [docs/COMPARISON_RAGAS.md](docs/COMPARISON_RAGAS.md) — public-facing
+  head-to-head with Ragas on claim-decomposed faithfulness. n=200
+  HotpotQA, gpt-4o-mini, with Claude haiku as third-judge tie-breaker.
+- [docs/findings/EVAL_JUDGED_CALIBRATION.md](docs/findings/EVAL_JUDGED_CALIBRATION.md)
+  rewritten end-to-end: three-layer evidence (5-case wiring probe →
+  5-case Ragas side-by-side → n=200 HotpotQA correlation + third-judge
+  subset). Documents the v0→v4 prompt iteration that fixed four
+  traceable failure modes (paraphrase rejection, comparative
+  hallucination, compound-attribution dilution, wrong-entity
+  substitution). Calls out single-shot LLM noise as a measured
+  property of the workload (gpt-4o-mini at temp=0 is not
+  deterministic through OpenRouter — ~20–30% per-case variance).
+- [docs/findings/ANSWER_QUALITY_EVAL.md](docs/findings/ANSWER_QUALITY_EVAL.md) —
+  full API tour for the new `evaluate(...)` + `critique(...)` surface.
+- [docs/findings/EVAL_VS_RAGAS_SOURCE.md](docs/findings/EVAL_VS_RAGAS_SOURCE.md) —
+  source-read comparison of the two libraries' implementations.
+- `bench/eval_correlation_hotpot.py` — runs the n=200 Pearson r / MAE
+  measurement on HotpotQA against Ragas with configurable context mode
+  (`supporting` / `distractor_only` / `all`).
+- `bench/eval_third_judge.py` — Claude haiku tie-breaker via the local
+  `claude -p` CLI; no API key needed.
+- `bench/eval_faith_trace.py` — diagnostic harness for tracing claim
+  extraction + per-claim verifier votes on specific qids. Has a
+  `--variant v0/v1/v2/v3/v4` flag for prompt iteration without
+  rebuilding the Rust crate.
+- `bench/eval_judged_calibration.py` — the 5-case wiring probe with
+  optional Ragas side-by-side when installed.
+- `bench/select_third_judge_subset.py` — filters contested cases from
+  a correlation-bench JSON so the third-judge run stays cheap.
+
+### Breaking — Rust only
+
+- `redhop::evaluate(...)` signature now takes six parameters:
+  `(query, ctx, answer, gold, judge, config)` instead of the prior
+  three-parameter shape. The Python and Node bindings absorb this via
+  kwargs / options and are NOT breaking. Pass `None` for `answer` and
+  `judge` and `EvalConfig::default()` for `config` to match the old
+  behavior.
+
+### Added — defaulted-on heuristics audit
 
 - **`code_neighbors_default` / `codeNeighborsDefault`** — surfaces the
   ±N adjacent-chunk auto-pull on code chunks as a constructor kwarg on

@@ -1,0 +1,38 @@
+
+========================================================================================
+  HotpotQA faithfulness correlation — OpenRouter openai/gpt-4o-mini, n=10
+========================================================================================
+
+Loading HotpotQA-10…
+  loaded 10 cases
+
+Generating answers (one LLM call per case)…
+  generated 10 answers in 13.2s
+
+RedHop scoring (single-prompt + decomposed)…
+  done in 55.4s
+
+Ragas scoring (faithfulness)…
+Evaluating:   0%|          | 0/10 [00:00<?, ?it/s]Evaluating:  10%|█         | 1/10 [00:02<00:24,  2.69s/it]Evaluating:  20%|██        | 2/10 [00:02<00:09,  1.19s/it]Evaluating:  30%|███       | 3/10 [00:03<00:05,  1.28it/s]Evaluating:  50%|█████     | 5/10 [00:03<00:01,  2.63it/s]Evaluating:  70%|███████   | 7/10 [00:04<00:01,  2.10it/s]Evaluating:  80%|████████  | 8/10 [00:05<00:01,  1.73it/s]Evaluating:  90%|█████████ | 9/10 [00:05<00:00,  2.17it/s]Evaluating: 100%|██████████| 10/10 [00:18<00:00,  3.89s/it]Evaluating: 100%|██████████| 10/10 [00:18<00:00,  1.87s/it]
+  done in 20.9s
+
+========================================================================================
+  Per-case faithfulness scores
+========================================================================================
+  qid                        RedHop S   RedHop D      Ragas     |D-Rg|
+  ----------------------------------------------------------------------
+  5a8c7595554299585d9e36b6      1.000      1.000      1.000      0.000
+  5a85ea095542994775f606a8      1.000      1.000      1.000      0.000
+  5a8e3ea95542995a26add48d      1.000      1.000      1.000      0.000
+  5abd94525542992ac4f382d2      1.000      1.000      1.000      0.000
+  5a85b2d95542997b5ce40028      1.000      1.000      0.667      0.333
+  5a87ab905542996e4f3088c1      1.000      1.000      1.000      0.000
+  5a7bbb64554299042af8f7cc      1.000      1.000      1.000      0.000
+  5a7166395542994082a3e814      1.000      1.000      1.000      0.000
+  5a877e5d5542993e715abf7d      1.000      1.000      1.000      0.000
+  5ab3b0bf5542992ade7c6e39      1.000      1.000      1.000      0.000
+
+  RedHop single-prompt  ↔ Ragas:  r=+nan  MAE=0.033
+  RedHop decomposed     ↔ Ragas:  r=+nan  MAE=0.033
+
+  → /Users/vysakh/projects/neorag1/reports/eval_correlation_hotpot_n10.json

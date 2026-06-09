@@ -1,0 +1,80 @@
+Model: openai/gpt-4o-mini  Variant: v0
+
+==========================================================================================
+  qid: 5a7bbb64554299042af8f7cc
+  Q: Who is older, Annie Morton or Terry Richardson?
+  A: Annie Morton is older than Terry Richardson.
+  scored: RedHop_d=1.00  Ragas=0.00  Claude=0.00
+  context: 5463 chars across 10 paragraphs
+------------------------------------------------------------------------------------------
+  extracted 1 claim(s):
+    1. Annie Morton is older than Terry Richardson.
+  per-claim verification scores:
+    1. [✓ 1.00] Annie Morton is older than Terry Richardson.
+  → faithfulness(v0) = 1.000  (1/1 supported)
+  → delta from Claude: +1.00
+
+==========================================================================================
+  qid: 5a8a3e745542996c9b8d5e70
+  Q: What is the name for the adventure in "Tunnels and Trolls", a game designed by Ken St. Andre?
+  A: Arena of Khazan is the adventure in "Tunnels & Trolls" designed by Ken St. Andre.
+  scored: RedHop_d=1.00  Ragas=0.50  Claude=0.00
+  context: 4642 chars across 10 paragraphs
+------------------------------------------------------------------------------------------
+  extracted 2 claim(s):
+    1. Arena of Khazan is an adventure in "Tunnels & Trolls."
+    2. Ken St. Andre designed Arena of Khazan.
+  per-claim verification scores:
+    1. [✓ 1.00] Arena of Khazan is an adventure in "Tunnels & Trolls."
+    2. [✗ 0.00] Ken St. Andre designed Arena of Khazan.
+  → faithfulness(v0) = 0.500  (1/2 supported)
+  → delta from Claude: +0.50
+
+==========================================================================================
+  qid: 5ae6050f55429929b0807a5e
+  Q: This singer of A Rather Blustery Day also voiced what hedgehog?
+  A: The singer of "A Rather Blustery Day," Jim Cummings, voiced Miles "Tails" Prower in the video game series "Sonic the Hedgehog."
+  scored: RedHop_d=0.67  Ragas=1.00  Claude=0.00
+  context: 5836 chars across 10 paragraphs
+------------------------------------------------------------------------------------------
+  extracted 2 claim(s):
+    1. Jim Cummings is the singer of "A Rather Blustery Day."
+    2. Jim Cummings voiced Miles "Tails" Prower in the video game series "Sonic the Hedgehog."
+  per-claim verification scores:
+    1. [✓ 1.00] Jim Cummings is the singer of "A Rather Blustery Day."
+    2. [✗ 0.00] Jim Cummings voiced Miles "Tails" Prower in the video game series "Sonic the Hedgehog."
+  → faithfulness(v0) = 0.500  (1/2 supported)
+  → delta from Claude: +0.50
+
+==========================================================================================
+  qid: 5a8e3ea95542995a26add48d
+  Q: The director of the romantic comedy "Big Stone Gap" is based in what New York city?
+  A: The director of "Big Stone Gap," Adriana Trigiani, is based in Greenwich Village, New York City.
+  scored: RedHop_d=1.00  Ragas=1.00  Claude=1.00
+  context: 5480 chars across 10 paragraphs
+------------------------------------------------------------------------------------------
+  extracted 2 claim(s):
+    1. Adriana Trigiani is the director of "Big Stone Gap."
+    2. Adriana Trigiani is based in Greenwich Village, New York City.
+  per-claim verification scores:
+    1. [✓ 1.00] Adriana Trigiani is the director of "Big Stone Gap."
+    2. [✓ 1.00] Adriana Trigiani is based in Greenwich Village, New York City.
+  → faithfulness(v0) = 1.000  (2/2 supported)
+  → delta from Claude: +0.00
+
+==========================================================================================
+  qid: 5abd94525542992ac4f382d2
+  Q: 2014 S/S is the debut album of a South Korean boy group that was formed by who?
+  A: 2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment.
+  scored: RedHop_d=1.00  Ragas=1.00  Claude=1.00
+  context: 4830 chars across 10 paragraphs
+------------------------------------------------------------------------------------------
+  extracted 2 claim(s):
+    1. 2014 S/S is the debut album of the South Korean group WINNER.
+    2. WINNER was formed by YG Entertainment.
+  per-claim verification scores:
+    1. [✓ 1.00] 2014 S/S is the debut album of the South Korean group WINNER.
+    2. [✓ 1.00] WINNER was formed by YG Entertainment.
+  → faithfulness(v0) = 1.000  (2/2 supported)
+  → delta from Claude: +0.00
+

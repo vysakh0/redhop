@@ -1,6 +1,6 @@
 {
   "name": "redhop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Reasoning-aware context runtime for RAG — chunk, retrieve, and allocate document context, with citations and a Decision Report. No vector DB, in-process.",
   "license": "Apache-2.0",
   "homepage": "https://www.redhopai.com",
@@ -52,6 +52,6 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "test": "node test/smoke.cjs && node test/analyzer.cjs && node test/query_set_analyzer.cjs && node test/rewrite.cjs && node test/evaluate.cjs"
+    "test": "node test/smoke.cjs && node test/analyzer.cjs && node test/query_set_analyzer.cjs && node test/rewrite.cjs && node test/evaluate.cjs && node test/judge.cjs && node test/critique.cjs"
   }
 }

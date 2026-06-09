@@ -889,16 +889,36 @@ pub fn analyze_query_set(queries: Vec<String>) -> QuerySetReport {
 // ── In-process evaluation (no LLM judge) ────────────────────────────────────
 // Backed by `redhop::evaluate`. See `docs/findings/EVALUATE_API.md`.
 
-/// Optional gold signals for [`evaluate`]. Any combination of fields is
-/// supported — pass `goldChunks` to unlock `contextRecall` /
-/// `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
-/// pass both for all three. Omit both for self-eval only.
+/// Optional inputs for [`evaluate`]. Any combination of fields is
+/// supported — pass `answer` to unlock the lexical answer-quality
+/// proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
+/// to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
+/// unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
+/// `correctnessLexical`. Omit all for self-eval only.
 #[napi(object)]
 pub struct EvaluateOptions {
+    /// The LLM's answer text (what the model produced from the context).
+    /// Unlocks the lexical answer-quality proxies. Distinct from
+    /// `goldAnswer`, which is the ground truth.
+    pub answer: Option<String>,
     /// IDs of chunks that should appear in the assembled context.
     pub gold_chunks: Option<Vec<String>>,
     /// Ground-truth answer text.
     pub gold_answer: Option<String>,
+    /// **Opt-in**: compute `faithfulness_judged` via two-pass claim
+    /// decomposition — extract atomic claims, verify them in a single
+    /// batched LLM call, return the mean score. More accurate than
+    /// the single-prompt default but costs +1 LLM call per evaluate.
+    /// Only meaningful when a `judge` is also supplied (via
+    /// `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+    pub decompose_faithfulness: Option<bool>,
+    /// **Opt-in**: compute `correctness_judged` via three-pass
+    /// classification — extract claims from the answer, extract from
+    /// the gold, classify each as TP / FP / FN, return F1. Also
+    /// populates the diagnostic counters `nCorrectnessTp`,
+    /// `nCorrectnessFp`, `nCorrectnessFn` on the report so callers
+    /// can debug which facts were missed vs hallucinated.
+    pub decompose_correctness: Option<bool>,
 }
 
 /// In-process evaluation report for one (query, BuiltContext) pair.
@@ -915,6 +935,48 @@ pub struct EvalReport {
     /// Fraction of stemmed content terms in the gold answer that appear in
     /// the assembled context. `null` unless `goldAnswer` was supplied.
     pub answer_token_recall: Option<f64>,
+    /// Sentence-level token-overlap proxy for faithfulness: fraction of
+    /// the answer's sentences with at least half their content terms in
+    /// the assembled context. **Lexical proxy, NOT real faithfulness** —
+    /// an LLM judge is the right tool. `null` unless `answer` was supplied.
+    pub faithfulness_lexical: Option<f64>,
+    /// Token-overlap between the query and the answer (Snowball-stemmed,
+    /// stopword-filtered). Proxy for "did the answer address the question".
+    /// `null` unless `answer` was supplied.
+    pub relevancy_lexical: Option<f64>,
+    /// Token-overlap between the LLM's answer and the gold answer. Proxy
+    /// for "did the LLM produce the right tokens". `null` unless BOTH
+    /// `answer` and `goldAnswer` were supplied.
+    pub correctness_lexical: Option<f64>,
+    /// LLM-judged faithfulness. Populated by the async `evaluateWithJudge`
+    /// path; always `null` from the sync `evaluate` (JS callbacks can't
+    /// fire during a sync napi call). See `Judge.fromCallable(...)` for
+    /// how to wire a JS LLM client.
+    pub faithfulness_judged: Option<f64>,
+    /// LLM-judged relevancy. See `faithfulness_judged` for the sync vs
+    /// async note.
+    pub relevancy_judged: Option<f64>,
+    /// LLM-judged correctness. See `faithfulness_judged` for the sync
+    /// vs async note.
+    pub correctness_judged: Option<f64>,
+    /// Number of atomic claims the judge extracted when
+    /// `decomposeFaithfulness: true` was passed and a judge was
+    /// supplied. `null` otherwise.
+    pub n_faithfulness_claims_extracted: Option<u32>,
+    /// Number of those claims the judge scored ≥ 0.5 against the
+    /// context. `null` under the same conditions as
+    /// `nFaithfulnessClaimsExtracted`.
+    pub n_faithfulness_claims_supported: Option<u32>,
+    /// Number of answer-claims supported by a reference claim.
+    /// Populated only when `decomposeCorrectness: true` was passed
+    /// and the classification pass succeeded.
+    pub n_correctness_tp: Option<u32>,
+    /// Number of answer-claims NOT supported by any reference claim.
+    /// Same population conditions as `nCorrectnessTp`.
+    pub n_correctness_fp: Option<u32>,
+    /// Number of reference-claims NOT covered by the answer. Same
+    /// population conditions as `nCorrectnessTp`.
+    pub n_correctness_fn: Option<u32>,
     /// Mean grounding over selected chunks, in `[0, 1]`.
     pub mean_grounding: f64,
     /// Fraction of context tokens that are query-relevant.
@@ -966,8 +1028,11 @@ pub fn evaluate(
     options: Option<EvaluateOptions>,
 ) -> EvalReport {
     let opts = options.unwrap_or(EvaluateOptions {
+        answer: None,
         gold_chunks: None,
         gold_answer: None,
+        decompose_faithfulness: None,
+        decompose_correctness: None,
     });
     let q = redhop::core::Query::new(&query);
     let chunk_refs: Option<Vec<&str>> = opts
@@ -983,11 +1048,38 @@ pub fn evaluate(
             gold_answer: a,
         },
     };
-    let r = redhop::evaluate(&q, &context.inner, gold);
+    // Sync evaluate intentionally passes `None` for the judge — JS
+    // callbacks can't safely fire during a sync napi call. Use
+    // `evaluateWithJudge` (async) for judged metrics; the
+    // decomposeFaithfulness / decomposeCorrectness options are
+    // meaningless without a judge.
+    let r = redhop::evaluate(
+        &q,
+        &context.inner,
+        opts.answer.as_deref(),
+        gold,
+        None,
+        redhop::EvalConfig::default(),
+    );
+    eval_report_from_rust(r)
+}
+
+fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
     EvalReport {
         context_recall: r.context_recall.map(|v| v as f64),
         context_precision: r.context_precision.map(|v| v as f64),
         answer_token_recall: r.answer_token_recall.map(|v| v as f64),
+        faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f64),
+        relevancy_lexical: r.relevancy_lexical.map(|v| v as f64),
+        correctness_lexical: r.correctness_lexical.map(|v| v as f64),
+        faithfulness_judged: r.faithfulness_judged.map(|v| v as f64),
+        relevancy_judged: r.relevancy_judged.map(|v| v as f64),
+        correctness_judged: r.correctness_judged.map(|v| v as f64),
+        n_faithfulness_claims_extracted: r.n_faithfulness_claims_extracted.map(|v| v as u32),
+        n_faithfulness_claims_supported: r.n_faithfulness_claims_supported.map(|v| v as u32),
+        n_correctness_tp: r.n_correctness_tp.map(|v| v as u32),
+        n_correctness_fp: r.n_correctness_fp.map(|v| v as u32),
+        n_correctness_fn: r.n_correctness_fn.map(|v| v as u32),
         mean_grounding: r.mean_grounding as f64,
         evidence_density: r.evidence_density as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,
@@ -996,6 +1088,318 @@ pub fn evaluate(
         estimated_waste_tokens: r.estimated_waste_tokens as u32,
         overall: r.overall as f64,
     }
+}
+
+// ── judged: JS-callable Judge for `evaluateWithJudge` ───────────────────────
+//
+// The judged metrics need a way for Rust to call into JS while
+// `redhop::evaluate` runs. JS is single-threaded — we can't call back
+// into the JS engine while Rust is holding the napi main-thread call.
+// Standard napi-rs pattern: wrap the JS function as a
+// `ThreadsafeFunction` (which is `Send + Sync` and can be called from
+// any thread) and run `redhop::evaluate` on a `spawn_blocking` worker
+// so the JS event loop is free to service the callback.
+
+use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
+
+/// judged Judge: wraps a JS callable that scores a (prompt, system)
+/// pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
+/// pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
+/// `.cached()` to memoize identical prompts across calls — useful for
+/// CI determinism and avoiding double-billing on re-runs.
+///
+/// **Callback signature.** The JS callable receives THREE positional
+/// args: `(err, prompt, system)`. The first arg is napi-rs's error
+/// channel (null on the normal path; non-null only if the napi layer
+/// itself failed to deserialize the input — vanishingly rare for
+/// plain strings). Most users pass it through with destructuring:
+///
+/// ```js
+/// const judge = redhop.Judge.fromCallable(async (err, prompt, system) => {
+///   if (err) throw err;
+///   const resp = await openai.chat.completions.create({ ... });
+///   return parseFloat(resp.choices[0].message.content.trim());
+/// }, "gpt-4o-mini").cached();
+///
+/// const report = await redhop.evaluateWithJudge(
+///   query, ctx, judge,
+///   { answer: "Thirty days from purchase.", goldAnswer: "thirty days" },
+/// );
+/// ```
+///
+/// **Return type.** The callable may return either a `number` (the
+/// score) or a `string` (the raw LLM text — needed for the Phase-6
+/// claim-extraction call when `decomposeFaithfulness: true`). A
+/// numeric string ("0.8", "80%") is parsed via the same `parse_score`
+/// the Rust core uses; a non-numeric string keeps score=0 but
+/// preserves raw_text for downstream parsing.
+///
+/// **Error isolation.** A JS-thrown exception in the callable surfaces
+/// as `Err` on the underlying future. `redhop::evaluate` treats that
+/// as "this metric is unavailable" and leaves the corresponding
+/// `_judged` field as `null` — the process doesn't crash and the
+/// lexical fields stay populated.
+#[napi]
+pub struct Judge {
+    inner: std::sync::Arc<dyn redhop::judge::Judge>,
+}
+
+#[napi]
+impl Judge {
+    /// Wrap a JS callable as a Judge. The callable is invoked as
+    /// `callable(prompt, system) -> number | Promise<number>`. The
+    /// returned value is normalized to `[0, 1]` via the same parser
+    /// the Rust core uses (`judge::parse_score` accepts floats,
+    /// percentages, "yes"/"no").
+    ///
+    /// `name` namespaces the cache key — swap it when you swap models
+    /// so cached `gpt-4o-mini` scores don't reappear under
+    /// `claude-haiku`.
+    #[napi(factory)]
+    pub fn from_callable(
+        // `ErrorStrategy::CalleeHandled` lets a JS-thrown exception
+        // surface as Err on the `call_async` future instead of FATAL-ing
+        // the process. The trade-off: the JS callback's first arg is an
+        // `err` (null on success); the actual prompt/system args are
+        // shifted to positions 1 and 2. JS-side helpers can wrap this
+        // shape ergonomically — see `Judge.fromCallable` docs.
+        callable: ThreadsafeFunction<
+            (String, Option<String>),
+            ErrorStrategy::CalleeHandled,
+        >,
+        name: Option<String>,
+    ) -> Self {
+        let name = name.unwrap_or_else(|| "callable".to_string());
+        let tsfn = std::sync::Arc::new(callable);
+        let cb_name = name.clone();
+        let cb_tsfn = tsfn.clone();
+        let judge = redhop::judge::CallableJudge::with_name(
+            name,
+            move |req: &redhop::judge::JudgeRequest<'_>| {
+                let prompt = req.prompt.to_string();
+                let system = req.system.map(|s| s.to_string());
+                // Driving the JS callback from a `spawn_blocking` worker:
+                // call_async returns a Future the napi-rs runtime
+                // resolves on the JS main thread when the callback
+                // settles. block_on the future from this blocking
+                // thread is safe (we're not on the runtime's worker).
+                // A JS error / non-number return surfaces as Err(napi),
+                // which we convert to the Judge trait's Error.
+                // Accept either a numeric return (the score-only happy
+                // path) or a string return (raw LLM text — needed by the
+                // claim-decomposition extraction call, where the
+                // judge response is a list of claims rather than a score).
+                let future = cb_tsfn.call_async::<Either<f64, String>>(
+                    Ok((prompt, system)),
+                );
+                let handle = tokio::runtime::Handle::current();
+                let value = handle.block_on(future).map_err(|e| {
+                    redhop::core::Error::Other(format!(
+                        "js judge future failed (thrown exception, \
+                         wrong return type, or transport error): {e}"
+                    ))
+                })?;
+                match value {
+                    Either::A(score) => Ok(redhop::judge::JudgeResponse {
+                        score: (score as f32).clamp(0.0, 1.0),
+                        raw_text: format!("{score}"),
+                        model: cb_name.clone(),
+                    }),
+                    Either::B(raw) => {
+                        // Best-effort parse for the score (handles
+                        // numeric strings, percentages, yes/no — the same
+                        // parser the OpenAI/Anthropic adapter would use).
+                        // Extraction calls' raw_text is what's load-bearing;
+                        // a parse failure leaves score at 0 but raw_text
+                        // intact, which is the right behavior since the
+                        // raw text is what the decomposition path needs.
+                        let score = redhop::judge::parse_score(&raw).unwrap_or(0.0);
+                        Ok(redhop::judge::JudgeResponse {
+                            score: score.clamp(0.0, 1.0),
+                            raw_text: raw,
+                            model: cb_name.clone(),
+                        })
+                    }
+                }
+            },
+        );
+        Self {
+            inner: std::sync::Arc::new(judge),
+        }
+    }
+
+    /// Return a NEW Judge wrapping this one with an in-memory cache.
+    /// Identical `(prompt, system)` pairs hit the cache instead of
+    /// re-calling the JS callable.
+    #[napi]
+    pub fn cached(&self) -> Self {
+        let arc_inner = self.inner.clone();
+        let forwarder = redhop::judge::CallableJudge::with_name(
+            self.inner.name().to_string(),
+            move |req: &redhop::judge::JudgeRequest<'_>| arc_inner.score(req),
+        );
+        let cached = redhop::judge::CachedJudge::new(forwarder);
+        Self {
+            inner: std::sync::Arc::new(cached),
+        }
+    }
+
+    /// Stable identifier used in the cache key.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+}
+
+/// Options for [`evaluate_with_judge`] — same as `EvaluateOptions` plus
+/// a `judge` field. Distinct type because napi-rs doesn't allow object-
+/// type options with class-typed fields directly; we accept the Judge
+/// via the function-level signature instead and split the options into
+/// the existing struct (free of class types) + a separate Judge arg.
+#[napi]
+pub async fn evaluate_with_judge(
+    query: String,
+    context: &BuiltContext,
+    judge: &Judge,
+    options: Option<EvaluateOptions>,
+) -> napi::Result<EvalReport> {
+    let opts = options.unwrap_or(EvaluateOptions {
+        answer: None,
+        gold_chunks: None,
+        gold_answer: None,
+        decompose_faithfulness: None,
+        decompose_correctness: None,
+    });
+    let ctx_inner = context.inner.clone();
+    let judge_inner = judge.inner.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let q = redhop::core::Query::new(&query);
+        let chunk_refs: Option<Vec<&str>> = opts
+            .gold_chunks
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect());
+        let gold = match (chunk_refs.as_deref(), opts.gold_answer.as_deref()) {
+            (None, None) => redhop::EvalGold::None,
+            (Some(c), None) => redhop::EvalGold::Chunks(c),
+            (None, Some(a)) => redhop::EvalGold::Answer(a),
+            (Some(c), Some(a)) => redhop::EvalGold::Both {
+                gold_chunk_ids: c,
+                gold_answer: a,
+            },
+        };
+        let judge_ref: Option<&dyn redhop::judge::Judge> =
+            Some(judge_inner.as_ref());
+        let config = redhop::EvalConfig {
+            decompose_faithfulness: opts.decompose_faithfulness.unwrap_or(false),
+            decompose_correctness: opts.decompose_correctness.unwrap_or(false),
+        };
+        redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref, config)
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("evaluate join: {e}")))?;
+    Ok(eval_report_from_rust(result))
+}
+
+// ── Aspect critique ─────────────────────────────────────────────────────────
+//
+// One judge call per aspect. Same Judge type used by `evaluateWithJudge`;
+// cached judges memoize identical aspect prompts across runs.
+
+/// One qualitative dimension to score the answer on. `highIsGood`
+/// controls polarity — when `false` (e.g. harmfulness), the LLM's
+/// raw score is INVERTED to `1 - raw` before being returned, so high
+/// values still mean "good answer" across the report.
+#[napi(object)]
+pub struct Aspect {
+    /// Short label, used as the key in the returned `CritiqueReport`.
+    pub name: String,
+    /// What to score, phrased as a question the LLM can answer 0–1.
+    pub definition: String,
+    /// `true` keeps the LLM's raw score; `false` inverts it (so high
+    /// = good regardless of aspect polarity). Default `true`.
+    pub high_is_good: Option<bool>,
+}
+
+/// One scored aspect — the same shape as a tuple, but napi-rs only
+/// serializes plain objects so we name it.
+#[napi(object)]
+pub struct AspectScore {
+    /// Aspect's `name`.
+    pub name: String,
+    /// Polarity-corrected score in `[0, 1]`, or `null` if the judge
+    /// errored on this aspect.
+    pub score: Option<f64>,
+}
+
+/// Result of [`critique`]. The `scores` array preserves input order;
+/// `null` scores are aspects where the judge call errored.
+#[napi(object)]
+pub struct CritiqueReport {
+    /// Number of aspects scored.
+    pub n: u32,
+    /// Per-aspect scores in input order. Iterate the array, or look
+    /// up by name on the JS side: `report.scores.find(s => s.name === "x")?.score`.
+    pub scores: Vec<AspectScore>,
+}
+
+/// Optional inputs for [`critique`] beyond the required `answer`,
+/// `aspects`, and `judge` args.
+#[napi(object)]
+pub struct CritiqueOptions {
+    /// Context to embed in each aspect's prompt — useful for aspects
+    /// that need the source material to score.
+    pub context: Option<String>,
+    /// Query to embed in each aspect's prompt — useful for aspects
+    /// like "does the answer address the question".
+    pub query: Option<String>,
+}
+
+#[napi]
+pub async fn critique(
+    answer: String,
+    aspects: Vec<Aspect>,
+    judge: &Judge,
+    options: Option<CritiqueOptions>,
+) -> napi::Result<CritiqueReport> {
+    let judge_inner = judge.inner.clone();
+    let opts = options.unwrap_or(CritiqueOptions {
+        context: None,
+        query: None,
+    });
+    let answer_owned = answer;
+    let result = tokio::task::spawn_blocking(move || {
+        let rh_aspects: Vec<redhop::critique::Aspect<'_>> = aspects
+            .iter()
+            .map(|a| redhop::critique::Aspect {
+                name: &a.name,
+                definition: &a.definition,
+                high_is_good: a.high_is_good.unwrap_or(true),
+            })
+            .collect();
+        redhop::critique(
+            redhop::critique::CritiqueInputs {
+                answer: &answer_owned,
+                aspects: &rh_aspects,
+                context: opts.context.as_deref(),
+                query: opts.query.as_deref(),
+            },
+            judge_inner.as_ref(),
+        )
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("critique join: {e}")))?;
+    let scores: Vec<AspectScore> = result
+        .scores
+        .into_iter()
+        .map(|(name, score)| AspectScore {
+            name,
+            score: score.map(|s| s as f64),
+        })
+        .collect();
+    Ok(CritiqueReport {
+        n: scores.len() as u32,
+        scores,
+    })
 }
 
 // ── Low-level context functions (caller brings their own chunks) ────────────

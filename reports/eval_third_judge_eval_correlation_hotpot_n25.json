@@ -1,0 +1,36 @@
+{
+  "input": "reports/eval_correlation_hotpot_n25.json",
+  "claude_model": "haiku",
+  "claude_scores": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.0,
+    1.0,
+    1.0,
+    0.6,
+    1.0,
+    0.5,
+    1.0,
+    1.0,
+    1.0,
+    0.5,
+    0.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.0,
+    1.0,
+    0.0,
+    1.0
+  ],
+  "mae_to_claude": {
+    "redhop_single": 0.21600000000000003,
+    "redhop_decomposed": 0.12954545454545455,
+    "ragas": 0.3393333333333334
+  }
+}

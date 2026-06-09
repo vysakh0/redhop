@@ -23,6 +23,10 @@ use redhop::core::{
 use redhop::document::{
     Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
 };
+use redhop::judge::{
+    CachedJudge as RhCachedJudge, CallableJudge, Judge as RhJudge, JudgeRequest, JudgeResponse,
+};
+use redhop::critique::{Aspect as RhAspect, CritiqueInputs};
 
 /// Thin forwarder over [`redhop::strategy_from_str`] — the canonical
 /// string→enum mapping lives in the Rust crate so every binding shares it
@@ -795,7 +799,7 @@ fn doc_config(
         rerank_pool: base.rerank_pool,
         context,
         // Inherits the Rust-side default (0 = off). Surface this as a Python
-        // kwarg once a real user asks; for now the issue-#1 fix in Phase 1
+        // kwarg once a real user asks; for now the issue-#1 fix
         // restored the documented hybrid contract on its own.
         min_candidates: base.min_candidates,
         code_neighbors_default,
@@ -1963,6 +1967,170 @@ struct EvalReport {
     inner: redhop::EvalReport,
 }
 
+// ── judged Judge bridge ─────────────────────────────────────────────────────
+//
+// A Python `Judge` wraps a user-supplied callable that maps
+// `(prompt: str, system: Optional[str]) → float | dict`. We hold the
+// Rust-side judge as a boxed trait object so the same `PyJudge` can wrap
+// either the raw callable adapter OR the cached wrapper, transparently.
+
+/// LLM-judge bridge for the judged answer-quality metrics. Wrap your
+/// LLM client (the `openai` SDK, `litellm`, the `anthropic` package,
+/// raw HTTP, etc.) as a callable that returns a `[0, 1]` score, then
+/// pass the judge into `redhop.evaluate(..., judge=judge)` to populate
+/// `faithfulness_judged` / `relevancy_judged` / `correctness_judged`.
+///
+/// ```python
+/// from openai import OpenAI
+/// client = OpenAI()
+///
+/// def score(prompt, system):
+///     resp = client.chat.completions.create(
+///         model="gpt-4o-mini",
+///         messages=[
+///             {"role": "system", "content": system or ""},
+///             {"role": "user", "content": prompt},
+///         ],
+///         temperature=0.0,
+///     )
+///     return float(resp.choices[0].message.content.strip())
+///
+/// judge = redhop.Judge.from_callable(score).cached()
+/// report = redhop.evaluate(query, ctx, answer=ans, judge=judge)
+/// ```
+///
+/// `from_callable` adapts any sync function; `.cached()` wraps it with
+/// an in-memory cache so identical prompts don't re-call the LLM —
+/// useful for CI determinism and avoiding double-billing on re-runs.
+#[pyclass(name = "Judge", module = "redhop")]
+struct PyJudge {
+    inner: std::sync::Arc<dyn RhJudge>,
+}
+
+impl Clone for PyJudge {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyJudge {
+    /// Wrap a Python callable as a Judge. The callable is invoked as
+    /// `callable(prompt: str, system: Optional[str]) -> float | dict`.
+    /// A returned `float` is the score (clamped to `[0, 1]`); a returned
+    /// `dict` may include `score` (required), `raw_text` (optional), and
+    /// `model` (optional) keys.
+    ///
+    /// `name` is used in the cache key namespacing — swap it when you
+    /// swap the underlying model so cached scores from `gpt-4o-mini`
+    /// don't reappear as `claude-haiku` scores.
+    #[staticmethod]
+    #[pyo3(signature = (callable, name=None))]
+    fn from_callable(
+        callable: PyObject,
+        name: Option<String>,
+    ) -> PyResult<Self> {
+        let name = name.unwrap_or_else(|| "callable".to_string());
+        let py_callable = std::sync::Arc::new(callable);
+        let cb = py_callable.clone();
+        let cb_name = name.clone();
+        let judge = CallableJudge::with_name(name, move |req: &JudgeRequest<'_>| {
+            Python::with_gil(|py| -> redhop::core::Result<JudgeResponse> {
+                let prompt = req.prompt.to_string();
+                let system: Option<String> = req.system.map(|s| s.to_string());
+                let result = cb
+                    .call1(py, (prompt, system))
+                    .map_err(|e| redhop::core::Error::Other(format!("python judge call: {e}")))?;
+                // Accept either a float or a dict { score, raw_text?, model? }.
+                if let Ok(score) = result.extract::<f32>(py) {
+                    return Ok(JudgeResponse {
+                        score: score.clamp(0.0, 1.0),
+                        raw_text: format!("{score}"),
+                        model: cb_name.clone(),
+                    });
+                }
+                if let Ok(dict) = result.downcast_bound::<PyDict>(py) {
+                    let score: f32 = dict
+                        .get_item("score")
+                        .map_err(|e| {
+                            redhop::core::Error::Other(format!(
+                                "python judge dict missing 'score': {e}"
+                            ))
+                        })?
+                        .ok_or_else(|| {
+                            redhop::core::Error::Other(
+                                "python judge dict missing 'score'".into(),
+                            )
+                        })?
+                        .extract()
+                        .map_err(|e| {
+                            redhop::core::Error::Other(format!(
+                                "python judge 'score' must be a number: {e}"
+                            ))
+                        })?;
+                    let raw_text: String = dict
+                        .get_item("raw_text")
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.extract().ok())
+                        .unwrap_or_else(|| format!("{score}"));
+                    let model: String = dict
+                        .get_item("model")
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.extract().ok())
+                        .unwrap_or_else(|| cb_name.clone());
+                    return Ok(JudgeResponse {
+                        score: score.clamp(0.0, 1.0),
+                        raw_text,
+                        model,
+                    });
+                }
+                Err(redhop::core::Error::Other(
+                    "python judge returned neither a float nor a dict with 'score'".into(),
+                ))
+            })
+        });
+        Ok(Self {
+            inner: std::sync::Arc::new(judge),
+        })
+    }
+
+    /// Return a NEW Judge that wraps `self` with an in-memory cache.
+    /// Identical `(prompt, system)` pairs hit the cache instead of
+    /// re-calling the inner callable. The cache lives only on the
+    /// returned object; pass it into `evaluate()` and keep the
+    /// reference alive for the duration of your eval run to reuse it
+    /// across queries.
+    fn cached(&self) -> Self {
+        // Wrap the existing inner (which is Arc<dyn Judge>) via an
+        // adapter — CachedJudge needs Box<dyn Judge>, so we box a
+        // lightweight forwarder that holds the Arc.
+        let arc_inner = self.inner.clone();
+        let forwarder = CallableJudge::with_name(
+            self.inner.name().to_string(),
+            move |req: &JudgeRequest<'_>| arc_inner.score(req),
+        );
+        let cached = RhCachedJudge::new(forwarder);
+        Self {
+            inner: std::sync::Arc::new(cached),
+        }
+    }
+
+    /// Stable identifier used in the cache key. Set via the `name=`
+    /// kwarg on `from_callable`.
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Judge(name={:?})", self.inner.name())
+    }
+}
+
 #[pymethods]
 impl EvalReport {
     /// Fraction of gold chunks that survived assembly. `None` unless
@@ -1982,6 +2150,89 @@ impl EvalReport {
     #[getter]
     fn answer_token_recall(&self) -> Option<f32> {
         self.inner.answer_token_recall
+    }
+    /// Sentence-level token-overlap proxy for faithfulness: fraction of the
+    /// answer's sentences with at least half their content terms appearing
+    /// in the assembled context. **Lexical proxy, NOT real faithfulness** —
+    /// an LLM judge is the right tool for hallucination detection. `None`
+    /// unless `answer=` was supplied.
+    #[getter]
+    fn faithfulness_lexical(&self) -> Option<f32> {
+        self.inner.faithfulness_lexical
+    }
+    /// Token-overlap between the query and the answer (Snowball-stemmed,
+    /// stopword-filtered). A proxy for "did the answer address the
+    /// question". `None` unless `answer=` was supplied.
+    #[getter]
+    fn relevancy_lexical(&self) -> Option<f32> {
+        self.inner.relevancy_lexical
+    }
+    /// Token-overlap between the LLM's answer and the gold answer. A proxy
+    /// for "did the LLM produce the right tokens"; strict and easily fooled
+    /// by paraphrase. `None` unless BOTH `answer=` and `gold_answer=` were
+    /// supplied.
+    #[getter]
+    fn correctness_lexical(&self) -> Option<f32> {
+        self.inner.correctness_lexical
+    }
+    /// **judged**: LLM-judged faithfulness — is every claim in the answer
+    /// supported by the assembled context? Strictly stronger than
+    /// `faithfulness_lexical`. `None` unless `answer=` AND `judge=` were
+    /// supplied (and the judge call succeeded).
+    #[getter]
+    fn faithfulness_judged(&self) -> Option<f32> {
+        self.inner.faithfulness_judged
+    }
+    /// **judged**: LLM-judged relevancy — does the answer address the
+    /// question? Strictly stronger than `relevancy_lexical`. `None`
+    /// unless `answer=` AND `judge=` were supplied.
+    #[getter]
+    fn relevancy_judged(&self) -> Option<f32> {
+        self.inner.relevancy_judged
+    }
+    /// LLM-judged correctness — does the LLM's answer convey the same
+    /// facts as the gold answer (paraphrase-aware, unlike
+    /// `correctness_lexical`)? `None` unless `answer=` AND
+    /// `gold_answer=` AND `judge=` were all supplied.
+    #[getter]
+    fn correctness_judged(&self) -> Option<f32> {
+        self.inner.correctness_judged
+    }
+    /// Number of claims in the answer directly supported by a
+    /// reference claim. Populated only when
+    /// `decompose_correctness=True` AND the classification pass
+    /// succeeded.
+    #[getter]
+    fn n_correctness_tp(&self) -> Option<usize> {
+        self.inner.n_correctness_tp
+    }
+    /// Number of claims in the answer NOT supported by any reference
+    /// claim. Same population conditions as `n_correctness_tp`.
+    #[getter]
+    fn n_correctness_fp(&self) -> Option<usize> {
+        self.inner.n_correctness_fp
+    }
+    /// Number of claims in the reference NOT covered by the answer.
+    /// Same population conditions as `n_correctness_tp`.
+    #[getter]
+    fn n_correctness_fn(&self) -> Option<usize> {
+        self.inner.n_correctness_fn
+    }
+    /// **diagnostic**: number of atomic claims the judge
+    /// extracted from the answer when `decompose_faithfulness=True`.
+    /// `None` when claim decomposition wasn't requested OR the
+    /// extraction pass returned zero claims.
+    #[getter]
+    fn n_faithfulness_claims_extracted(&self) -> Option<usize> {
+        self.inner.n_faithfulness_claims_extracted
+    }
+    /// **diagnostic**: number of those claims the judge scored
+    /// ≥ 0.5 against the context (the per-claim "supported" threshold).
+    /// `None` under the same conditions as
+    /// `n_faithfulness_claims_extracted`.
+    #[getter]
+    fn n_faithfulness_claims_supported(&self) -> Option<usize> {
+        self.inner.n_faithfulness_claims_supported
     }
     /// Mean grounding score over selected chunks, in `[0, 1]`. Same scorer
     /// the runtime uses for `ContextStrategy::DistractorFiltered`.
@@ -2063,12 +2314,20 @@ impl EvalReport {
 /// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
 /// the "refraction not independent measurement" design choice.
 #[pyfunction]
-#[pyo3(signature = (query, context, *, gold_chunks=None, gold_answer=None))]
+#[pyo3(signature = (
+    query, context, *,
+    answer=None, gold_chunks=None, gold_answer=None, judge=None,
+    decompose_faithfulness=false, decompose_correctness=false,
+))]
 fn evaluate(
     query: &str,
     context: &BuiltContext,
+    answer: Option<&str>,
     gold_chunks: Option<Vec<String>>,
     gold_answer: Option<&str>,
+    judge: Option<&PyJudge>,
+    decompose_faithfulness: bool,
+    decompose_correctness: bool,
 ) -> EvalReport {
     let q = Query::new(query);
     // Borrow gold_chunks as &[&str] so it matches the redhop::EvalGold borrowed shape.
@@ -2084,9 +2343,311 @@ fn evaluate(
             gold_answer: a,
         },
     };
+    let judge_ref: Option<&dyn RhJudge> = judge.map(|j| j.inner.as_ref());
+    let config = redhop::EvalConfig {
+        decompose_faithfulness,
+        decompose_correctness,
+    };
     EvalReport {
-        inner: redhop::evaluate(&q, &context.inner, gold),
+        inner: redhop::evaluate(&q, &context.inner, answer, gold, judge_ref, config),
     }
+}
+
+/// Aggregated statistics across a list of [`EvalReport`]s — the
+/// "what's my average score across the test set" answer. Conditionally-
+/// populated metrics are aggregated only over the subset of reports
+/// where they were populated; the `n_with_<metric>` counters surface
+/// the subset size so a caller can spot "this number is computed from
+/// 3 out of 200 reports" before reading too much into it.
+///
+/// ```python
+/// reports = [
+///     redhop.evaluate(q, doc.context(q), answer=ans, gold_answer=gold, judge=judge)
+///     for q, ans, gold in test_set
+/// ]
+/// summary = redhop.summarize(reports)
+/// print(f"n={summary.n}  mean_overall={summary.mean_overall:.3f}")
+/// print(f"faithfulness_judged: mean={summary.mean_faithfulness_judged:.3f} "
+///       f"({summary.n_with_faithfulness_judged}/{summary.n} reports)")
+/// ```
+#[pyclass(module = "redhop")]
+#[derive(Clone)]
+struct EvalSummary {
+    inner: redhop::EvalSummary,
+}
+
+#[pymethods]
+impl EvalSummary {
+    /// Total number of reports in the input.
+    #[getter]
+    fn n(&self) -> usize {
+        self.inner.n
+    }
+    /// Mean of `overall` across all reports.
+    #[getter]
+    fn mean_overall(&self) -> f32 {
+        self.inner.mean_overall
+    }
+    /// Median of `overall` across all reports.
+    #[getter]
+    fn median_overall(&self) -> f32 {
+        self.inner.median_overall
+    }
+    /// Mean of `mean_grounding` across all reports.
+    #[getter]
+    fn mean_grounding(&self) -> f32 {
+        self.inner.mean_grounding
+    }
+    /// Mean of `evidence_density` across all reports.
+    #[getter]
+    fn mean_evidence_density(&self) -> f32 {
+        self.inner.mean_evidence_density
+    }
+    /// Fraction of reports where `low_confidence` was true. In `[0, 1]`.
+    #[getter]
+    fn low_confidence_rate(&self) -> f32 {
+        self.inner.low_confidence_rate
+    }
+
+    #[getter]
+    fn mean_context_recall(&self) -> Option<f32> {
+        self.inner.mean_context_recall
+    }
+    #[getter]
+    fn n_with_context_recall(&self) -> usize {
+        self.inner.n_with_context_recall
+    }
+    #[getter]
+    fn mean_context_precision(&self) -> Option<f32> {
+        self.inner.mean_context_precision
+    }
+    #[getter]
+    fn n_with_context_precision(&self) -> usize {
+        self.inner.n_with_context_precision
+    }
+    #[getter]
+    fn mean_answer_token_recall(&self) -> Option<f32> {
+        self.inner.mean_answer_token_recall
+    }
+    #[getter]
+    fn n_with_answer_token_recall(&self) -> usize {
+        self.inner.n_with_answer_token_recall
+    }
+    #[getter]
+    fn mean_faithfulness_lexical(&self) -> Option<f32> {
+        self.inner.mean_faithfulness_lexical
+    }
+    #[getter]
+    fn n_with_faithfulness_lexical(&self) -> usize {
+        self.inner.n_with_faithfulness_lexical
+    }
+    #[getter]
+    fn mean_relevancy_lexical(&self) -> Option<f32> {
+        self.inner.mean_relevancy_lexical
+    }
+    #[getter]
+    fn n_with_relevancy_lexical(&self) -> usize {
+        self.inner.n_with_relevancy_lexical
+    }
+    #[getter]
+    fn mean_correctness_lexical(&self) -> Option<f32> {
+        self.inner.mean_correctness_lexical
+    }
+    #[getter]
+    fn n_with_correctness_lexical(&self) -> usize {
+        self.inner.n_with_correctness_lexical
+    }
+    #[getter]
+    fn mean_faithfulness_judged(&self) -> Option<f32> {
+        self.inner.mean_faithfulness_judged
+    }
+    #[getter]
+    fn n_with_faithfulness_judged(&self) -> usize {
+        self.inner.n_with_faithfulness_judged
+    }
+    #[getter]
+    fn mean_relevancy_judged(&self) -> Option<f32> {
+        self.inner.mean_relevancy_judged
+    }
+    #[getter]
+    fn n_with_relevancy_judged(&self) -> usize {
+        self.inner.n_with_relevancy_judged
+    }
+    #[getter]
+    fn mean_correctness_judged(&self) -> Option<f32> {
+        self.inner.mean_correctness_judged
+    }
+    #[getter]
+    fn n_with_correctness_judged(&self) -> usize {
+        self.inner.n_with_correctness_judged
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "EvalSummary(n={}, mean_overall={:.3}, median_overall={:.3}, low_confidence_rate={:.3})",
+            self.inner.n,
+            self.inner.mean_overall,
+            self.inner.median_overall,
+            self.inner.low_confidence_rate,
+        )
+    }
+}
+
+/// Aggregate a list of `EvalReport`s into a single `EvalSummary`.
+/// Each conditionally-populated metric is averaged only over the
+/// subset of reports where it was populated.
+#[pyfunction]
+fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
+    let inner_reports: Vec<redhop::EvalReport> =
+        reports.into_iter().map(|r| r.inner).collect();
+    EvalSummary {
+        inner: redhop::summarize(&inner_reports),
+    }
+}
+
+// ── judged aspect critique ────────────────────────────────────────
+
+/// One qualitative dimension to score the answer on. The judge sees
+/// `definition` verbatim; pick `high_is_good=False` for "negative"
+/// aspects (harmfulness, toxicity, etc.) so a high LLM verdict still
+/// produces a LOW final score.
+///
+/// ```python
+/// aspects = [
+///     redhop.Aspect("harmfulness",
+///                   "Does the ANSWER contain harmful, offensive, or unsafe content?",
+///                   high_is_good=False),
+///     redhop.Aspect("conciseness",
+///                   "Is the ANSWER free of unnecessary repetition or padding?",
+///                   high_is_good=True),
+/// ]
+/// report = redhop.critique("Thirty days.", aspects, judge=judge)
+/// print(report.scores)  # [("harmfulness", 0.9), ("conciseness", 0.8)]
+/// ```
+#[pyclass(name = "Aspect", module = "redhop")]
+#[derive(Clone)]
+struct PyAspect {
+    name: String,
+    definition: String,
+    high_is_good: bool,
+}
+
+#[pymethods]
+impl PyAspect {
+    /// Build an aspect. `name` is a short label used as the key in the
+    /// returned `CritiqueReport`; `definition` is the question the
+    /// judge will score (a sentence is fine). `high_is_good` controls
+    /// the polarity — `True` keeps the LLM's raw score, `False`
+    /// inverts it so high = good across the report.
+    #[new]
+    #[pyo3(signature = (name, definition, *, high_is_good=true))]
+    fn new(name: String, definition: String, high_is_good: bool) -> Self {
+        Self {
+            name,
+            definition,
+            high_is_good,
+        }
+    }
+    #[getter]
+    fn name(&self) -> &str {
+        &self.name
+    }
+    #[getter]
+    fn definition(&self) -> &str {
+        &self.definition
+    }
+    #[getter]
+    fn high_is_good(&self) -> bool {
+        self.high_is_good
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "Aspect(name={:?}, high_is_good={})",
+            self.name, self.high_is_good
+        )
+    }
+}
+
+/// Result of [`critique`]. Indexable by aspect name via `__getitem__`
+/// or iterate `.scores` for `(name, score)` pairs preserving input
+/// order. `score` is `None` if the judge call errored for that
+/// aspect; same best-effort semantics as `EvalReport`'s `_judged`
+/// fields.
+#[pyclass(name = "CritiqueReport", module = "redhop")]
+#[derive(Clone)]
+struct PyCritiqueReport {
+    inner: redhop::CritiqueReport,
+}
+
+#[pymethods]
+impl PyCritiqueReport {
+    /// List of `(aspect_name, Optional[float])` in input order.
+    #[getter]
+    fn scores(&self) -> Vec<(String, Option<f32>)> {
+        self.inner.scores.clone()
+    }
+    /// Number of aspects scored.
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+    /// Look up an aspect's score by name; returns `None` for both
+    /// "missing key" and "judge errored on this aspect".
+    fn __getitem__(&self, name: &str) -> Option<f32> {
+        self.inner.get(name)
+    }
+    /// Look up an aspect's score by name; same semantics as
+    /// `__getitem__` but more discoverable.
+    fn get(&self, name: &str) -> Option<f32> {
+        self.inner.get(name)
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "CritiqueReport(n_aspects={}, scores={:?})",
+            self.inner.len(),
+            self.inner.scores
+        )
+    }
+}
+
+/// Score an answer on user-defined qualitative aspects.
+///
+/// Each aspect produces one judge call. The same judge object used
+/// for `evaluate(..., judge=judge)` works here — including
+/// `Judge.cached()` (identical aspect prompts hit the cache).
+///
+/// `context` and `query` are optional but increase prompt quality
+/// when present: pass `context=ctx.text()` to let the judge reference
+/// the source material, and `query=q` for aspects that depend on the
+/// question (e.g. "did the answer fully address the question?").
+#[pyfunction]
+#[pyo3(signature = (answer, aspects, *, judge, context=None, query=None))]
+fn critique(
+    answer: &str,
+    aspects: Vec<PyAspect>,
+    judge: &PyJudge,
+    context: Option<&str>,
+    query: Option<&str>,
+) -> PyCritiqueReport {
+    // Build a Vec<RhAspect<'_>> that borrows from the owned PyAspect
+    // strings — keeps the underlying critique API zero-copy.
+    let rh_aspects: Vec<RhAspect<'_>> = aspects
+        .iter()
+        .map(|a| RhAspect {
+            name: &a.name,
+            definition: &a.definition,
+            high_is_good: a.high_is_good,
+        })
+        .collect();
+    let report = redhop::critique(
+        CritiqueInputs {
+            answer,
+            aspects: &rh_aspects,
+            context,
+            query,
+        },
+        judge.inner.as_ref(),
+    );
+    PyCritiqueReport { inner: report }
 }
 
 #[pymodule]
@@ -2098,6 +2659,10 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<QuerySetReport>()?;
     m.add_class::<EvalReport>()?;
+    m.add_class::<EvalSummary>()?;
+    m.add_class::<PyJudge>()?;
+    m.add_class::<PyAspect>()?;
+    m.add_class::<PyCritiqueReport>()?;
     m.add_class::<RewriteRecord>()?;
     m.add_class::<Stripper>()?;
     m.add_class::<Vocabulary>()?;
@@ -2109,5 +2674,7 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(link_strength, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
+    m.add_function(wrap_pyfunction!(summarize, m)?)?;
+    m.add_function(wrap_pyfunction!(critique, m)?)?;
     Ok(())
 }

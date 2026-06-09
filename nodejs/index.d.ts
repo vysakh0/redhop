@@ -341,16 +341,42 @@ export interface EnrichResult {
  */
 export declare function analyzeQuerySet(queries: Array<string>): QuerySetReport
 /**
- * Optional gold signals for [`evaluate`]. Any combination of fields is
- * supported — pass `goldChunks` to unlock `contextRecall` /
- * `contextPrecision`; pass `goldAnswer` to unlock `answerTokenRecall`;
- * pass both for all three. Omit both for self-eval only.
+ * Optional inputs for [`evaluate`]. Any combination of fields is
+ * supported — pass `answer` to unlock the lexical answer-quality
+ * proxies (`faithfulnessLexical`, `relevancyLexical`); pass `goldChunks`
+ * to unlock `contextRecall` / `contextPrecision`; pass `goldAnswer` to
+ * unlock `answerTokenRecall`; pass `answer` AND `goldAnswer` to unlock
+ * `correctnessLexical`. Omit all for self-eval only.
  */
 export interface EvaluateOptions {
+  /**
+   * The LLM's answer text (what the model produced from the context).
+   * Unlocks the lexical answer-quality proxies. Distinct from
+   * `goldAnswer`, which is the ground truth.
+   */
+  answer?: string
   /** IDs of chunks that should appear in the assembled context. */
   goldChunks?: Array<string>
   /** Ground-truth answer text. */
   goldAnswer?: string
+  /**
+   * **Opt-in**: compute `faithfulness_judged` via two-pass claim
+   * decomposition — extract atomic claims, verify them in a single
+   * batched LLM call, return the mean score. More accurate than
+   * the single-prompt default but costs +1 LLM call per evaluate.
+   * Only meaningful when a `judge` is also supplied (via
+   * `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+   */
+  decomposeFaithfulness?: boolean
+  /**
+   * **Opt-in**: compute `correctness_judged` via three-pass
+   * classification — extract claims from the answer, extract from
+   * the gold, classify each as TP / FP / FN, return F1. Also
+   * populates the diagnostic counters `nCorrectnessTp`,
+   * `nCorrectnessFp`, `nCorrectnessFn` on the report so callers
+   * can debug which facts were missed vs hallucinated.
+   */
+  decomposeCorrectness?: boolean
 }
 /**
  * In-process evaluation report for one (query, BuiltContext) pair.
@@ -369,6 +395,70 @@ export interface EvalReport {
    * the assembled context. `null` unless `goldAnswer` was supplied.
    */
   answerTokenRecall?: number
+  /**
+   * Sentence-level token-overlap proxy for faithfulness: fraction of
+   * the answer's sentences with at least half their content terms in
+   * the assembled context. **Lexical proxy, NOT real faithfulness** —
+   * an LLM judge is the right tool. `null` unless `answer` was supplied.
+   */
+  faithfulnessLexical?: number
+  /**
+   * Token-overlap between the query and the answer (Snowball-stemmed,
+   * stopword-filtered). Proxy for "did the answer address the question".
+   * `null` unless `answer` was supplied.
+   */
+  relevancyLexical?: number
+  /**
+   * Token-overlap between the LLM's answer and the gold answer. Proxy
+   * for "did the LLM produce the right tokens". `null` unless BOTH
+   * `answer` and `goldAnswer` were supplied.
+   */
+  correctnessLexical?: number
+  /**
+   * LLM-judged faithfulness. Populated by the async `evaluateWithJudge`
+   * path; always `null` from the sync `evaluate` (JS callbacks can't
+   * fire during a sync napi call). See `Judge.fromCallable(...)` for
+   * how to wire a JS LLM client.
+   */
+  faithfulnessJudged?: number
+  /**
+   * LLM-judged relevancy. See `faithfulness_judged` for the sync vs
+   * async note.
+   */
+  relevancyJudged?: number
+  /**
+   * LLM-judged correctness. See `faithfulness_judged` for the sync
+   * vs async note.
+   */
+  correctnessJudged?: number
+  /**
+   * Number of atomic claims the judge extracted when
+   * `decomposeFaithfulness: true` was passed and a judge was
+   * supplied. `null` otherwise.
+   */
+  nFaithfulnessClaimsExtracted?: number
+  /**
+   * Number of those claims the judge scored ≥ 0.5 against the
+   * context. `null` under the same conditions as
+   * `nFaithfulnessClaimsExtracted`.
+   */
+  nFaithfulnessClaimsSupported?: number
+  /**
+   * Number of answer-claims supported by a reference claim.
+   * Populated only when `decomposeCorrectness: true` was passed
+   * and the classification pass succeeded.
+   */
+  nCorrectnessTp?: number
+  /**
+   * Number of answer-claims NOT supported by any reference claim.
+   * Same population conditions as `nCorrectnessTp`.
+   */
+  nCorrectnessFp?: number
+  /**
+   * Number of reference-claims NOT covered by the answer. Same
+   * population conditions as `nCorrectnessTp`.
+   */
+  nCorrectnessFn?: number
   /** Mean grounding over selected chunks, in `[0, 1]`. */
   meanGrounding: number
   /** Fraction of context tokens that are query-relevant. */
@@ -415,6 +505,74 @@ export interface EvalReport {
  * ```
  */
 export declare function evaluate(query: string, context: BuiltContext, options?: EvaluateOptions | undefined | null): EvalReport
+/**
+ * Options for [`evaluate_with_judge`] — same as `EvaluateOptions` plus
+ * a `judge` field. Distinct type because napi-rs doesn't allow object-
+ * type options with class-typed fields directly; we accept the Judge
+ * via the function-level signature instead and split the options into
+ * the existing struct (free of class types) + a separate Judge arg.
+ */
+export declare function evaluateWithJudge(query: string, context: BuiltContext, judge: Judge, options?: EvaluateOptions | undefined | null): Promise<EvalReport>
+/**
+ * One qualitative dimension to score the answer on. `highIsGood`
+ * controls polarity — when `false` (e.g. harmfulness), the LLM's
+ * raw score is INVERTED to `1 - raw` before being returned, so high
+ * values still mean "good answer" across the report.
+ */
+export interface Aspect {
+  /** Short label, used as the key in the returned `CritiqueReport`. */
+  name: string
+  /** What to score, phrased as a question the LLM can answer 0–1. */
+  definition: string
+  /**
+   * `true` keeps the LLM's raw score; `false` inverts it (so high
+   * = good regardless of aspect polarity). Default `true`.
+   */
+  highIsGood?: boolean
+}
+/**
+ * One scored aspect — the same shape as a tuple, but napi-rs only
+ * serializes plain objects so we name it.
+ */
+export interface AspectScore {
+  /** Aspect's `name`. */
+  name: string
+  /**
+   * Polarity-corrected score in `[0, 1]`, or `null` if the judge
+   * errored on this aspect.
+   */
+  score?: number
+}
+/**
+ * Result of [`critique`]. The `scores` array preserves input order;
+ * `null` scores are aspects where the judge call errored.
+ */
+export interface CritiqueReport {
+  /** Number of aspects scored. */
+  n: number
+  /**
+   * Per-aspect scores in input order. Iterate the array, or look
+   * up by name on the JS side: `report.scores.find(s => s.name === "x")?.score`.
+   */
+  scores: Array<AspectScore>
+}
+/**
+ * Optional inputs for [`critique`] beyond the required `answer`,
+ * `aspects`, and `judge` args.
+ */
+export interface CritiqueOptions {
+  /**
+   * Context to embed in each aspect's prompt — useful for aspects
+   * that need the source material to score.
+   */
+  context?: string
+  /**
+   * Query to embed in each aspect's prompt — useful for aspects
+   * like "does the answer address the question".
+   */
+  query?: string
+}
+export declare function critique(answer: string, aspects: Array<Aspect>, judge: Judge, options?: CritiqueOptions | undefined | null): Promise<CritiqueReport>
 /**
  * Optional fields for the [`Chunk`] constructor's options bag.
  *
@@ -720,6 +878,67 @@ export declare class Vocabulary {
   enrich(chunk: string): EnrichResult
   /** Number of equivalence classes compiled. */
   get length(): number
+}
+/**
+ * judged Judge: wraps a JS callable that scores a (prompt, system)
+ * pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
+ * pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
+ * `.cached()` to memoize identical prompts across calls — useful for
+ * CI determinism and avoiding double-billing on re-runs.
+ *
+ * **Callback signature.** The JS callable receives THREE positional
+ * args: `(err, prompt, system)`. The first arg is napi-rs's error
+ * channel (null on the normal path; non-null only if the napi layer
+ * itself failed to deserialize the input — vanishingly rare for
+ * plain strings). Most users pass it through with destructuring:
+ *
+ * ```js
+ * const judge = redhop.Judge.fromCallable(async (err, prompt, system) => {
+ *   if (err) throw err;
+ *   const resp = await openai.chat.completions.create({ ... });
+ *   return parseFloat(resp.choices[0].message.content.trim());
+ * }, "gpt-4o-mini").cached();
+ *
+ * const report = await redhop.evaluateWithJudge(
+ *   query, ctx, judge,
+ *   { answer: "Thirty days from purchase.", goldAnswer: "thirty days" },
+ * );
+ * ```
+ *
+ * **Return type.** The callable may return either a `number` (the
+ * score) or a `string` (the raw LLM text — needed for the Phase-6
+ * claim-extraction call when `decomposeFaithfulness: true`). A
+ * numeric string ("0.8", "80%") is parsed via the same `parse_score`
+ * the Rust core uses; a non-numeric string keeps score=0 but
+ * preserves raw_text for downstream parsing.
+ *
+ * **Error isolation.** A JS-thrown exception in the callable surfaces
+ * as `Err` on the underlying future. `redhop::evaluate` treats that
+ * as "this metric is unavailable" and leaves the corresponding
+ * `_judged` field as `null` — the process doesn't crash and the
+ * lexical fields stay populated.
+ */
+export declare class Judge {
+  /**
+   * Wrap a JS callable as a Judge. The callable is invoked as
+   * `callable(prompt, system) -> number | Promise<number>`. The
+   * returned value is normalized to `[0, 1]` via the same parser
+   * the Rust core uses (`judge::parse_score` accepts floats,
+   * percentages, "yes"/"no").
+   *
+   * `name` namespaces the cache key — swap it when you swap models
+   * so cached `gpt-4o-mini` scores don't reappear under
+   * `claude-haiku`.
+   */
+  static fromCallable(callable: (err: Error | null, arg0: string, arg1?: string | undefined | null) => any, name?: string | undefined | null): Judge
+  /**
+   * Return a NEW Judge wrapping this one with an in-memory cache.
+   * Identical `(prompt, system)` pairs hit the cache instead of
+   * re-calling the JS callable.
+   */
+  cached(): Judge
+  /** Stable identifier used in the cache key. */
+  get name(): string
 }
 /**
  * One unit of content in a [`Document`] — the construction primitive

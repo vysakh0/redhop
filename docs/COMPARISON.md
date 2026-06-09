@@ -3,6 +3,10 @@
 A fair, reproducible comparison — including where RedHop *doesn't* win. We'd
 rather you trust the numbers than the marketing.
 
+> Looking for a different comparison? See
+> [**RedHop's eval surface vs Ragas**](COMPARISON_RAGAS.md) for the
+> answer-quality eval head-to-head (n=200 HotpotQA, r=+0.664 vs Ragas).
+
 ## TL;DR
 
 - On answer quality, **RedHop is competitive with LlamaIndex and ahead of

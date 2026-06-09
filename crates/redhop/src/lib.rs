@@ -54,7 +54,9 @@ pub mod analyzer;
 pub mod chunking;
 pub mod context;
 pub mod core;
+pub mod critique;
 pub mod document;
+pub mod judge;
 pub mod retrieval;
 pub mod rewrite;
 pub mod storage;
@@ -93,7 +95,10 @@ pub use crate::context::{
 };
 // In-process evaluation — score a `BuiltContext` against optional gold signals,
 // no LLM judge required. See `crate::context::eval` for the rationale.
-pub use crate::context::eval::{evaluate, EvalGold, EvalReport};
+pub use crate::context::eval::{
+    evaluate, summarize, EvalConfig, EvalGold, EvalReport, EvalSummary,
+};
+pub use crate::critique::{critique, Aspect, CritiqueInputs, CritiqueReport};
 
 // Core types you handle directly.
 pub use crate::core::{
