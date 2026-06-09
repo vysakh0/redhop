@@ -83,7 +83,12 @@ because JS callbacks can't fire during a sync napi call. Sync
 const { OpenAI } = require("openai");
 const client = new OpenAI();
 
-const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+// The callable receives (err, prompt, system). `err` is napi-rs's error
+// channel — null on the normal path; the napi-rs strategy is
+// CalleeHandled so a JS throw doesn't FATAL the process. Most callers
+// just destructure and ignore err.
+const judge = redhop.Judge.fromCallable(async (err, prompt, system) => {
+  if (err) throw err;
   const resp = await client.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -105,9 +110,65 @@ const report2 = await redhop.evaluateWithJudge(query, ctx, judge, {
 // report2.faithfulnessJudged, .relevancyJudged, .correctnessJudged
 ```
 
+The callable may return either a `number` (the score) or a `string`
+(the raw LLM text — needed for Phase-6 claim extraction when
+`decomposeFaithfulness: true`). A string is parsed via the same
+`parse_score` the Rust core uses, so `"0.85"` works as a score; a
+non-numeric string keeps score=0 but preserves the text for downstream
+parsers like claim decomposition.
+
 A JS-side exception in the callable leaves the corresponding `_judged`
 metric as `null` (same semantics as Python) — failure is isolated, the
 process doesn't crash, lexical fields stay populated.
+
+## Claim decomposition for faithfulness (Phase 6, opt-in)
+
+Single-prompt faithfulness asks "is this answer supported by this
+context?" in one LLM call. Cheap, fast, but coarse — a 4-claim answer
+where 3 claims are supported and 1 is fabricated often gets averaged
+into a single mid-range score that's hard to interpret.
+
+Ragas's approach (which we shipped in Phase 6 as opt-in): decompose
+the answer into atomic claims, then verify each claim independently
+against the context. The score is the mean of per-claim verifications;
+a claim counts as "supported" when its verification score is ≥ 0.5.
+Two new diagnostic fields surface the underlying counts:
+`n_faithfulness_claims_extracted` and `n_faithfulness_claims_supported`.
+
+```python
+report = redhop.evaluate(
+    query, ctx,
+    answer=ans, gold_answer=gold,
+    judge=judge,
+    decompose_faithfulness=True,   # opt-in
+)
+print(report.faithfulness_judged)              # mean per-claim score
+print(report.n_faithfulness_claims_extracted)  # e.g. 4
+print(report.n_faithfulness_claims_supported)  # e.g. 3
+```
+
+```javascript
+const report = await redhop.evaluateWithJudge(query, ctx, judge, {
+  answer, goldAnswer,
+  decomposeFaithfulness: true,
+});
+console.log(report.faithfulnessJudged,
+            report.nFaithfulnessClaimsExtracted,
+            report.nFaithfulnessClaimsSupported);
+```
+
+**Cost.** Single-prompt: 1 LLM call. Decomposed: 1 extraction call +
+N verification calls (N = number of claims). For a typical 3-5 sentence
+answer that's 4-6 LLM calls instead of 1. The cache helps re-runs
+(0 cost on identical prompts), but a fresh run is real money. Opt in
+when the precision matters more than the cost.
+
+**Graceful failure.** If the extraction pass returns zero claims
+(e.g. the answer is a refusal or pure opinion), `faithfulness_judged`
+stays `None` rather than silently falling back to single-prompt
+scoring — mixing the two modes' semantics would conflate signals.
+Per-claim verification failures are treated as "unsupported" (score
+0) — the metric is still reported, just with a lower numerator.
 
 ## Test-set aggregation: `summarize(reports)`
 
@@ -209,11 +270,12 @@ the counter makes that visible.
   `evaluateWithJudge` is async and returns a Promise; same
   `Judge.fromCallable(fn).cached()` shape as Python under the hood. See
   the Node example in the "Node availability" section.
-- **Single Judge call per metric.** We don't decompose the answer into
-  individual claims before judging (Ragas does, for faithfulness).
-  Simpler prompt, lower cost, but potentially lower precision than a
-  claim-by-claim verification. We'll revisit if a measured bench shows
-  the gap is large enough to matter.
+- **Single Judge call per metric is the default.** Phase 6 added an
+  opt-in `decompose_faithfulness=True` flag (Python) /
+  `decomposeFaithfulness: true` (Node) that runs Ragas-style claim
+  extraction + per-claim verification — see the dedicated section
+  above. Off by default to keep the cost model boring; turn on when
+  faithfulness precision matters more than LLM cost.
 
 ## Reproduce
 

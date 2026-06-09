@@ -359,6 +359,16 @@ export interface EvaluateOptions {
   goldChunks?: Array<string>
   /** Ground-truth answer text. */
   goldAnswer?: string
+  /**
+   * **Phase 6, opt-in**: compute `faithfulness_judged` via 2-pass
+   * Ragas-style claim decomposition. Extracts atomic claims from
+   * the answer, then verifies each against the context; the mean
+   * of per-claim scores is the final faithfulness number. More
+   * accurate than the single-prompt default but costs +N LLM calls
+   * per evaluate. Only meaningful when a `judge` is also supplied
+   * (via `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+   */
+  decomposeFaithfulness?: boolean
 }
 /**
  * In-process evaluation report for one (query, BuiltContext) pair.
@@ -414,6 +424,19 @@ export interface EvalReport {
    * the Node availability note.
    */
   correctnessJudged?: number
+  /**
+   * **Phase-6 diagnostic**: number of atomic claims the judge
+   * extracted when `decomposeFaithfulness: true` was passed and a
+   * judge was supplied. `null` otherwise (single-prompt path or
+   * zero claims extracted).
+   */
+  nFaithfulnessClaimsExtracted?: number
+  /**
+   * **Phase-6 diagnostic**: number of those claims the judge scored
+   * ≥ 0.5 against the context. `null` under the same conditions as
+   * `nFaithfulnessClaimsExtracted`.
+   */
+  nFaithfulnessClaimsSupported?: number
   /** Mean grounding over selected chunks, in `[0, 1]`. */
   meanGrounding: number
   /** Fraction of context tokens that are query-relevant. */
@@ -777,23 +800,41 @@ export declare class Vocabulary {
 /**
  * Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
  * pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
- * pass to `evaluateWithJudge(..., { judge })`. Call `.cached()` to
- * memoize identical prompts across `evaluateWithJudge` calls — useful
- * for CI determinism and avoiding double-billing on re-runs.
+ * pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
+ * `.cached()` to memoize identical prompts across calls — useful for
+ * CI determinism and avoiding double-billing on re-runs.
+ *
+ * **Callback signature.** The JS callable receives THREE positional
+ * args: `(err, prompt, system)`. The first arg is napi-rs's error
+ * channel (null on the normal path; non-null only if the napi layer
+ * itself failed to deserialize the input — vanishingly rare for
+ * plain strings). Most users pass it through with destructuring:
  *
  * ```js
- * // The callable: (prompt, system) → number in [0, 1] or a Promise of one.
- * const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+ * const judge = redhop.Judge.fromCallable(async (err, prompt, system) => {
+ *   if (err) throw err;
  *   const resp = await openai.chat.completions.create({ ... });
  *   return parseFloat(resp.choices[0].message.content.trim());
  * }, "gpt-4o-mini").cached();
  *
- * const report = await redhop.evaluateWithJudge(query, ctx, {
- *   answer: "Thirty days from purchase.",
- *   goldAnswer: "thirty days",
- *   judge,
- * });
+ * const report = await redhop.evaluateWithJudge(
+ *   query, ctx, judge,
+ *   { answer: "Thirty days from purchase.", goldAnswer: "thirty days" },
+ * );
  * ```
+ *
+ * **Return type.** The callable may return either a `number` (the
+ * score) or a `string` (the raw LLM text — needed for the Phase-6
+ * claim-extraction call when `decomposeFaithfulness: true`). A
+ * numeric string ("0.8", "80%") is parsed via the same `parse_score`
+ * the Rust core uses; a non-numeric string keeps score=0 but
+ * preserves raw_text for downstream parsing.
+ *
+ * **Error isolation.** A JS-thrown exception in the callable surfaces
+ * as `Err` on the underlying future. `redhop::evaluate` treats that
+ * as "this metric is unavailable" and leaves the corresponding
+ * `_judged` field as `null` — the process doesn't crash and the
+ * lexical fields stay populated.
  */
 export declare class Judge {
   /**

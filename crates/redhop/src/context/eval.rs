@@ -34,7 +34,7 @@
 //! let ctx = doc.context("refund window")?;
 //!
 //! // Self-evaluation only — no answer, no gold.
-//! let score = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
+//! let score = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None, EvalConfig::default());
 //! println!("overall={:.2}  density={:.2}", score.overall, score.evidence_density);
 //!
 //! // With the LLM's answer — unlocks Tier-1 answer-quality proxies.
@@ -70,6 +70,120 @@ const FAITHFULNESS_SYSTEM: &str = "You are a strict, careful judge. Your job is 
     whether an ANSWER is supported by a given CONTEXT, with no claims beyond what the \
     CONTEXT actually says. A claim is unsupported if it adds details not in the CONTEXT, \
     even if those details are plausible.";
+
+// ── Tier-2 claim-decomposition (Phase 6, opt-in via EvalConfig) ─────────
+// Ragas's approach: instead of one yes/no judge call per (answer,
+// context), decompose the answer into atomic claims and verify each
+// against the context. More accurate; costs +N LLM calls per
+// evaluate. Opt in via `EvalConfig::decompose_faithfulness=true`.
+
+const CLAIM_EXTRACTION_SYSTEM: &str = "You are a precise reader. Decompose answers into atomic, \
+    independently-verifiable factual claims.";
+
+const CLAIM_VERIFICATION_SYSTEM: &str = "You are a strict, careful judge. Determine whether a \
+    single CLAIM is supported by a given CONTEXT, with no inference beyond what the CONTEXT \
+    actually says.";
+
+fn claim_extraction_prompt(answer: &str) -> String {
+    format!(
+        "ANSWER:\n{answer}\n\nList the atomic factual claims this ANSWER makes. \
+         One claim per line, no numbering, no introduction, no commentary. \
+         If the ANSWER makes no verifiable factual claims (e.g. it's a refusal or a \
+         purely opinion-based response), output nothing."
+    )
+}
+
+fn claim_verification_prompt(context: &str, claim: &str) -> String {
+    format!(
+        "CONTEXT:\n{context}\n\nCLAIM:\n{claim}\n\nIs the CLAIM supported by the CONTEXT? \
+         Reply with a single number from 0 (unsupported or contradicted) to 1 (fully \
+         supported). Reply with the number only."
+    )
+}
+
+/// Parse the LLM's claim-extraction response into individual claims.
+/// Tolerates the three common LLM output shapes: bare one-per-line,
+/// numbered ("1. claim"), and bulleted ("- claim" / "* claim").
+/// Whitespace-only lines are dropped. No claims (empty / refusal
+/// response) returns an empty vec.
+fn parse_claims(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|raw| {
+            let s = raw.trim();
+            if s.is_empty() {
+                return None;
+            }
+            // Strip numbered "1. " / "1) " prefix.
+            let s = if let Some(rest) = s
+                .strip_prefix(|c: char| c.is_ascii_digit())
+                .and_then(|r| r.strip_prefix(|c: char| c == '.' || c == ')'))
+                .map(|r| r.trim_start())
+            {
+                rest
+            } else {
+                s
+            };
+            // Strip bullet "- " / "* " prefix.
+            let s = s.trim_start_matches(['-', '*']).trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
+        })
+        .collect()
+}
+
+/// Use the judge to decompose an answer into claims and verify each
+/// against the context. Returns `(score, n_extracted, n_supported)`
+/// where score is the mean of per-claim verification scores. A claim
+/// is "supported" if its verification score is ≥ 0.5 (mirrors the
+/// half-supported threshold used by `faithfulness_lexical_score`).
+/// Returns `None` when claim extraction errors or yields zero claims —
+/// we don't fall back to single-prompt scoring because mixing the two
+/// scoring modes would conflate signals.
+fn faithfulness_judged_decomposed(
+    judge: &dyn Judge,
+    context: &str,
+    answer: &str,
+) -> Option<(f32, usize, usize)> {
+    let extraction_req = JudgeRequest {
+        prompt: &claim_extraction_prompt(answer),
+        system: Some(CLAIM_EXTRACTION_SYSTEM),
+    };
+    let extracted = match judge.score(&extraction_req) {
+        Ok(resp) => resp.raw_text,
+        Err(_) => return None,
+    };
+    let claims = parse_claims(&extracted);
+    if claims.is_empty() {
+        return None;
+    }
+    let mut sum = 0.0_f32;
+    let mut supported = 0_usize;
+    for claim in &claims {
+        let req = JudgeRequest {
+            prompt: &claim_verification_prompt(context, claim),
+            system: Some(CLAIM_VERIFICATION_SYSTEM),
+        };
+        match judge.score(&req) {
+            Ok(resp) => {
+                let s = resp.score.clamp(0.0, 1.0);
+                sum += s;
+                if s >= 0.5 {
+                    supported += 1;
+                }
+            }
+            Err(_) => {
+                // A per-claim failure is treated as "unsupported" (score 0)
+                // — we don't bail because partial-information aggregation
+                // is still more useful than a None.
+            }
+        }
+    }
+    let n = claims.len();
+    Some((sum / n as f32, n, supported))
+}
 
 const RELEVANCY_SYSTEM: &str = "You are a strict judge of whether an answer directly \
     addresses a question. An off-topic, evasive, or partial-only answer should score below 1.0.";
@@ -201,6 +315,28 @@ fn faithfulness_lexical_score(answer: &str, context_text: &str, analyzer: &dyn A
     supported as f32 / sentences.len() as f32
 }
 
+/// Mode-and-flag knobs for [`evaluate`] that aren't (query, ctx, answer,
+/// gold, judge). Default = behavior shipped through Phase 5
+/// (single-prompt faithfulness when a judge is supplied). Set
+/// `decompose_faithfulness=true` to opt into Phase-6 Ragas-style claim
+/// extraction + per-claim verification — more accurate, costs +N LLM
+/// calls per evaluate where N is the number of claims in the answer.
+#[derive(Debug, Clone, Default)]
+pub struct EvalConfig {
+    /// When `true` AND `judge` + `answer` are both supplied, compute
+    /// `faithfulness_judged` via 2-pass claim decomposition:
+    /// (1) extract atomic claims from the answer, (2) verify each
+    /// against the context, return the mean score. Also populates
+    /// `n_faithfulness_claims_extracted` and
+    /// `n_faithfulness_claims_supported` on the report.
+    ///
+    /// When `false` (default), `faithfulness_judged` is computed via
+    /// a single prompt over (answer, context). Faster, cheaper, but
+    /// can miss partial-truth answers where some claims check out and
+    /// others don't.
+    pub decompose_faithfulness: bool,
+}
+
 /// Optional ground-truth signals the caller supplies to `evaluate`. Each
 /// variant unlocks a different gold-relative metric on the returned
 /// [`EvalReport`]; the self-evaluation metrics (grounding, evidence density,
@@ -301,6 +437,21 @@ pub struct EvalReport {
     /// + `judge` were all supplied.
     pub correctness_judged: Option<f32>,
 
+    // ── Phase-6 claim-decomposition diagnostics ──
+    // Populated only when `EvalConfig::decompose_faithfulness=true`
+    // AND the extraction-pass returned at least one claim. Surfaces
+    // "this faithfulness was computed from K claims, M supported"
+    // so a caller can spot a degenerate case (zero claims extracted,
+    // wildly few supported) before reading too much into the score.
+    /// Number of atomic claims the judge extracted from the answer.
+    /// `None` when decomposition was disabled, errored, or returned
+    /// zero claims.
+    pub n_faithfulness_claims_extracted: Option<usize>,
+    /// Number of those claims the judge scored ≥ 0.5 against the
+    /// context (the per-claim "supported" threshold). `None` under
+    /// the same conditions as `n_faithfulness_claims_extracted`.
+    pub n_faithfulness_claims_supported: Option<usize>,
+
     // ── self-evaluation metrics (always populated) ──
     /// Mean grounding score of the selected chunks against the query.
     /// Always in `[0, 1]`. The "how relevant is what we selected, on
@@ -367,6 +518,7 @@ pub fn evaluate(
     answer: Option<&str>,
     gold: EvalGold<'_>,
     judge: Option<&dyn Judge>,
+    config: EvalConfig,
 ) -> EvalReport {
     let analyzer = default_english();
 
@@ -462,20 +614,38 @@ pub fn evaluate(
     // ── Tier-2 judged metrics ──
     // Reuses the assembled-context string computed above for the
     // lexical-faithfulness path so we don't re-concatenate.
-    let (faithfulness_judged, relevancy_judged, correctness_judged) = match (
-        answer.filter(|a| !a.trim().is_empty()),
-        judge,
-    ) {
+    let (
+        faithfulness_judged,
+        relevancy_judged,
+        correctness_judged,
+        n_faithfulness_claims_extracted,
+        n_faithfulness_claims_supported,
+    ) = match (answer.filter(|a| !a.trim().is_empty()), judge) {
         (Some(a), Some(j)) => {
             let assembled = assembled_for_answer.as_deref().unwrap_or("");
-            let f = judge_score(j, FAITHFULNESS_SYSTEM, &faithfulness_prompt(assembled, a));
+            // Faithfulness has two paths: single-prompt (fast, default) or
+            // claim-decomposed (Phase 6, opt-in). They populate the SAME
+            // faithfulness_judged field; the n_claims_* fields disambiguate
+            // which mode produced the score.
+            let (f, n_ex, n_sup) = if config.decompose_faithfulness {
+                match faithfulness_judged_decomposed(j, assembled, a) {
+                    Some((score, n_ex, n_sup)) => (Some(score), Some(n_ex), Some(n_sup)),
+                    None => (None, None, None),
+                }
+            } else {
+                (
+                    judge_score(j, FAITHFULNESS_SYSTEM, &faithfulness_prompt(assembled, a)),
+                    None,
+                    None,
+                )
+            };
             let r = judge_score(j, RELEVANCY_SYSTEM, &relevancy_prompt(query.text.as_str(), a));
             let c = gold_answer
                 .filter(|g| !g.trim().is_empty())
                 .and_then(|g| judge_score(j, CORRECTNESS_SYSTEM, &correctness_prompt(g, a)));
-            (f, r, c)
+            (f, r, c, n_ex, n_sup)
         }
-        _ => (None, None, None),
+        _ => (None, None, None, None, None),
     };
 
     // ── Composite overall score ──
@@ -550,6 +720,8 @@ pub fn evaluate(
         faithfulness_judged,
         relevancy_judged,
         correctness_judged,
+        n_faithfulness_claims_extracted,
+        n_faithfulness_claims_supported,
         mean_grounding,
         evidence_density,
         retained_evidence_ratio,
@@ -773,7 +945,7 @@ mod tests {
             "refund window",
             &[rr("a", "the refund window is thirty days")],
         );
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
+        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None, EvalConfig::default());
         assert!(r.context_recall.is_none());
         assert!(r.context_precision.is_none());
         assert!(r.answer_token_recall.is_none());
@@ -801,6 +973,7 @@ mod tests {
             None,
             EvalGold::Chunks(&["hit1", "hit2"]),
         None,
+            EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(1.0));
         assert_eq!(r.context_precision, Some(1.0));
@@ -821,6 +994,7 @@ mod tests {
             None,
             EvalGold::Chunks(&["hit", "missing"]), // "missing" never indexed
             None,
+            EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold chunks present
         assert_eq!(r.context_precision, Some(0.5)); // 1 of 2 selected chunks is gold
@@ -841,6 +1015,7 @@ mod tests {
             None,
             EvalGold::Answer("refunds within thirty days"),
         None,
+            EvalConfig::default(),
         );
         let recall = r.answer_token_recall.expect("answer recall populated");
         assert!(
@@ -866,6 +1041,7 @@ mod tests {
             None,
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         assert!(
             r.low_confidence,
@@ -884,7 +1060,7 @@ mod tests {
         // chunks need to be retrieved" — vacuously perfect. Not the same as
         // EvalGold::None (which means "no gold available; skip the metric").
         let ctx = build("query", &[rr("a", "some text")]);
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&[]), None);
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&[]), None, EvalConfig::default());
         assert_eq!(r.context_recall, Some(1.0));
         // precision is undefined when gold is empty — we report None here so
         // a caller doesn't accidentally treat 0 as a real precision number.
@@ -908,6 +1084,7 @@ mod tests {
             None,
             EvalGold::Answer("thirty days"),
         None,
+            EvalConfig::default(),
         );
         assert!(r.context_recall.is_none());
         assert!(r.context_precision.is_none());
@@ -942,6 +1119,7 @@ mod tests {
                 gold_answer: "thirty days",
             },
             None,
+            EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(1.0)); // "hit" is in the selection
         assert!(r.context_precision.is_some());
@@ -973,6 +1151,7 @@ mod tests {
             None,
             EvalGold::Chunks(&["hit", "missing"]),
         None,
+            EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold present
         let p = r.context_precision.expect("precision populated");
@@ -1004,13 +1183,13 @@ mod tests {
         );
 
         // No gold — every self-eval field must be finite.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::None, None);
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::None, None, EvalConfig::default());
         assert!(r.mean_grounding.is_finite());
         assert!(r.overall.is_finite());
         assert!((0.0..=1.0).contains(&r.overall));
 
         // Chunk-gold provided — recall must be 0 (nothing selected), not NaN.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&["expected"]), None);
+        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&["expected"]), None, EvalConfig::default());
         assert_eq!(r.context_recall, Some(0.0));
         // precision on an empty selection is reported as 0.0 (not NaN) so
         // callers can treat the field as always-finite when chunk gold is
@@ -1023,7 +1202,7 @@ mod tests {
     #[test]
     fn tier1_metrics_none_when_no_answer_provided() {
         let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None);
+        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None, EvalConfig::default());
         assert!(r.faithfulness_lexical.is_none());
         assert!(r.relevancy_lexical.is_none());
         assert!(r.correctness_lexical.is_none());
@@ -1047,6 +1226,7 @@ mod tests {
             Some("The refund window is thirty days from purchase."),
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         let f = r.faithfulness_lexical.expect("populated");
         assert!(
@@ -1076,6 +1256,7 @@ mod tests {
                   Heisenberg uncertainty bounds measurement."),
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         let f = r.faithfulness_lexical.expect("populated");
         assert!(
@@ -1094,6 +1275,7 @@ mod tests {
             Some("The refund window is thirty days."),
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         // Answer with zero query-term overlap — low relevancy.
         let off_topic = evaluate(
@@ -1102,6 +1284,7 @@ mod tests {
             Some("Photosynthesis converts sunlight into glucose."),
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         let r_on = on_topic.relevancy_lexical.expect("populated");
         let r_off = off_topic.relevancy_lexical.expect("populated");
@@ -1121,6 +1304,7 @@ mod tests {
             Some("Thirty days from purchase."),
             EvalGold::None,
         None,
+            EvalConfig::default(),
         );
         assert!(r_answer_only.correctness_lexical.is_none());
 
@@ -1131,6 +1315,7 @@ mod tests {
             None,
             EvalGold::Answer("thirty days"),
         None,
+            EvalConfig::default(),
         );
         assert!(r_gold_only.correctness_lexical.is_none());
 
@@ -1141,6 +1326,7 @@ mod tests {
             Some("Thirty days from purchase."),
             EvalGold::Answer("thirty days"),
         None,
+            EvalConfig::default(),
         );
         let c = r_both
             .correctness_lexical
@@ -1159,6 +1345,7 @@ mod tests {
             Some("   "),
             EvalGold::Answer("thirty days"),
         None,
+            EvalConfig::default(),
         );
         assert!(r.faithfulness_lexical.is_none());
         assert!(r.relevancy_lexical.is_none());
@@ -1204,6 +1391,8 @@ mod tests {
             faithfulness_judged: None,
             relevancy_judged: None,
             correctness_judged: None,
+            n_faithfulness_claims_extracted: None,
+            n_faithfulness_claims_supported: None,
             mean_grounding: 0.5,
             evidence_density: 0.5,
             retained_evidence_ratio: 0.5,
@@ -1313,6 +1502,7 @@ mod tests {
             Some("Thirty days."),
             EvalGold::Answer("thirty days"),
             None,
+            EvalConfig::default(),
         );
         assert!(r.faithfulness_judged.is_none());
         assert!(r.relevancy_judged.is_none());
@@ -1332,6 +1522,7 @@ mod tests {
             None,
             EvalGold::Answer("thirty days"),
             Some(&judge),
+            EvalConfig::default(),
         );
         assert!(r.faithfulness_judged.is_none());
         assert!(r.relevancy_judged.is_none());
@@ -1351,6 +1542,7 @@ mod tests {
             Some("Thirty days from purchase."),
             EvalGold::None,
             Some(&judge),
+            EvalConfig::default(),
         );
         assert_eq!(r.faithfulness_judged, Some(0.7));
         assert_eq!(r.relevancy_judged, Some(0.9));
@@ -1371,6 +1563,7 @@ mod tests {
             Some("Thirty days from purchase."),
             EvalGold::Answer("thirty days"),
             Some(&judge),
+            EvalConfig::default(),
         );
         assert_eq!(r.correctness_judged, Some(0.6));
         // 3 judge calls now (faithfulness, relevancy, correctness).
@@ -1391,6 +1584,7 @@ mod tests {
             Some("Thirty days."),
             EvalGold::Answer("thirty days"),
             Some(&judge),
+            EvalConfig::default(),
         );
         assert!(r.faithfulness_judged.is_none());
         assert!(r.relevancy_judged.is_none());
@@ -1415,6 +1609,7 @@ mod tests {
             Some("The refund window is thirty days."),
             EvalGold::Answer("thirty days"),
             None,
+            EvalConfig::default(),
         )
         .overall;
         let judge_overall = evaluate(
@@ -1423,11 +1618,160 @@ mod tests {
             Some("The refund window is thirty days."),
             EvalGold::Answer("thirty days"),
             Some(&high_judge),
+            EvalConfig::default(),
         )
         .overall;
         assert!(
             judge_overall > no_judge_overall,
             "perfect judged metrics must raise overall; judged={judge_overall}, no_judge={no_judge_overall}"
         );
+    }
+
+    // ── Phase 6: claim decomposition ────────────────────────────────────────
+
+    /// Stub judge that returns a different response depending on which
+    /// scoring task is asked: the extraction prompt gets a multi-claim
+    /// list as `raw_text`, verification prompts get a numeric score.
+    fn decomposer_judge(
+        counter: Arc<AtomicUsize>,
+        n_claims: usize,
+        verification_score: f32,
+    ) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync>
+    {
+        CallableJudge::with_name("decomposer", move |req| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            let system = req.system.unwrap_or("");
+            if system.contains("Decompose answers") {
+                // Extraction: return n_claims one-per-line.
+                let claims = (0..n_claims)
+                    .map(|i| format!("claim {i}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Ok(JudgeResponse {
+                    score: 0.0, // unused on extraction calls
+                    raw_text: claims,
+                    model: "decomposer".into(),
+                })
+            } else {
+                // Verification or fallback: numeric score.
+                Ok(JudgeResponse {
+                    score: verification_score,
+                    raw_text: format!("{verification_score}"),
+                    model: "decomposer".into(),
+                })
+            }
+        })
+    }
+
+    #[test]
+    fn decomposition_off_by_default() {
+        // Without EvalConfig::decompose_faithfulness=true the legacy
+        // single-prompt path runs (1 LLM call for faithfulness).
+        let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = const_judge(0.9, counter.clone());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("The refund window is thirty days."),
+            EvalGold::None,
+            Some(&judge),
+            EvalConfig::default(),
+        );
+        assert_eq!(r.faithfulness_judged, Some(0.9));
+        assert!(r.n_faithfulness_claims_extracted.is_none());
+        assert!(r.n_faithfulness_claims_supported.is_none());
+        // 2 calls: faithfulness + relevancy. No correctness (no gold).
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn decomposition_extracts_and_verifies_each_claim() {
+        let ctx = build("refund window", &[rr("a", "the refund window is thirty days")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = decomposer_judge(counter.clone(), 3, 0.8);
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            Some("Three claims here."),
+            EvalGold::None,
+            Some(&judge),
+            EvalConfig {
+                decompose_faithfulness: true,
+            },
+        );
+        // 3 verification calls, all scoring 0.8 → mean = 0.8.
+        assert_eq!(r.faithfulness_judged, Some(0.8));
+        assert_eq!(r.n_faithfulness_claims_extracted, Some(3));
+        // 0.8 >= 0.5 threshold → all supported.
+        assert_eq!(r.n_faithfulness_claims_supported, Some(3));
+        // Calls: 1 extraction + 3 verifications + 1 relevancy = 5.
+        assert_eq!(counter.load(Ordering::SeqCst), 5);
+    }
+
+    #[test]
+    fn decomposition_supported_threshold_at_half() {
+        // Verification score below 0.5 → claim counts as unsupported.
+        let ctx = build("q", &[rr("a", "any text")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = decomposer_judge(counter.clone(), 4, 0.3);
+        let r = evaluate(
+            &Query::new("q"),
+            &ctx,
+            Some("Four claims here."),
+            EvalGold::None,
+            Some(&judge),
+            EvalConfig {
+                decompose_faithfulness: true,
+            },
+        );
+        assert_eq!(r.faithfulness_judged, Some(0.3));
+        assert_eq!(r.n_faithfulness_claims_extracted, Some(4));
+        assert_eq!(r.n_faithfulness_claims_supported, Some(0));
+    }
+
+    #[test]
+    fn decomposition_zero_claims_returns_none() {
+        // Extraction returns an empty list (e.g. answer is a refusal /
+        // pure opinion). faithfulness_judged stays None; we don't
+        // silently fall back to single-prompt scoring.
+        let ctx = build("q", &[rr("a", "anything")]);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let judge = decomposer_judge(counter.clone(), 0, 0.5);
+        let r = evaluate(
+            &Query::new("q"),
+            &ctx,
+            Some("I cannot answer that."),
+            EvalGold::None,
+            Some(&judge),
+            EvalConfig {
+                decompose_faithfulness: true,
+            },
+        );
+        assert!(r.faithfulness_judged.is_none());
+        assert!(r.n_faithfulness_claims_extracted.is_none());
+        assert!(r.n_faithfulness_claims_supported.is_none());
+        // 1 extraction call + 1 relevancy = 2.
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn parse_claims_handles_common_formats() {
+        // Bare one-per-line.
+        let bare = parse_claims("claim a\nclaim b\nclaim c");
+        assert_eq!(bare.len(), 3);
+        // Numbered.
+        let numbered = parse_claims("1. claim a\n2. claim b\n3) claim c");
+        assert_eq!(numbered.len(), 3);
+        assert_eq!(numbered[0], "claim a");
+        // Bulleted.
+        let bullets = parse_claims("- claim a\n* claim b\n  - claim c");
+        assert_eq!(bullets.len(), 3);
+        // Empty lines + whitespace dropped.
+        let mixed = parse_claims("\n\n   \nclaim a\n\nclaim b\n");
+        assert_eq!(mixed.len(), 2);
+        // Empty input → empty.
+        assert!(parse_claims("").is_empty());
+        assert!(parse_claims("\n\n   ").is_empty());
     }
 }

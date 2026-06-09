@@ -94,7 +94,9 @@ pub use crate::context::{
 };
 // In-process evaluation — score a `BuiltContext` against optional gold signals,
 // no LLM judge required. See `crate::context::eval` for the rationale.
-pub use crate::context::eval::{evaluate, summarize, EvalGold, EvalReport, EvalSummary};
+pub use crate::context::eval::{
+    evaluate, summarize, EvalConfig, EvalGold, EvalReport, EvalSummary,
+};
 
 // Core types you handle directly.
 pub use crate::core::{

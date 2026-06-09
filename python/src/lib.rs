@@ -2197,6 +2197,22 @@ impl EvalReport {
     fn correctness_judged(&self) -> Option<f32> {
         self.inner.correctness_judged
     }
+    /// **Phase-6 diagnostic**: number of atomic claims the judge
+    /// extracted from the answer when `decompose_faithfulness=True`.
+    /// `None` when claim decomposition wasn't requested OR the
+    /// extraction pass returned zero claims.
+    #[getter]
+    fn n_faithfulness_claims_extracted(&self) -> Option<usize> {
+        self.inner.n_faithfulness_claims_extracted
+    }
+    /// **Phase-6 diagnostic**: number of those claims the judge scored
+    /// ≥ 0.5 against the context (the per-claim "supported" threshold).
+    /// `None` under the same conditions as
+    /// `n_faithfulness_claims_extracted`.
+    #[getter]
+    fn n_faithfulness_claims_supported(&self) -> Option<usize> {
+        self.inner.n_faithfulness_claims_supported
+    }
     /// Mean grounding score over selected chunks, in `[0, 1]`. Same scorer
     /// the runtime uses for `ContextStrategy::DistractorFiltered`.
     #[getter]
@@ -2277,7 +2293,11 @@ impl EvalReport {
 /// runtime uses to make its Decision Report. See `EVALUATE_API.md` for
 /// the "refraction not independent measurement" design choice.
 #[pyfunction]
-#[pyo3(signature = (query, context, *, answer=None, gold_chunks=None, gold_answer=None, judge=None))]
+#[pyo3(signature = (
+    query, context, *,
+    answer=None, gold_chunks=None, gold_answer=None, judge=None,
+    decompose_faithfulness=false,
+))]
 fn evaluate(
     query: &str,
     context: &BuiltContext,
@@ -2285,6 +2305,7 @@ fn evaluate(
     gold_chunks: Option<Vec<String>>,
     gold_answer: Option<&str>,
     judge: Option<&PyJudge>,
+    decompose_faithfulness: bool,
 ) -> EvalReport {
     let q = Query::new(query);
     // Borrow gold_chunks as &[&str] so it matches the redhop::EvalGold borrowed shape.
@@ -2301,8 +2322,11 @@ fn evaluate(
         },
     };
     let judge_ref: Option<&dyn RhJudge> = judge.map(|j| j.inner.as_ref());
+    let config = redhop::EvalConfig {
+        decompose_faithfulness,
+    };
     EvalReport {
-        inner: redhop::evaluate(&q, &context.inner, answer, gold, judge_ref),
+        inner: redhop::evaluate(&q, &context.inner, answer, gold, judge_ref, config),
     }
 }
 

@@ -905,6 +905,14 @@ pub struct EvaluateOptions {
     pub gold_chunks: Option<Vec<String>>,
     /// Ground-truth answer text.
     pub gold_answer: Option<String>,
+    /// **Phase 6, opt-in**: compute `faithfulness_judged` via 2-pass
+    /// Ragas-style claim decomposition. Extracts atomic claims from
+    /// the answer, then verifies each against the context; the mean
+    /// of per-claim scores is the final faithfulness number. More
+    /// accurate than the single-prompt default but costs +N LLM calls
+    /// per evaluate. Only meaningful when a `judge` is also supplied
+    /// (via `evaluateWithJudge`); ignored by the sync `evaluate(...)`.
+    pub decompose_faithfulness: Option<bool>,
 }
 
 /// In-process evaluation report for one (query, BuiltContext) pair.
@@ -946,6 +954,15 @@ pub struct EvalReport {
     /// **Tier-2**: LLM-judged correctness. See `faithfulness_judged` for
     /// the Node availability note.
     pub correctness_judged: Option<f64>,
+    /// **Phase-6 diagnostic**: number of atomic claims the judge
+    /// extracted when `decomposeFaithfulness: true` was passed and a
+    /// judge was supplied. `null` otherwise (single-prompt path or
+    /// zero claims extracted).
+    pub n_faithfulness_claims_extracted: Option<u32>,
+    /// **Phase-6 diagnostic**: number of those claims the judge scored
+    /// ≥ 0.5 against the context. `null` under the same conditions as
+    /// `nFaithfulnessClaimsExtracted`.
+    pub n_faithfulness_claims_supported: Option<u32>,
     /// Mean grounding over selected chunks, in `[0, 1]`.
     pub mean_grounding: f64,
     /// Fraction of context tokens that are query-relevant.
@@ -1000,6 +1017,7 @@ pub fn evaluate(
         answer: None,
         gold_chunks: None,
         gold_answer: None,
+        decompose_faithfulness: None,
     });
     let q = redhop::core::Query::new(&query);
     let chunk_refs: Option<Vec<&str>> = opts
@@ -1017,8 +1035,16 @@ pub fn evaluate(
     };
     // Sync evaluate intentionally passes `None` for the judge — JS
     // callbacks can't safely fire during a sync napi call. Use
-    // `evaluateWithJudge` (async) for Tier-2 metrics.
-    let r = redhop::evaluate(&q, &context.inner, opts.answer.as_deref(), gold, None);
+    // `evaluateWithJudge` (async) for Tier-2 metrics; the
+    // decomposeFaithfulness option is meaningless without a judge.
+    let r = redhop::evaluate(
+        &q,
+        &context.inner,
+        opts.answer.as_deref(),
+        gold,
+        None,
+        redhop::EvalConfig::default(),
+    );
     eval_report_from_rust(r)
 }
 
@@ -1033,6 +1059,8 @@ fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
         faithfulness_judged: r.faithfulness_judged.map(|v| v as f64),
         relevancy_judged: r.relevancy_judged.map(|v| v as f64),
         correctness_judged: r.correctness_judged.map(|v| v as f64),
+        n_faithfulness_claims_extracted: r.n_faithfulness_claims_extracted.map(|v| v as u32),
+        n_faithfulness_claims_supported: r.n_faithfulness_claims_supported.map(|v| v as u32),
         mean_grounding: r.mean_grounding as f64,
         evidence_density: r.evidence_density as f64,
         retained_evidence_ratio: r.retained_evidence_ratio as f64,
@@ -1057,23 +1085,41 @@ use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 
 /// Tier-2 Judge: wraps a JS callable that scores a (prompt, system)
 /// pair on `[0, 1]`. Construct via `Judge.fromCallable(fn, name?)` and
-/// pass to `evaluateWithJudge(..., { judge })`. Call `.cached()` to
-/// memoize identical prompts across `evaluateWithJudge` calls — useful
-/// for CI determinism and avoiding double-billing on re-runs.
+/// pass to `evaluateWithJudge(query, ctx, judge, opts)`. Call
+/// `.cached()` to memoize identical prompts across calls — useful for
+/// CI determinism and avoiding double-billing on re-runs.
+///
+/// **Callback signature.** The JS callable receives THREE positional
+/// args: `(err, prompt, system)`. The first arg is napi-rs's error
+/// channel (null on the normal path; non-null only if the napi layer
+/// itself failed to deserialize the input — vanishingly rare for
+/// plain strings). Most users pass it through with destructuring:
 ///
 /// ```js
-/// // The callable: (prompt, system) → number in [0, 1] or a Promise of one.
-/// const judge = redhop.Judge.fromCallable(async (prompt, system) => {
+/// const judge = redhop.Judge.fromCallable(async (err, prompt, system) => {
+///   if (err) throw err;
 ///   const resp = await openai.chat.completions.create({ ... });
 ///   return parseFloat(resp.choices[0].message.content.trim());
 /// }, "gpt-4o-mini").cached();
 ///
-/// const report = await redhop.evaluateWithJudge(query, ctx, {
-///   answer: "Thirty days from purchase.",
-///   goldAnswer: "thirty days",
-///   judge,
-/// });
+/// const report = await redhop.evaluateWithJudge(
+///   query, ctx, judge,
+///   { answer: "Thirty days from purchase.", goldAnswer: "thirty days" },
+/// );
 /// ```
+///
+/// **Return type.** The callable may return either a `number` (the
+/// score) or a `string` (the raw LLM text — needed for the Phase-6
+/// claim-extraction call when `decomposeFaithfulness: true`). A
+/// numeric string ("0.8", "80%") is parsed via the same `parse_score`
+/// the Rust core uses; a non-numeric string keeps score=0 but
+/// preserves raw_text for downstream parsing.
+///
+/// **Error isolation.** A JS-thrown exception in the callable surfaces
+/// as `Err` on the underlying future. `redhop::evaluate` treats that
+/// as "this metric is unavailable" and leaves the corresponding
+/// `_judged` field as `null` — the process doesn't crash and the
+/// lexical fields stay populated.
 #[napi]
 pub struct Judge {
     inner: std::sync::Arc<dyn redhop::judge::Judge>,
@@ -1092,6 +1138,12 @@ impl Judge {
     /// `claude-haiku`.
     #[napi(factory)]
     pub fn from_callable(
+        // `ErrorStrategy::CalleeHandled` lets a JS-thrown exception
+        // surface as Err on the `call_async` future instead of FATAL-ing
+        // the process. The trade-off: the JS callback's first arg is an
+        // `err` (null on success); the actual prompt/system args are
+        // shifted to positions 1 and 2. JS-side helpers can wrap this
+        // shape ergonomically — see `Judge.fromCallable` docs.
         callable: ThreadsafeFunction<
             (String, Option<String>),
             ErrorStrategy::CalleeHandled,
@@ -1114,19 +1166,42 @@ impl Judge {
                 // thread is safe (we're not on the runtime's worker).
                 // A JS error / non-number return surfaces as Err(napi),
                 // which we convert to the Judge trait's Error.
-                let future = cb_tsfn.call_async::<f64>(Ok((prompt, system)));
+                // Accept either a numeric return (the score-only happy
+                // path) or a string return (raw LLM text — needed by the
+                // Phase-6 claim-decomposition extraction call, where the
+                // judge response is a list of claims rather than a score).
+                let future = cb_tsfn.call_async::<Either<f64, String>>(
+                    Ok((prompt, system)),
+                );
                 let handle = tokio::runtime::Handle::current();
-                let score = handle.block_on(future).map_err(|e| {
+                let value = handle.block_on(future).map_err(|e| {
                     redhop::core::Error::Other(format!(
                         "js judge future failed (thrown exception, \
-                         non-numeric return, or transport error): {e}"
+                         wrong return type, or transport error): {e}"
                     ))
                 })?;
-                Ok(redhop::judge::JudgeResponse {
-                    score: (score as f32).clamp(0.0, 1.0),
-                    raw_text: format!("{score}"),
-                    model: cb_name.clone(),
-                })
+                match value {
+                    Either::A(score) => Ok(redhop::judge::JudgeResponse {
+                        score: (score as f32).clamp(0.0, 1.0),
+                        raw_text: format!("{score}"),
+                        model: cb_name.clone(),
+                    }),
+                    Either::B(raw) => {
+                        // Best-effort parse for the score (handles
+                        // numeric strings, percentages, yes/no — the same
+                        // parser the OpenAI/Anthropic adapter would use).
+                        // Extraction calls' raw_text is what's load-bearing;
+                        // a parse failure leaves score at 0 but raw_text
+                        // intact, which is the right behavior since the
+                        // raw text is what the decomposition path needs.
+                        let score = redhop::judge::parse_score(&raw).unwrap_or(0.0);
+                        Ok(redhop::judge::JudgeResponse {
+                            score: score.clamp(0.0, 1.0),
+                            raw_text: raw,
+                            model: cb_name.clone(),
+                        })
+                    }
+                }
             },
         );
         Self {
@@ -1173,6 +1248,7 @@ pub async fn evaluate_with_judge(
         answer: None,
         gold_chunks: None,
         gold_answer: None,
+        decompose_faithfulness: None,
     });
     let ctx_inner = context.inner.clone();
     let judge_inner = judge.inner.clone();
@@ -1193,7 +1269,10 @@ pub async fn evaluate_with_judge(
         };
         let judge_ref: Option<&dyn redhop::judge::Judge> =
             Some(judge_inner.as_ref());
-        redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref)
+        let config = redhop::EvalConfig {
+            decompose_faithfulness: opts.decompose_faithfulness.unwrap_or(false),
+        };
+        redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref, config)
     })
     .await
     .map_err(|e| napi::Error::from_reason(format!("evaluate join: {e}")))?;

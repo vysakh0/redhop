@@ -619,3 +619,119 @@ def test_summarize_repr_includes_key_fields():
     assert "EvalSummary" in rep
     assert "n=2" in rep
     assert "mean_overall" in rep
+
+
+# ─── Phase 6: claim decomposition for faithfulness ──────────────────────────
+
+
+def _decomposer_judge(claims: list[str], verification_score: float, call_log: list):
+    """Stub judge that returns the claim list as raw_text on the extraction
+    pass, and a numeric score on verification passes. The Rust core
+    routes between the two by the system prompt content."""
+    extracted_text = "\n".join(claims)
+
+    def fn(prompt, system):
+        call_log.append((prompt[:60], system[:60] if system else None))
+        if system and "Decompose answers" in system:
+            return {"score": 0.0, "raw_text": extracted_text, "model": "stub"}
+        return verification_score
+
+    return redhop.Judge.from_callable(fn, name="decomposer")
+
+
+def test_decomposition_off_by_default():
+    """Without decompose_faithfulness=True, the legacy single-prompt path
+    runs and the n_faithfulness_claims_* fields stay None."""
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    calls = []
+    judge = _stub_judge_returning(0.9, calls)
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="The refund window is thirty days.",
+        judge=judge,
+    )
+    assert r.faithfulness_judged is not None
+    assert r.n_faithfulness_claims_extracted is None
+    assert r.n_faithfulness_claims_supported is None
+    # 2 calls: faithfulness + relevancy.
+    assert len(calls) == 2
+
+
+def test_decomposition_extracts_and_verifies():
+    ctx = redhop.build_context(
+        "refund window",
+        _chunks_for("the refund window is thirty days"),
+        strategy="raw_topk",
+    )
+    calls = []
+    judge = _decomposer_judge(
+        ["claim 1", "claim 2", "claim 3"],
+        verification_score=0.8,
+        call_log=calls,
+    )
+    r = redhop.evaluate(
+        "refund window",
+        ctx,
+        answer="Three claims here.",
+        judge=judge,
+        decompose_faithfulness=True,
+    )
+    # 3 claims at 0.8 each → mean 0.8.
+    assert r.faithfulness_judged is not None
+    assert abs(r.faithfulness_judged - 0.8) < 0.01
+    assert r.n_faithfulness_claims_extracted == 3
+    # 0.8 ≥ 0.5 → all supported.
+    assert r.n_faithfulness_claims_supported == 3
+    # Calls: 1 extraction + 3 verifications + 1 relevancy = 5.
+    assert len(calls) == 5
+
+
+def test_decomposition_zero_claims_returns_none():
+    """If extraction yields no claims (e.g. refusal answer), the metric
+    stays None rather than falling back to single-prompt scoring."""
+    ctx = redhop.build_context(
+        "q", _chunks_for("anything"), strategy="raw_topk"
+    )
+    calls = []
+    judge = _decomposer_judge(
+        claims=[],
+        verification_score=0.5,
+        call_log=calls,
+    )
+    r = redhop.evaluate(
+        "q",
+        ctx,
+        answer="I cannot answer that.",
+        judge=judge,
+        decompose_faithfulness=True,
+    )
+    assert r.faithfulness_judged is None
+    assert r.n_faithfulness_claims_extracted is None
+    assert r.n_faithfulness_claims_supported is None
+
+
+def test_decomposition_unsupported_threshold():
+    """A verification score < 0.5 counts as 'not supported'."""
+    ctx = redhop.build_context(
+        "q", _chunks_for("anything"), strategy="raw_topk"
+    )
+    calls = []
+    judge = _decomposer_judge(
+        claims=["a", "b", "c", "d"],
+        verification_score=0.3,
+        call_log=calls,
+    )
+    r = redhop.evaluate(
+        "q",
+        ctx,
+        answer="Four claims.",
+        judge=judge,
+        decompose_faithfulness=True,
+    )
+    assert r.n_faithfulness_claims_extracted == 4
+    assert r.n_faithfulness_claims_supported == 0  # all below 0.5
