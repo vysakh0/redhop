@@ -480,11 +480,17 @@ def main():
         default=TARGET_QIDS,
         help="qids to trace (default: 3 failures + 2 controls)",
     )
+    p.add_argument(
+        "--in",
+        dest="input_path",
+        default="reports/eval_correlation_hotpot_n25.json",
+        help="path to a correlation bench JSON containing the qids' answers",
+    )
     args = p.parse_args()
 
     extract_prompt_fn, verify_prompt_fn = VARIANTS[args.variant]
 
-    n25 = json.loads((REPO / "reports/eval_correlation_hotpot_n25.json").read_text())
+    n25 = json.loads((REPO / args.input_path).read_text())
     cases_by_qid = {c["qid"]: c for c in n25["cases"]}
     third_judge_path = REPO / "reports/eval_third_judge_eval_correlation_hotpot_n25.json"
     claude_by_qid: dict[str, float] = {}

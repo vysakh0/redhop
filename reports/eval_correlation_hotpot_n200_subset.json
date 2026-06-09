@@ -1,0 +1,675 @@
+{
+  "provider": "OpenRouter",
+  "model": "openai/gpt-4o-mini",
+  "n": 66,
+  "cases": [
+    {
+      "qid": "5a877e5d5542993e715abf7d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "David Weissman co-wrote \"The Family Man,\" which stars Nicolas Cage and T\u00e9a Leoni.",
+      "gold_answer": "David Weissman"
+    },
+    {
+      "qid": "5ab3b0bf5542992ade7c6e39",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Guns N' Roses performed a promo for the movie \"End of Days,\" which starred Arnold Schwarzenegger, in 1999.",
+      "gold_answer": "1999"
+    },
+    {
+      "qid": "5ab3e45655429976abd1bcd4",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Vermont Catamounts men's soccer team currently competes in the America East Conference, which was formerly known as the North Atlantic Conference from 1988 to 1996.",
+      "gold_answer": "the North Atlantic Conference"
+    },
+    {
+      "qid": "5a8133725542995ce29dcbdb",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.0,
+      "answer": "Robert Erskine Childers was from England.",
+      "gold_answer": "Robert Erskine Childers DSC"
+    },
+    {
+      "qid": "5ae6050f55429929b0807a5e",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "The singer of \"A Rather Blustery Day,\" Jim Cummings, voiced Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog.\"",
+      "gold_answer": "Sonic"
+    },
+    {
+      "qid": "5a7cc50e554299452d57ba3e",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.3333333333333333,
+      "answer": "Screaming Trees had more members, with four founding members compared to Letters to Cleo's six members.",
+      "gold_answer": "Letters to Cleo"
+    },
+    {
+      "qid": "5a79311755429970f5fffe67",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Masakazu Katsura, who was born in 1962, wrote and illustrated the manga series I\"s, which is about Ichitaka Seto.",
+      "gold_answer": "1962"
+    },
+    {
+      "qid": "5a760ab65542994ccc918697",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.5,
+      "answer": "Nelson Rockefeller.",
+      "gold_answer": "Nelson Rockefeller"
+    },
+    {
+      "qid": "5a7d54165542995f4f402256",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.5,
+      "answer": "Dirleton Castle borders on the south side of Yellowcraig.",
+      "gold_answer": "Yellowcraig"
+    },
+    {
+      "qid": "5a8e1027554299653c1aa15f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.0,
+      "answer": "The year was 2009 and the conference was the Big 12.",
+      "gold_answer": "2009 Big 12 Conference"
+    },
+    {
+      "qid": "5ab96ab755429970cfb8eacd",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.0,
+      "answer": "Ellie Goulding worked with Max Martin, Savan Kotecha, and Ilya Salmanzadeh on her third studio album, \"Delirium.\"",
+      "gold_answer": "Max Martin, Savan Kotecha and Ilya Salmanzadeh"
+    },
+    {
+      "qid": "5ae73acb5542991e8301cc07",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.5,
+      "answer": "D1NZ is a series based on the drifting driving technique.",
+      "gold_answer": "Drifting"
+    },
+    {
+      "qid": "5a7320565542991f9a20c61d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "Keith Bostic is younger than Jerry Glanville.",
+      "gold_answer": "Keith Bostic"
+    },
+    {
+      "qid": "5a8b20335542996c9b8d5fb3",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Tyrone \"Muggsy\" Bogues is known as the shortest player ever to play in the NBA and served as head coach of the now-defunct WNBA team Charlotte Sting.",
+      "gold_answer": "shortest player ever to play in the National Basketball Association"
+    },
+    {
+      "qid": "5ae37c765542992f92d822d4",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The name of the 1996 loose adaptation of William Shakespeare's \"Romeo & Juliet\" written by James Gunn is \"Tromeo and Juliet.\"",
+      "gold_answer": "Tromeo and Juliet"
+    },
+    {
+      "qid": "5ae33c4d5542992f92d82262",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "Robert Suettinger was the national intelligence officer under former Governor of Arkansas Bill Clinton.",
+      "gold_answer": "William Jefferson Clinton"
+    },
+    {
+      "qid": "5a77cb335542997042120b3a",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.3333333333333333,
+      "answer": "John \"John\" Alexander Florence won the Rip Curl Pro Portugal.",
+      "gold_answer": "John John Florence"
+    },
+    {
+      "qid": "5abdf12255429976d4830a2f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "The rock singer's stage name is Bob Seger.",
+      "gold_answer": "Bob Seger"
+    },
+    {
+      "qid": "5ac3165c5542995ef918c10a",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "John Waters hosted the 2002 Independent Spirit Awards.",
+      "gold_answer": "John Waters"
+    },
+    {
+      "qid": "5ae2b770554299495565db0f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "The annual documentary film festival presented by the London Review of Books is held in March and April.",
+      "gold_answer": "March and April"
+    },
+    {
+      "qid": "5ab659e355429954757d324e",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Three Men on a Horse is a play by George Abbott, who was born in 1887.",
+      "gold_answer": "1887"
+    },
+    {
+      "qid": "5a8b8b3155429949d91db5d7",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.3333333333333333,
+      "answer": "Owner earnings and Warren Buffett both relate to the valuation of a company based on its net cash flows.",
+      "gold_answer": "business"
+    },
+    {
+      "qid": "5a8c4c625542995e66a475a1",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "The base that the 514th Flight Test Squadron is stationed at, Hill Air Force Base, is named in honor of Major Ployer Peter Hill, who died test-flying a prototype of the B-17 Flying Fortress bomber.",
+      "gold_answer": "B-17 Flying Fortress bomber"
+    },
+    {
+      "qid": "5ae63dad55429929b0807afe",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The British author who wrote the novel is Edward Hunter Davies, and he was born on 7 January 1936.",
+      "gold_answer": "7 January 1936"
+    },
+    {
+      "qid": "5a7a455c5542994f819ef1a7",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "George Archainbaud died first on February 20, 1959, while Ralph Murphy died on February 10, 1967.",
+      "gold_answer": "George Archainbaud"
+    },
+    {
+      "qid": "5ac120c55542992a796dedfc",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "Maxeda has been owned since 2004 by the American private equity firm Kohlberg Kravis Roberts.",
+      "gold_answer": "KKR & Co"
+    },
+    {
+      "qid": "5ab7c1a955429928e1fe38c8",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "Bottom of the World.",
+      "gold_answer": "The Bye Bye Man"
+    },
+    {
+      "qid": "5a7332935542991f9a20c67d",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.3333333333333333,
+      "answer": "Catan was published most recently, with the latest game mentioned being released in 2010, while Pirate's Cove was originally published in 2002.",
+      "gold_answer": "Pirate's Cove"
+    },
+    {
+      "qid": "5a80071f5542992bc0c4a684",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Alice David is the voice of Lara Croft in a video game developed by Square Enix.",
+      "gold_answer": "Crystal Dynamics"
+    },
+    {
+      "qid": "5a7a230e5542996a35c170ee",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The film \"The Fault in Our Stars,\" which starred Nat Wolff, was released in 2014.",
+      "gold_answer": "2014"
+    },
+    {
+      "qid": "5ac2d1d755429921a00ab053",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Roberta Vinci had the best singles ranking, reaching a career-high of World No. 7, while Jorge Lozano's highest singles ranking was World No. 51.",
+      "gold_answer": "Roberta Vinci"
+    },
+    {
+      "qid": "5a8704f8554299211dda2ba4",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "The Isles led by Aonghus M\u00f3r are referred to as the Kingdom of the Isles.",
+      "gold_answer": "Kingdom of the Isles"
+    },
+    {
+      "qid": "5a713a5a5542994082a3e6a9",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.5,
+      "answer": "Manchester United Football Club plays in the area between the old toll gates: Brooks's Bar and Trafford Bar.",
+      "gold_answer": "Manchester United"
+    },
+    {
+      "qid": "5ae52c0f5542992663a4f12e",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "Faith Lutheran Middle School and High School is located in Las Vegas, Nevada.",
+      "gold_answer": "Las Vegas"
+    },
+    {
+      "qid": "5a8eea4a5542990e94052bb7",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The name \"Muhde\" derives from Old Frisian, which was spoken between the 8th and 16th centuries.",
+      "gold_answer": "between the 8th and 16th centuries"
+    },
+    {
+      "qid": "5a88dcf9554299206df2b383",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "Scotland.",
+      "gold_answer": "Scotland"
+    },
+    {
+      "qid": "5add673e5542992ae4cec54d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Joe Walker played for the Oregon Ducks, who end their regular season with the Civil War rivalry game against the Oregon State Beavers.",
+      "gold_answer": "Oregon Ducks football"
+    },
+    {
+      "qid": "5ae057fd55429945ae959328",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Robert Smith founded General Mills, which is headquartered in Golden Valley, Minnesota.",
+      "gold_answer": "Golden Valley, Minnesota,"
+    },
+    {
+      "qid": "5ab47d765542991751b4d78f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The hotel that held the IFBB professional bodybuilding competition in September 1991, the Walt Disney World Dolphin, was designed by architect Michael Graves.",
+      "gold_answer": "architect Michael Graves"
+    },
+    {
+      "qid": "5a7bae20554299294a54aa96",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Onika Tanya Maraj is a judge on \"American Idol,\" which is hosted by Ryan Seacrest.",
+      "gold_answer": "Ryan Seacrest"
+    },
+    {
+      "qid": "5a717d4c5542994082a3e854",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.0,
+      "answer": "Pavel Alexandrov has written more than 300 papers.",
+      "gold_answer": "Pavel Sergeyevich Alexandrov"
+    },
+    {
+      "qid": "5a79ea435542996c55b2dc9e",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "Rear Adm. J. Edward Snyder was the captain of the USS \"New Jersey,\" the only battleship to provide gunfire support during the Vietnam War.",
+      "gold_answer": "Rear Adm. J. Edward Snyder"
+    },
+    {
+      "qid": "5ab7e4dc5542995dae37e9df",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "Armie Hammer voices Jackson Storm in \"Cars 3.\"",
+      "gold_answer": "Jackson Storm"
+    },
+    {
+      "qid": "5a834ed95542990548d0b1ca",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "712 Fifth Avenue is taller at 650 ft compared to the Manhattan Life Insurance Building, which is 348 ft.",
+      "gold_answer": "712 5th Avenue"
+    },
+    {
+      "qid": "5ab41d855542996a3a969f4b",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.6666666666666666,
+      "answer": "Wahab Riaz is a right-hand batsman.",
+      "gold_answer": "right-hand"
+    },
+    {
+      "qid": "5a7b7ff75542995eb53be93d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 3,
+      "ragas_faithfulness": 0.5,
+      "answer": "Arthur Conan Doyle was born first on May 22, 1859, while Penelope Lively was born on March 17, 1933.",
+      "gold_answer": "Arthur Ignatius Conan Doyle"
+    },
+    {
+      "qid": "5ab5ed505542997d4ad1f255",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Bruce Spizer is an expert on The Beatles, who are regarded as the most influential act of the rock era.",
+      "gold_answer": "The Beatles"
+    },
+    {
+      "qid": "5a828c8355429966c78a6a50",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Yes, Kaiser Ventures corporation was founded by Henry J. Kaiser, who became known as the father of modern American shipbuilding.",
+      "gold_answer": "Henry J. Kaiser"
+    },
+    {
+      "qid": "5a87ab905542996e4f3088c1",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 3,677 people.",
+      "gold_answer": "3,677 seated"
+    },
+    {
+      "qid": "5a7ddc5a5542995f4f4022da",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Both Bishop Carroll Catholic High School and Kapaun Mt. Carmel Catholic High School are located in Wichita, Kansas.",
+      "gold_answer": "Wichita"
+    },
+    {
+      "qid": "5ae1f4cb554299234fd0436d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The city where the 122nd SS-Standarte was formed, Strasbourg, had 276,170 inhabitants in 2014.",
+      "gold_answer": "276,170 inhabitants"
+    },
+    {
+      "qid": "5a8361b65542992ef85e22a0",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Vince Phillips held a junior welterweight title by an organization recognized by the International Boxing Hall of Fame (IBHOF).",
+      "gold_answer": "International Boxing Hall of Fame"
+    },
+    {
+      "qid": "5a77152355429966f1a36c2e",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "The Roud Folk Song Index of the nursery rhyme inspiring \"What Are Little Girls Made Of?\" is 821.",
+      "gold_answer": "821"
+    },
+    {
+      "qid": "5abf63f15542997ec76fd3ea",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "The Russian Civil War ended in 1923.",
+      "gold_answer": "October 1922"
+    },
+    {
+      "qid": "5adf37a95542995ec70e8f97",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Virginia Commonwealth University was founded in 1838.",
+      "gold_answer": "1838"
+    },
+    {
+      "qid": "5a74ce9655429974ef308c6c",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "Lush Ltd. is the retailer in ABQ Uptown that is headquartered in Poole, Dorset, United Kingdom.",
+      "gold_answer": "Lush Ltd."
+    },
+    {
+      "qid": "5a75f79555429976ec32bcca",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "The 1999 Odisha cyclone had a film made about it in 2007 titled \"Kathantara.\"",
+      "gold_answer": "1999 Odisha cyclone"
+    },
+    {
+      "qid": "5a8574945542997b5ce3fffb",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "LaLee's Kin: The Legacy of Cotton was nominated for an Oscar.",
+      "gold_answer": "LaLee's Kin: The Legacy of Cotton"
+    },
+    {
+      "qid": "5ae22b8d554299234fd0440f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Kasper Schmeichel's father, Peter Schmeichel, was voted the IFFHS World's Best Goalkeeper in 1992.",
+      "gold_answer": "World's Best Goalkeeper"
+    },
+    {
+      "qid": "5ae4627d5542991a06ce9a4d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Katherine Murray Millett attended Oxford University.",
+      "gold_answer": "Oxford"
+    },
+    {
+      "qid": "5a85eed75542996432c5713b",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "The descendants of the Black Seminoles settled in Florida and Oklahoma.",
+      "gold_answer": "Coahuila, Mexico"
+    },
+    {
+      "qid": "5a7bbb64554299042af8f7cc",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "Annie Morton is older than Terry Richardson.",
+      "gold_answer": "Terry Richardson"
+    },
+    {
+      "qid": "5a7be2595542997c3ec972ac",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Virginia Woolf was born earlier than Emma Bull.",
+      "gold_answer": "Adeline Virginia Woolf"
+    },
+    {
+      "qid": "5a8f4c8d554299458435d5a3",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 1.0,
+      "answer": "Halliburton has operations in more than 70 countries.",
+      "gold_answer": "more than 70 countries"
+    },
+    {
+      "qid": "5a75f0ea5542994ccc91866c",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.5,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 1,
+      "ragas_faithfulness": 0.5,
+      "answer": "The A41 is a major truck road located in Backford Cross.",
+      "gold_answer": "The A41"
+    },
+    {
+      "qid": "5ac298f9554299657fa28fc9",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 1.0,
+      "n_claims_extracted": 2,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 1.0,
+      "answer": "Ian Watkins was incarcerated, impacting his career with Lostprophets.",
+      "gold_answer": "Lostprophets disbanded in 2013 after Watkins was charged with sexual offences in late 2012."
+    }
+  ],
+  "pearson": {
+    "redhop_single_vs_ragas": 0.2846695718265111,
+    "redhop_decomposed_vs_ragas": 0.6635866092527977
+  },
+  "mae": {
+    "redhop_single_vs_ragas": 0.23908333333333334,
+    "redhop_decomposed_vs_ragas": 0.15050000009934109
+  }
+}

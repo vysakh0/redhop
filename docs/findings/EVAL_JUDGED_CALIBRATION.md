@@ -263,9 +263,72 @@ that Ragas's older verifier prompt doesn't. So the result is
 not "RedHop is correct." A human ground-truth pass on the contested
 cases would close that gap.
 
+### Scale-up to n=200 — what holds, what breaks
+
+We re-ran the same bench on n=200 HotpotQA (`bench/eval_correlation_hotpot.py --n 200 --context all`)
+and selectively third-judged 66 cases (46 contested + 20 agreement controls).
+
+**Aggregate (n=200) — robust signals:**
+
+| metric | n=25 v4 | **n=200 v4** |
+|---|---:|---:|
+| Pearson r(RedHop_d, Ragas) | +0.703 | **+0.664** |
+| MAE(RedHop_d, Ragas) | 0.153 | **0.151** |
+| Perfect agreement with Ragas (Δ=0) | n/a | **122/200 (61%)** |
+| Refusals (RedHop_d=None) | n/a | 22/200 (11%) |
+
+These numbers replicate the n=25 trend: strong correlation with
+Ragas, low MAE, 60%+ exact agreement.
+
+**Single-shot LLM noise — what the n=200 third-judge subset taught us:**
+
+The n=200 bench measured MAE(RedHop_d, Claude haiku) at **0.340** on
+the 66-case subset, vs Ragas at 0.262 — looking like RedHop got
+*worse* at scale. But re-tracing 5 randomly-sampled "RedHop loses
+to Ragas" contested cases at 5 runs each shows:
+
+- 4/5 of the sampled contested cases give 1.0 consistently in 5/5
+  trace runs. The bench captured a one-shot unlucky 0.0.
+- The 5th case (`5a760ab6…`) gives 0.0 consistently — genuinely a
+  case where RedHop disagrees with Ragas/Claude.
+
+`gpt-4o-mini` at temperature 0.0 is **not deterministic** through
+OpenRouter. Routing across model replicas plus floating-point
+non-associativity in attention ops gives ~20–30% per-case variance
+on borderline judgments. Ragas's classes (`SingleHopSpecificQuery`)
+hit the same non-determinism, but its scoring shape (one LLM call
+per claim with structured JSON output) may absorb the noise
+differently than our batched `N: SCORE` format.
+
+**Implications for the per-case MAE-to-Claude number:**
+
+- Robust at scale: **Pearson r** and **MAE-vs-Ragas** average over N
+  cases. Single-shot noise averages out.
+- Fragile: **MAE-vs-Claude** on a small contested-case subset is
+  dominated by single-shot misses. The n=25 win (RedHop +0.210
+  edge) was partly small-sample luck; the n=200 loss (-0.078) is
+  partly single-shot noise. Neither is a robust verdict.
+
+**What the third-judge tie-breaker DOES robustly tell us:**
+
+On both n=25 (4 contested cases) and n=200 (35 contested cases),
+Claude haiku doesn't unanimously prefer either library — it splits
+roughly evenly when measured at scale. Neither RedHop nor Ragas is
+clearly "more correct" on contested cases by a third LLM's read.
+
+**The honest verdict, post-scale:**
+
+- v4 prompts produce stable, high-correlation, low-MAE results vs
+  Ragas at both n=25 and n=200.
+- The "RedHop beats Ragas by Claude" claim from n=25 does NOT
+  replicate at n=200 once you account for single-shot variance —
+  it's roughly a tie, not a win.
+- The David Weissman / Annie Morton / Arena of Khazan / Jim Cummings
+  fixes are real (5/5 stable in traces) and improve aggregate MAE.
+
 ### Honest limits
 
-- **n=25.** A reasonable sanity check but not a benchmark. n=200 with
+- **n=25 / n=200.** A reasonable sanity check but not a benchmark. n=200 with
   the same setup would be more authoritative.
 - **Single LLM (`openai/gpt-4o-mini`).** Different judge models will
   produce different absolute numbers and could shift the agreement

@@ -1,0 +1,190 @@
+Loaded 66 cases from reports/eval_correlation_hotpot_n200_subset.json
+Asking Claude haiku for an independent faithfulness score on each…
+  [1/66] 5a877e5d5542993e715abf7d: Claude→1.000
+  [2/66] 5ab3b0bf5542992ade7c6e39: Claude→0.700
+  [3/66] 5ab3e45655429976abd1bcd4: Claude→1.000
+  [4/66] 5a8133725542995ce29dcbdb: Claude→1.000
+  [5/66] 5ae6050f55429929b0807a5e: Claude→0.000
+  [6/66] 5a7cc50e554299452d57ba3e: Claude→0.000
+  [7/66] 5a79311755429970f5fffe67: Claude→1.000
+  [8/66] 5a760ab65542994ccc918697: Claude→1.000
+  [9/66] 5a7d54165542995f4f402256: Claude→1.000
+  [10/66] 5a8e1027554299653c1aa15f: Claude→1.000
+  [11/66] 5ab96ab755429970cfb8eacd: Claude→1.000
+  [12/66] 5ae73acb5542991e8301cc07: Claude→1.000
+  [13/66] 5a7320565542991f9a20c61d: Claude→1.000
+  [14/66] 5a8b20335542996c9b8d5fb3: Claude→1.000
+  [15/66] 5ae37c765542992f92d822d4: Claude→1.000
+  [16/66] 5ae33c4d5542992f92d82262: Claude→1.000
+  [17/66] 5a77cb335542997042120b3a: Claude→1.000
+  [18/66] 5abdf12255429976d4830a2f: Claude→1.000
+  [19/66] 5ac3165c5542995ef918c10a: Claude→1.000
+  [20/66] 5ae2b770554299495565db0f: Claude→0.800
+  [21/66] 5ab659e355429954757d324e: Claude→1.000
+  [22/66] 5a8b8b3155429949d91db5d7: Claude→1.000
+  [23/66] 5a8c4c625542995e66a475a1: Claude→1.000
+  [24/66] 5ae63dad55429929b0807afe: Claude→1.000
+  [25/66] 5a7a455c5542994f819ef1a7: Claude→1.000
+  [26/66] 5ac120c55542992a796dedfc: Claude→0.600
+  [27/66] 5ab7c1a955429928e1fe38c8: Claude→1.000
+  [28/66] 5a7332935542991f9a20c67d: Claude→0.850
+  [29/66] 5a80071f5542992bc0c4a684: Claude→0.000
+  [30/66] 5a7a230e5542996a35c170ee: Claude→1.000
+  [31/66] 5ac2d1d755429921a00ab053: Claude→1.000
+  [32/66] 5a8704f8554299211dda2ba4: Claude→0.200
+  [33/66] 5a713a5a5542994082a3e6a9: Claude→0.900
+  [34/66] 5ae52c0f5542992663a4f12e: Claude→0.600
+  [35/66] 5a8eea4a5542990e94052bb7: Claude→1.000
+  [36/66] 5a88dcf9554299206df2b383: Claude→0.200
+  [37/66] 5add673e5542992ae4cec54d: Claude→1.000
+  [38/66] 5ae057fd55429945ae959328: Claude→1.000
+  [39/66] 5ab47d765542991751b4d78f: Claude→1.000
+  [40/66] 5a7bae20554299294a54aa96: Claude→1.000
+  [41/66] 5a717d4c5542994082a3e854: Claude→0.000
+  [42/66] 5a79ea435542996c55b2dc9e: Claude→1.000
+  [43/66] 5ab7e4dc5542995dae37e9df: Claude→1.000
+  [44/66] 5a834ed95542990548d0b1ca: Claude→1.000
+  [45/66] 5ab41d855542996a3a969f4b: Claude→1.000
+  [46/66] 5a7b7ff75542995eb53be93d: Claude→1.000
+  [47/66] 5ab5ed505542997d4ad1f255: Claude→1.000
+  [48/66] 5a828c8355429966c78a6a50: Claude→1.000
+  [49/66] 5a87ab905542996e4f3088c1: Claude→1.000
+  [50/66] 5a7ddc5a5542995f4f4022da: Claude→1.000
+  [51/66] 5ae1f4cb554299234fd0436d: Claude→1.000
+  [52/66] 5a8361b65542992ef85e22a0: Claude→1.000
+  [53/66] 5a77152355429966f1a36c2e: Claude→1.000
+  [54/66] 5abf63f15542997ec76fd3ea: Claude→1.000
+  [55/66] 5adf37a95542995ec70e8f97: Claude→1.000
+  [56/66] 5a74ce9655429974ef308c6c: Claude→1.000
+  [57/66] 5a75f79555429976ec32bcca: Claude→1.000
+  [58/66] 5a8574945542997b5ce3fffb: Claude→1.000
+  [59/66] 5ae22b8d554299234fd0440f: Claude→1.000
+  [60/66] 5ae4627d5542991a06ce9a4d: Claude→1.000
+  [61/66] 5a85eed75542996432c5713b: Claude→0.800
+  [62/66] 5a7bbb64554299042af8f7cc: Claude→0.000
+  [63/66] 5a7be2595542997c3ec972ac: Claude→1.000
+  [64/66] 5a8f4c8d554299458435d5a3: Claude→1.000
+  [65/66] 5a75f0ea5542994ccc91866c: Claude→0.000
+  [66/66] 5ac298f9554299657fa28fc9: Claude→1.000
+
+Total Claude time: 659.2s
+
+========================================================================================
+  Faithfulness — three-way: RedHop / Ragas / Claude haiku
+========================================================================================
+  qid                        RedHop S   RedHop D    Ragas   Claude
+  ----------------------------------------------------------------
+  5a877e5d5542993e715abf7d      1.000      1.000    0.667    1.000
+  5ab3b0bf5542992ade7c6e39      1.000      0.667    1.000    0.700
+  5ab3e45655429976abd1bcd4      1.000      0.500    1.000    1.000
+  5a8133725542995ce29dcbdb      1.000      1.000    0.000    1.000
+  5ae6050f55429929b0807a5e      0.000      0.000    1.000    0.000
+  5a7cc50e554299452d57ba3e      0.000      1.000    0.333    0.000
+  5a79311755429970f5fffe67      1.000      0.667    1.000    1.000
+  5a760ab65542994ccc918697      1.000      0.000    0.500    1.000
+  5a7d54165542995f4f402256      0.000      0.000    0.500    1.000
+  5a8e1027554299653c1aa15f      1.000      1.000    0.000    1.000
+  5ab96ab755429970cfb8eacd      1.000      1.000    0.000    1.000
+  5ae73acb5542991e8301cc07      1.000      0.000    0.500    1.000
+  5a7320565542991f9a20c61d      1.000      0.000    1.000    1.000
+  5a8b20335542996c9b8d5fb3      1.000      0.500    1.000    1.000
+  5ae37c765542992f92d822d4      1.000      0.500    1.000    1.000
+  5ae33c4d5542992f92d82262      1.000      1.000    0.500    1.000
+  5a77cb335542997042120b3a      0.000      0.000    0.333    1.000
+  5abdf12255429976d4830a2f      1.000      0.000    1.000    1.000
+  5ac3165c5542995ef918c10a      1.000      0.000    1.000    1.000
+  5ae2b770554299495565db0f      1.000      1.000    0.667    0.800
+  5ab659e355429954757d324e      1.000      0.500    1.000    1.000
+  5a8b8b3155429949d91db5d7      1.000      1.000    0.333    1.000
+  5a8c4c625542995e66a475a1      1.000      1.000    0.667    1.000
+  5ae63dad55429929b0807afe      1.000      0.667    1.000    1.000
+  5a7a455c5542994f819ef1a7      1.000      1.000    0.500    1.000
+  5ac120c55542992a796dedfc      1.000      1.000    0.500    0.600
+  5ab7c1a955429928e1fe38c8      1.000      0.000    1.000    1.000
+  5a7332935542991f9a20c67d      0.000      0.667    0.333    0.850
+  5a80071f5542992bc0c4a684      1.000      0.500    1.000    0.000
+  5a7a230e5542996a35c170ee      1.000      0.500    1.000    1.000
+  5ac2d1d755429921a00ab053      1.000      1.000    0.667    1.000
+  5a8704f8554299211dda2ba4      1.000      1.000    0.500    0.200
+  5a713a5a5542994082a3e6a9      0.000      0.000    0.500    0.900
+  5ae52c0f5542992663a4f12e      1.000      1.000    0.500    0.600
+  5a8eea4a5542990e94052bb7      0.000      0.500    1.000    1.000
+  5a88dcf9554299206df2b383      1.000      0.000    1.000    0.200
+  5add673e5542992ae4cec54d      1.000      1.000    0.667    1.000
+  5ae057fd55429945ae959328      1.000      0.500    1.000    1.000
+  5ab47d765542991751b4d78f      1.000      0.500    1.000    1.000
+  5a7bae20554299294a54aa96      1.000      0.500    1.000    1.000
+  5a717d4c5542994082a3e854      0.000      1.000    0.000    0.000
+  5a79ea435542996c55b2dc9e      1.000      1.000    0.500    1.000
+  5ab7e4dc5542995dae37e9df      1.000      1.000    0.500    1.000
+  5a834ed95542990548d0b1ca      1.000      0.667    1.000    1.000
+  5ab41d855542996a3a969f4b      0.000      0.000    0.667    1.000
+  5a7b7ff75542995eb53be93d      1.000      1.000    0.500    1.000
+  5ab5ed505542997d4ad1f255      1.000      1.000    1.000    1.000
+  5a828c8355429966c78a6a50      1.000      1.000    1.000    1.000
+  5a87ab905542996e4f3088c1      1.000      1.000    1.000    1.000
+  5a7ddc5a5542995f4f4022da      1.000      1.000    1.000    1.000
+  5ae1f4cb554299234fd0436d      1.000      1.000    1.000    1.000
+  5a8361b65542992ef85e22a0      1.000      1.000    1.000    1.000
+  5a77152355429966f1a36c2e      0.000      0.000    0.000    1.000
+  5abf63f15542997ec76fd3ea      1.000      1.000    1.000    1.000
+  5adf37a95542995ec70e8f97      1.000      1.000    1.000    1.000
+  5a74ce9655429974ef308c6c      0.000      0.500    0.500    1.000
+  5a75f79555429976ec32bcca      1.000      1.000    1.000    1.000
+  5a8574945542997b5ce3fffb      1.000      1.000    1.000    1.000
+  5ae22b8d554299234fd0440f      1.000      1.000    1.000    1.000
+  5ae4627d5542991a06ce9a4d      1.000      1.000    1.000    1.000
+  5a85eed75542996432c5713b      1.000      0.500    0.500    0.800
+  5a7bbb64554299042af8f7cc      1.000      0.000    0.000    0.000
+  5a7be2595542997c3ec972ac      1.000      1.000    1.000    1.000
+  5a8f4c8d554299458435d5a3      1.000      1.000    1.000    1.000
+  5a75f0ea5542994ccc91866c      0.000      0.500    0.500    0.000
+  5ac298f9554299657fa28fc9      1.000      1.000    1.000    1.000
+
+  Mean absolute error vs Claude (third-judge tie-breaker):
+  RedHop single-prompt → Claude:  MAE=0.195  (n=66)
+  RedHop decomposed    → Claude:  MAE=0.340  (n=66)
+  Ragas                → Claude:  MAE=0.262  (n=66)
+
+  Closer to Claude: Ragas (by +0.078 MAE)
+
+  Contested cases (|RedHop_d - Ragas| ≥ 0.5): n=35
+    5ab3e45655429976abd1bcd4  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a8133725542995ce29dcbdb  RedHop_d=1.00  Ragas=0.00  Claude=1.00  → RH closer
+    5ae6050f55429929b0807a5e  RedHop_d=0.00  Ragas=1.00  Claude=0.00  → RH closer
+    5a7cc50e554299452d57ba3e  RedHop_d=1.00  Ragas=0.33  Claude=0.00  → Rg closer
+    5a760ab65542994ccc918697  RedHop_d=0.00  Ragas=0.50  Claude=1.00  → Rg closer
+    5a7d54165542995f4f402256  RedHop_d=0.00  Ragas=0.50  Claude=1.00  → Rg closer
+    5a8e1027554299653c1aa15f  RedHop_d=1.00  Ragas=0.00  Claude=1.00  → RH closer
+    5ab96ab755429970cfb8eacd  RedHop_d=1.00  Ragas=0.00  Claude=1.00  → RH closer
+    5ae73acb5542991e8301cc07  RedHop_d=0.00  Ragas=0.50  Claude=1.00  → Rg closer
+    5a7320565542991f9a20c61d  RedHop_d=0.00  Ragas=1.00  Claude=1.00  → Rg closer
+    5a8b20335542996c9b8d5fb3  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5ae37c765542992f92d822d4  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5ae33c4d5542992f92d82262  RedHop_d=1.00  Ragas=0.50  Claude=1.00  → RH closer
+    5abdf12255429976d4830a2f  RedHop_d=0.00  Ragas=1.00  Claude=1.00  → Rg closer
+    5ac3165c5542995ef918c10a  RedHop_d=0.00  Ragas=1.00  Claude=1.00  → Rg closer
+    5ab659e355429954757d324e  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a8b8b3155429949d91db5d7  RedHop_d=1.00  Ragas=0.33  Claude=1.00  → RH closer
+    5a7a455c5542994f819ef1a7  RedHop_d=1.00  Ragas=0.50  Claude=1.00  → RH closer
+    5ac120c55542992a796dedfc  RedHop_d=1.00  Ragas=0.50  Claude=0.60  → Rg closer
+    5ab7c1a955429928e1fe38c8  RedHop_d=0.00  Ragas=1.00  Claude=1.00  → Rg closer
+    5a80071f5542992bc0c4a684  RedHop_d=0.50  Ragas=1.00  Claude=0.00  → RH closer
+    5a7a230e5542996a35c170ee  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a8704f8554299211dda2ba4  RedHop_d=1.00  Ragas=0.50  Claude=0.20  → Rg closer
+    5a713a5a5542994082a3e6a9  RedHop_d=0.00  Ragas=0.50  Claude=0.90  → Rg closer
+    5ae52c0f5542992663a4f12e  RedHop_d=1.00  Ragas=0.50  Claude=0.60  → Rg closer
+    5a8eea4a5542990e94052bb7  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a88dcf9554299206df2b383  RedHop_d=0.00  Ragas=1.00  Claude=0.20  → RH closer
+    5ae057fd55429945ae959328  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5ab47d765542991751b4d78f  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a7bae20554299294a54aa96  RedHop_d=0.50  Ragas=1.00  Claude=1.00  → Rg closer
+    5a717d4c5542994082a3e854  RedHop_d=1.00  Ragas=0.00  Claude=0.00  → Rg closer
+    5a79ea435542996c55b2dc9e  RedHop_d=1.00  Ragas=0.50  Claude=1.00  → RH closer
+    5ab7e4dc5542995dae37e9df  RedHop_d=1.00  Ragas=0.50  Claude=1.00  → RH closer
+    5ab41d855542996a3a969f4b  RedHop_d=0.00  Ragas=0.67  Claude=1.00  → Rg closer
+    5a7b7ff75542995eb53be93d  RedHop_d=1.00  Ragas=0.50  Claude=1.00  → RH closer
+  Claude is closer to RedHop_decomposed:  12/35
+  Claude is closer to Ragas:              23/35
+
+  → /Users/vysakh/projects/neorag1/reports/eval_third_judge_eval_correlation_hotpot_n200_subset.json
