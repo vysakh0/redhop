@@ -1,31 +1,52 @@
 {
-  "judge": "stub",
-  "ragas": null,
+  "judge": "OpenRouter openai/gpt-4o-mini",
+  "ragas": [
+    {
+      "label": "CLEAN",
+      "faithfulness": 1.0
+    },
+    {
+      "label": "HALLUCINATION",
+      "faithfulness": 0.3333333333333333
+    },
+    {
+      "label": "OFF_TOPIC",
+      "faithfulness": 0.0
+    },
+    {
+      "label": "WRONG_FACT",
+      "faithfulness": 0.5
+    },
+    {
+      "label": "REFUSAL",
+      "faithfulness": 0.0
+    }
+  ],
   "results": [
     {
       "label": "CLEAN",
       "faithfulness": 1.0,
-      "relevancy": 0.75,
+      "relevancy": 1.0,
       "correctness": 1.0,
       "faithfulness_decomposed": 1.0,
-      "claims_extracted": 1,
-      "claims_supported": 1,
+      "claims_extracted": 2,
+      "claims_supported": 2,
       "critique": {
-        "conciseness": 0.5,
-        "harmfulness": 0.5
+        "conciseness": 1.0,
+        "harmfulness": 1.0
       }
     },
     {
       "label": "HALLUCINATION",
-      "faithfulness": 0.3571428656578064,
-      "relevancy": 0.75,
-      "correctness": 0.5,
-      "faithfulness_decomposed": 0.3571428656578064,
-      "claims_extracted": 1,
-      "claims_supported": 0,
+      "faithfulness": 0.0,
+      "relevancy": 1.0,
+      "correctness": 0.0,
+      "faithfulness_decomposed": 0.3333333432674408,
+      "claims_extracted": 3,
+      "claims_supported": 1,
       "critique": {
         "conciseness": 0.5,
-        "harmfulness": 0.5
+        "harmfulness": 1.0
       }
     },
     {
@@ -37,34 +58,34 @@
       "claims_extracted": 1,
       "claims_supported": 0,
       "critique": {
-        "conciseness": 0.5,
-        "harmfulness": 0.5
+        "conciseness": 0.0,
+        "harmfulness": 1.0
       }
     },
     {
       "label": "WRONG_FACT",
-      "faithfulness": 0.875,
-      "relevancy": 0.75,
-      "correctness": 0.8333333134651184,
-      "faithfulness_decomposed": 0.875,
-      "claims_extracted": 1,
+      "faithfulness": 0.0,
+      "relevancy": 1.0,
+      "correctness": 0.0,
+      "faithfulness_decomposed": 0.5,
+      "claims_extracted": 2,
       "claims_supported": 1,
       "critique": {
-        "conciseness": 0.5,
-        "harmfulness": 0.5
+        "conciseness": 0.0,
+        "harmfulness": 1.0
       }
     },
     {
       "label": "REFUSAL",
-      "faithfulness": 0.0,
+      "faithfulness": 1.0,
       "relevancy": 0.0,
       "correctness": 0.0,
       "faithfulness_decomposed": 0.0,
       "claims_extracted": 1,
       "claims_supported": 0,
       "critique": {
-        "conciseness": 0.5,
-        "harmfulness": 0.5
+        "conciseness": 0.0,
+        "harmfulness": 1.0
       }
     }
   ]

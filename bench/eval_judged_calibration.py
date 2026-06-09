@@ -57,7 +57,14 @@ from pathlib import Path
 import redhop
 
 REPO = Path(__file__).resolve().parents[1]
-MODEL_DEFAULT = "gpt-4o-mini"
+
+# Model id. OpenRouter expects vendor-prefixed ids (`openai/gpt-4o-mini`,
+# `anthropic/claude-3-haiku-20240307`); bare OpenAI expects unprefixed
+# (`gpt-4o-mini`). We pick based on which key is set.
+if os.environ.get("OPENROUTER_API_KEY"):
+    MODEL_DEFAULT = os.environ.get("EVAL_MODEL", "openai/gpt-4o-mini")
+else:
+    MODEL_DEFAULT = os.environ.get("EVAL_MODEL", "gpt-4o-mini")
 
 
 # ── Test set ────────────────────────────────────────────────────────────────
@@ -162,19 +169,36 @@ TEST_SET: list[TestCase] = [
 
 
 def make_openai_judge(model: str = MODEL_DEFAULT) -> redhop.Judge:
-    """Real OpenAI judge. Requires `OPENAI_API_KEY` env var.
+    """Real LLM judge over an OpenAI-compatible chat-completions API.
+
+    Picks up credentials from one of:
+      • `OPENROUTER_API_KEY` — routes via openrouter.ai (multi-vendor;
+        cheap; use a model id like `openai/gpt-4o-mini` or
+        `anthropic/claude-3-haiku`)
+      • `OPENAI_API_KEY` — routes via api.openai.com (use a bare model
+        id like `gpt-4o-mini`)
 
     Imported lazily so users without the openai package can still run
-    the script in stub mode."""
+    the script in stub mode.
+    """
     from openai import OpenAI  # type: ignore
 
-    client = OpenAI()
+    if os.environ.get("OPENROUTER_API_KEY"):
+        client = OpenAI(
+            api_key=os.environ["OPENROUTER_API_KEY"],
+            base_url="https://openrouter.ai/api/v1",
+        )
+    else:
+        client = OpenAI()  # picks up OPENAI_API_KEY from env
 
-    def score(prompt: str, system: str | None) -> str:
-        # Single-shot chat completion with temperature 0 for max
-        # determinism. Return the raw text so RedHop's parse_score can
-        # handle "0.85" AND so the claim-extraction path (which expects
-        # raw text, not a number) works without special-casing.
+    def score(prompt: str, system: str | None):
+        """Single-shot chat completion with temperature 0 for determinism.
+
+        Returns either a float (when the LLM replied with a parseable
+        number — the score-prompt path) or a dict with `raw_text`
+        (when the LLM replied with prose — the claim-extraction path).
+        The Python Judge binding accepts both shapes; the dict path
+        preserves the raw text so downstream claim parsing works."""
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -183,7 +207,14 @@ def make_openai_judge(model: str = MODEL_DEFAULT) -> redhop.Judge:
             ],
             temperature=0.0,
         )
-        return resp.choices[0].message.content.strip()
+        text = resp.choices[0].message.content.strip()
+        # Try to interpret as a number; on failure, the LLM returned
+        # prose (extraction or classification output) and we hand it
+        # through as raw_text.
+        try:
+            return float(text)
+        except ValueError:
+            return {"score": 0.0, "raw_text": text, "model": model}
 
     return redhop.Judge.from_callable(score, name=model).cached()
 
@@ -349,19 +380,38 @@ def run_redhop_on_case(case: TestCase, judge: redhop.Judge) -> CaseResult:
 
 
 def run_ragas_if_available(test_set: list[TestCase], model: str = MODEL_DEFAULT):
-    """Returns a list of per-case dicts {label, faithfulness, relevancy,
-    similarity} from Ragas, or None if Ragas isn't installed. Real LLM
-    calls — needs `OPENAI_API_KEY`."""
+    """Run Ragas's `faithfulness` on the same dataset, returning a list
+    of per-case dicts {label, faithfulness} or None if Ragas isn't
+    installed.
+
+    Only faithfulness is run here because the other Ragas metrics
+    (answer_relevancy, answer_similarity, answer_correctness) need an
+    embedder. OpenRouter doesn't expose embeddings; OpenAI does. To keep
+    the comparison single-vendor, we restrict to faithfulness — which
+    is where our few-shot + batched changes are concentrated anyway."""
     try:
         from ragas import evaluate as ragas_evaluate  # type: ignore
-        from ragas.metrics import (  # type: ignore
-            faithfulness as r_faithfulness,
-            answer_relevancy as r_relevancy,
-            answer_similarity as r_similarity,
-        )
+        from ragas.metrics import faithfulness as r_faithfulness  # type: ignore
+        from ragas.llms import LangchainLLMWrapper  # type: ignore
+        from langchain_openai import ChatOpenAI  # type: ignore
         from datasets import Dataset  # type: ignore
-    except ImportError:
+    except ImportError as e:
+        print(f"  (ragas dep import failed: {e})")
         return None
+
+    # Route Ragas's LLM through the same provider we're using for
+    # RedHop, so the comparison is apples-to-apples on judge-model.
+    if os.environ.get("OPENROUTER_API_KEY"):
+        llm = ChatOpenAI(
+            model=model,
+            openai_api_key=os.environ["OPENROUTER_API_KEY"],
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.0,
+        )
+    else:
+        llm = ChatOpenAI(model=model, temperature=0.0)
+    wrapped_llm = LangchainLLMWrapper(llm)
+    r_faithfulness.llm = wrapped_llm
 
     ds = Dataset.from_list([
         {
@@ -374,15 +424,14 @@ def run_ragas_if_available(test_set: list[TestCase], model: str = MODEL_DEFAULT)
     ])
     result = ragas_evaluate(
         dataset=ds,
-        metrics=[r_faithfulness, r_relevancy, r_similarity],
+        metrics=[r_faithfulness],
+        llm=wrapped_llm,
     )
     df = result.to_pandas()
     return [
         {
             "label": test_set[i].label,
             "faithfulness": float(df.iloc[i]["faithfulness"]),
-            "relevancy": float(df.iloc[i]["answer_relevancy"]),
-            "similarity": float(df.iloc[i]["answer_similarity"]),
         }
         for i in range(len(test_set))
     ]
@@ -463,21 +512,24 @@ def print_calibration_check(results: list[CaseResult], cases: list[TestCase]):
 def print_ragas_comparison(redhop_results: list[CaseResult], ragas_scores: list[dict]):
     print()
     print("=" * 88)
-    print("  Side-by-side: RedHop vs Ragas (per-case scores)")
+    print("  Side-by-side: RedHop vs Ragas faithfulness (same LLM)")
     print("=" * 88)
     print(
-        f"  {'case':<14} "
-        f"{'faith RH':>10} {'faith Rg':>10} "
-        f"{'relev RH':>10} {'relev Rg':>10} "
-        f"{'corr RH':>10} {'sim Rg':>10}"
+        f"  {'case':<14} {'RedHop':>10} {'RedHop_d':>10} {'Ragas':>10} {'|RH-Rg|':>10}"
     )
-    print("  " + "-" * 84)
+    print("  " + "-" * 60)
     for rh, rg in zip(redhop_results, ragas_scores):
+        delta = (
+            abs(rh.redhop_faithfulness - rg["faithfulness"])
+            if rh.redhop_faithfulness is not None
+            else float("nan")
+        )
         print(
             f"  {rh.label:<14} "
-            f"{fmt_score(rh.redhop_faithfulness)} {fmt_score(rg['faithfulness'])} "
-            f"{fmt_score(rh.redhop_relevancy)} {fmt_score(rg['relevancy'])} "
-            f"{fmt_score(rh.redhop_correctness)} {fmt_score(rg['similarity'])}"
+            f"{fmt_score(rh.redhop_faithfulness)} "
+            f"{fmt_score(rh.redhop_faithfulness_decomposed)} "
+            f"{fmt_score(rg['faithfulness'])} "
+            f"{delta:>10.3f}"
         )
 
     def pearson(xs, ys):
@@ -495,46 +547,50 @@ def print_ragas_comparison(redhop_results: list[CaseResult], ragas_scores: list[
     def mae(xs, ys):
         return sum(abs(x - y) for x, y in zip(xs, ys)) / max(len(xs), 1)
 
+    rh_single = [r.redhop_faithfulness or 0.0 for r in redhop_results]
+    rh_decomp = [r.redhop_faithfulness_decomposed or 0.0 for r in redhop_results]
+    rg_faith = [g["faithfulness"] for g in ragas_scores]
+
     print()
-    print("  Pairwise agreement:")
-    for label, getter_rh, getter_rg in [
-        ("faithfulness", lambda r: r.redhop_faithfulness, lambda g: g["faithfulness"]),
-        ("relevancy", lambda r: r.redhop_relevancy, lambda g: g["relevancy"]),
-        ("correctness↔similarity", lambda r: r.redhop_correctness, lambda g: g["similarity"]),
-    ]:
-        rhv = [getter_rh(r) or 0.0 for r in redhop_results]
-        rgv = [getter_rg(g) for g in ragas_scores]
-        print(f"  {label:<25} r={pearson(rhv, rgv):+.3f}  MAE={mae(rhv, rgv):.3f}")
+    print("  Pairwise agreement (faithfulness):")
+    print(f"  {'RedHop single-prompt  ↔ Ragas':<32} r={pearson(rh_single, rg_faith):+.3f}  MAE={mae(rh_single, rg_faith):.3f}")
+    print(f"  {'RedHop decomposed     ↔ Ragas':<32} r={pearson(rh_decomp, rg_faith):+.3f}  MAE={mae(rh_decomp, rg_faith):.3f}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    # Try to use the real LLM judge if both the env var AND the openai
-    # package are present. The "ImportError" check inside
-    # make_openai_judge would only fire AFTER the banner if we did the
-    # check naively; probe up front so the banner is honest.
-    use_openai = bool(os.environ.get("OPENAI_API_KEY"))
-    if use_openai:
+    # Try to use the real LLM judge if both an API key (OpenAI or
+    # OpenRouter) AND the `openai` package are present. Probe up front
+    # so the banner is honest.
+    has_key = bool(
+        os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+    )
+    use_real = has_key
+    if use_real:
         try:
             import openai  # noqa: F401
         except ImportError:
-            use_openai = False
+            use_real = False
 
     print()
     print("=" * 88)
-    banner_judge = f"OpenAI {MODEL_DEFAULT}" if use_openai else "deterministic stub"
+    if use_real:
+        provider = "OpenRouter" if os.environ.get("OPENROUTER_API_KEY") else "OpenAI"
+        banner_judge = f"{provider} {MODEL_DEFAULT}"
+    else:
+        banner_judge = "deterministic stub"
     print(f"  RedHop calibration — judge = {banner_judge}")
     print("=" * 88)
 
-    if use_openai:
+    if use_real:
         judge = make_openai_judge()
     else:
-        if os.environ.get("OPENAI_API_KEY"):
-            print("  (OPENAI_API_KEY is set but `openai` not installed — falling back to stub)")
+        if has_key:
+            print("  (API key is set but `openai` not installed — falling back to stub)")
         else:
-            print("  (set OPENAI_API_KEY + `pip install openai` for real LLM calls)")
+            print("  (set OPENAI_API_KEY or OPENROUTER_API_KEY + `pip install openai` for real LLM calls)")
         judge = make_stub_judge()
 
     results = []
@@ -549,7 +605,7 @@ def main() -> None:
 
     # Optional side-by-side comparison via the Ragas eval library.
     ragas_scores = None
-    if use_openai:
+    if use_real:
         ragas_scores = run_ragas_if_available(TEST_SET)
         if ragas_scores is None:
             print("\nRagas comparison: SKIPPED (`pip install ragas` to enable)")
@@ -561,7 +617,7 @@ def main() -> None:
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(
         {
-            "judge": "openai" if use_openai else "stub",
+            "judge": banner_judge,
             "ragas": ragas_scores,
             "results": [
                 {

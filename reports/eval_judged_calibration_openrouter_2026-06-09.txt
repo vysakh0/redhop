@@ -1,0 +1,58 @@
+
+========================================================================================
+  RedHop calibration — judge = OpenRouter openai/gpt-4o-mini
+========================================================================================
+
+========================================================================================
+  RedHop metrics (one row per case)
+========================================================================================
+  case             faith   relev    corr  faith_d     claims             critique
+  ------------------------------------------------------------------------------------
+  CLEAN           1.000  1.000  1.000  1.000        2/2  conciseness= 1.000 harmfulness= 1.000
+  HALLUCINATION   0.000  1.000  0.000  0.333        1/3  conciseness= 0.500 harmfulness= 1.000
+  OFF_TOPIC       0.000  0.000  0.000  0.000        0/1  conciseness= 0.000 harmfulness= 1.000
+  WRONG_FACT      0.000  1.000  0.000  0.500        1/2  conciseness= 0.000 harmfulness= 1.000
+  REFUSAL         1.000  0.000  0.000  0.000        0/1  conciseness= 0.000 harmfulness= 1.000
+
+========================================================================================
+  Calibration check — did the metrics land in the expected buckets?
+========================================================================================
+  buckets: high ≥ 0.7, mid 0.4-0.7, low < 0.4
+
+  case           metric          expected     actual    verdict
+  ------------------------------------------------------------------------------------
+  CLEAN          faithfulness    high        1.000   high   ✓
+  CLEAN          relevancy       high        1.000   high   ✓
+  CLEAN          correctness     high        1.000   high   ✓
+  HALLUCINATION  faithfulness    low         0.000    low   ✓
+  HALLUCINATION  relevancy       high        1.000   high   ✓
+  HALLUCINATION  correctness     mid         0.000    low   ✗
+  OFF_TOPIC      faithfulness    low         0.000    low   ✓
+  OFF_TOPIC      relevancy       low         0.000    low   ✓
+  OFF_TOPIC      correctness     low         0.000    low   ✓
+  WRONG_FACT     faithfulness    low         0.000    low   ✓
+  WRONG_FACT     relevancy       high        1.000   high   ✓
+  WRONG_FACT     correctness     low         0.000    low   ✓
+  REFUSAL        faithfulness    low         1.000   high   ✗
+  REFUSAL        relevancy       low         0.000    low   ✓
+  REFUSAL        correctness     low         0.000    low   ✓
+
+Total time: 48.33s
+Evaluating:   0%|          | 0/5 [00:00<?, ?it/s]Evaluating:  20%|██        | 1/5 [00:04<00:16,  4.03s/it]Evaluating:  60%|██████    | 3/5 [00:04<00:02,  1.20s/it]Evaluating:  80%|████████  | 4/5 [00:04<00:00,  1.21it/s]Evaluating: 100%|██████████| 5/5 [00:09<00:00,  2.03s/it]Evaluating: 100%|██████████| 5/5 [00:09<00:00,  1.81s/it]
+
+========================================================================================
+  Side-by-side: RedHop vs Ragas faithfulness (same LLM)
+========================================================================================
+  case               RedHop   RedHop_d      Ragas    |RH-Rg|
+  ------------------------------------------------------------
+  CLEAN           1.000  1.000  1.000      0.000
+  HALLUCINATION   0.000  0.333  0.333      0.333
+  OFF_TOPIC       0.000  0.000  0.000      0.000
+  WRONG_FACT      0.000  0.500  0.500      0.500
+  REFUSAL         1.000  0.000  0.000      1.000
+
+  Pairwise agreement (faithfulness):
+  RedHop single-prompt  ↔ Ragas    r=+0.293  MAE=0.367
+  RedHop decomposed     ↔ Ragas    r=+1.000  MAE=0.000
+
+Wrote machine-readable snapshot → /Users/vysakh/projects/neorag1/reports/eval_judged_calibration.json

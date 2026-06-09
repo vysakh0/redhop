@@ -88,18 +88,57 @@ judge by definition.
   produce real critique scores; the stub is here for wiring
   validation only.
 
-## Side-by-side with Ragas (optional)
+## Side-by-side with Ragas (run 2026-06-09, `openai/gpt-4o-mini` via OpenRouter)
 
-When `ragas` is installed and `OPENAI_API_KEY` is set, the script also
-runs Ragas's `faithfulness` + `answer_relevancy` + `answer_similarity`
-on the same dataset and prints a pairwise agreement matrix (Pearson r,
-mean absolute error per matching metric). Useful for confirming the
-two libraries agree on the easy cases and disagree on the hard ones in
-ways that make sense.
+When `ragas` is installed and `OPENROUTER_API_KEY` (or
+`OPENAI_API_KEY`) is set, the script runs Ragas's faithfulness on
+the same dataset with the same LLM and prints a Pearson r + MAE
+agreement matrix.
 
-We don't can specific numbers here because they vary with the judge
-model — `gpt-4o-mini` numbers from one run aren't authoritative.
-Anyone with a key can reproduce in a minute.
+**Result on this 5-case set (single run):**
+
+| case | RedHop single-prompt | RedHop decomposed | Ragas faithfulness |
+|---|---:|---:|---:|
+| CLEAN | 1.000 | 1.000 | 1.000 |
+| HALLUCINATION | 0.000 | 0.333 | 0.333 |
+| OFF_TOPIC | 0.000 | 0.000 | 0.000 |
+| WRONG_FACT | 0.000 | 0.500 | 0.500 |
+| REFUSAL | 1.000 | 0.000 | 0.000 |
+
+**Pairwise agreement:**
+
+| comparison | Pearson r | MAE |
+|---|---:|---:|
+| RedHop single-prompt ↔ Ragas | +0.293 | 0.367 |
+| RedHop decomposed ↔ Ragas | **+1.000** | **0.000** |
+
+The decomposed-faithfulness path (`decompose_faithfulness=True`)
+matches Ragas exactly across all 5 cases — same mechanism (extract
+claims, verify each), same numerical outputs. The single-prompt path
+gives coarse 0/1 verdicts that miss partial truth (HALLUCINATION:
+1 of 3 claims supported = 0.333; WRONG_FACT: 1 of 2 = 0.500). The
+REFUSAL case is where single-prompt fails its vacuous-truth check
+(no claims = "fully supported" = 1.0); decomposed correctly returns
+0 because there are no extracted claims to verify.
+
+**What this proves:**
+- The few-shot + batched-verification work brings our faithfulness
+  numerically equivalent to Ragas's, for one LLM and one test set.
+- The single-prompt path is a useful fast/cheap fallback but
+  should not be used when accuracy matters; default to
+  `decompose_faithfulness=True` for serious eval runs.
+
+**Honest limits:**
+- n=5 hand-curated. A real-workload bench (HotpotQA-50,
+  CUAD-50) would strengthen the result; the 5 cases are
+  picked to span obvious failure modes, not edge cases.
+- Single LLM (`openai/gpt-4o-mini`). Other judge models will
+  produce somewhat different absolute numbers, though the
+  agreement pattern should hold.
+- Only faithfulness was compared. Ragas's answer_relevancy /
+  answer_similarity / answer_correctness need an embedder
+  (OpenRouter doesn't expose embeddings); routing through a
+  second vendor for the comparison would muddy the apples-to-apples.
 
 ## Reproduce
 
