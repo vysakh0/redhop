@@ -256,14 +256,18 @@ chunks it is measured to *hurt*
 −2.0pt). The regime rule predicts which side your corpus is on; A/B with
 `redhop.evaluate(...)` against your gold set before adopting.
 
-## Score the change deterministically — no LLM judge
+## Score the change — deterministic, or LLM-judged when you need it
 
-If you're A/B-ing a rewrite (or a retrieval tier, or a strategy), you don't
-need an LLM grader. `redhop.evaluate(query, ctx, gold_chunks=[...])` returns
-`context_recall`, `context_precision`, `answer_token_recall`, and a
-composite `overall` — computed from the **same primitives the Decision
-Report uses**, so the eval and the runtime can't disagree by construction.
-Zero API calls, deterministic across runs, ~ms per query.
+`redhop.evaluate(...)` runs in two modes. Use the deterministic mode in
+CI, on every PR, with no LLM calls. Use the judged mode when you want
+faithfulness / relevancy / correctness with an LLM grader and you have
+generated answers to score.
+
+**Deterministic** — zero API calls, ~ms per query, returns
+`context_recall`, `context_precision`, `answer_token_recall`,
+`faithfulness_lexical`, `relevancy_lexical`, `correctness_lexical`,
+and a composite `overall`. Same primitives the Decision Report uses,
+so eval and runtime can't disagree by construction.
 
 ```python
 ctx_a = doc.context(user_query)                              # baseline
@@ -273,8 +277,41 @@ eval_b = redhop.evaluate(user_query, ctx_b, gold_chunks=gold_ids)
 print("lift on overall:", eval_b.overall - eval_a.overall)
 ```
 
+**LLM-judged** — opt in via `judge=`, supply your own LLM caller
+(OpenAI, Anthropic, OpenRouter, local, whatever). Adds
+`faithfulness_judged`, `relevancy_judged`, `correctness_judged` to
+the same `EvalReport`. Set `decompose_faithfulness=True` for
+claim-decomposed faithfulness — substantively equivalent to Ragas
+(r=+0.664 on n=200 HotpotQA, see
+[docs/COMPARISON_RAGAS.md](docs/COMPARISON_RAGAS.md)).
+Set `decompose_correctness=True` for TP/FP/FN F₁.
+
+```python
+def my_llm(prompt, system):
+    # Your favorite LLM SDK call — returns a float or {"score": float}.
+    return float(openai_client.chat.completions.create(...).choices[0].message.content)
+
+judge = redhop.Judge.from_callable(my_llm).cached()
+report = redhop.evaluate(
+    user_query, ctx,
+    answer="The refund window is thirty days.",
+    gold_answer="thirty days",
+    judge=judge,
+    decompose_faithfulness=True,    # 2 LLM calls; catches paraphrased hallucinations
+    decompose_correctness=True,     # TP/FP/FN against gold answer → F1
+)
+print(report.faithfulness_judged, report.correctness_judged, report.overall)
+```
+
+For open-ended dimensions (harmfulness, conciseness, brand voice),
+`redhop.critique(answer, aspects=[...], judge=...)` runs one judge
+call per aspect with polarity-corrected scores. Aggregate across a
+test set with `redhop.summarize(reports)`.
+
 Design rationale + the full field list in
-[EVALUATE_API](docs/findings/EVALUATE_API.md).
+[ANSWER_QUALITY_EVAL](docs/findings/ANSWER_QUALITY_EVAL.md).
+Calibration evidence + Ragas comparison in
+[COMPARISON_RAGAS](docs/COMPARISON_RAGAS.md).
 
 ## Loaders
 
@@ -477,7 +514,8 @@ A few things worth being explicit about:
 | `Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes — appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](docs/findings/CUAD_CLAUSE_EXPANSION.md) |
 | `vocab.enrich(chunk_text)` | Chunk-side mirror. **Use it when your retrieval units are short and opaque** (schema columns, error codes, API symbols, defined contract terms) — appended workload-curated tokens raise the chunk's matchable surface so natural-language queries can land. **Measured to lift retrieval +0.19 mean recall on Spider-shape schemas.** Measured to *hurt* (−2.0pt) on long prose chunks — don't use it there. A/B with `redhop.evaluate(...)` against your gold before adopting | [SPIDER_ENRICH](docs/findings/SPIDER_ENRICH.md) + [VOCABULARY_ENRICH](docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
 | `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval and records per-stage audit on `report.query_rewrites` | (same finding as above) |
-| `evaluate(query, ctx, gold_chunks, gold_answer)` | Deterministic A/B scoring against gold; no LLM judge. Refraction of the same primitives the Decision Report uses, so eval and runtime can't disagree | [EVALUATE_API](docs/findings/EVALUATE_API.md) |
+| `evaluate(query, ctx, gold_chunks, gold_answer, judge=, decompose_faithfulness=, decompose_correctness=)` | A/B scoring against gold. Deterministic-by-default (lexical metrics, no LLM); opt-in `judge=` adds LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses, so eval and runtime can't disagree | [ANSWER_QUALITY_EVAL](docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](docs/COMPARISON_RAGAS.md) |
+| `critique(answer, aspects, judge=)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice, …). One judge call per aspect; polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](docs/findings/ANSWER_QUALITY_EVAL.md) |
 
 Decision rule + the recipe in full:
 [`docs/CHOOSING_A_CONFIG.md` → "Templated queries with heavy boilerplate"](docs/CHOOSING_A_CONFIG.md).

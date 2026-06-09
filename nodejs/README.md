@@ -136,14 +136,19 @@ measured to *hurt* (−2.0pt) on long prose chunks
 ([CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md)).
 A/B with `redhop.evaluate(...)` to confirm before adopting.
 
-## Score the change deterministically — no LLM judge
+## Score the change — deterministic, or LLM-judged when you need it
 
-`evaluate(query, ctx, { goldChunks: [...] })` returns `contextRecall` /
-`contextPrecision` / `answerTokenRecall` + a composite `overall`, all
-computed from the same primitives the Decision Report uses (no LLM call,
-deterministic across runs, ~ms per query):
+Two modes. Use deterministic in CI on every PR; opt into a judge when
+you want faithfulness / relevancy / correctness against generated
+answers.
+
+**Deterministic** — no API calls, ~ms per query. Returns
+`contextRecall` / `contextPrecision` / `answerTokenRecall` /
+`faithfulnessLexical` / `relevancyLexical` / `correctnessLexical` +
+a composite `overall`. Same primitives the Decision Report uses.
 
 ```js
+const { evaluate } = require("redhop");
 const ctxA = doc.context(userQuery);
 const ctxB = doc.contextWithRewrites(userQuery, [stripper, vocab]);
 const evalA = evaluate(userQuery, ctxA, { goldChunks });
@@ -151,8 +156,34 @@ const evalB = evaluate(userQuery, ctxB, { goldChunks });
 console.log("lift on overall:", evalB.overall - evalA.overall);
 ```
 
-Design rationale + the full field list in
-[EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md).
+**LLM-judged** — via the async `evaluateWithJudge`. Supply your own
+LLM caller (OpenAI, Anthropic, OpenRouter, local). Adds
+`faithfulnessJudged` / `relevancyJudged` / `correctnessJudged`.
+Claim-decomposed faithfulness (`decomposeFaithfulness: true`) is
+substantively equivalent to Ragas — r=+0.664, MAE=0.151 on n=200
+HotpotQA, see [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md).
+TP/FP/FN F₁ via `decomposeCorrectness: true`.
+
+```js
+const { Judge, evaluateWithJudge, critique } = require("redhop");
+const judge = Judge.fromCallable(async (err, prompt, system) => {
+  // Your LLM SDK call — return a number or { score: number }
+  return await myLlm({ prompt, system });
+}, "openai-mini").cached();
+const report = await evaluateWithJudge(userQuery, ctx, judge, {
+  answer: "The refund window is thirty days.",
+  goldAnswer: "thirty days",
+  decomposeFaithfulness: true,
+  decomposeCorrectness: true,
+});
+```
+
+For user-defined aspects (harmfulness, conciseness, brand voice…),
+`critique(answer, aspects, judge)` runs one judge call per aspect
+with polarity-corrected scores.
+
+Full API + field list:
+[ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md).
 
 ## Loaders
 
@@ -366,7 +397,8 @@ if (report.isTemplated) {
 | `new Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes — appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
 | `vocab.enrich(chunkText)` | Chunk-side mirror. **Measured to lift retrieval +0.19 mean recall on Spider-shape schemas** — use it when your retrieval units are short and opaque (schema columns, error codes, API symbols, defined contract terms). Measured to *hurt* (−2.0pt) on long prose chunks — don't use it there. A/B with `redhop.evaluate(...)` against your gold before adopting | [SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md) + [VOCABULARY_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
 | `doc.contextWithRewrites(query, [stripper, vocab])` | Runs the chain through retrieval; per-stage audit lands on `report.queryRewrites` | (same finding as above) |
-| `evaluate(query, ctx, { goldChunks, goldAnswer })` | Deterministic A/B scoring against gold; no LLM judge. Same primitives the Decision Report uses | [EVALUATE_API](https://github.com/vysakh0/redhop/blob/main/docs/findings/EVALUATE_API.md) |
+| `evaluate(query, ctx, { goldChunks, goldAnswer })` · `evaluateWithJudge(query, ctx, judge, { answer, goldAnswer, decomposeFaithfulness, decomposeCorrectness })` | A/B scoring against gold. Sync `evaluate` is deterministic-only (no LLM); async `evaluateWithJudge` opts into LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
+| `critique(answer, aspects, judge)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect; polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
