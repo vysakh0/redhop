@@ -4,6 +4,10 @@
 > answer-quality metrics live under `evaluate(...)`. Aspect critique
 > lives under `critique(...)`. Test-set aggregation lives under
 > `summarize(reports)`.
+>
+> Comparing to other eval libraries? See
+> [**docs/COMPARISON_RAGAS.md**](../COMPARISON_RAGAS.md) for the
+> Ragas head-to-head (n=200 HotpotQA, r=+0.664).
 
 RedHop's eval has two complementary surfaces:
 

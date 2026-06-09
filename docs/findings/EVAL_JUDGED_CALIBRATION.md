@@ -1,13 +1,23 @@
-# Judged-eval calibration probe
+# Judged-eval calibration probe + Ragas correlation
 
-> **Status: bench shipped.** A 5-case hand-curated test set
-> demonstrates the full judged surface (`evaluate(..., judge=...)`,
-> `decompose_faithfulness=True`, `decompose_correctness=True`,
-> `critique(...)`) end-to-end. With a deterministic stub judge,
-> **13 of 15 bucket checks pass** (`high`/`mid`/`low` against
-> per-case expectations) — and the 2 misses are the cases where a
-> token-overlap proxy *should* fail. Validates the wiring; a real LLM
-> judge is what closes the calibration gap.
+> **Status: calibrated, Ragas-correlated.** Three layers of evidence
+> on `evaluate(..., judge=..., decompose_faithfulness=True)`:
+> (1) a 5-case wiring probe (stub judge passes 13/15 bucket checks,
+> validating the surface end-to-end);
+> (2) a 5-case real-LLM Ragas side-by-side (perfect r=1.000 on extreme
+> failure modes — clean signal, no ambiguity);
+> (3) **n=200 HotpotQA correlation against Ragas** (r=+0.664,
+> MAE=0.151, 61% perfect agreement), plus a Claude-haiku third-judge
+> tie-breaker on contested cases.
+>
+> Headline: RedHop's decomposed faithfulness is **substantively
+> equivalent to Ragas** with a different prompt philosophy (batched
+> verification, paraphrase-aware, comparative-strict, refusal-aware).
+> v4 prompt iteration fixed four real failure modes uncovered by the
+> third-judge trace (paraphrase rejection, comparative hallucination,
+> compound-attribution dilution, wrong-entity substitution). Neither
+> library is unambiguously "more correct" by a third LLM's read at
+> scale — the libraries tie on contested cases when measured carefully.
 
 ## What's in the bench
 
