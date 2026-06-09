@@ -44,9 +44,11 @@ from collections.abc import Sequence
 from typing import Any
 
 from ._redhop import (
+    Aspect,
     BuiltContext,
     Chunk,
     ContextReport,
+    CritiqueReport,
     Document,
     EvalReport,
     EvalSummary,
@@ -57,6 +59,7 @@ from ._redhop import (
     Vocabulary,
     __version__,
     analyze_query_set,
+    critique,
     evaluate,
     grounding_score,
     link_strength,
@@ -237,9 +240,11 @@ def context_with_timeout(
 
 
 __all__ = [
+    "Aspect",
     "BuiltContext",
     "Chunk",
     "ContextReport",
+    "CritiqueReport",
     "Document",
     "EvalReport",
     "EvalSummary",
@@ -257,6 +262,7 @@ __all__ = [
     "evaluate",
     "filter_context",
     "grounding_score",
+    "critique",
     "link_strength",
     "report_to_dict",
     "summarize",

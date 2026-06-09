@@ -26,6 +26,7 @@ use redhop::document::{
 use redhop::judge::{
     CachedJudge as RhCachedJudge, CallableJudge, Judge as RhJudge, JudgeRequest, JudgeResponse,
 };
+use redhop::critique::{Aspect as RhAspect, CritiqueInputs};
 
 /// Thin forwarder over [`redhop::strategy_from_str`] — the canonical
 /// string→enum mapping lives in the Rust crate so every binding shares it
@@ -2482,6 +2483,151 @@ fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
     }
 }
 
+// ── Tier-2 aspect critique (Phase 7) ────────────────────────────────────────
+
+/// One qualitative dimension to score the answer on. The judge sees
+/// `definition` verbatim; pick `high_is_good=False` for "negative"
+/// aspects (harmfulness, toxicity, etc.) so a high LLM verdict still
+/// produces a LOW final score.
+///
+/// ```python
+/// aspects = [
+///     redhop.Aspect("harmfulness",
+///                   "Does the ANSWER contain harmful, offensive, or unsafe content?",
+///                   high_is_good=False),
+///     redhop.Aspect("conciseness",
+///                   "Is the ANSWER free of unnecessary repetition or padding?",
+///                   high_is_good=True),
+/// ]
+/// report = redhop.critique("Thirty days.", aspects, judge=judge)
+/// print(report.scores)  # [("harmfulness", 0.9), ("conciseness", 0.8)]
+/// ```
+#[pyclass(name = "Aspect", module = "redhop")]
+#[derive(Clone)]
+struct PyAspect {
+    name: String,
+    definition: String,
+    high_is_good: bool,
+}
+
+#[pymethods]
+impl PyAspect {
+    /// Build an aspect. `name` is a short label used as the key in the
+    /// returned `CritiqueReport`; `definition` is the question the
+    /// judge will score (a sentence is fine). `high_is_good` controls
+    /// the polarity — `True` keeps the LLM's raw score, `False`
+    /// inverts it so high = good across the report.
+    #[new]
+    #[pyo3(signature = (name, definition, *, high_is_good=true))]
+    fn new(name: String, definition: String, high_is_good: bool) -> Self {
+        Self {
+            name,
+            definition,
+            high_is_good,
+        }
+    }
+    #[getter]
+    fn name(&self) -> &str {
+        &self.name
+    }
+    #[getter]
+    fn definition(&self) -> &str {
+        &self.definition
+    }
+    #[getter]
+    fn high_is_good(&self) -> bool {
+        self.high_is_good
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "Aspect(name={:?}, high_is_good={})",
+            self.name, self.high_is_good
+        )
+    }
+}
+
+/// Result of [`critique`]. Indexable by aspect name via `__getitem__`
+/// or iterate `.scores` for `(name, score)` pairs preserving input
+/// order. `score` is `None` if the judge call errored for that
+/// aspect; same best-effort semantics as `EvalReport`'s `_judged`
+/// fields.
+#[pyclass(name = "CritiqueReport", module = "redhop")]
+#[derive(Clone)]
+struct PyCritiqueReport {
+    inner: redhop::CritiqueReport,
+}
+
+#[pymethods]
+impl PyCritiqueReport {
+    /// List of `(aspect_name, Optional[float])` in input order.
+    #[getter]
+    fn scores(&self) -> Vec<(String, Option<f32>)> {
+        self.inner.scores.clone()
+    }
+    /// Number of aspects scored.
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+    /// Look up an aspect's score by name; returns `None` for both
+    /// "missing key" and "judge errored on this aspect".
+    fn __getitem__(&self, name: &str) -> Option<f32> {
+        self.inner.get(name)
+    }
+    /// Look up an aspect's score by name; same semantics as
+    /// `__getitem__` but more discoverable.
+    fn get(&self, name: &str) -> Option<f32> {
+        self.inner.get(name)
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "CritiqueReport(n_aspects={}, scores={:?})",
+            self.inner.len(),
+            self.inner.scores
+        )
+    }
+}
+
+/// Score an answer on user-defined qualitative aspects.
+///
+/// Each aspect produces one judge call. The same judge object used
+/// for `evaluate(..., judge=judge)` works here — including
+/// `Judge.cached()` (identical aspect prompts hit the cache).
+///
+/// `context` and `query` are optional but increase prompt quality
+/// when present: pass `context=ctx.text()` to let the judge reference
+/// the source material, and `query=q` for aspects that depend on the
+/// question (e.g. "did the answer fully address the question?").
+#[pyfunction]
+#[pyo3(signature = (answer, aspects, *, judge, context=None, query=None))]
+fn critique(
+    answer: &str,
+    aspects: Vec<PyAspect>,
+    judge: &PyJudge,
+    context: Option<&str>,
+    query: Option<&str>,
+) -> PyCritiqueReport {
+    // Build a Vec<RhAspect<'_>> that borrows from the owned PyAspect
+    // strings — keeps the underlying critique API zero-copy.
+    let rh_aspects: Vec<RhAspect<'_>> = aspects
+        .iter()
+        .map(|a| RhAspect {
+            name: &a.name,
+            definition: &a.definition,
+            high_is_good: a.high_is_good,
+        })
+        .collect();
+    let report = redhop::critique(
+        CritiqueInputs {
+            answer,
+            aspects: &rh_aspects,
+            context,
+            query,
+        },
+        judge.inner.as_ref(),
+    );
+    PyCritiqueReport { inner: report }
+}
+
 #[pymodule]
 fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -2493,6 +2639,8 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<EvalReport>()?;
     m.add_class::<EvalSummary>()?;
     m.add_class::<PyJudge>()?;
+    m.add_class::<PyAspect>()?;
+    m.add_class::<PyCritiqueReport>()?;
     m.add_class::<RewriteRecord>()?;
     m.add_class::<Stripper>()?;
     m.add_class::<Vocabulary>()?;
@@ -2505,5 +2653,6 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
     m.add_function(wrap_pyfunction!(summarize, m)?)?;
+    m.add_function(wrap_pyfunction!(critique, m)?)?;
     Ok(())
 }

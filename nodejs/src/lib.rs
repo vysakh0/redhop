@@ -1279,6 +1279,108 @@ pub async fn evaluate_with_judge(
     Ok(eval_report_from_rust(result))
 }
 
+// ── Phase 7: aspect critique ────────────────────────────────────────────────
+//
+// One judge call per aspect. Same Judge type used by `evaluateWithJudge`;
+// cached judges memoize identical aspect prompts across runs.
+
+/// One qualitative dimension to score the answer on. `highIsGood`
+/// controls polarity — when `false` (e.g. harmfulness), the LLM's
+/// raw score is INVERTED to `1 - raw` before being returned, so high
+/// values still mean "good answer" across the report.
+#[napi(object)]
+pub struct Aspect {
+    /// Short label, used as the key in the returned `CritiqueReport`.
+    pub name: String,
+    /// What to score, phrased as a question the LLM can answer 0–1.
+    pub definition: String,
+    /// `true` keeps the LLM's raw score; `false` inverts it (so high
+    /// = good regardless of aspect polarity). Default `true`.
+    pub high_is_good: Option<bool>,
+}
+
+/// One scored aspect — the same shape as a tuple, but napi-rs only
+/// serializes plain objects so we name it.
+#[napi(object)]
+pub struct AspectScore {
+    /// Aspect's `name`.
+    pub name: String,
+    /// Polarity-corrected score in `[0, 1]`, or `null` if the judge
+    /// errored on this aspect.
+    pub score: Option<f64>,
+}
+
+/// Result of [`critique`]. The `scores` array preserves input order;
+/// `null` scores are aspects where the judge call errored.
+#[napi(object)]
+pub struct CritiqueReport {
+    /// Number of aspects scored.
+    pub n: u32,
+    /// Per-aspect scores in input order. Iterate the array, or look
+    /// up by name on the JS side: `report.scores.find(s => s.name === "x")?.score`.
+    pub scores: Vec<AspectScore>,
+}
+
+/// Optional inputs for [`critique`] beyond the required `answer`,
+/// `aspects`, and `judge` args.
+#[napi(object)]
+pub struct CritiqueOptions {
+    /// Context to embed in each aspect's prompt — useful for aspects
+    /// that need the source material to score.
+    pub context: Option<String>,
+    /// Query to embed in each aspect's prompt — useful for aspects
+    /// like "does the answer address the question".
+    pub query: Option<String>,
+}
+
+#[napi]
+pub async fn critique(
+    answer: String,
+    aspects: Vec<Aspect>,
+    judge: &Judge,
+    options: Option<CritiqueOptions>,
+) -> napi::Result<CritiqueReport> {
+    let judge_inner = judge.inner.clone();
+    let opts = options.unwrap_or(CritiqueOptions {
+        context: None,
+        query: None,
+    });
+    let answer_owned = answer;
+    let result = tokio::task::spawn_blocking(move || {
+        let rh_aspects: Vec<redhop::critique::Aspect<'_>> = aspects
+            .iter()
+            .map(|a| redhop::critique::Aspect {
+                name: &a.name,
+                definition: &a.definition,
+                high_is_good: a.high_is_good.unwrap_or(true),
+            })
+            .collect();
+        redhop::critique(
+            redhop::critique::CritiqueInputs {
+                answer: &answer_owned,
+                aspects: &rh_aspects,
+                context: opts.context.as_deref(),
+                query: opts.query.as_deref(),
+            },
+            judge_inner.as_ref(),
+        )
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("critique join: {e}")))?;
+    let scores: Vec<AspectScore> = result
+        .scores
+        .into_iter()
+        .map(|(name, score)| AspectScore {
+            name,
+            score: score.map(|s| s as f64),
+        })
+        .collect();
+    Ok(CritiqueReport {
+        n: scores.len() as u32,
+        scores,
+    })
+}
+
 // ── Low-level context functions (caller brings their own chunks) ────────────
 //
 // `Document.fromChunks(...)` is the high-level path: hand RedHop a list of

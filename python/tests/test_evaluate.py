@@ -735,3 +735,108 @@ def test_decomposition_unsupported_threshold():
     )
     assert r.n_faithfulness_claims_extracted == 4
     assert r.n_faithfulness_claims_supported == 0  # all below 0.5
+
+
+# ─── Phase 7: aspect critique ──────────────────────────────────────────────
+
+
+def test_aspect_constructor_and_getters():
+    a = redhop.Aspect("harmfulness", "Does it contain harmful content?", high_is_good=False)
+    assert a.name == "harmfulness"
+    assert a.definition == "Does it contain harmful content?"
+    assert a.high_is_good is False
+    rep = repr(a)
+    assert "Aspect" in rep
+    assert "harmfulness" in rep
+
+
+def test_critique_each_aspect_one_judge_call():
+    calls = []
+    judge = _stub_judge_returning(0.7, calls)
+    aspects = [
+        redhop.Aspect("a", "First aspect"),
+        redhop.Aspect("b", "Second aspect"),
+        redhop.Aspect("c", "Third aspect"),
+    ]
+    report = redhop.critique("Some answer.", aspects, judge=judge)
+    assert len(report) == 3
+    assert report["a"] == pytest.approx(0.7, abs=0.01)
+    assert report["b"] == pytest.approx(0.7, abs=0.01)
+    assert report["c"] == pytest.approx(0.7, abs=0.01)
+    assert len(calls) == 3
+
+
+def test_critique_high_is_good_false_inverts_score():
+    # LLM says raw 0.9 ("very harmful"). high_is_good=False → 1.0 - 0.9 = 0.1.
+    calls = []
+    judge = _stub_judge_returning(0.9, calls)
+    aspects = [
+        redhop.Aspect("harmfulness", "Is it harmful?", high_is_good=False),
+    ]
+    report = redhop.critique("anything", aspects, judge=judge)
+    s = report["harmfulness"]
+    assert s is not None
+    assert s == pytest.approx(0.1, abs=0.01)
+
+
+def test_critique_empty_aspects_makes_no_judge_calls():
+    calls = []
+    judge = _stub_judge_returning(0.5, calls)
+    report = redhop.critique("x", [], judge=judge)
+    assert len(report) == 0
+    assert report.scores == []
+    assert len(calls) == 0
+
+
+def test_critique_judge_error_isolates_to_that_aspect():
+    """A judge that errors for one aspect leaves only that score None."""
+    n = [0]
+
+    def fail_on_second(prompt, system):
+        n[0] += 1
+        if n[0] == 2:
+            raise RuntimeError("transient")
+        return 0.6
+
+    judge = redhop.Judge.from_callable(fail_on_second, name="flaky")
+    aspects = [
+        redhop.Aspect("a", "first"),
+        redhop.Aspect("b", "second"),
+        redhop.Aspect("c", "third"),
+    ]
+    report = redhop.critique("x", aspects, judge=judge)
+    assert report["a"] is not None
+    assert report["b"] is None, "second aspect should be None on transient error"
+    assert report["c"] is not None
+
+
+def test_critique_context_and_query_are_optional():
+    """Both context= and query= are optional kwargs; omitting them works."""
+    calls = []
+    judge = _stub_judge_returning(0.8, calls)
+    aspects = [redhop.Aspect("x", "test")]
+    r1 = redhop.critique("answer", aspects, judge=judge)
+    r2 = redhop.critique("answer", aspects, judge=judge, context="ctx")
+    r3 = redhop.critique(
+        "answer", aspects, judge=judge, context="ctx", query="q"
+    )
+    for r in (r1, r2, r3):
+        assert r["x"] == pytest.approx(0.8, abs=0.01)
+
+
+def test_critique_get_returns_none_for_missing_aspect_name():
+    judge = _stub_judge_returning(0.5, [])
+    report = redhop.critique("x", [redhop.Aspect("present", "x")], judge=judge)
+    assert report["present"] == pytest.approx(0.5, abs=0.01)
+    assert report["missing"] is None
+    assert report.get("missing") is None
+
+
+def test_critique_report_repr():
+    judge = _stub_judge_returning(0.7, [])
+    report = redhop.critique(
+        "x", [redhop.Aspect("conciseness", "concise?")], judge=judge
+    )
+    rep = repr(report)
+    assert "CritiqueReport" in rep
+    assert "conciseness" in rep

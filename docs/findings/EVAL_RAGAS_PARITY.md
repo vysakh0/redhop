@@ -21,7 +21,7 @@
 | **Context precision** | LLM-judged + classic (recall@k) | `context_precision` (chunk-set; gold required) |
 | **Context recall** | LLM-judged + classic | `context_recall` (chunk-set; gold required) |
 | **Answer correctness** | LLM-judged + classic | `correctness_lexical` + `correctness_judged` |
-| **Aspect critique** | LLM-judged | not yet |
+| **Aspect critique** | LLM-judged (built-in set) | `critique(answer, aspects, judge=...)` — user-defined aspects, judged via the same Judge surface |
 | **Self-eval (no gold, no LLM)** | none | `mean_grounding`, `evidence_density`, `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`, `estimated_waste_tokens` |
 | **Composite score** | none (raw metrics only) | `overall` ∈ [0,1] (weighted blend) |
 | **Determinism in CI** | requires LLM (non-deterministic + paid) | Tier 1 deterministic, Tier 2 deterministic via `Judge.cached()` |
@@ -170,6 +170,66 @@ scoring — mixing the two modes' semantics would conflate signals.
 Per-claim verification failures are treated as "unsupported" (score
 0) — the metric is still reported, just with a lower numerator.
 
+## Aspect critique (Phase 7) — `critique(answer, aspects, judge=...)`
+
+Ragas ships a fixed set of aspect-critique metrics (harmfulness,
+maliciousness, coherence, conciseness, correctness). RedHop ships the
+mechanism instead: pass any aspects you want, get judged scores for
+each. The Judge object reuses the one you constructed for the rest of
+Tier 2, so the cache, error semantics, and binding shape stay
+identical.
+
+```python
+aspects = [
+    redhop.Aspect(
+        "harmfulness",
+        "Does the ANSWER contain harmful, offensive, or unsafe content?",
+        high_is_good=False,   # high LLM verdict → low final score
+    ),
+    redhop.Aspect(
+        "conciseness",
+        "Is the ANSWER free of unnecessary repetition or padding?",
+    ),
+    redhop.Aspect(
+        "brand_voice",
+        "Does the ANSWER match a calm, professional, instruction-following tone?",
+    ),
+]
+report = redhop.critique(
+    answer,
+    aspects,
+    judge=judge,
+    context=ctx.text(),  # optional — surfaces in each aspect's prompt
+    query=q,             # optional
+)
+for name, score in report.scores:
+    print(f"{name}: {score}")
+print(report["harmfulness"])  # also indexable by name
+```
+
+```javascript
+const aspects = [
+  { name: "harmfulness", definition: "Does it contain harmful content?", highIsGood: false },
+  { name: "conciseness", definition: "Is it free of padding?" },
+];
+const report = await redhop.critique(answer, aspects, judge, {
+  context: ctx.text,
+  query: q,
+});
+// report.scores: [{ name, score }, ...]   — null score = judge errored
+```
+
+**Polarity correction.** `high_is_good=False` inverts the LLM's raw
+score before returning it, so high values mean "good answer" across
+the report regardless of an aspect's polarity. Mixing harmfulness and
+conciseness without inversion would mean you couldn't compare scores
+across aspects; with inversion you can.
+
+**Cost.** One judge call per aspect, in input order. The same judge
+cache works (identical aspect prompts on a `Judge.cached()` hit the
+cache). A judge error on one aspect leaves only that aspect's score
+`None` — other aspects are unaffected.
+
 ## Test-set aggregation: `summarize(reports)`
 
 The Ragas equivalent of looping over a dataset and computing means is
@@ -224,10 +284,11 @@ the counter makes that visible.
 
 ## What Ragas has over us
 
-1. **Aspect critique** (harmfulness, conciseness, malicious-intent,
-   etc.). Tier-2 in RedHop only ships the three core metrics today.
-   The Judge trait is general — adding aspect-critique prompts is
-   straightforward — but it's not yet built in.
+1. ~~Aspect critique~~ **Shipped in Phase 7.** See the dedicated
+   section above. Difference vs Ragas: RedHop ships the *mechanism*
+   (user-defined aspects), Ragas ships a fixed set (harmfulness,
+   maliciousness, coherence, conciseness, correctness). Same Judge
+   under the hood.
 2. **Larger calibrated metric set.** Ragas has more specialized
    metrics for specific failure modes (e.g. NoiseSensitivity,
    ResponseRelevancy variants). RedHop sticks to the three load-bearing

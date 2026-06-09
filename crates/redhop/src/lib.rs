@@ -54,6 +54,7 @@ pub mod analyzer;
 pub mod chunking;
 pub mod context;
 pub mod core;
+pub mod critique;
 pub mod document;
 pub mod judge;
 pub mod retrieval;
@@ -97,6 +98,7 @@ pub use crate::context::{
 pub use crate::context::eval::{
     evaluate, summarize, EvalConfig, EvalGold, EvalReport, EvalSummary,
 };
+pub use crate::critique::{critique, Aspect, CritiqueInputs, CritiqueReport};
 
 // Core types you handle directly.
 pub use crate::core::{

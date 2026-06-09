@@ -492,6 +492,66 @@ export declare function evaluate(query: string, context: BuiltContext, options?:
  */
 export declare function evaluateWithJudge(query: string, context: BuiltContext, judge: Judge, options?: EvaluateOptions | undefined | null): Promise<EvalReport>
 /**
+ * One qualitative dimension to score the answer on. `highIsGood`
+ * controls polarity — when `false` (e.g. harmfulness), the LLM's
+ * raw score is INVERTED to `1 - raw` before being returned, so high
+ * values still mean "good answer" across the report.
+ */
+export interface Aspect {
+  /** Short label, used as the key in the returned `CritiqueReport`. */
+  name: string
+  /** What to score, phrased as a question the LLM can answer 0–1. */
+  definition: string
+  /**
+   * `true` keeps the LLM's raw score; `false` inverts it (so high
+   * = good regardless of aspect polarity). Default `true`.
+   */
+  highIsGood?: boolean
+}
+/**
+ * One scored aspect — the same shape as a tuple, but napi-rs only
+ * serializes plain objects so we name it.
+ */
+export interface AspectScore {
+  /** Aspect's `name`. */
+  name: string
+  /**
+   * Polarity-corrected score in `[0, 1]`, or `null` if the judge
+   * errored on this aspect.
+   */
+  score?: number
+}
+/**
+ * Result of [`critique`]. The `scores` array preserves input order;
+ * `null` scores are aspects where the judge call errored.
+ */
+export interface CritiqueReport {
+  /** Number of aspects scored. */
+  n: number
+  /**
+   * Per-aspect scores in input order. Iterate the array, or look
+   * up by name on the JS side: `report.scores.find(s => s.name === "x")?.score`.
+   */
+  scores: Array<AspectScore>
+}
+/**
+ * Optional inputs for [`critique`] beyond the required `answer`,
+ * `aspects`, and `judge` args.
+ */
+export interface CritiqueOptions {
+  /**
+   * Context to embed in each aspect's prompt — useful for aspects
+   * that need the source material to score.
+   */
+  context?: string
+  /**
+   * Query to embed in each aspect's prompt — useful for aspects
+   * like "does the answer address the question".
+   */
+  query?: string
+}
+export declare function critique(answer: string, aspects: Array<Aspect>, judge: Judge, options?: CritiqueOptions | undefined | null): Promise<CritiqueReport>
+/**
  * Optional fields for the [`Chunk`] constructor's options bag.
  *
  * `metadata` is an open object (JSON-compatible values). Known keys are
