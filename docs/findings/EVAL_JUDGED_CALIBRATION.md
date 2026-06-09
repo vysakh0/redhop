@@ -90,14 +90,16 @@ judge by definition.
 
 ## Side-by-side with Ragas (run 2026-06-09, `openai/gpt-4o-mini` via OpenRouter)
 
-When `ragas` is installed and `OPENROUTER_API_KEY` (or
-`OPENAI_API_KEY`) is set, the script runs Ragas's faithfulness on
-the same dataset with the same LLM and prints a Pearson r + MAE
-agreement matrix.
+Two bench scripts:
+1. `bench/eval_judged_calibration.py` — the 5-case hand-curated probe
+   above (wiring + edge-case bucket check). Also runs Ragas
+   side-by-side when installed.
+2. `bench/eval_correlation_hotpot.py` — a real-workload Pearson
+   r / MAE measurement on HotpotQA. The honest numbers live here.
 
-**Result on this 5-case set (single run):**
+### 5-case probe (extreme failure modes)
 
-| case | RedHop single-prompt | RedHop decomposed | Ragas faithfulness |
+| case | RedHop single-prompt | RedHop decomposed | Ragas |
 |---|---:|---:|---:|
 | CLEAN | 1.000 | 1.000 | 1.000 |
 | HALLUCINATION | 0.000 | 0.333 | 0.333 |
@@ -105,40 +107,58 @@ agreement matrix.
 | WRONG_FACT | 0.000 | 0.500 | 0.500 |
 | REFUSAL | 1.000 | 0.000 | 0.000 |
 
-**Pairwise agreement:**
+Decomposed-faithfulness matches Ragas exactly here, but these are
+all extreme cases — clean signal, no ambiguity. The interesting
+question is whether the match holds on noisy real-world inputs. It
+does not, exactly. See below.
+
+### Real-workload (HotpotQA n=25, full distractor context)
+
+The LLM generates an answer to each question given the full HotpotQA
+distractor context (supporting paragraphs + distractor paragraphs).
+RedHop and Ragas both score faithfulness against that context.
 
 | comparison | Pearson r | MAE |
 |---|---:|---:|
-| RedHop single-prompt ↔ Ragas | +0.293 | 0.367 |
-| RedHop decomposed ↔ Ragas | **+1.000** | **0.000** |
+| RedHop single-prompt ↔ Ragas | **-0.059** | **0.367** |
+| RedHop decomposed ↔ Ragas | **+0.559** | **0.187** |
 
-The decomposed-faithfulness path (`decompose_faithfulness=True`)
-matches Ragas exactly across all 5 cases — same mechanism (extract
-claims, verify each), same numerical outputs. The single-prompt path
-gives coarse 0/1 verdicts that miss partial truth (HALLUCINATION:
-1 of 3 claims supported = 0.333; WRONG_FACT: 1 of 2 = 0.500). The
-REFUSAL case is where single-prompt fails its vacuous-truth check
-(no claims = "fully supported" = 1.0); decomposed correctly returns
-0 because there are no extracted claims to verify.
+Breakdown of decomposed-vs-Ragas agreement on n=25:
+- 13 of 25 cases agree perfectly (delta = 0.000).
+- 22 of 25 cases agree within ±0.4 (88%).
+- 3 of 25 cases have large divergence (delta ≥ 0.5), all in the same
+  direction: RedHop decomposed scores 1.0 while Ragas scores 0.0.
 
-**What this proves:**
-- The few-shot + batched-verification work brings our faithfulness
-  numerically equivalent to Ragas's, for one LLM and one test set.
-- The single-prompt path is a useful fast/cheap fallback but
-  should not be used when accuracy matters; default to
-  `decompose_faithfulness=True` for serious eval runs.
+**What this means:**
+- **The single-prompt path is NOT a stand-in for Ragas.** r=-0.059
+  means essentially no correlation; the anti-trend comes from
+  vacuous-truth on refusals (single-prompt gives 1.0 for "I don't
+  know" answers because there are no claims to contradict).
+- **The decomposed path is *similar* to Ragas, not identical.** r=0.56
+  with MAE=0.19 says they trend together but disagree on ~3-4 cases
+  per 25 by a meaningful margin. The 5-case probe's perfect agreement
+  was misleading because all 5 cases were extreme.
+- **The disagreement direction is informative.** When the two diverge,
+  RedHop decomposed scores HIGHER than Ragas — suggesting our
+  extraction produces fewer claims OR our verifier is more permissive
+  than Ragas's. Worth investigating in a follow-up if absolute
+  calibration to Ragas matters.
 
-**Honest limits:**
-- n=5 hand-curated. A real-workload bench (HotpotQA-50,
-  CUAD-50) would strengthen the result; the 5 cases are
-  picked to span obvious failure modes, not edge cases.
-- Single LLM (`openai/gpt-4o-mini`). Other judge models will
-  produce somewhat different absolute numbers, though the
-  agreement pattern should hold.
-- Only faithfulness was compared. Ragas's answer_relevancy /
-  answer_similarity / answer_correctness need an embedder
-  (OpenRouter doesn't expose embeddings); routing through a
-  second vendor for the comparison would muddy the apples-to-apples.
+### Honest limits
+
+- **n=25.** A reasonable sanity check but not a benchmark. n=200 with
+  the same setup would be more authoritative.
+- **Single LLM (`openai/gpt-4o-mini`).** Different judge models will
+  produce different absolute numbers and could shift the agreement
+  pattern. The trend (decomposed similar to Ragas, single-prompt
+  anti-correlated) is likely robust; the absolute r/MAE numbers
+  aren't.
+- **Only faithfulness was compared.** Ragas's relevancy / similarity /
+  correctness need an embedder (OpenRouter doesn't expose
+  embeddings); cross-vendor would muddy the apples-to-apples.
+- **The "correct" answer is unknown for both libraries.** We're
+  measuring whether RedHop and Ragas agree, not whether either
+  agrees with human judgment.
 
 ## Reproduce
 

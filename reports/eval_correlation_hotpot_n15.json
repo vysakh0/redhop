@@ -1,0 +1,165 @@
+{
+  "provider": "OpenRouter",
+  "model": "openai/gpt-4o-mini",
+  "n": 15,
+  "cases": [
+    {
+      "qid": "5a8c7595554299585d9e36b6",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Chief of Protocol"
+    },
+    {
+      "qid": "5a85ea095542994775f606a8",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Animorphs"
+    },
+    {
+      "qid": "5a8e3ea95542995a26add48d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Greenwich Village, New York City"
+    },
+    {
+      "qid": "5abd94525542992ac4f382d2",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "YG Entertainment"
+    },
+    {
+      "qid": "5a85b2d95542997b5ce40028",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Eenasul Fateh"
+    },
+    {
+      "qid": "5a87ab905542996e4f3088c1",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "3,677 seated"
+    },
+    {
+      "qid": "5a7bbb64554299042af8f7cc",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "Terry Richardson"
+    },
+    {
+      "qid": "5a7166395542994082a3e814",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.3333333333333333,
+      "answer": "I don't know.",
+      "gold_answer": "Kansas Song"
+    },
+    {
+      "qid": "5a877e5d5542993e715abf7d",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "David Weissman"
+    },
+    {
+      "qid": "5ab3b0bf5542992ade7c6e39",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "1999"
+    },
+    {
+      "qid": "5ab6d09255429954757d337d",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.6666666865348816,
+      "n_claims_extracted": 3,
+      "n_claims_supported": 2,
+      "ragas_faithfulness": 0.5,
+      "answer": "The football manager who recruited David Beckham, Sir Matt Busby, managed Manchester United from 1945 to 1969.",
+      "gold_answer": "from 1986 to 2013"
+    },
+    {
+      "qid": "5a75e05c55429976ec32bc5f",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "9,984"
+    },
+    {
+      "qid": "5ab3e45655429976abd1bcd4",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "the North Atlantic Conference"
+    },
+    {
+      "qid": "5ae0d4c9554299603e418468",
+      "redhop_single": 1.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 0.0,
+      "answer": "I don't know.",
+      "gold_answer": "1969 until 1974"
+    },
+    {
+      "qid": "5a8133725542995ce29dcbdb",
+      "redhop_single": 0.0,
+      "redhop_decomposed": 0.0,
+      "n_claims_extracted": 1,
+      "n_claims_supported": 0,
+      "ragas_faithfulness": 1.0,
+      "answer": "Robert Erskine Childers was from England.",
+      "gold_answer": "Robert Erskine Childers DSC"
+    }
+  ],
+  "pearson": {
+    "redhop_single_vs_ragas": -0.8943501495093162,
+    "redhop_decomposed_vs_ragas": 0.3667167217691715
+  },
+  "mae": {
+    "redhop_single_vs_ragas": 0.9444444444444444,
+    "redhop_decomposed_vs_ragas": 0.10000000132454766
+  }
+}
