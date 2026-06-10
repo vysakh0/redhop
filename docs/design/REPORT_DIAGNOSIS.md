@@ -1,9 +1,20 @@
 # Design: `report.diagnosis` — a self-service retrieval diagnostic on the Decision Report
 
-**Status**: proposed, approved for implementation. Target release: 0.3.4
-(additive, non-breaking per [API_STABILITY](../API_STABILITY.md): new
-fields on `ContextReport` are backward-compatible extensions, and the
-rendered string is explicitly unstable).
+**Status**: **shipped** on `feat/report-diagnosis` (commits `92f4491`
+implementation, `2d12a85` display-order / render-gating / single-pass
+tokenization fixes). Kept as the design record per the docs/design
+convention. Target release: 0.3.4 (additive, non-breaking per
+[API_STABILITY](../API_STABILITY.md): new fields on `ContextReport` are
+backward-compatible extensions, and the rendered string is explicitly
+unstable).
+
+> Two deltas between this spec and what shipped: (1) the render section
+> gates on fired hints only, not on `zero_match_terms` (avoids alert
+> fatigue from stray unmatched words on healthy queries); (2)
+> `compute()` receives the candidate term union from `characterize()`'s
+> existing `c_terms` instead of re-tokenizing, and hint/render term
+> lists are display-ordered content-words-first via the shared
+> `STOPWORDS` const. Successor spec: [WORKLOAD_AUDIT.md](WORKLOAD_AUDIT.md).
 
 **Audience**: this spec is written to be picked up cold by an
 implementing agent. Every integration point cites a file and line on
