@@ -135,10 +135,11 @@ tier we tested.
 
 **Fix in the query:** use the doc's vocabulary. *"What's the refund
 window?"* finds §3.4 immediately. **Fix at the config level (sometimes):**
-`retrieval="semantic"` (full dense, BM25 bypassed) returns *something*
-where hybrid returns empty, but the result may still not be the right
-clause. There's a [known bug](https://github.com/vysakh0/redhop/issues/1)
-where hybrid sometimes returns fewer candidates than lexical alone.
+`retrieval="hybrid"` adds a dense embedder that can match *refund* to
+*cancel* through semantic similarity. Hybrid is a strict superset of
+lexical (BM25-tail fallback fills any chunks the dense pool missed), so
+you never lose candidates by turning it on. The cost is the ~80MB
+embedder download and ~3× warm latency.
 
 ### 3. Templated queries with heavy boilerplate
 
