@@ -8,7 +8,7 @@
 [![Evidence layer](https://img.shields.io/badge/evidence-layer-blue)](https://github.com/vysakh0/redhop/tree/main/docs/findings)
 
 Hand it a document and a question. RedHop chunks, retrieves, and allocates the
-context your model should actually see — then tells you what it kept, what it dropped,
+context your model should actually see, then tells you what it kept, what it dropped,
 and why, with citations back to the source. No vector database, no LLM, all in-process.
 
 ## Get started in 60 seconds
@@ -25,7 +25,7 @@ ctx = doc.context("What is the governing law?")    # retrieves + assembles
 answer = llm.generate(ctx.text())                  # any LLM — no lock-in
 ```
 
-That's it. `ctx.citations` tells you where the answer came from;
+That's it. `ctx.citations` tells you where the answer came from.
 `ctx.report` explains what was kept, dropped, and why.
 
 ## How it compares
@@ -40,14 +40,14 @@ applying `Stripper(boilerplate)` to every system's query lifts everyone:
 LlamaIndex 86% → 94%, RedHop 82% → 88%, LangChain 73% → 79%. LlamaIndex
 actually benefits more from the same Stripper than RedHop does. RedHop
 reaches **90.7%** by additionally layering a hand-authored 34-key
-clause-name `Vocabulary` on top — but that recipe was not applied to
+clause-name `Vocabulary` on top, but that recipe was not applied to
 LlamaIndex, and the +4.7 framing previously reported here is RedHop-with-
 recipe vs LlamaIndex-default, not a like-for-like comparison.
 
 RedHop's clearer architectural lead is **multi-hop retention**, replicated on
 two datasets at n=300: **HotpotQA ≥0.8 retention 80% vs LlamaIndex 72%, LangChain
-71% (+8)**; **MuSiQue ≥0.8 retention 22% vs LlamaIndex 17%, LangChain 19% (+3 to
-+5)** — compositional multi-hop is harder, the magnitude shrinks but the lead
+71% (+8)**. **MuSiQue ≥0.8 retention 22% vs LlamaIndex 17%, LangChain 19% (+3 to
++5)**. Compositional multi-hop is harder, the magnitude shrinks but the lead
 holds at the ≥0.8 threshold. `raw_topk` matches `reasoning_preserving` on both,
 so the edge is RedHop's chunking + BM25 defaults rather than the assembly
 strategy.
@@ -55,15 +55,15 @@ strategy.
 **Push multi-hop further with `retrieval="hybrid"`**: measured +12 ≥0.8 on
 HotpotQA (71% → 83%) and +8 ≥0.5 on MuSiQue (66% → 74%) at n=100, at
 ~90-120× per-query latency (3ms → 250-400ms). Stripper and candidate_k tuning
-don't help on multi-hop — only dense rerank pierces the lexical-vs-semantic
+don't help on multi-hop: only dense rerank pierces the lexical-vs-semantic
 gap on bridge passages.
 
 **Apples-to-apples hybrid vs LangChain/LlamaIndex (same bge-small, n=100,
-post pure-rerank fix):** HotpotQA — RedHop hybrid wins (81% ≥0.8 vs
-LangChain 77%, LlamaIndex 67%). MuSiQue — LangChain leads narrowly
+post pure-rerank fix):** HotpotQA: RedHop hybrid wins (81% ≥0.8 vs
+LangChain 77%, LlamaIndex 67%). MuSiQue: LangChain leads narrowly
 (39% vs RedHop 34%, LlamaIndex 31%). The 0.3.1 audit traced the
 MuSiQue gap to RedHop's RRF fusion burying bridge passages with low
-BM25 + high dense rank; this release switches the default to pure
+BM25 + high dense rank. This release switches the default to pure
 rerank. Net: HotpotQA −2, MuSiQue +8 (close to predicted +10). Latency
 profile (2-5× slower than competitors' hybrid) is a separate open item.
 See [MULTIHOP_HYBRID_COMPETITORS.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID_COMPETITORS.md)
@@ -71,7 +71,7 @@ See [MULTIHOP_HYBRID_COMPETITORS.md](https://github.com/vysakh0/redhop/blob/main
 
 What RedHop's CUAD recipe offers is a reproducible, in-process, audited path
 from 82% → 87.7% → 90.7% using `Stripper` + `Vocabulary` with a Decision
-Report — the primitives are reusable on any templated workload. See
+Report. The primitives are reusable on any templated workload. See
 [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md),
 [MUSIQUE_MULTIHOP.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MUSIQUE_MULTIHOP.md),
 and [MULTIHOP_HYBRID.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTIHOP_HYBRID.md).
@@ -98,16 +98,16 @@ evidence-backed default that traces to a finding in
 ## The idea
 
 **Retrieval quality is not the same as reasoning quality.** Transformers tolerate
-irrelevant context far better than they tolerate *missing reasoning links* — so the
+irrelevant context far better than they tolerate *missing reasoning links*, so the
 chunk a multi-hop answer depends on is often low-relevance to the query and gets
 silently pruned. RedHop's default keeps it, and makes the trade-off visible. It is
-**not** a retriever, vector database, agent framework, or workflow engine — it does one
+**not** a retriever, vector database, agent framework, or workflow engine. It does one
 thing: turn a document and a query into the right prompt context, and explain the
 decision.
 
 ## It explains every decision
 
-Every call returns a **Decision Report** — what it kept, what it dropped, and *why*,
+Every call returns a **Decision Report**: what it kept, what it dropped, and *why*,
 including when it deliberately leaves a small context untouched.
 
 <p align="center">
@@ -129,7 +129,7 @@ for c in ctx.citations:
     # notes.md      None  "Refunds" ->  "notes.md -> Refunds"
 ```
 
-## Show your work — query rewrites with an audit trail
+## Show your work: query rewrites with an audit trail
 
 Every transformation between the raw query and what BM25 actually saw is
 recorded on the same Decision Report. Compile a `Stripper` (boilerplate
@@ -147,20 +147,20 @@ for rec in ctx.report.query_rewrites:
     print(rec.stage, "matched=", rec.matched, "added=", rec.added)
 ```
 
-The same `Vocabulary` works **chunk-side** at ingest via `vocab.enrich(chunk_text)`
-— lifts retrieval **+0.19 mean recall** on schema-style corpora
-([SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md));
-measured to *hurt* (−2.0pt) on long prose chunks
+The same `Vocabulary` works **chunk-side** at ingest via `vocab.enrich(chunk_text)`.
+It lifts retrieval **+0.19 mean recall** on schema-style corpora
+([SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md)),
+and is measured to *hurt* (−2.0pt) on long prose chunks
 ([CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md)).
 A/B with `redhop.evaluate(...)` to confirm before adopting.
 
-## Score the change — deterministic, or LLM-judged when you need it
+## Score the change: deterministic, or LLM-judged when you need it
 
 `redhop.evaluate(...)` runs in two modes. Use deterministic in CI on
-every PR; opt into a judge when you want faithfulness / relevancy /
+every PR. Opt into a judge when you want faithfulness / relevancy /
 correctness against generated answers.
 
-**Deterministic** — no API calls, ~ms per query. Returns
+**Deterministic**: no API calls, ~ms per query. Returns
 `context_recall` / `context_precision` / `answer_token_recall` /
 `faithfulness_lexical` / `relevancy_lexical` / `correctness_lexical`
 + a composite `overall`. Same primitives the Decision Report uses.
@@ -173,11 +173,11 @@ eval_b = redhop.evaluate(user_query, ctx_b, gold_chunks=gold_ids)
 print("lift on overall:", eval_b.overall - eval_a.overall)
 ```
 
-**LLM-judged** — pass `judge=` plus your own LLM caller (OpenAI,
+**LLM-judged**: pass `judge=` plus your own LLM caller (OpenAI,
 Anthropic, OpenRouter, local). Adds `faithfulness_judged` /
 `relevancy_judged` / `correctness_judged` to the same report.
 Claim-decomposed faithfulness (`decompose_faithfulness=True`) is
-substantively equivalent to Ragas — r=+0.664, MAE=0.151 on n=200
+substantively equivalent to Ragas: r=+0.664, MAE=0.151 on n=200
 HotpotQA, see [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md).
 TP/FP/FN F₁ via `decompose_correctness=True`.
 
@@ -210,15 +210,15 @@ Full API + field list:
 | On-ramp | For |
 | --- | --- |
 | `Document.from_text(text, source="document")` | text you already have |
-| `Document.from_chunks([redhop.Chunk(...), ...])` | content you already chunked — pass typed `redhop.Chunk(text, source=..., id=..., metadata={...})` instances |
-| `Document.from_file("x.pdf")` | a file — PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
+| `Document.from_chunks([redhop.Chunk(...), ...])` | content you already chunked: pass typed `redhop.Chunk(text, source=..., id=..., metadata={...})` instances |
+| `Document.from_file("x.pdf")` | a file: PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
 | `Document.from_bytes(data, source="x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) |
 | `Document.from_folder("./docs", persist=True)` | a whole directory, with an optional incremental on-disk index |
 
-## Retrieval tiers — no vector database
+## Retrieval tiers: no vector database
 
-Start at the lexical default — it handles most document QA because the words
-in the question are usually the words in the answer — and climb only when the
+Start at the lexical default (it handles most document QA because the words
+in the question are usually the words in the answer) and climb only when the
 failure shape calls for it. All in-process, no ANN, no index server.
 
 ```python
@@ -242,10 +242,10 @@ The 60-second decision guide with trade-offs and query-writing tips:
 
 ## Non-English content
 
-Default is a minimal analyzer (tokenize + lowercase + ASCII fold; no
-stemmer) — measured to beat English Snowball on every English workload
+Default is a minimal analyzer (tokenize + lowercase + ASCII fold, no
+stemmer), measured to beat English Snowball on every English workload
 we tested ([RAW_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/RAW_ANALYZER.md)).
-Swap with the `language=` kwarg — `"english"` for code search /
+Swap with the `language=` kwarg: `"english"` for code search /
 inflection-heavy English content, or any of the 18 Snowball Porter2
 languages (`arabic, danish, dutch, english, finnish, french, german,
 greek, hungarian, italian, norwegian, portuguese, romanian, russian,
@@ -261,14 +261,14 @@ they can't drift on what "the same term" means. Unknown names raise
 (we don't silently fall back to English). See the
 [language guide](https://github.com/vysakh0/redhop/blob/main/docs/LANGUAGE.md)
 for the full breakdown and the calibration disclaimer (we ship the
-stemmers; eval-corpus ranking quality on a real domain corpus is the
+stemmers, but eval-corpus ranking quality on a real domain corpus is the
 user's call).
 
 ## Assembly strategies
 
 | `strategy=` | What it does |
 | --- | --- |
-| `reasoning_preserving` *(default)* | keep query-relevant seeds **and** rescue low-relevance chunks linked to one; drop only unlinked junk |
+| `reasoning_preserving` *(default)* | keep query-relevant seeds **and** rescue low-relevance chunks linked to one, and drop only unlinked junk |
 | `distractor_filtered` | drop everything below a query-grounding bar |
 | `max_density` | greedily pack the densest chunks into the budget |
 | `raw_topk` | keep retrieval order until the budget fills |
@@ -279,20 +279,20 @@ source=..., id=..., metadata={...})` and pass into
 `redhop.build_context(query, retrieved_chunks=chunks, ...)` (low-level) or
 `redhop.Document.from_chunks(chunks)` (full indexing).
 
-## Templated workloads — the +9 retention lift (BM25, no model needed)
+## Templated workloads: the +9 retention lift (BM25, no model needed)
 
-If every query in your workload follows a fixed template — legal QA
+If every query in your workload follows a fixed template, such as legal QA
 ("*Highlight the parts (if any) of this contract related to X. Details: …*"),
 support-ticket triage ("*Help me with X, my account is Y, the error is Z*"),
-form-filled queries from a structured UI — **BM25 weights every query term
+or form-filled queries from a structured UI, **BM25 weights every query term
 by corpus IDF, not by how often the term repeats across your query set**.
 The boilerplate words dilute the real signal words, and retention suffers.
-This is the mechanism behind the 4-point CUAD gap on the head-to-head;
-closing it doesn't need a vector DB or a different retriever — it needs two
+This is the mechanism behind the 4-point CUAD gap on the head-to-head.
+Closing it doesn't need a vector DB or a different retriever: it needs two
 small preprocessing helpers on the query side.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="RedHop CUAD retention rises 81.3% → 87.7% → 90.7% via Stripper then Vocabulary; LlamaIndex is at 86% (raw template). Fair-preprocessing footnote: the same Stripper applied to LlamaIndex's query lifts it to 94%; the Vocabulary recipe was not applied to LlamaIndex." width="100%">
+  <img src="https://raw.githubusercontent.com/vysakh0/redhop/main/.github/workflow_lift.svg" alt="RedHop CUAD retention rises 81.3% → 87.7% → 90.7% via Stripper then Vocabulary. LlamaIndex is at 86% (raw template). Fair-preprocessing footnote: the same Stripper applied to LlamaIndex's query lifts it to 94%, and the Vocabulary recipe was not applied to LlamaIndex." width="100%">
 </p>
 
 **Measured** on the CUAD framework comparison (n=300, BM25, budget 2,000 tok):
@@ -303,7 +303,7 @@ small preprocessing helpers on the query side.
 | + strip the wrapper | `Stripper` | 87.7% | **+6.4** |
 | + add workload synonyms | `Vocabulary` | **90.7%** | **+3.0** |
 
-**RedHop with the full workflow is at 90.7% — beating LlamaIndex by 4 points
+**RedHop with the full workflow is at 90.7%, beating LlamaIndex by 4 points
 on the same setup, at native BM25 latency (~2.5ms/query).** Mechanism +
 worked clause dict:
 [CUAD_CLAUSE_EXPANSION.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md).
@@ -343,40 +343,40 @@ if report.is_templated:
 ```
 
 - **Only matters if your queries are templated.** `analyze_query_set` is
-  conservative by design — HotpotQA and MuSiQue both register quiet
-  (`is_templated=False`) in the cross-workload probe; CUAD fires. If
+  conservative by design: HotpotQA and MuSiQue both register quiet
+  (`is_templated=False`) in the cross-workload probe, while CUAD fires. If
   yours doesn't fire, skip this section.
 - **The analyzer measures the *shape* of your query set, not your
   retention.** It says "this *looks* like a templated workload" with
-  the boilerplate terms it found; it does **not** promise a specific
+  the boilerplate terms it found. It does **not** promise a specific
   lift. Always A/B on your gold-evidence sample before committing.
 - **For single-doc extraction workloads also set `strategy="raw_topk"`.**
   `auto` routes large contexts to `reasoning_preserving`, which solves a
   multi-hop problem contract extraction doesn't have. RawTopK beats it
   by ~4 points at every chunk size on CUAD.
 - **We deliberately don't ship a CUAD-specific `strip_template()`
-  helper.** Templates are workload-specific; baking one in would make
+  helper.** Templates are workload-specific. Baking one in would make
   the wrong call for the next workload. `Stripper(...)` and
   `Vocabulary({...})` take *your* boilerplate / synonym dict so the
   call stays on your side.
-- **Or take the one-knob alternative — `retrieval="hybrid"`.**
+- **Or take the one-knob alternative: `retrieval="hybrid"`.**
   Dense reads chunks as semantic content rather than counting tokens,
   so the boilerplate ratio stops mattering. Substitutes for stripping
   by a different mechanism (+5.3 on raw CUAD at ~10ms/query). On CUAD
-  specifically, BM25 + strip + vocabulary still wins — 90.7% / 2.5ms
+  specifically, BM25 + strip + vocabulary still wins: 90.7% / 2.5ms
   vs hybrid+CE 89.0% / 683ms. The two paths are *substitutes*, not
-  complements; pick one. See
+  complements, so pick one. See
   [CUAD_HYBRID_RERANK.md](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_HYBRID_RERANK.md).
 
 | helper | what it does | finding |
 | ------ | ------------ | ------- |
-| `analyze_query_set(queries)` | Inspects your queries; flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md) |
-| `Stripper(boilerplate)` | Compiled token-level boilerplate strip; word-boundary safe (an `"of"` strip does not erase `"of"` inside `"office"`). Plugs into the rewrite chain so the audit trail is captured | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
-| `Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes — appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
-| `vocab.enrich(chunk_text)` | Chunk-side mirror. **Measured to lift retrieval +0.19 mean recall on Spider-shape schemas** — use it when your retrieval units are short and opaque (schema columns, error codes, API symbols, defined contract terms). Measured to *hurt* (−2.0pt) on long prose chunks — don't use it there. A/B with `redhop.evaluate(...)` against your gold before adopting | [SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md) + [VOCABULARY_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
-| `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval; per-stage audit lands on `report.query_rewrites` | (same finding as above) |
-| `evaluate(query, ctx, gold_chunks=, gold_answer=, judge=, decompose_faithfulness=, decompose_correctness=)` | A/B scoring against gold. Deterministic-by-default (lexical, no LLM); opt-in `judge=` adds LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
-| `critique(answer, aspects, judge=)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect; polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
+| `analyze_query_set(queries)` | Inspects your queries and flags whether they're templated and which terms are doing the dilution | [QUERY_SET_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/QUERY_SET_ANALYZER.md) |
+| `Stripper(boilerplate)` | Compiled token-level boilerplate strip, word-boundary safe (an `"of"` strip does not erase `"of"` inside `"office"`). Plugs into the rewrite chain so the audit trail is captured | [CUAD_RECALL_GAP](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_RECALL_GAP.md) · [MULTILINGUAL_ANALYZER](https://github.com/vysakh0/redhop/blob/main/docs/findings/MULTILINGUAL_ANALYZER.md) |
+| `Vocabulary({key: [synonyms]})` | Compiled workload-curated equivalence classes: appends high-IDF synonyms when the token-level key matches. `Vocabulary.bidirectional({...})` for symmetric maps (PTO ↔ paid time off). Opposite mechanism to PRF (falsified) | [CUAD_CLAUSE_EXPANSION](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_CLAUSE_EXPANSION.md) |
+| `vocab.enrich(chunk_text)` | Chunk-side mirror. **Measured to lift retrieval +0.19 mean recall on Spider-shape schemas**. Use it when your retrieval units are short and opaque (schema columns, error codes, API symbols, defined contract terms). Measured to *hurt* (−2.0pt) on long prose chunks, so don't use it there. A/B with `redhop.evaluate(...)` against your gold before adopting | [SPIDER_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/SPIDER_ENRICH.md) + [VOCABULARY_ENRICH](https://github.com/vysakh0/redhop/blob/main/docs/findings/VOCABULARY_ENRICH.md) + [CUAD_ENRICH_DEFINITIONS_NULL](https://github.com/vysakh0/redhop/blob/main/docs/findings/CUAD_ENRICH_DEFINITIONS_NULL.md) |
+| `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval. Per-stage audit lands on `report.query_rewrites` | (same finding as above) |
+| `evaluate(query, ctx, gold_chunks=, gold_answer=, judge=, decompose_faithfulness=, decompose_correctness=)` | A/B scoring against gold. Deterministic-by-default (lexical, no LLM). Opt-in `judge=` adds LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
+| `critique(answer, aspects, judge=)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect, polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).

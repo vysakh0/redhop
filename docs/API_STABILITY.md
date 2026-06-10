@@ -11,7 +11,7 @@ reasoning-safe optimization, observability, and token economics.
 
 It is **not** a retriever you wire up, a vector database, an agent/workflow/
 orchestration framework, or a PDF parser. You bring text (from PyMuPDF, Marker,
-Unstructured, your own OCR, …); RedHop owns everything from chunking onward. That
+Unstructured, your own OCR, …). RedHop owns everything from chunking onward. That
 narrow scope is deliberate and will be preserved.
 
 ## Stable surface
@@ -23,11 +23,11 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 - `Document.from_text(text, source="document", chunk_size=…, chunk_overlap=…,
   strategy=…, language=…, …)`, `Document.from_chunks(chunks, …, language=…)`,
   `Document.from_file(path, …, language=…)`, `Document.from_bytes(data,
-  source, …, language=…)`, `Document.from_folder(path, …, language=…)`
-  — `chunk_size`/`chunk_overlap` are index-time; `language=` selects
+  source, …, language=…)`, `Document.from_folder(path, …, language=…)`.
+  `chunk_size`/`chunk_overlap` are index-time. `language=` selects
   any of the 18 Snowball Porter2 languages (or errors on unknown names).
-- `Document.context(query, budget=…)` — `budget` is a query-time
-  override (no re-indexing); `Document.analyze(query)`,
+- `Document.context(query, budget=…)`. `budget` is a query-time
+  override (no re-indexing). `Document.analyze(query)`,
   `Document.n_chunks`, `Document.n_files`, `Document.skipped_files`.
 - `build_context(query, retrieved_chunks, strategy=..., token_budget=..., ...)`,
   `filter_context(...)`, `analyze_context(...)`, `context_economics(...)`,
@@ -41,7 +41,7 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 **Node (`redhop`)**
 - `Document.fromText(text, opts)`, `Document.fromChunks(chunks, opts)`,
   `Document.fromFile(path, opts)`, `Document.fromBytes(data, source, opts)`,
-  `Document.fromFolder(path, folderOpts)` — `opts.language` selects any
+  `Document.fromFolder(path, folderOpts)`. `opts.language` selects any
   of the 18 Snowball Porter2 languages (or throws on unknown names).
 - `Document.context(query, budget?, neighbors?, includeHeading?)` →
   `BuiltContext { text, chunks, citations, report }`.
@@ -53,12 +53,12 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 
 **Rust (`redhop`)**
 - `redhop::Document` + `redhop::DocumentConfig` (re-exported from
-  `redhop::document`) — the high-level surface.
+  `redhop::document`): the high-level surface.
 - `redhop::{build_context, filter_context, analyze_context,
   context_economics, ContextConfig, ContextStrategy, ContextReport,
-  BuiltContext, AutoDecision, grounding_score, link_strength}` —
+  BuiltContext, AutoDecision, grounding_score, link_strength}`,
   re-exported from `redhop::context`.
-- `redhop::analyzer::{Analyzer, SnowballAnalyzer, default_english}` —
+- `redhop::analyzer::{Analyzer, SnowballAnalyzer, default_english}`:
   the pluggable analyzer surface attached via `Document::with_analyzer`.
 - `redhop::{citations, Citation, FolderOptions, LoadOptions}` plus, behind
   the `files` feature, `redhop::{read_file, read_bytes, read_folder,
@@ -74,23 +74,23 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 
 The Python and Node bindings expose the same *fields* and the same *string
 values* (parity is actively tested at the data level), but two call shapes
-differ for idiomatic reasons. They are stable within 0.x — call them as
-documented below; both are correct, neither will be silently flipped.
+differ for idiomatic reasons. They are stable within 0.x. Call them as
+documented below: both are correct, neither will be silently flipped.
 
 1. **`from_text` arguments.**
-   - Python: `Document.from_text(text, source="document", …)` — `source`
+   - Python: `Document.from_text(text, source="document", …)`. `source`
      is the second positional argument (with a default).
-   - Node: `Document.fromText(text, options?)` — `source` lives inside the
+   - Node: `Document.fromText(text, options?)`. `source` lives inside the
      options bag: `Document.fromText(text, { source: "policy.md" })`.
 2. **`BuiltContext.text`.**
-   - Python: `ctx.text()` — callable method (idiomatic for the pyo3 binding
+   - Python: `ctx.text()`, a callable method (idiomatic for the pyo3 binding
      since the underlying Rust value is borrowed).
-   - Node: `ctx.text` — string property on the returned object (idiomatic
+   - Node: `ctx.text`, a string property on the returned object (idiomatic
      napi-rs `#[napi(object)]` shape).
 
-Everything else — `report.strategy`, `report.requested_strategy` (Python) /
+Everything else (`report.strategy`, `report.requested_strategy` (Python) /
 `report.requestedStrategy` (Node), `auto_decision` / `autoDecision`,
-strategy string values, the chunks and citations arrays, etc. — has the
+strategy string values, the chunks and citations arrays, etc.) has the
 same shape across both bindings, and is structurally pinned by the
 field-set parity tests in `python/tests/test_parity_node.py`.
 
@@ -98,19 +98,19 @@ One **name alias** is in play for back-compat: Python's
 `report.second_hop_rescue_count` is exposed in Node as **both**
 `report.secondHopRescues` (the short name 0.2.0 shipped) and
 `report.secondHopRescueCount` (the long-name alias added in 0.2.2 to
-match Python). Both Node names will always be present and equal; new
+match Python). Both Node names will always be present and equal. New
 code should prefer `secondHopRescueCount` for cross-binding consistency.
 
 ## Experimental / may change without notice
 
-- **Internal retrieval** — `redhop::retrieval` (`Bm25Retriever`, dense,
+- **Internal retrieval**: `redhop::retrieval` (`Bm25Retriever`, dense,
   hybrid) inside the consolidated crate, plus the sibling crates
   `redhop-pipeline`, `redhop-diagnostics`, `redhop-orchestration`,
   `redhop-observability`, `redhop-calibration`, and `redhop-benchmarks`
-  — implementation detail, not the public product API. Retrieval is
-  intentionally **not** surfaced through `Document`; do not depend on
+  (implementation detail, not the public product API). Retrieval is
+  intentionally **not** surfaced through `Document`. Do not depend on
   these surfaces directly.
-- **Default values** are evidence-tuned and may shift as measurements improve —
+- **Default values** are evidence-tuned and may shift as measurements improve,
   e.g. `auto_passthrough_max_tokens` (the dilution gate), `distractor_min_grounding`,
   `link_min_jaccard`, `candidate_k`, chunk sizes. Pin them explicitly if you need
   stability. Each default traces to a finding in [docs/findings/](findings/).
@@ -122,9 +122,9 @@ code should prefer `secondHopRescueCount` for cross-binding consistency.
 
 ## Versioning
 
-- **0.x:** minor releases may contain breaking changes; they will be documented
+- **0.x:** minor releases may contain breaking changes. They will be documented
   in the changelog. Prefer pinning a version.
-- **≥1.0:** semantic versioning — breaking changes only in major releases, with
+- **≥1.0:** semantic versioning, breaking changes only in major releases, with
   deprecation notices first.
 
 ## A note on claims

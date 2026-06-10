@@ -120,3 +120,52 @@ built around that measured geometry.
 - `build_context(strategy = DistractorFiltered)` (low threshold only) → [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
 - selective reranker escalation (not uniform) → [RERANKING_LIMITS](RERANKING_LIMITS.md)
 - conservative adaptive controller (zero-harm, retriever-coupled actions) → [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md), [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md)
+
+## References
+
+RedHop is engineering, not a research paper — but the pieces it leans on are
+each grounded in named, citable work. The findings above document where each
+piece earned its place.
+
+**Retrieval primitives**
+
+- **BM25.** Robertson, S. & Zaragoza, H. (2009). *The Probabilistic Relevance
+  Framework: BM25 and Beyond.* Foundations and Trends in IR.
+  → drives `RetrievalMode::Lexical` and the lexical leg of `RetrievalMode::Hybrid`.
+- **Snowball Porter2 stemming.** Porter, M. F. (2001). *Snowball: A language for
+  stemming algorithms.* → the opt-in `crate::analyzer::SnowballAnalyzer` (18
+  languages); one analyzer drives BM25 *and* the grounding scorer so the two
+  layers can't drift.
+- **Reciprocal Rank Fusion (RRF).** Cormack, G., Clarke, C. & Büttcher, S. (2009).
+  *Reciprocal Rank Fusion outperforms Condorcet and individual rank learning
+  methods.* SIGIR. → `crate::retrieval::fusion::reciprocal_rank_fusion`;
+  replaced by pure dense rerank in the hybrid path in 0.3.1
+  ([MULTIHOP_CONSTANT_CHUNKING](MULTIHOP_CONSTANT_CHUNKING.md)).
+
+**Failure modes we observed and adopted from the literature**
+
+- **Lost-in-the-middle context dilution.** Liu, N. et al. (2023). *Lost in the
+  Middle: How Language Models Use Long Contexts.* arXiv:2307.03172. → motivates
+  the size-gated `ContextStrategy::Auto`; the measured crossover lives in
+  [CONTEXT_DILUTION](CONTEXT_DILUTION.md).
+- **Query Performance Prediction (QPP) & NQC.** Shtok, A., Kurland, O. & Carmel,
+  D. (2012). *Predicting Query Performance by Query-Drift Estimation.* ACM TOIS.
+  → probed as a candidate cross-encoder gate signal in
+  [RERANKING_LIMITS](RERANKING_LIMITS.md) (negative result, documented honestly).
+- **Multi-hop Dense Retrieval (MDR).** Xiong, W. et al. (2021). *Answering
+  Complex Open-Domain Questions with Multi-Hop Dense Retrieval.* ICLR. →
+  the single-pass re-encode variant we tested and falsified in
+  [DENSE_RERANK_CEILING](DENSE_RERANK_CEILING.md).
+
+**Evaluation datasets**
+
+- **HotpotQA.** Yang, Z. et al. (2018). *HotpotQA: A Dataset for Diverse,
+  Explainable Multi-hop Question Answering.* EMNLP. → primary multi-hop benchmark
+  in nearly every finding here.
+- **MuSiQue.** Trivedi, H. et al. (2022). *MuSiQue: Multi-hop Questions via
+  Single-hop Question Composition.* TACL. → the harder multi-hop corpus where
+  several "obvious" improvements were measured to NOT generalize
+  ([MUSIQUE_RECALL_GAP](MUSIQUE_RECALL_GAP.md)).
+- **CUAD.** Hendrycks, D. et al. (2021). *CUAD: An Expert-Annotated NLP Dataset
+  for Legal Contract Review.* NeurIPS. → the contracts workload in the
+  framework comparison and document-eval findings.

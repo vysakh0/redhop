@@ -1579,7 +1579,7 @@ impl Document {
 }
 
 // ─── Query-set analyzer (templated-workload diagnostics) ─────────────────────
-// Backed by `redhop::analyze_query_set` + `redhop::drop_template_terms`. See
+// Backed by `redhop::analyze_query_set` (pair with `Stripper` to act on it). See
 // docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe that
 // validated the heuristic.
 
@@ -1622,7 +1622,7 @@ impl QuerySetReport {
         self.inner.template_word_share
     }
     /// Words appearing in ≥ 80% of the query set, sorted by frequency desc.
-    /// Pass to [`drop_template_terms`].
+    /// Pass to [`Stripper`] to strip them at retrieval time.
     #[getter]
     fn boilerplate_terms(&self) -> Vec<String> {
         self.inner.boilerplate_terms.clone()
@@ -2043,11 +2043,25 @@ impl PyJudge {
                 let result = cb
                     .call1(py, (prompt, system))
                     .map_err(|e| redhop::core::Error::Other(format!("python judge call: {e}")))?;
-                // Accept either a float or a dict { score, raw_text?, model? }.
+                // Accept a float, a string, or a dict { score, raw_text?, model? }.
                 if let Ok(score) = result.extract::<f32>(py) {
                     return Ok(JudgeResponse {
                         score: score.clamp(0.0, 1.0),
                         raw_text: format!("{score}"),
+                        model: cb_name.clone(),
+                    });
+                }
+                // Strings: try to parse as a number first (a callable
+                // returning `"0.85"` should work as a score), else treat
+                // as raw_text with score 0.0. This is the common case
+                // when wiring an OpenAI/Anthropic client whose response
+                // is `.choices[0].message.content` (a string) — callers
+                // shouldn't have to wrap every score in `float(...)`.
+                if let Ok(text) = result.extract::<String>(py) {
+                    let score = text.trim().parse::<f32>().unwrap_or(0.0);
+                    return Ok(JudgeResponse {
+                        score: score.clamp(0.0, 1.0),
+                        raw_text: text,
                         model: cb_name.clone(),
                     });
                 }
@@ -2089,7 +2103,7 @@ impl PyJudge {
                     });
                 }
                 Err(redhop::core::Error::Other(
-                    "python judge returned neither a float nor a dict with 'score'".into(),
+                    "python judge returned neither a float, a string, nor a dict with 'score'".into(),
                 ))
             })
         });
