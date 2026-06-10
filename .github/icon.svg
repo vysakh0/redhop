@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#e11d48"/>
-  <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 28 L14 48"/>
-    <path d="M14 30 Q14 22 22 22 Q26 22 26 28"/>
-    <path d="M37 16 L37 48"/>
-    <path d="M51 16 L51 48"/>
-    <path d="M37 32 L51 32"/>
+  <!-- Cherry mark. Monochrome deep-cherry so the brand reads calm, not alarming:
+       two berries + a Y-stem + a leaf, recognizable in silhouette down to 16px. -->
+  <g fill="none" stroke="#9f1239" stroke-width="4" stroke-linecap="round">
+    <path d="M40 14 C 31 19, 24 25, 24 32"/>
+    <path d="M40 14 C 44 21, 45 28, 45 35"/>
   </g>
+  <path d="M40 14 C 46 5, 57 5, 60 11 C 54 17, 45 17, 40 14 Z" fill="#9f1239"/>
+  <circle cx="23" cy="45" r="13" fill="#be123c"/>
+  <circle cx="44" cy="47" r="12" fill="#be123c"/>
+  <ellipse cx="18" cy="40" rx="3.5" ry="2.2" fill="#fff" opacity="0.28" transform="rotate(-30 18 40)"/>
 </svg>

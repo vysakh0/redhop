@@ -7,9 +7,9 @@
 <p align="center"><b>The context layer that shows its work.</b></p>
 
 <p align="center">
-  <a href="https://pypi.org/project/redhop/"><img alt="PyPI" src="https://img.shields.io/pypi/v/redhop?label=pypi&color=e11d48"></a>
-  <a href="https://crates.io/crates/redhop"><img alt="crates.io" src="https://img.shields.io/crates/v/redhop?label=crates.io&color=e11d48"></a>
-  <a href="https://www.npmjs.com/package/redhop"><img alt="npm" src="https://img.shields.io/npm/v/redhop?label=npm&color=e11d48"></a>
+  <a href="https://pypi.org/project/redhop/"><img alt="PyPI" src="https://img.shields.io/pypi/v/redhop?label=pypi&color=be123c"></a>
+  <a href="https://crates.io/crates/redhop"><img alt="crates.io" src="https://img.shields.io/crates/v/redhop?label=crates.io&color=be123c"></a>
+  <a href="https://www.npmjs.com/package/redhop"><img alt="npm" src="https://img.shields.io/npm/v/redhop?label=npm&color=be123c"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <a href="docs/findings/README.md"><img alt="evidence layer" src="https://img.shields.io/badge/evidence-layer-blue"></a>
 </p>

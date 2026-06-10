@@ -2,8 +2,8 @@
 
 **A reasoning-preserving context runtime for RAG.**
 
-[![PyPI](https://img.shields.io/pypi/v/redhop?label=pypi&color=e11d48)](https://pypi.org/project/redhop/)
-[![Python](https://img.shields.io/pypi/pyversions/redhop?color=e11d48)](https://pypi.org/project/redhop/)
+[![PyPI](https://img.shields.io/pypi/v/redhop?label=pypi&color=be123c)](https://pypi.org/project/redhop/)
+[![Python](https://img.shields.io/pypi/pyversions/redhop?color=be123c)](https://pypi.org/project/redhop/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/vysakh0/redhop/blob/main/LICENSE)
 [![Evidence layer](https://img.shields.io/badge/evidence-layer-blue)](https://github.com/vysakh0/redhop/tree/main/docs/findings)
 

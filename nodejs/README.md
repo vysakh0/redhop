@@ -1,7 +1,7 @@
 # redhop (Node.js)
 
-[![npm](https://img.shields.io/npm/v/redhop?label=npm&color=e11d48)](https://www.npmjs.com/package/redhop)
-[![Node](https://img.shields.io/node/v/redhop?color=e11d48)](https://www.npmjs.com/package/redhop)
+[![npm](https://img.shields.io/npm/v/redhop?label=npm&color=be123c)](https://www.npmjs.com/package/redhop)
+[![Node](https://img.shields.io/node/v/redhop?color=be123c)](https://www.npmjs.com/package/redhop)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/vysakh0/redhop/blob/main/LICENSE)
 [![Evidence layer](https://img.shields.io/badge/evidence-layer-blue)](https://github.com/vysakh0/redhop/tree/main/docs/findings)
 
