@@ -1466,6 +1466,20 @@ mod tests {
             !r.contains("Query diagnosis"),
             "healthy report must not render diagnosis section"
         );
+        // Healthy retrieval with one stray zero-match term: facts land in
+        // the struct, but no hint fires, so the rendered report stays
+        // terse (no alert fatigue from routine unmatched words).
+        let stray = doc.context("refund policy for zanzibar customers").unwrap();
+        assert!(
+            !stray.report.diagnosis.zero_match_terms.is_empty(),
+            "expected at least one stray zero-match term"
+        );
+        if stray.report.diagnosis.hints.is_empty() {
+            assert!(
+                !stray.report.render(None).contains("Query diagnosis"),
+                "no-hint report must not render a diagnosis section"
+            );
+        }
         // Vocab-mismatch query: diagnosis section present.
         let bad = doc
             .context("How do I cancel and get my money back?")

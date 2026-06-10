@@ -462,7 +462,11 @@ should change) and the full existing suite.
   chunks contain them. Cheap with the vocab map extended to postings,
   but postings cost memory; needs a use case first.
 - Threshold sweep to turn the 🟡 constants 🟢 (see DEFAULT_PROVENANCE
-  re-validation entry).
+  re-validation entry). Note `UNDERDETERMINED_MAX_SPREAD` is
+  mode-dependent: it was reasoned about on BM25 score distributions,
+  and dense cosines compress into a narrower band, so the sweep must
+  run per retrieval mode (Lexical / Hybrid / Dense) or the hint will
+  over-fire under dense rerank.
 - Cross-source `by_source` reporting (separate feature, separate spec).
 
 ## 13. Acceptance criteria

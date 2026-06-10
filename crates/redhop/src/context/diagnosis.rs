@@ -116,28 +116,26 @@ pub enum HintCode {
 /// `build_context` / `analyze_context`, where the corpus is not
 /// visible. Sets `corpus_stats_available = false`. The Document-level
 /// path enriches this in Layer 2.
+///
+/// `candidate_terms` is the union of the candidates' analyzed term
+/// sets. The caller passes the `c_terms` that `characterize()` already
+/// computed for grounding, so the candidates are tokenized exactly once
+/// per call (and the two layers cannot disagree on tokenization).
 pub(crate) fn compute(
     query: &Query,
     retrieved: &[RetrievalResult],
+    candidate_terms: &HashSet<String>,
     empty_context: bool,
     low_confidence: bool,
     analyzer: &dyn Analyzer,
 ) -> Diagnosis {
     let query_terms = ordered_terms(&query.text, analyzer);
-    let query_term_set: HashSet<&String> = query_terms.iter().collect();
 
-    let mut candidate_terms: HashSet<String> = HashSet::new();
-    for r in retrieved {
-        for t in analyzer.tokens(&r.chunk.text) {
-            candidate_terms.insert(t);
-        }
-    }
     let terms_unmatched_in_candidates: Vec<String> = query_terms
         .iter()
         .filter(|t| !candidate_terms.contains(t.as_str()))
         .cloned()
         .collect();
-    let _ = query_term_set; // reserved for symmetric ops; silence dead-set warning.
 
     let score_spread = compute_score_spread(retrieved);
 
@@ -215,7 +213,7 @@ fn evaluate_hints(d: &mut Diagnosis, low_confidence: bool) {
     }
 
     if h2_fired {
-        let listed = format_term_list(&d.zero_match_terms, 6);
+        let listed = format_term_list(&display_order(&d.zero_match_terms), 6);
         d.hints.push(DiagnosisHint {
             code: HintCode::VocabMismatch,
             message: format!(
@@ -311,6 +309,19 @@ fn compute_score_spread(retrieved: &[RetrievalResult]) -> Option<f32> {
     Some(((top - kth) / top).clamp(0.0, 1.0))
 }
 
+/// Order terms for *display*: content words first, stopwords after,
+/// stable within each group. The structured fields keep first-occurrence
+/// order untouched (facts are facts); this only decides what a human
+/// reads first. Without it, the raw analyzer's kept stopwords ("how",
+/// "do", "i") bury the informative terms ("cancel", "money") in the
+/// hint message.
+pub(crate) fn display_order(terms: &[String]) -> Vec<String> {
+    let is_stop = |t: &String| super::STOPWORDS.contains(&t.as_str());
+    let mut out: Vec<String> = terms.iter().filter(|t| !is_stop(t)).cloned().collect();
+    out.extend(terms.iter().filter(|t| is_stop(t)).cloned());
+    out
+}
+
 /// Analyze `text` with `analyzer` and return its terms in
 /// first-occurrence order, deduped. The analyzer drives tokenization so
 /// the diagnosis matches the index. The Layer-1 / Layer-2 split needs
@@ -356,6 +367,16 @@ mod tests {
         let a = default_analyzer();
         let terms = ordered_terms("alpha beta alpha gamma beta", a.as_ref());
         assert_eq!(terms, vec!["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn display_order_puts_content_words_before_stopwords() {
+        let terms: Vec<String> = ["how", "cancel", "do", "money"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let ordered = display_order(&terms);
+        assert_eq!(ordered, vec!["cancel", "money", "how", "do"]);
     }
 
     #[test]

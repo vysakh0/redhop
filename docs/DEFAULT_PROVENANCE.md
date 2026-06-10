@@ -58,7 +58,7 @@ not chosen by a measurement sweep.
 | `LOW_DISCRIMINATION_MIN_TERMS` | **8** | 🟡 convention | Short queries don't have boilerplate dilution; the templated-query failure shape is about long boilerplate-heavy queries. |
 | `LOW_DISCRIMINATION_MIN_SHARE` | **0.6** | 🟡 convention | At least 60% of query terms must be low-discrimination before flagging the query as boilerplate-shaped. |
 | `UNDERDETERMINED_MAX_TERMS` | **2** | 🟡 convention | The polysemy failure shape from CHOOSING_A_CONFIG ("'vendor'", "'settle'") is single-word. |
-| `UNDERDETERMINED_MAX_SPREAD` | **0.15** | 🟡 convention | Relative spread of the top BM25 scores. Below 15% means the candidates are nearly tied. |
+| `UNDERDETERMINED_MAX_SPREAD` | **0.15** | 🟡 convention | Relative spread of the top scores. Below 15% means the candidates are nearly tied. **Mode-dependent:** reasoned about on BM25 score distributions. Dense cosines compress into a narrower band, so the hint may over-fire under `Hybrid` / `Dense`. The re-validation sweep should run per retrieval mode. |
 | `UNDERDETERMINED_MIN_CANDIDATES` | **5** | 🟡 convention | Below 5, "spread is flat" can just mean "small pool". |
 | `SCORE_SPREAD_TOP_K` | **10** | 🟡 convention | Spread window. Matches `candidate_k`'s default ballpark. |
 

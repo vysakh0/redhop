@@ -556,22 +556,26 @@ impl ContextReport {
         }
 
         // ── Layer 4: query diagnosis ───────────────────────────────────────
-        // Render only when there's something worth showing: a fired hint or
-        // a corpus-stats finding (zero-match terms). Healthy queries skip
-        // the section so the report stays terse.
+        // Render only when a hint fired. Real workloads routinely have a
+        // stray query term the corpus doesn't contain; rendering on
+        // zero-match alone would put a diagnosis section on healthy
+        // reports (alert fatigue). The facts stay in the structured
+        // `diagnosis` field either way.
         let d = &self.diagnosis;
-        if !d.hints.is_empty() || !d.zero_match_terms.is_empty() {
+        if !d.hints.is_empty() {
             s.push_str("\nQuery diagnosis\n───────────────\n");
             if d.corpus_stats_available && !d.zero_match_terms.is_empty() {
-                let listed = d
-                    .zero_match_terms
+                // Content words first, stopwords after, so the informative
+                // terms lead the line.
+                let ordered = diagnosis::display_order(&d.zero_match_terms);
+                let listed = ordered
                     .iter()
                     .take(8)
                     .map(|t| format!("\"{}\"", t))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let suffix = if d.zero_match_terms.len() > 8 {
-                    format!(", and {} more", d.zero_match_terms.len() - 8)
+                let suffix = if ordered.len() > 8 {
+                    format!(", and {} more", ordered.len() - 8)
                 } else {
                     String::new()
                 };
@@ -764,6 +768,14 @@ pub fn build_context(
     // Per-chunk grounding + density, computed once.
     let mut items = characterize(&q_terms, retrieved, cfg);
 
+    // Union of candidate term sets for the diagnosis, captured before the
+    // strategy match filters/consumes `items`. Reuses the c_terms that
+    // characterize() just produced, so candidates are tokenized once.
+    let candidate_terms: HashSet<String> = items
+        .iter()
+        .flat_map(|i| i.c_terms.iter().cloned())
+        .collect();
+
     let n_distractor_total = items.iter().filter(|i| i.is_distractor).count();
     let mut n_dropped_distractor = 0;
     let mut n_dropped_redundant = 0;
@@ -887,6 +899,7 @@ pub fn build_context(
     report.diagnosis = diagnosis::compute(
         query,
         retrieved,
+        &candidate_terms,
         selected.is_empty(),
         report.low_confidence_retrieval,
         analyzer,
@@ -1155,6 +1168,10 @@ pub fn analyze_context(
         diagnosis: diagnosis::compute(
             query,
             retrieved,
+            &items
+                .iter()
+                .flat_map(|i| i.c_terms.iter().cloned())
+                .collect(),
             items.is_empty(),
             low_confidence_retrieval,
             cfg.analyzer.as_ref(),
