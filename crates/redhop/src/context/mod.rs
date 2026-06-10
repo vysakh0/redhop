@@ -70,7 +70,10 @@ use serde::{Deserialize, Serialize};
 pub mod diagnosis;
 pub mod eval;
 
-pub use diagnosis::{Diagnosis, DiagnosisHint, HintCode, TermStat};
+pub use diagnosis::{
+    summarize_diagnoses, Diagnosis, DiagnosisHint, DiagnosisSummary, FocusCode, HintCode,
+    HintCount, TermCount, TermStat, WorkloadFocus,
+};
 
 /// Term-set Jaccard at/above which two chunks are treated as near-exact
 /// lexical duplicates by `RedundancyPruned` when embeddings are absent (the

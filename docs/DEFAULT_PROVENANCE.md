@@ -61,6 +61,10 @@ not chosen by a measurement sweep.
 | `UNDERDETERMINED_MAX_SPREAD` | **0.15** | 🟡 convention | Relative spread of the top scores. Below 15% means the candidates are nearly tied. **Mode-dependent:** reasoned about on BM25 score distributions. Dense cosines compress into a narrower band, so the hint may over-fire under `Hybrid` / `Dense`. The re-validation sweep should run per retrieval mode. |
 | `UNDERDETERMINED_MIN_CANDIDATES` | **5** | 🟡 convention | Below 5, "spread is flat" can just mean "small pool". |
 | `SCORE_SPREAD_TOP_K` | **10** | 🟡 convention | Spread window. Matches `candidate_k`'s default ballpark. |
+| `SUMMARY_MIN_QUERIES` | **20** | 🟡 convention | `summarize_diagnoses` returns `sample_too_small` below this. A workload audit on <20 queries can swing on a single outlier; better to ask the user to collect more than emit a noisy recommendation. |
+| `DOMINANT_HINT_SHARE` | **0.20** | 🟡 convention | A hint must fire on at least 20% of queries before the summary will name it as the workload focus. Below the threshold, no failure shape "dominates" and the summary falls through to `weak_retrieval` or `healthy`. |
+| `WEAK_RETRIEVAL_MIN_RATE` | **0.30** | 🟡 convention | The fallback gate: 30%+ of queries are empty or low-confidence but no specific shape leads. Surfaces the "your corpus does not cover these questions" case. |
+| `TOP_TERMS_CAP` | **20** | 🟡 convention | Cap on the number of zero-match terms returned in the summary. Enough to be actionable as a `Vocabulary` seed, bounded to keep the JSON small. |
 
 ## Defaults flagged for re-validation in 0.3
 
@@ -90,7 +94,11 @@ not chosen by a measurement sweep.
    and false-negative rates per hint, turning the constants 🟢. Cheap
    to run: no LLM judge needed since we score against gold-evidence
    recall and a corpus where we already know which queries are
-   templated, polysemous, or paraphrased.
+   templated, polysemous, or paraphrased. **Fold the four
+   `summarize_diagnoses` constants (`SUMMARY_MIN_QUERIES`,
+   `DOMINANT_HINT_SHARE`, `WEAK_RETRIEVAL_MIN_RATE`, `TOP_TERMS_CAP`)
+   into the same sweep** since the workload-audit precision depends on
+   the per-query hint precision.
 
 ## Defaults that don't need re-validation
 

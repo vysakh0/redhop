@@ -64,6 +64,7 @@ from ._redhop import (
     grounding_score,
     link_strength,
     summarize,
+    summarize_diagnoses,
 )
 from ._redhop import (
     analyze_context as _analyze_context,
@@ -266,4 +267,5 @@ __all__ = [
     "link_strength",
     "report_to_dict",
     "summarize",
+    "summarize_diagnoses",
 ]

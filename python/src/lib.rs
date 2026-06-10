@@ -14,7 +14,9 @@ use pyo3::types::{PyDict, PyList};
 use redhop::context::{
     analyze_context as rh_analyze, build_context as rh_build, context_economics as rh_economics,
     filter_context as rh_filter, grounding_score as rh_grounding, link_strength as rh_link,
-    AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy, HintCode,
+    summarize_diagnoses as rh_summarize_diagnoses, AutoDecision, ContextConfig,
+    ContextReport as RhReport, ContextStrategy, DiagnosisSummary as RhDiagnosisSummary, FocusCode,
+    HintCode,
 };
 use redhop::core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
@@ -55,6 +57,18 @@ fn hint_code_to_str(c: HintCode) -> &'static str {
         HintCode::UnderdeterminedQuery => "underdetermined_query",
         // The enum is `#[non_exhaustive]`; future variants degrade to a
         // stable sentinel rather than crash the binding.
+        _ => "unknown",
+    }
+}
+
+fn focus_code_to_str(c: FocusCode) -> &'static str {
+    match c {
+        FocusCode::SampleTooSmall => "sample_too_small",
+        FocusCode::Healthy => "healthy",
+        FocusCode::VocabMismatch => "vocab_mismatch",
+        FocusCode::TemplatedQueries => "templated_queries",
+        FocusCode::UnderdeterminedQueries => "underdetermined_queries",
+        FocusCode::WeakRetrieval => "weak_retrieval",
         _ => "unknown",
     }
 }
@@ -2571,6 +2585,126 @@ fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
     }
 }
 
+/// Workload-level aggregation of per-query diagnoses across N
+/// `ContextReport`s. Returns a single focus recommendation citing the
+/// measured finding that justifies it (or `healthy` /
+/// `sample_too_small`). See `docs/design/WORKLOAD_AUDIT.md`.
+#[pyclass]
+#[derive(Clone)]
+struct DiagnosisSummary {
+    inner: RhDiagnosisSummary,
+    rendered: String,
+}
+
+#[pymethods]
+impl DiagnosisSummary {
+    /// Number of reports aggregated.
+    #[getter]
+    fn n(&self) -> usize {
+        self.inner.n
+    }
+    /// Fraction of reports whose assembly selected zero chunks.
+    #[getter]
+    fn empty_context_rate(&self) -> f32 {
+        self.inner.empty_context_rate
+    }
+    /// Fraction of reports with `low_confidence_retrieval == True`.
+    #[getter]
+    fn low_confidence_rate(&self) -> f32 {
+        self.inner.low_confidence_rate
+    }
+    /// Fraction of reports that carried corpus stats (Layer 2). Below
+    /// 1.0 means part of the workload ran through direct
+    /// `build_context` / `analyze_context` and got Layer-1 facts only.
+    #[getter]
+    fn corpus_stats_coverage(&self) -> f32 {
+        self.inner.corpus_stats_coverage
+    }
+    /// Mean `score_spread` over reports where it was populated.
+    /// `None` when no report carried one.
+    #[getter]
+    fn mean_score_spread(&self) -> Option<f32> {
+        self.inner.mean_score_spread
+    }
+    /// Number of reports that carried a `score_spread`.
+    #[getter]
+    fn n_with_score_spread(&self) -> usize {
+        self.inner.n_with_score_spread
+    }
+    /// `{code, count, share}` per hint code. All five codes present
+    /// (count 0 included) so consumers can chart without key checks.
+    #[getter]
+    fn hint_counts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        let out = PyList::empty(py);
+        for hc in &self.inner.hint_counts {
+            let row = PyDict::new(py);
+            row.set_item("code", hint_code_to_str(hc.code))?;
+            row.set_item("count", hc.count)?;
+            row.set_item("share", hc.share)?;
+            out.append(row)?;
+        }
+        Ok(out)
+    }
+    /// `{term, count}` for terms that zero-matched the corpus, ranked
+    /// by query-frequency. Capped at the registry's `TOP_TERMS_CAP`.
+    #[getter]
+    fn top_zero_match_terms<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        let out = PyList::empty(py);
+        for t in &self.inner.top_zero_match_terms {
+            let row = PyDict::new(py);
+            row.set_item("term", &t.term)?;
+            row.set_item("count", t.count)?;
+            out.append(row)?;
+        }
+        Ok(out)
+    }
+    /// `{code, message, evidence}`. Exactly one focus per summary.
+    #[getter]
+    fn focus<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let d = PyDict::new(py);
+        d.set_item("code", focus_code_to_str(self.inner.focus.code))?;
+        d.set_item("message", &self.inner.focus.message)?;
+        d.set_item("evidence", &self.inner.focus.evidence)?;
+        Ok(d)
+    }
+    /// The full summary as a JSON string.
+    fn json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner)
+            .map_err(|e| PyValueError::new_err(format!("serialize summary: {e}")))
+    }
+    fn __str__(&self) -> String {
+        self.rendered.clone()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "DiagnosisSummary(n={}, focus={})",
+            self.inner.n,
+            focus_code_to_str(self.inner.focus.code),
+        )
+    }
+}
+
+/// Aggregate per-query diagnoses across a workload. Pass a list of
+/// `ContextReport` objects (from `ctx.report`); get back one summary
+/// with hint histogram, failure rates, top vocabulary gaps, and at
+/// most one focus recommendation citing the finding behind it.
+///
+/// ```python
+/// reports = [doc.context(q).report for q in queries]
+/// summary = redhop.summarize_diagnoses(reports)
+/// print(summary)
+/// if summary.focus["code"] == "vocab_mismatch":
+///     # Switch to retrieval="hybrid" or build a Vocabulary.
+///     ...
+/// ```
+#[pyfunction]
+fn summarize_diagnoses(reports: Vec<ContextReport>) -> DiagnosisSummary {
+    let inner_reports: Vec<RhReport> = reports.into_iter().map(|r| r.inner).collect();
+    let inner = rh_summarize_diagnoses(&inner_reports);
+    let rendered = inner.render();
+    DiagnosisSummary { inner, rendered }
+}
+
 // ── judged aspect critique ────────────────────────────────────────
 
 /// One qualitative dimension to score the answer on. The judge sees
@@ -2741,6 +2875,8 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(analyze_query_set, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate, m)?)?;
     m.add_function(wrap_pyfunction!(summarize, m)?)?;
+    m.add_function(wrap_pyfunction!(summarize_diagnoses, m)?)?;
+    m.add_class::<DiagnosisSummary>()?;
     m.add_function(wrap_pyfunction!(critique, m)?)?;
     Ok(())
 }

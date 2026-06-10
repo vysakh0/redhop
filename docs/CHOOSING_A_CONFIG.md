@@ -121,6 +121,13 @@ saw fail in this eval that no config fixed.
 > to the relevant section of this page or the measured finding
 > behind it. See `examples/python/12_diagnosis.py` (and the Node and
 > Rust mirrors).
+>
+> **Aggregate across a workload.** Once you have a few hundred real
+> production queries, `redhop.summarize_diagnoses([ctx.report for
+> ctx in ...])` returns one focus recommendation with the cited
+> finding behind it. Full walk-through (including bringing your own
+> retriever):
+> [`docs/DIAGNOSE_YOUR_PIPELINE.md`](DIAGNOSE_YOUR_PIPELINE.md).
 
 ### 1. One-word polysemy queries
 

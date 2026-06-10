@@ -21,6 +21,29 @@ minor releases may break; breaking changes are noted here).
   Design: `docs/design/REPORT_DIAGNOSIS.md`. Examples:
   `examples/{python,nodejs,rust}/12_diagnosis.*`.
 
+### Added — workload audit + observability export
+
+- **`summarize_diagnoses(reports)`** (Rust + Python + Node). Aggregates
+  per-query diagnoses across N `ContextReport`s into a single
+  workload summary: hint histogram, failure rates, top vocabulary
+  gaps, and at most one focus recommendation citing the measured
+  finding behind it. Six focus codes (`vocab_mismatch`,
+  `templated_queries`, `underdetermined_queries`, `weak_retrieval`,
+  `healthy`, `sample_too_small`) resolved by a fixed priority order.
+  Mirrors the existing `eval::summarize` shape.
+- **`redhop.otel.report_to_attributes(report)`** (Python). Flattens a
+  Decision Report into OpenTelemetry-legal span attributes (or
+  Langfuse metadata) under a `redhop.` namespace. Zero new
+  dependencies. Node and Rust ship the same conventions as a copy-
+  paste snippet in the docs page.
+- **New docs page**: `docs/DIAGNOSE_YOUR_PIPELINE.md` + website mirror.
+  Four-step walk-through for pointing RedHop's diagnostics at an
+  existing LangChain / LlamaIndex / pgvector / hand-rolled pipeline
+  without migrating, including the honesty section ("`analyze_context`
+  reports waste, only `build_context` removes it"). Design:
+  `docs/design/WORKLOAD_AUDIT.md`. Example #13:
+  `examples/{python,nodejs,rust}/13_workload_audit.*`.
+
 ### Fixed
 
 - **`docs/CHOOSING_A_CONFIG.md`**: removed the stale "hybrid sometimes
