@@ -5,7 +5,22 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
-## [Unreleased]
+## [0.3.4] — 2026-06-10
+
+**Retrieval diagnostics + bring-your-own-pipeline observability.**
+Two threads in this release:
+(1) `ctx.report.diagnosis` — every Decision Report now carries
+query-level facts about how the query interacted with the corpus and
+the retrieved candidates, plus a closed registry of bounded hints
+that fire on documented failure shapes with a measured-finding
+citation on each one;
+(2) workload audit + observability export — `summarize_diagnoses`
+aggregates across N reports into one focus recommendation, and
+`redhop.otel.report_to_attributes` flattens any report into OpenTelemetry
+or Langfuse-compatible span attributes with zero new dependencies.
+The combination lets users point RedHop's diagnostics at their
+existing LangChain / LlamaIndex / pgvector pipeline in ~10 lines, no
+migration. See `docs/DIAGNOSE_YOUR_PIPELINE.md`.
 
 ### Added — self-service retrieval diagnostic
 
@@ -51,6 +66,19 @@ minor releases may break; breaking changes are noted here).
   #1. The strict-superset contract was restored in 0.3.1 by the
   pure-rerank + BM25-tail fill, with a regression test
   (`local_rerank.rs::pure_rerank_lets_dense_win_when_it_disagrees_with_bm25`).
+
+### Discipline notes
+
+- `ContextReport` gained a new `diagnosis: Diagnosis` field. In
+  0.x-alpha this is documented as additive-but-technically-breaking
+  for Rust callers that construct `ContextReport` via struct literal
+  from outside the crate. Users who build through the public API
+  (`Document::context`, `build_context`, `analyze_context`) are
+  unaffected. Python and Node bindings are dynamic and additive.
+- 13 new 🟡-convention thresholds across the per-query hint and
+  workload-focus registries are logged in `DEFAULT_PROVENANCE.md`
+  with a re-validation entry. Folded into the existing 0.3 sweep
+  backlog.
 
 ## [0.3.3] — 2026-06-09
 
