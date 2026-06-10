@@ -1,6 +1,6 @@
 # Contributing to RedHop
 
-Thanks for your interest. RedHop is a small, deliberately bounded library — the
+Thanks for your interest. RedHop is a small, deliberately bounded library: the
 best contributions sharpen what exists rather than expand scope.
 
 ## Build & test
@@ -35,7 +35,7 @@ python python/examples/compare_strategies.py
 
 ## Checks (what CI enforces)
 
-Run these before opening a PR — CI runs the same set:
+Run these before opening a PR (CI runs the same set):
 
 ```bash
 # Rust
@@ -60,7 +60,7 @@ cargo llvm-cov --workspace                 # cargo install cargo-llvm-cov
 ## What we welcome
 
 - Bug fixes, docs improvements, more examples, better error messages.
-- New **findings** — measured experiments, including ones that *falsify* a
+- New **findings**: measured experiments, including ones that *falsify* a
   hypothesis. These are first-class. Add a doc under `docs/findings/` using the
   template (hypothesis · setup · metrics · failure cases · interpretation ·
   caveats · reproduce command · verdict) and link it from the index.
@@ -79,8 +79,8 @@ The project's credibility is the evidence layer. Please:
 
 - **Don't over-claim.** Report effect sizes with caveats and CIs where possible.
 - **Don't sanitize.** If a result is unstable or negative, that *is* the finding.
-- **Keep Rust the source of truth.** Bindings (Python/CLI) wrap the core API;
-  don't fork logic into them.
+- **Keep Rust the source of truth.** Bindings (Python/CLI) wrap the core API.
+  Don't fork logic into them.
 - **Defaults change only with evidence.** A new default needs a finding doc.
 
 ## PRs

@@ -1,17 +1,17 @@
 # Retrieval & Context Engineering Tips
 
-Practical rules for getting more out of the context you feed an LLM — and how
+Practical rules for getting more out of the context you feed an LLM, and how
 RedHop's API encodes each one so you don't have to remember them.
 
-These are not paper claims; they are **operational laws** that RedHop's
+These are not paper claims. They are **operational laws** that RedHop's
 experiments converged on (n=1,275 hermetic + n=300/200 end-to-end across four
-model families, all CI-backed — see [docs/findings/](findings/)). Every rule
+model families, all CI-backed, see [docs/findings/](findings/)). Every rule
 below links to the measurement that produced it and the API that applies it.
 
 > **The one rule, if you read nothing else:**
 > **Context optimization is conditional. Optimize only under *dilution*, do it
 > conservatively, and measure what you removed.** Stuffing a small, clean context
-> through untouched is usually the right move; pruning a large, junk-heavy one
+> through untouched is usually the right move. Pruning a large, junk-heavy one
 > recovers real accuracy. RedHop's `strategy="auto"` makes this decision for you.
 
 ---
@@ -40,7 +40,7 @@ below links to the measurement that produced it and the API that applies it.
 ```
 
 `strategy="auto"` is the size-gated policy: below `auto_passthrough_max_tokens`
-(default 1,500) it passes the context through; above it, it prunes. The gate is
+(default 1,500) it passes the context through. Above it, it prunes. The gate is
 calibrated from a size sweep where pruning helped at every size from ~1.5k tokens
 up, with no harmful regime above it ([CONTEXT_DILUTION.md](findings/CONTEXT_DILUTION.md)).
 
@@ -61,15 +61,15 @@ print(ctx.report)              # what it did and why (see "Measure" below)
 
 ## The tips
 
-### 1. Relevance ≠ reasoning usefulness — don't prune by relevance alone
-A chunk can be *low-relevance to the query* yet *essential for reasoning* — the
+### 1. Relevance ≠ reasoning usefulness: don't prune by relevance alone
+A chunk can be *low-relevance to the query* yet *essential for reasoning*. The
 classic case is the **second hop** in multi-hop QA ("X was invented by Davy" →
-"Davy was British"; the answer chunk barely matches the query). Aggressive
+"Davy was British", where the answer chunk barely matches the query). Aggressive
 relevance filtering/reranking systematically removes exactly these.
 → **What to do:** never hard-filter by query relevance on multi-hop. If you
 prune, keep low-relevance chunks that are *linked* to a relevant one.
 → **RedHop:** `ReasoningPreserving` (the pruning strategy `Auto` uses) keeps
-query-relevant seeds **and** rescues below-bar chunks linked to a seed; only
+query-relevant seeds **and** rescues below-bar chunks linked to a seed. Only
 unlinked junk is dropped. Evidence: [SECOND_HOP_TAX.md](findings/SECOND_HOP_TAX.md),
 [REASONING_PRESERVATION.md](findings/REASONING_PRESERVATION.md).
 
@@ -78,30 +78,30 @@ Across four model families, **aggressive filtering was net-harmful** (−0.06 to
 −0.15 vs. not filtering): the reasoning evidence it incidentally removes costs
 more than the distractors it targets. Transformers tolerate irrelevant context
 far better than missing reasoning links.
-→ **What to do:** bias toward under-filtering. Set a *low* distractor cutoff —
+→ **What to do:** bias toward under-filtering. Set a *low* distractor cutoff:
 remove only near-zero-overlap junk, not "moderately relevant" chunks.
 → **RedHop:** `distractor_min_grounding` defaults to a deliberately low `0.10`
 (only near-zero-overlap chunks are below it). Don't crank it up to "clean
-aggressively" — that's the move the measurements punish.
+aggressively". That's the move the measurements punish.
 
 ### 3. Optimize under dilution, not by token count
-A large context is not the problem; a *diluted* one is. 20k focused tokens beat
+A large context is not the problem. A *diluted* one is. 20k focused tokens beat
 5k noisy tokens. The driver is evidence density / irrelevant-token mass, not raw
 length.
 → **What to do:** decide to prune based on how junk-heavy the retrieval is, not
-just its size — and remember the benefit grows with dilution.
+just its size, and remember the benefit grows with dilution.
 → **RedHop:** `analyze_context()` reports `input_distractor_ratio`,
-`evidence_density`, and `estimated_waste_tokens` *without modifying anything* —
-use them to see dilution before you act. `Auto` uses a size gate as a cheap
-proxy; for finer control, gate on the distractor ratio yourself.
+`evidence_density`, and `estimated_waste_tokens` *without modifying anything*.
+Use them to see dilution before you act. `Auto` uses a size gate as a cheap
+proxy. For finer control, gate on the distractor ratio yourself.
 
-### 4. The win is *deciding when* to optimize — not a magic algorithm
+### 4. The win is *deciding when* to optimize, not a magic algorithm
 Naive density-truncation captured essentially the same downstream gain as the
 reasoning-preserving pruner in the dilution regime (tie on every model tested). No
 universally dominant pruning algorithm emerged.
 → **What to do:** don't shop for a clever compressor. Get the *decision* right
 (prune iff diluted) and use any sensible pruning underneath.
-→ **RedHop:** `Auto` is the decision; the pruning it delegates to is intentionally
+→ **RedHop:** `Auto` is the decision. The pruning it delegates to is intentionally
 simple. The value is the gate + the diagnostics, not secret sauce.
 
 ### 5. Stronger rerankers are not universally safer
@@ -114,55 +114,55 @@ selectively, or skip it where the second hop matters.
 
 ### 6. "Retrieve more" is often the wrong fix
 ExpandTopK (more similar neighbors) frequently fails on multi-hop, because the
-missing evidence is *dissimilar* to the query in embedding space — more neighbors
+missing evidence is *dissimilar* to the query in embedding space: more neighbors
 never reach it.
-→ **What to do:** if multi-hop recall is missing, don't widen top-k blindly;
-the gap is structural, not a quantity problem.
+→ **What to do:** if multi-hop recall is missing, don't widen top-k blindly.
+The gap is structural, not a quantity problem.
 
 ### 7. Optimization is model-aware
 Frontier models (e.g. GPT-4o-mini, Claude Haiku) are surprisingly robust to
-distractors; smaller/open models (Llama-3.3-70B, Qwen3.5-flash) are measurably
+distractors. Smaller/open models (Llama-3.3-70B, Qwen3.5-flash) are measurably
 hurt. The *dilution* recovery is also largest on dilution-sensitive models and
 ~neutral on robust ones.
 → **What to do:** the same context policy isn't optimal across models. Prune more
-willingly for models that struggle with long noisy contexts; for a very robust
+willingly for models that struggle with long noisy contexts. For a very robust
 model on a modest context, leaving it alone may be best.
-→ **RedHop:** `Auto`'s gate is a safe default — it helps where the model is
+→ **RedHop:** `Auto`'s gate is a safe default: it helps where the model is
 sensitive and is ~neutral (not harmful) where it isn't. Tune
 `auto_passthrough_max_tokens` per deployment.
 
-### 8. Safe optimization is asymmetric — easy to do nothing, hard to over-modify
+### 8. Safe optimization is asymmetric: easy to do nothing, hard to over-modify
 The most stable success criterion is **avoid damaging recall**, not **maximize
 average lift**. Conservative, zero-harm policies outperform eager optimizers
 operationally.
 → **What to do:** make "do nothing" the default and intervention the exception.
-→ **RedHop:** the default strategy never aggressively prunes by relevance; `Auto`
+→ **RedHop:** the default strategy never aggressively prunes by relevance. `Auto`
 passes small contexts straight through.
 
 ### 9. Treat context optimization as an economic decision
 Optimization has costs: reranker compute, embedding latency, token cost, and
 attention dilution. The benefit is conditional. So is the spend.
 → **What to do:** weigh the token/latency savings against the (conditional)
-quality change — don't optimize reflexively.
+quality change. Don't optimize reflexively.
 → **RedHop:** the `ContextReport` quantifies what each decision bought
 (`total_tokens`, `estimated_waste_tokens`, `retained_evidence_ratio`).
 
 ### 10. For semantic recall: lexical topology first, local refinement second
 BM25 misses paraphrase/synonym queries (the answer text shares no vocabulary with
-the query). Dense fixes it — but you don't need a global vector index to get it.
+the query). Dense fixes it, but you don't need a global vector index to get it.
 Let BM25 prune the corpus to a candidate pool, then rerank *only that pool* with a
 dense model. Measured: this matches **global** dense on recall *and* answers
 (recovers ~96% of its gains), beats naive hybrid, needs **no ANN and no escalation
-trigger** — because BM25's top-50 almost always already contains the gold, just
+trigger**, because BM25's top-50 almost always already contains the gold, just
 ranked low.
-→ **What to do:** don't reach for a vector DB to handle semantic queries; BM25 +
+→ **What to do:** don't reach for a vector DB to handle semantic queries. BM25 +
 local dense rerank gets there with the dense model touching only K candidates.
 → **Caveat:** works when BM25 *candidate* recall is high (partial lexical
 overlap). On pure-synonym queries (zero overlap), gold won't be in the pool and
 only global dense helps. → [LOCAL_RERANK.md](findings/LOCAL_RERANK.md).
 
 ### 11. Pick the retrieval tier by your dependency budget, not reflexively
-There's a genuine ladder, and **nothing in the middle is worth a dependency** —
+There's a genuine ladder, and **nothing in the middle is worth a dependency**:
 the only thing that buys the big semantic jump is a contextual model. Measured on
 HotpotQA multi-hop (recall@3):
 
@@ -172,13 +172,13 @@ HotpotQA multi-hop (recall@3):
 | + corpus-graph second-order rerank | none (external `semantic-bm25`) | 0.56 | air-gapped / no-model-allowed |
 | + dense local rerank (BGE) | ONNX + ~133 MB | **0.80** | semantic recall matters, model OK |
 
-→ **What to do:** default to BM25; opt into dense local rerank
+→ **What to do:** default to BM25. Opt into dense local rerank
 (`Document` with `RetrievalMode::DenseRerank` + `with_embedder`) when semantic
 recall matters. The zero-model corpus-graph tier (`semantic-bm25`) is for
-deployments that can't ship a model — it's the best *free* option (≈ a pretrained
+deployments that can't ship a model: it's the best *free* option (≈ a pretrained
 static-embedding table), not a dense replacement.
 → **Why no middle:** corpus-graph and static embeddings are both non-contextual,
-so they share one ~0.56–0.61 ceiling; BGE's edge is *contextualization*.
+so they share one ~0.56–0.61 ceiling. BGE's edge is *contextualization*.
 Static-embedding rerankers do **not** beat the free corpus-graph tier.
 → Evidence: [SEMANTIC_ZERO_DEP.md](findings/SEMANTIC_ZERO_DEP.md),
 [DENSE_RERANK_CEILING.md](findings/DENSE_RERANK_CEILING.md).
@@ -188,7 +188,7 @@ Static-embedding rerankers do **not** beat the free corpus-graph tier.
 ## Measure what you did (observability > cleverness)
 
 The most useful thing RedHop gives you is *seeing* dilution, second-hop risk, and
-what got rescued — not magic compression. Every `build_context` returns a report;
+what got rescued, not magic compression. Every `build_context` returns a report.
 `analyze_context` gives the same readout **without touching the context**, so you
 can decide before acting.
 
@@ -212,10 +212,10 @@ Useful fields on the report: `strategy`, `total_tokens`, `n_input_chunks` →
 
 | Knob | Default | What it does | When to change |
 | ---- | ------- | ------------ | -------------- |
-| `strategy` | `reasoning_preserving` | how to assemble; use `"auto"` to gate on size | `"auto"` recommended for mixed context sizes |
+| `strategy` | `reasoning_preserving` | how to assemble (use `"auto"` to gate on size) | `"auto"` recommended for mixed context sizes |
 | `auto_passthrough_max_tokens` | `1500` | `Auto`: pass through at/below, prune above | raise to prune less (more conservative) |
 | `token_budget` | — | hard cap on assembled tokens | set to your prompt budget |
-| `distractor_min_grounding` | `0.10` | grounding bar below which a chunk is "junk" | keep low; raising it risks the second-hop tax |
+| `distractor_min_grounding` | `0.10` | grounding bar below which a chunk is "junk" | keep low, raising it risks the second-hop tax |
 | `link_min_jaccard` | `0.12` | linkage at/above which a low-relevance chunk is rescued as a second hop | lower to rescue more aggressively |
 
 ---
@@ -223,13 +223,13 @@ Useful fields on the report: `strategy`, `total_tokens`, `n_input_chunks` →
 ## Honest limits
 
 - The dilution recovery is **large on dilution-sensitive (frontier) models and
-  ~neutral on dilution-robust ones** — it's a "help where possible, harmless
+  ~neutral on dilution-robust ones**: it's a "help where possible, harmless
   elsewhere" default, not a guaranteed universal lift.
-- The win is **generic pruning** under dilution; the reasoning-preserving strategy
+- The win is **generic pruning** under dilution. The reasoning-preserving strategy
   does not beat naive density-truncation downstream, it just keeps you safe on
   multi-hop where naive relevance filtering would tax the bridge.
-- Measured on HotpotQA-style multi-hop with lexical grounding; thresholds may
-  shift on your workload. The *directions* are robust; the exact numbers are not
+- Measured on HotpotQA-style multi-hop with lexical grounding. Thresholds may
+  shift on your workload. The *directions* are robust, the exact numbers are not
   promises.
 
 Full evidence and falsified hypotheses: [docs/findings/](findings/).

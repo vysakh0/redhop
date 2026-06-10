@@ -3,7 +3,7 @@
 Real-world usage demos, organized by language. These are **not**
 measurement probes (those live in
 [`crates/examples/examples/`](../crates/examples/examples/) alongside
-the evidence layer in [`docs/findings/`](../docs/findings/)) — these
+the evidence layer in [`docs/findings/`](../docs/findings/)). These
 are runnable code that shows how to use the 0.3.0 API for common
 scenarios.
 
@@ -12,8 +12,8 @@ scenarios.
 | Language | Folder | Status |
 | -------- | ------ | ------ |
 | Python | [`python/`](python/) | ✓ 11 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing |
-| Node.js | [`nodejs/`](nodejs/) | ✓ 11 examples — same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
-| Rust | [`rust/`](rust/) | ✓ 11 examples — same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
+| Node.js | [`nodejs/`](nodejs/) | ✓ 11 examples: same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
+| Rust | [`rust/`](rust/) | ✓ 11 examples: same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
 
 Each language folder has its own `README.md` describing the demos and
 how to run them.
@@ -25,9 +25,9 @@ sweeps, the four-corner-observation falsifications) stay in
 [`crates/examples/examples/`](../crates/examples/examples/) because
 they are evidence-layer infrastructure, not API showcases. The split:
 
-- `examples/` — *how* to use the API. Real-world scenarios,
+- `examples/`: *how* to use the API. Real-world scenarios,
   inline data, demo-shaped output. All three languages.
-- `crates/examples/` — *what is true* on a measured workload.
+- `crates/examples/`: *what is true* on a measured workload.
   Reproducible benchmarks behind every claim in
   [`docs/findings/`](../docs/findings/). Rust-only because the probes
   need fast iteration and the existing CUAD/HotpotQA harness shape.
@@ -39,7 +39,7 @@ here.
 ## Suggested entry points
 
 - **New to RedHop?** Start with
-  [`python/01_quickstart.py`](python/01_quickstart.py) — the
+  [`python/01_quickstart.py`](python/01_quickstart.py): the
   3-call surface in 80 lines.
 - **Building a RAG system over your own pre-chunked content?** Read
   [`python/02_structured_corpus.py`](python/02_structured_corpus.py)

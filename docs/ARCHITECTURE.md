@@ -4,7 +4,7 @@
 
 RedHop is a Rust library for **retrieval infrastructure**: chunking,
 retrieval, reranking, and diagnostics. It does not generate text, embed
-text, or store vectors persistently — those concerns are pushed to the
+text, or store vectors persistently. Those concerns are pushed to the
 caller through trait boundaries. The library's contribution is the
 *orchestration* layer between them and the *diagnostics* engine that makes
 retrieval quality observable.
@@ -13,7 +13,7 @@ retrieval quality observable.
 
 - Not an LLM framework. There is no model in this repository.
 - Not an agent framework. There is no planner, no tool dispatch.
-- Not a vector database. `FlatVectorIndex` is a correctness baseline; real
+- Not a vector database. `FlatVectorIndex` is a correctness baseline. Real
   ANN is delegated to whatever the user plugs in.
 - Not a graph retrieval system. We treat semantic topology as a research
   topic, not an architectural commitment.
@@ -21,7 +21,7 @@ retrieval quality observable.
 ## Layering
 
 The published Rust crate is `redhop`. It is one consolidated crate
-organized as modules; sibling crates handle the things that don't
+organized as modules. Sibling crates handle the things that don't
 belong inside the published surface (the adaptive controller, the
 research/calibration tooling, the bindings).
 
@@ -67,7 +67,7 @@ public surface (no `pub(crate)` reach-ins).
 | `DiagnosticsEngine`  | `(Query, &[RetrievalResult]) → DiagnosticsReport`. |
 
 This is the entire contract a caller has to understand. The pipeline
-facade composes these; the language bindings (`pyo3`, `napi-rs`) expose
+facade composes these. The language bindings (`pyo3`, `napi-rs`) expose
 them by name.
 
 ## Data flow
@@ -94,7 +94,7 @@ DiagnosticsReport
 Hybrid retrieval fans out the query to several sub-retrievers in parallel
 (`futures::join_all`) and fuses with **Reciprocal Rank Fusion** by default.
 RRF is the right pick for heterogeneous score distributions because it is
-rank-based and scale-free; weighted-sum fusion with per-list min-max
+rank-based and scale-free. Weighted-sum fusion with per-list min-max
 normalization is available when scores are commensurable.
 
 ## Why these design choices
@@ -108,7 +108,7 @@ async and batch-friendly so any of those can plug in cleanly.
 
 ### Diagnostics are first-class
 
-Retrieval failure modes are observable from text alone — the LLM is not
+Retrieval failure modes are observable from text alone: the LLM is not
 needed to know whether a context is full of distractors.
 `redhop-diagnostics` computes six metrics on every query without any
 model dependence. `DefaultDiagnosticsEngine` also emits *warnings* with
@@ -129,7 +129,7 @@ boundary detection (see roadmap in `crates/chunking/src/adaptive.rs`).
 
 Lexical retrieval is a solved problem with Tantivy: production-quality
 analyzers, fast scoring, and an in-memory RAM directory for embeddable
-use. We use it as a building block, not a foundation — `Bm25Retriever` is
+use. We use it as a building block, not a foundation: `Bm25Retriever` is
 just an implementation of `Retriever`.
 
 ### Flat ANN as the default
@@ -149,7 +149,7 @@ blocking workers via `tokio::task::spawn_blocking` so the runtime is not
 starved.
 
 The benchmark suite (`crates/benchmarks/benches/*.rs`) covers chunking
-throughput and BM25 retrieval latency; run with `cargo bench`.
+throughput and BM25 retrieval latency. Run with `cargo bench`.
 
 ## Language bindings
 
@@ -168,8 +168,8 @@ are all `Serialize + Deserialize`, which makes them cross FFI cleanly:
   `Document.context` / `analyze` / `chunkCount` / `nFiles` /
   `skippedFiles`, plus top-level `groundingScore` / `linkStrength`.
 
-The bindings wrap the consolidated `redhop` crate directly — no
-parallel implementations.
+The bindings wrap the consolidated `redhop` crate directly (no
+parallel implementations).
 
 ## What we explicitly avoided
 
@@ -177,5 +177,5 @@ parallel implementations.
   conservative lexical-cohesion gate today and roadmaps the rest.
 - Speculative topology systems, knowledge-graph retrieval, or
   semantic-continuity heuristics. Those are research, not infrastructure.
-- LLM integrations. Once retrieval returns, RedHop is done; whatever
+- LLM integrations. Once retrieval returns, RedHop is done. Whatever
   comes after is the caller's problem.

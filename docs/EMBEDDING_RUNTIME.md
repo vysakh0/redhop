@@ -1,7 +1,7 @@
 # Embedding & Cross-Encoder Runtime (Phases A + B)
 
 Real model backends for RedHop, behind feature flags. The default build
-stays dependency-light and fully offline; the `onnx` feature adds
+stays dependency-light and fully offline. The `onnx` feature adds
 ONNX-Runtime-backed BGE/E5 embeddings and a cross-encoder reranker.
 
 ## What shipped
@@ -54,13 +54,13 @@ tokenizers = { version = "0.20", default-features = false,
 - **Pin `ort` exactly** (`=2.0.0-rc.10`). A range pulls a newer RC whose
   `ndarray` constraint (`NdFloat` behind the `std` feature) fails to
   resolve.
-- **Enable `ort`'s `std` feature** — `commit_from_file` is gated behind
-  it; without `std` you get "no method named `commit_from_file`".
+- **Enable `ort`'s `std` feature**: `commit_from_file` is gated behind
+  it. Without `std` you get "no method named `commit_from_file`".
 - **Avoid the `ndarray` feature.** We construct tensors from plain
   `([batch, seq], Vec<i64>)` pairs (`ToShape` is implemented for
   `[usize; N]`), so we never touch `ndarray` and dodge its version
   churn.
-- `download-binaries` fetches a prebuilt ONNX Runtime; for air-gapped
+- `download-binaries` fetches a prebuilt ONNX Runtime. For air-gapped
   builds use `load-dynamic` and point at a system `libonnxruntime`.
 
 ## Getting models
@@ -101,7 +101,7 @@ let reranker = OnnxCrossEncoder::load("ce/model.onnx", "ce/tokenizer.json", 512)
 ## Wiring it as the `Document` semantic tier
 
 This is the dependency cost of RedHop's **semantic retrieval tier**. The default
-`Document` is BM25 — zero model, fully offline. To get semantic recall you opt in:
+`Document` is BM25: zero model, fully offline. To get semantic recall you opt in:
 enable the `semantic` feature, **download a model** (above), and inject the embedder.
 
 ```rust
@@ -124,8 +124,8 @@ let _ctx = doc.context("a paraphrased / semantic query")?;
 # Ok(()) }
 ```
 
-BM25 prunes the corpus to `candidate_pool` candidates; the dense model reorders
-only that pool — **no vector DB, no ANN**. Selecting `Hybrid` (or `Dense`)
+BM25 prunes the corpus to `candidate_pool` candidates. The dense model reorders
+only that pool: **no vector DB, no ANN**. Selecting `Hybrid` (or `Dense`)
 without an embedder is a clear error, so the model dependency is explicit,
 never implicit. Runnable example:
 `cargo run -p redhop-examples --example semantic_local_rerank --features onnx`.
@@ -134,7 +134,7 @@ The tier trade-offs (and where the free tiers fall short) are measured in
 
 ## Benchmark plan (run on a real box)
 
-The harness is in place; the numbers below are what you fill in.
+The harness is in place. The numbers below are what you fill in.
 
 **(a) Embedding bake-off** (`redhop-calibration::embedder_bench`):
 
@@ -169,7 +169,7 @@ pulls in `redhop` with the `semantic` feature) with a loaded model.
 ## Expected outcomes (hypotheses to falsify with real numbers)
 
 1. **BGE/E5 beats hashing-TF on paraphrase recall.** The hashing
-   baseline has zero paraphrase capability (it's lexical); a real
+   baseline has zero paraphrase capability (it's lexical). A real
    embedder should lift `mean_recall` on the loaders' corpora,
    especially on queries whose gold chunks share *meaning* but not
    *words*.
@@ -179,14 +179,14 @@ pulls in `redhop` with the `semantic` feature) with a loaded model.
    precisely. Re-run the adaptive eval with the ONNX embedder and
    compare `fraction_useful` to the hashing-baseline run.
 3. **Caching dominates query latency on repeated workloads.** Enterprise
-   query distributions are heavy-tailed; the `CachedEmbedder` hit rate
+   query distributions are heavy-tailed. The `CachedEmbedder` hit rate
    should be high enough that mean query-embed latency approaches the
    cache-probe cost, not the model-inference cost.
 4. **Selective escalation makes the cross-encoder affordable.** With the
    controller firing the ONNX cross-encoder on only ~44% of queries
    (per `docs/findings/REAL_WORKLOAD.md`), the cross-encoder's high per-call
-   latency is paid only where it earns recall — the economics
+   latency is paid only where it earns recall: the economics
    become real latency numbers.
 
-These are deployment-machine experiments. The runtime is built; the
+These are deployment-machine experiments. The runtime is built. The
 numbers are a data run away.

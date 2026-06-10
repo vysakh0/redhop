@@ -5,10 +5,10 @@ verified against the same probes used to write `crates/redhop/tests/quality_suit
 
 ## What the analyzer pipeline does
 
-There are two pipelines. The 0.3.2 default is the minimal one;
-language-specific Snowball pipelines are opt-in.
+There are two pipelines. The 0.3.2 default is the minimal one.
+Language-specific Snowball pipelines are opt-in.
 
-**Default (since 0.3.2 — `RawAnalyzer`, what you get with no
+**Default (since 0.3.2, `RawAnalyzer`, what you get with no
 `language=` argument).** Three stages:
 
 1. **Tokenize** on Unicode whitespace + punctuation
@@ -17,7 +17,7 @@ language-specific Snowball pipelines are opt-in.
    `ss`, plus ~100 more).
 3. **Lowercase**.
 
-That's it — no stemmer, no stopword filter, no camelCase split. Measured
+That's it: no stemmer, no stopword filter, no camelCase split. Measured
 to beat the previous English-Snowball default on three English
 workloads on both retention and latency ([RAW_ANALYZER](findings/RAW_ANALYZER.md)).
 
@@ -49,10 +49,10 @@ filter.
 | **English** | — | Full power: stemming, stopwords, ASCII folding, case splits |
 | **Western European Latin** (French / German / Spanish / Portuguese / Italian / Dutch / Polish) | Step 6 (their stopwords stay as tokens) + Step 7 (their morphology doesn't unify) | Exact matches work. `café` ↔ `cafe` works (Step 4). `Süßigkeit` ↔ `Sussigkeit` works. But `Bücher` ≠ `Buch`, `caminos` ≠ `camino`, `courait` ≠ `court`. |
 | **Other Latin-script** (Turkish / Vietnamese / Czech / Romanian) | Steps 4 + 6 + 7 | Some Step-4 folds work (`č` → `c`), some don't (`ı` is its own letter in Turkish, treating it as `i` is locale-wrong). |
-| **Cyrillic** (Russian / Ukrainian / Bulgarian) | Step 4 may strip useful info; Steps 6 + 7 don't apply | Tokens index, no morphology |
-| **CJK** (Chinese / Japanese / Korean) | Step 1 doesn't word-segment without explicit spaces | **Substantially broken**: real CJK content has no inter-word whitespace. `圧縮アルゴリズム` becomes one token; a query for `圧縮` doesn't reach it. Use a CJK-aware tokenizer instead (see below). |
-| **Arabic / Hebrew** | Steps 4 (irrelevant), 6, 7 don't apply; Step 1 works | Tokens index, no morphology, no diacritic normalization |
-| **Indic** (Devanagari / Tamil / Bengali) | Step 1 segments on whitespace (works for many); Steps 6 + 7 don't apply | Exact matches work, no morphology |
+| **Cyrillic** (Russian / Ukrainian / Bulgarian) | Step 4 may strip useful info. Steps 6 + 7 don't apply | Tokens index, no morphology |
+| **CJK** (Chinese / Japanese / Korean) | Step 1 doesn't word-segment without explicit spaces | **Substantially broken**: real CJK content has no inter-word whitespace. `圧縮アルゴリズム` becomes one token. A query for `圧縮` doesn't reach it. Use a CJK-aware tokenizer instead (see below). |
+| **Arabic / Hebrew** | Steps 4 (irrelevant), 6, 7 don't apply. Step 1 works | Tokens index, no morphology, no diacritic normalization |
+| **Indic** (Devanagari / Tamil / Bengali) | Step 1 segments on whitespace (works for many). Steps 6 + 7 don't apply | Exact matches work, no morphology |
 
 ## If you need better non-English support
 
@@ -73,8 +73,8 @@ let mut doc = redhop::Document::from_text("library", "ich habe viele Bücher")?
 let ctx = doc.context("Buch")?;   // finds the chunk via German morphology
 ```
 
-ONE analyzer drives BOTH the BM25 retriever and the grounding scorer —
-that's the architectural guarantee of the `Analyzer` trait. There's no
+ONE analyzer drives BOTH the BM25 retriever and the grounding scorer.
+That's the architectural guarantee of the `Analyzer` trait. There's no
 risk of the two layers disagreeing on what "the same term" is (the bug
 class that got fixed by hand four times through 0.1.3-0.1.4 is now
 structurally impossible).
@@ -93,7 +93,7 @@ const doc = Document.fromText("ich habe viele Bücher", { language: "german" });
 const ctx = doc.context("Buch");
 ```
 
-Unknown language strings ERROR (we don't silently fall back to English —
+Unknown language strings ERROR (we don't silently fall back to English:
 a typo'd `"germann"` should surface). For a CJK tokenizer or a custom
 pipeline, implement the `crate::analyzer::Analyzer` trait yourself and
 pass `Document::with_analyzer(Arc::new(MyAnalyzer))` directly.
@@ -102,7 +102,7 @@ pass `Document::with_analyzer(Arc::new(MyAnalyzer))` directly.
 
 `SnowballAnalyzer::english()` ships with the curated list from
 `crate::context::STOPWORDS`. The other 17 builtins ship with **empty**
-stopword lists — we don't have curated lists per language, and shipping
+stopword lists. We don't have curated lists per language, and shipping
 uncalibrated ones violates the measure-don't-overclaim discipline.
 Attach your own:
 
@@ -112,7 +112,7 @@ let german = SnowballAnalyzer::german()
 ```
 
 Snowball publishes per-language lists at
-<https://snowballstem.org/algorithms/>; the ones from `nltk.corpus.stopwords`
+<https://snowballstem.org/algorithms/>. The ones from `nltk.corpus.stopwords`
 are also a reasonable starting point.
 
 ### CJK tokenization
@@ -128,7 +128,7 @@ Implement the `crate::analyzer::Analyzer` trait (two methods:
 attach via `Document::with_analyzer(Arc::new(MyCjkAnalyzer))`. The
 default `tokens()` impl on the trait delegates to `build_text_analyzer()`
 so you only have to wire the Tantivy side. We don't ship CJK builtins
-because the dictionary data is large and per-language; if you build one
+because the dictionary data is large and per-language. If you build one
 worth sharing, send a PR.
 
 ### What we won't auto-detect
@@ -145,19 +145,19 @@ The `Analyzer` trait has two methods: `build_text_analyzer()` returns a
 Tantivy `TextAnalyzer` (used by BM25), and `tokens(text)` returns the
 list of search terms (used by the grounding scorer). The default
 `tokens()` impl runs the analyzer returned by `build_text_analyzer()`
-and collects its output — so the BM25 side and the grounding side go
+and collects its output, so the BM25 side and the grounding side go
 through a **single source of truth**. There's no way to override one
 without the other.
 
 This kills, structurally, the entire class of bugs that surfaced
-through 0.1.3-0.1.4 — stemming, stopwords, camelCase, ASCII-folding
+through 0.1.3-0.1.4: stemming, stopwords, camelCase, ASCII-folding
 mismatches between the two layers. They now follow from the architecture.
 
 ## Calibration disclaimer
 
 Pre-baked non-English builtins (`german`, `french`, etc.) get you the
 Snowball Porter2 stemmer for that language, full stop. We have **no
-eval corpus** for non-English — we can't tell you whether the ranking
+eval corpus** for non-English. We can't tell you whether the ranking
 quality matches English Snowball's on HotpotQA / MuSiQue / CUAD.
 Empirically: `Bücher` ↔ `Buch` unifies under the German analyzer in our
 T41 test, but we can't promise that ranking on a real German legal

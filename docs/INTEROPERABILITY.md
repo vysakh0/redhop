@@ -7,12 +7,12 @@
 
 The Python repo is the **experimentation lab**. The Rust repo is the
 **execution engine + calibration runtime**. They communicate through
-**NeoTrace JSONL** — one canonical format, one exporter on the Python
+**NeoTrace JSONL**: one canonical format, one exporter on the Python
 side, one loader on the Rust side. No tighter coupling.
 
 Right now, **5,190 records** of post-pivot experimental data are
 already exportable. That's the calibration corpus available
-*immediately* — without re-running anything, without writing any new
+*immediately*, without re-running anything, without writing any new
 Python.
 
 ## Layer responsibilities
@@ -20,9 +20,9 @@ Python.
 | Concern                                    | Lives in       | Why                                                                          |
 | ------------------------------------------ | -------------- | ---------------------------------------------------------------------------- |
 | LLM provider glue (Anthropic, HF, mock)    | **Python**     | mature, prompt-caching aware, judge invocation                               |
-| PDF / OCR ingestion                        | **Python**     | PyMuPDF + pdfplumber; Rust shouldn't pull in PDF deps                        |
-| Dataset downloads, fixture generation      | **Python**     | one-off scripts; not a runtime concern                                       |
-| Stats helpers (Wilcoxon, bootstrap, paired-t) | **Python**  | scipy is already used; no point reimplementing                               |
+| PDF / OCR ingestion                        | **Python**     | PyMuPDF + pdfplumber, Rust shouldn't pull in PDF deps                        |
+| Dataset downloads, fixture generation      | **Python**     | one-off scripts, not a runtime concern                                       |
+| Stats helpers (Wilcoxon, bootstrap, paired-t) | **Python**  | scipy is already used, no point reimplementing                               |
 | Visualisation (pyvis, plotly)              | **Python**     | research-only                                                                |
 | Retrieval execution (BM25, dense, hybrid)  | **Rust**       | the production runtime path                                                  |
 | Adaptive orchestration                     | **Rust**       | closed-loop controller, conservative policy, action traces                   |
@@ -39,7 +39,7 @@ is the seam.
 
 A complete inventory lives in this commit's discussion. The headline:
 
-### Class A — directly importable today
+### Class A: directly importable today
 
 5 source families, all exporting cleanly through
 `scripts/export_to_neotrace.py`:
@@ -55,40 +55,40 @@ A complete inventory lives in this commit's discussion. The headline:
 
 **Total: 5,190 records.** All present, all post-pivot.
 
-### Class B — reusable with adaptation
+### Class B: reusable with adaptation
 
 Code we may want to consult but not run directly:
 
-- `redhop/analysis/answerability.py` — the learned scorer. Its
+- `redhop/analysis/answerability.py`: the learned scorer. Its
   coefficients are already serialised into every Class-A trace as
-  `scorer_info.coefs`; Rust can either consume them as-is for offline
+  `scorer_info.coefs`. Rust can either consume them as-is for offline
   reproduction or use them as a regression target.
-- `redhop/analysis/evidence.py` — defines the evidence-quality column
+- `redhop/analysis/evidence.py`: defines the evidence-quality column
   set (`answer_span_density`, `distractor_ratio`, `purity`, …) that
   the canonical schema standardises.
-- `redhop/metrics.py` — answer-similarity / keyword-recall reference
+- `redhop/metrics.py`: answer-similarity / keyword-recall reference
   implementations. Useful as ground truth for future Rust
   reimplementations.
 
-### Class C — topology-era, kept as negative controls
+### Class C: topology-era, kept as negative controls
 
 These are pre-pivot. The Python `VALIDATION_REPORT.md` already
 documents them as pruned, demoted, or null-verdicted:
 
-- `ablations.json` — topology ablation matrix. `position_dispersion`
+- `ablations.json`: topology ablation matrix. `position_dispersion`
   metric pruned as circular.
-- `operators_topology.json` — Personalised PageRank (already
+- `operators_topology.json`: Personalised PageRank (already
   identical-to-RWR per VR §4).
-- `scaling.json` — length-scaling on the synthetic doc.
-- `validation.json` — the circularity audit itself.
-- `experiments.json` — first-round MockLLM experiments.
-- `organization_*.json` — organization-doesn't-matter trilogy. All
+- `scaling.json`: length-scaling on the synthetic doc.
+- `validation.json`: the circularity audit itself.
+- `experiments.json`: first-round MockLLM experiments.
+- `organization_*.json`: organization-doesn't-matter trilogy. All
   three null-verdicted in the Python output already.
 
 **Do not calibrate against these.** They embody falsified hypotheses.
 They are kept on disk as historical record.
 
-### Class D — Python-only, stays Python forever
+### Class D: Python-only, stays Python forever
 
 - LLM provider glue, prompt caching, judge invocation.
 - PDF / OCR parsing.
@@ -96,14 +96,14 @@ They are kept on disk as historical record.
 - Visualisation.
 - Statistics support (`scipy.stats`).
 
-## NeoTrace JSONL — the format
+## NeoTrace JSONL: the format
 
 See `docs/NEOTRACE_SCHEMA.md` for the full spec. The short version:
 
 - One JSON object per line, one record per `(item_id, method, model)`
   tuple.
 - Field set is a *superset* of every existing Python trace format.
-- Optional fields use absent-key semantics; the Rust loader tolerates
+- Optional fields use absent-key semantics. The Rust loader tolerates
   sparsity by design.
 - Versioned via `schema_version: "neotrace/1"`. Future major versions
   ship parallel loaders, never silent upgrades.
@@ -164,7 +164,7 @@ controller to **re-run** retrieval against the same queries. It
 extracts the labels.
 
 `load_outcomes` is the right entry point when you want to analyze the
-Python lab's measurements **directly** — the analyses run without any
+Python lab's measurements **directly**: the analyses run without any
 retrieval at all. The Python-side `retrieval_recall` becomes
 `gold_recall_static` / `gold_recall_adaptive` depending on which
 method you pair against which.
@@ -178,8 +178,8 @@ reads it.
 If a future experiment in Python wants to consume Rust-side adaptive
 traces (e.g., for a learned-policy training loop), the Rust orchestrator
 emits `action_trace[]` entries in the same NeoTrace format. Python can
-read those too. The format is symmetric — but the **discipline is
-deliberately asymmetric**: Rust does retrieval and adaptive control;
+read those too. The format is symmetric, but the **discipline is
+deliberately asymmetric**: Rust does retrieval and adaptive control,
 Python does evaluation and judgment.
 
 ## How to use it today
@@ -192,8 +192,8 @@ python scripts/export_to_neotrace.py
 # → ../neorag/exports/neotrace/*.neotrace.jsonl
 ```
 
-5,190 records exported in under a second. The script is idempotent;
-re-run after every new experiment.
+5,190 records exported in under a second. The script is idempotent.
+Re-run after every new experiment.
 
 ### Rust side
 
@@ -221,7 +221,7 @@ this commit ships:
 
 1. **Cross-LLM regret analysis.** Compare `cosine` vs `cross_encoder`
    regret across `haiku`, `llama-8b`, `qwen-7b`, `mistral-nemo` on the
-   same MuSiQue queries. The Python lab already ran the retrieval; we
+   same MuSiQue queries. The Python lab already ran the retrieval. We
    just compute regret per LLM.
 
 2. **Method-pair Pareto curves.** Pair every method against every
@@ -230,7 +230,7 @@ this commit ships:
    → 21 pairs. Single sweep.
 
 3. **Regime-conditioned utility curves.** HotpotQA records carry
-   `level` and `type`; map those to regime labels (the exporter
+   `level` and `type`. Map those to regime labels (the exporter
    already does), then compute mean intervention utility per regime.
    Tells us empirically whether `hard+bridge` queries actually benefit
    from escalation more than `easy+comparison`.
@@ -261,7 +261,7 @@ neotrace_import` variations away from being concrete numbers.
   one-file Python script. It has no Rust counterpart and won't get
   one.
 - **The Rust repo is not gaining LLM glue.** Judge invocation,
-  generator selection, prompt caching — all stay Python.
+  generator selection, prompt caching: all stay Python.
 - **No PDF parsing in Rust.** If `data/real/*.pdf` needs to be
   ingested, Python pre-chunks once and ships JSON. Anything else is
   feature creep.
@@ -280,7 +280,7 @@ What's reusable:
 
 What's *not* reusable:
   - The trajectory / graph operators. They embody a falsified
-    hypothesis; their numbers go into the bin labelled "negative
+    hypothesis. Their numbers go into the bin labelled "negative
     control" and stay there.
   - The PDF ingestion pipeline. Stays Python forever.
   - The pre-pivot ablation matrix. Documented as pruned in the
@@ -288,7 +288,7 @@ What's *not* reusable:
 
 What's a gap, not a flaw:
   - The Python lab has no notion of `predicted_regime` or
-    `action_trace` — those are Rust-side concepts. NeoTrace records
+    `action_trace`: those are Rust-side concepts. NeoTrace records
     exported from Python carry only `true_regime`. As soon as the Rust
     adaptive controller is run against the same corpus, the
     `predicted_regime` and `action_trace` fields populate naturally.
