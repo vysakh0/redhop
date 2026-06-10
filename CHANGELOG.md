@@ -5,6 +5,53 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [Unreleased]
+
+### Added — self-service retrieval diagnostic
+
+- **`ctx.report.diagnosis`** (Rust + Python + Node). The Decision
+  Report now carries query-level facts about how the query interacted
+  with the corpus and the retrieved candidates, plus a small closed
+  registry of bounded hints that fire on documented failure shapes.
+  Every hint cites a findings or docs file. The three failure shapes
+  catalogued in `docs/CHOOSING_A_CONFIG.md` (vocabulary mismatch,
+  polysemy, templated boilerplate) each produce a recognizable hint
+  with the evidence path attached. Healthy queries produce zero hints.
+  Always computed, never alters retrieval, no new configuration knobs.
+  Design: `docs/design/REPORT_DIAGNOSIS.md`. Examples:
+  `examples/{python,nodejs,rust}/12_diagnosis.*`.
+
+### Added — workload audit + observability export
+
+- **`summarize_diagnoses(reports)`** (Rust + Python + Node). Aggregates
+  per-query diagnoses across N `ContextReport`s into a single
+  workload summary: hint histogram, failure rates, top vocabulary
+  gaps, and at most one focus recommendation citing the measured
+  finding behind it. Six focus codes (`vocab_mismatch`,
+  `templated_queries`, `underdetermined_queries`, `weak_retrieval`,
+  `healthy`, `sample_too_small`) resolved by a fixed priority order.
+  Mirrors the existing `eval::summarize` shape.
+- **`redhop.otel.report_to_attributes(report)`** (Python). Flattens a
+  Decision Report into OpenTelemetry-legal span attributes (or
+  Langfuse metadata) under a `redhop.` namespace. Zero new
+  dependencies. Node and Rust ship the same conventions as a copy-
+  paste snippet in the docs page.
+- **New docs page**: `docs/DIAGNOSE_YOUR_PIPELINE.md` + website mirror.
+  Four-step walk-through for pointing RedHop's diagnostics at an
+  existing LangChain / LlamaIndex / pgvector / hand-rolled pipeline
+  without migrating, including the honesty section ("`analyze_context`
+  reports waste, only `build_context` removes it"). Design:
+  `docs/design/WORKLOAD_AUDIT.md`. Example #13:
+  `examples/{python,nodejs,rust}/13_workload_audit.*`.
+
+### Fixed
+
+- **`docs/CHOOSING_A_CONFIG.md`**: removed the stale "hybrid sometimes
+  returns fewer candidates than lexical" warning that pointed at issue
+  #1. The strict-superset contract was restored in 0.3.1 by the
+  pure-rerank + BM25-tail fill, with a regression test
+  (`local_rerank.rs::pure_rerank_lets_dense_win_when_it_disagrees_with_bm25`).
+
 ## [0.3.3] — 2026-06-09
 
 **Answer-quality eval surface (Rust + Python + Node) + audit of

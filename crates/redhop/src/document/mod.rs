@@ -226,6 +226,12 @@ pub struct Document {
     // `(source_path, reason)` pairs — unsupported formats, unreadable bytes,
     // or no extractable text. Empty for single-source constructors.
     skipped_files: Vec<(String, String)>,
+    // Lazy corpus vocabulary: analyzed term -> number of chunks containing
+    // it. Built once on first `context()` call from `self.analyzer` over
+    // `self.chunks`. Used by `context::diagnosis` to populate Layer-2
+    // facts (zero_match_terms, term_stats). Engine-agnostic on purpose:
+    // works under Lexical, Hybrid, and Dense without poking the retriever.
+    corpus_vocab: Option<std::collections::HashMap<String, u32>>,
 }
 
 /// Renumber chunk ids to `0..n` so a merged set (e.g. from several files) has
@@ -484,6 +490,7 @@ impl Document {
             fallback_bm25: None,
             n_files: 1,
             skipped_files: Vec::new(),
+            corpus_vocab: None,
         })
     }
 
@@ -724,7 +731,33 @@ impl Document {
         // Empty trail when no rewrites were supplied (the report's
         // `query_rewrites` is `Vec::new()` by default).
         crate::context::attach_rewrite_trail(&mut ctx, trail);
+        // Layer 2 diagnosis enrichment: now that we have access to the
+        // corpus, populate per-term DF stats and re-evaluate the hint
+        // registry. Order with attach_rewrite_trail is immaterial.
+        self.enrich_ctx_diagnosis(&mut ctx);
         Ok(ctx)
+    }
+
+    /// Ensure `self.corpus_vocab` is built and use it to enrich
+    /// `ctx.report.diagnosis` with Layer-2 (corpus-level) facts. Idempotent.
+    fn enrich_ctx_diagnosis(&mut self, ctx: &mut BuiltContext) {
+        if self.corpus_vocab.is_none() {
+            let analyzer = self.analyzer.as_ref();
+            let mut vocab: std::collections::HashMap<String, u32> =
+                std::collections::HashMap::new();
+            for c in &self.chunks {
+                let mut seen = std::collections::HashSet::new();
+                for t in analyzer.tokens(&c.text) {
+                    if seen.insert(t.clone()) {
+                        *vocab.entry(t).or_insert(0) += 1;
+                    }
+                }
+            }
+            self.corpus_vocab = Some(vocab);
+        }
+        let vocab = self.corpus_vocab.as_ref().expect("just built above");
+        let n = self.chunks.len();
+        crate::context::enrich_diagnosis(ctx, vocab, n);
     }
 
     /// [`Document::context_with`] plus **structural context expansion**: after the
@@ -750,11 +783,14 @@ impl Document {
             cfg.token_budget = b;
         }
         let q = Query::new(query);
-        if neighbors == 0 && !include_heading {
-            return Ok(build_context(&q, &results, &cfg));
-        }
-        let plan = self.expansion_plan(&results, neighbors, include_heading);
-        Ok(build_context_expanded(&q, &results, &cfg, &plan))
+        let mut ctx = if neighbors == 0 && !include_heading {
+            build_context(&q, &results, &cfg)
+        } else {
+            let plan = self.expansion_plan(&results, neighbors, include_heading);
+            build_context_expanded(&q, &results, &cfg, &plan)
+        };
+        self.enrich_ctx_diagnosis(&mut ctx);
+        Ok(ctx)
     }
 
     /// Build the deterministic [`ExpansionPlan`] for a retrieved set: each seed's
@@ -1244,5 +1280,241 @@ mod tests {
         // Query lexically hits both; the embedding leans to "beta".
         let ctx = doc.context("alpha beta beta").unwrap();
         assert!(ctx.text().contains("beta"));
+    }
+
+    // ── Diagnosis tests (docs/design/REPORT_DIAGNOSIS.md §10) ──────────────
+
+    fn refund_corpus() -> Vec<Chunk> {
+        vec![
+            Chunk::new(
+                crate::core::ChunkId::new("a"),
+                "Refund Policy. Refunds are available within thirty days of purchase.",
+                "policy.md",
+                crate::core::TokenCount(11),
+            ),
+            Chunk::new(
+                crate::core::ChunkId::new("b"),
+                "Termination for convenience. Either party may terminate this agreement.",
+                "policy.md",
+                crate::core::TokenCount(10),
+            ),
+            Chunk::new(
+                crate::core::ChunkId::new("c"),
+                "Governing Law. This agreement is governed by the laws of California.",
+                "policy.md",
+                crate::core::TokenCount(11),
+            ),
+        ]
+    }
+
+    #[test]
+    fn vocab_mismatch_hint_fires_on_paraphrase_query() {
+        // The canonical CHOOSING_A_CONFIG.md scenario: query says
+        // "cancel and money back", corpus says "refund". Layer-2 should
+        // identify "cancel" and "money" as zero-match and fire H2.
+        let mut doc = Document::from_chunks(refund_corpus()).unwrap();
+        let ctx = doc
+            .context("How long do I have to cancel and get my money back?")
+            .unwrap();
+        let d = &ctx.report.diagnosis;
+        assert!(
+            d.corpus_stats_available,
+            "Document::context must enrich Layer 2"
+        );
+        assert!(
+            d.zero_match_terms.iter().any(|t| t == "cancel"),
+            "expected 'cancel' in zero_match_terms, got {:?}",
+            d.zero_match_terms
+        );
+        assert!(
+            d.zero_match_terms.iter().any(|t| t == "money"),
+            "expected 'money' in zero_match_terms, got {:?}",
+            d.zero_match_terms
+        );
+        let h2 = d
+            .hints
+            .iter()
+            .find(|h| h.code == crate::context::HintCode::VocabMismatch);
+        let h2 = h2.expect("VocabMismatch hint must fire");
+        assert!(
+            h2.evidence.ends_with("MULTIHOP_HYBRID.md"),
+            "wrong evidence: {}",
+            h2.evidence
+        );
+        assert!(
+            !h2.message.contains('\u{2014}'),
+            "hint message must not contain an em dash"
+        );
+    }
+
+    #[test]
+    fn diagnosis_without_document_has_no_corpus_stats() {
+        // build_context directly: no corpus access, Layer 1 only.
+        use crate::context::{build_context, ContextConfig};
+        use crate::core::{Query, RetrievalMethod, RetrievalResult, Score};
+        let cfg = ContextConfig::default();
+        let chunks = refund_corpus();
+        let retrieved: Vec<RetrievalResult> = chunks
+            .into_iter()
+            .map(|c| RetrievalResult::new(
+                c,
+                Score {
+                    value: 1.0,
+                    method: RetrievalMethod::Lexical,
+                },
+            ))
+            .collect();
+        let q = Query::new("cancel money back");
+        let ctx = build_context(&q, &retrieved, &cfg);
+        let d = &ctx.report.diagnosis;
+        assert!(!d.corpus_stats_available);
+        assert!(d.zero_match_terms.is_empty());
+        assert_eq!(d.n_candidates, 3);
+        // VocabMismatch needs corpus stats, must not fire.
+        assert!(
+            !d.hints
+                .iter()
+                .any(|h| h.code == crate::context::HintCode::VocabMismatch),
+            "H2 must not fire without corpus stats"
+        );
+    }
+
+    #[test]
+    fn healthy_query_produces_no_hints() {
+        // Well-matched query on a healthy corpus: facts populated, no
+        // hints. Guards against hint spam.
+        let mut doc = Document::from_chunks(refund_corpus()).unwrap();
+        let ctx = doc.context("refund policy thirty days").unwrap();
+        let d = &ctx.report.diagnosis;
+        assert!(d.corpus_stats_available);
+        assert!(!d.query_terms.is_empty());
+        assert!(
+            d.hints.is_empty(),
+            "healthy query produced hints: {:?}",
+            d.hints.iter().map(|h| h.code).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn diagnosis_uses_document_analyzer() {
+        // Anti-drift D3: under a German analyzer, "Buch" should match
+        // "Bücher". The query term, after analysis, must not appear in
+        // zero_match_terms.
+        let chunks = vec![
+            Chunk::new(
+                crate::core::ChunkId::new("a"),
+                "Die Bücher liegen auf dem Tisch.",
+                "de.md",
+                crate::core::TokenCount(6),
+            ),
+            Chunk::new(
+                crate::core::ChunkId::new("b"),
+                "Heute ist ein schöner Tag.",
+                "de.md",
+                crate::core::TokenCount(5),
+            ),
+        ];
+        let mut doc = Document::from_chunks(chunks)
+            .unwrap()
+            .with_analyzer(Arc::new(crate::analyzer::SnowballAnalyzer::german()));
+        let ctx = doc.context("Buch").unwrap();
+        let d = &ctx.report.diagnosis;
+        assert!(d.corpus_stats_available);
+        // The German analyzer stems "Buch" and "Bücher" to the same root.
+        // Whatever the analyzed form is, it must NOT be zero-match.
+        assert!(
+            d.zero_match_terms.is_empty(),
+            "German analyzer should match Buch/Bücher; zero-match: {:?}",
+            d.zero_match_terms
+        );
+    }
+
+    #[test]
+    fn rewritten_query_is_what_gets_diagnosed() {
+        // context_with_rewrites: a Stripper removes boilerplate. The
+        // diagnosis should reflect the post-rewrite query terms.
+        use crate::rewrite::Stripper;
+        let mut doc = Document::from_chunks(refund_corpus()).unwrap();
+        let stripper = Stripper::new(&["highlight", "parts", "contract"]);
+        let ctx = doc
+            .context_with_rewrites(
+                "Highlight parts of contract about refund",
+                &[&stripper],
+            )
+            .unwrap();
+        let d = &ctx.report.diagnosis;
+        // "highlight", "parts", and "contract" were stripped, so they
+        // should not appear among the analyzed query terms.
+        for stripped in ["highlight", "parts", "contract"] {
+            assert!(
+                !d.query_terms.iter().any(|t| t == stripped),
+                "{} should have been stripped before diagnosis",
+                stripped
+            );
+        }
+        // "refund" survives and exists in the corpus.
+        assert!(d.query_terms.iter().any(|t| t == "refund"));
+    }
+
+    #[test]
+    fn render_includes_diagnosis_section_only_when_warranted() {
+        // Healthy query: no diagnosis section.
+        let mut doc = Document::from_chunks(refund_corpus()).unwrap();
+        let healthy = doc.context("refund policy").unwrap();
+        let r = healthy.report.render(None);
+        assert!(
+            !r.contains("Query diagnosis"),
+            "healthy report must not render diagnosis section"
+        );
+        // Healthy retrieval with one stray zero-match term: facts land in
+        // the struct, but no hint fires, so the rendered report stays
+        // terse (no alert fatigue from routine unmatched words).
+        let stray = doc.context("refund policy for zanzibar customers").unwrap();
+        assert!(
+            !stray.report.diagnosis.zero_match_terms.is_empty(),
+            "expected at least one stray zero-match term"
+        );
+        if stray.report.diagnosis.hints.is_empty() {
+            assert!(
+                !stray.report.render(None).contains("Query diagnosis"),
+                "no-hint report must not render a diagnosis section"
+            );
+        }
+        // Vocab-mismatch query: diagnosis section present.
+        let bad = doc
+            .context("How do I cancel and get my money back?")
+            .unwrap();
+        let r2 = bad.report.render(None);
+        assert!(
+            r2.contains("Query diagnosis"),
+            "vocab-mismatch report must render diagnosis section"
+        );
+        assert!(
+            r2.contains("Zero-match query terms:"),
+            "diagnosis section must list zero-match terms"
+        );
+    }
+
+    #[test]
+    fn empty_context_hint_fires_and_suppresses_low_confidence() {
+        // A query whose terms hit nothing produces an empty context,
+        // H1 fires, and H2 supersedes H3 when corpus stats are present.
+        let mut doc = Document::from_chunks(refund_corpus()).unwrap();
+        let ctx = doc.context("quokka platypus axolotl").unwrap();
+        let d = &ctx.report.diagnosis;
+        // All three terms are zero-match → H2 fires.
+        assert!(
+            d.hints
+                .iter()
+                .any(|h| h.code == crate::context::HintCode::VocabMismatch),
+            "H2 expected on a fully-mismatched query"
+        );
+        // H3 (LowConfidence) is suppressed by H2.
+        assert!(
+            !d.hints
+                .iter()
+                .any(|h| h.code == crate::context::HintCode::LowConfidence),
+            "H2 must suppress H3 when both would fire"
+        );
     }
 }

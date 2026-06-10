@@ -232,8 +232,68 @@ pub struct Report {
     /// chain order). Empty when no rewrite chain was used. See
     /// `Document.contextWithRewrites`.
     pub query_rewrites: Vec<RewriteRecord>,
+    /// Query-level diagnosis: term/corpus match facts and a small set
+    /// of bounded hints with evidence citations. See the design doc
+    /// `docs/design/REPORT_DIAGNOSIS.md`.
+    pub diagnosis: Diagnosis,
     /// The human-readable Decision Report.
     pub rendered: String,
+}
+
+/// Query-level facts and bounded hints. See the design doc
+/// `docs/design/REPORT_DIAGNOSIS.md`.
+#[napi(object)]
+#[derive(Clone)]
+pub struct Diagnosis {
+    /// Analyzed query terms, in first-occurrence order.
+    pub query_terms: Vec<String>,
+    /// `true` when corpus-level stats were computed (the call went
+    /// through a `Document`); `false` for direct `buildContext` callers.
+    pub corpus_stats_available: bool,
+    /// Query terms that appear in zero chunks of the corpus.
+    pub zero_match_terms: Vec<String>,
+    /// Per-term corpus stats for terms that do appear (`df > 0`).
+    pub term_stats: Vec<TermStat>,
+    /// Query terms that appear in no retrieved candidate chunk.
+    pub terms_unmatched_in_candidates: Vec<String>,
+    /// Number of candidates handed to assembly.
+    pub n_candidates: u32,
+    /// Relative score spread across the top candidates.
+    /// `null` when fewer than 2 candidates or the top score is `<= 0`.
+    pub score_spread: Option<f64>,
+    /// `true` when assembly selected zero chunks.
+    pub empty_context: bool,
+    /// Hints that fired, from the closed registry.
+    pub hints: Vec<DiagnosisHint>,
+}
+
+/// Per-term corpus statistics for one query term that appears in the
+/// corpus.
+#[napi(object)]
+#[derive(Clone)]
+pub struct TermStat {
+    /// The analyzed term (matches how the corpus was indexed).
+    pub term: String,
+    /// Number of corpus chunks containing the term.
+    pub df: u32,
+    /// `df / total corpus chunks`, in `[0, 1]`.
+    pub df_ratio: f64,
+}
+
+/// One bounded hint from the closed registry. Carries the observation,
+/// a code clients can branch on, and a path to the doc or finding that
+/// justifies it.
+#[napi(object)]
+#[derive(Clone)]
+pub struct DiagnosisHint {
+    /// Stable identifier (snake_case): `"empty_context"`,
+    /// `"vocab_mismatch"`, `"low_confidence"`,
+    /// `"low_discrimination_query"`, `"underdetermined_query"`.
+    pub code: String,
+    /// One or two sentences. Observation only.
+    pub message: String,
+    /// Repo-relative path of the doc or finding grounding this hint.
+    pub evidence: String,
 }
 
 /// One step in the rewrite chain — what the stage matched / added /
@@ -363,7 +423,51 @@ fn to_report(r: &redhop::ContextReport) -> Report {
         low_confidence_retrieval: r.low_confidence_retrieval,
         low_confidence_threshold: r.low_confidence_threshold as f64,
         query_rewrites: r.query_rewrites.iter().map(to_record).collect(),
+        diagnosis: to_diagnosis(&r.diagnosis),
         rendered: r.render(None),
+    }
+}
+
+fn hint_code_to_str(c: redhop::HintCode) -> &'static str {
+    match c {
+        redhop::HintCode::EmptyContext => "empty_context",
+        redhop::HintCode::VocabMismatch => "vocab_mismatch",
+        redhop::HintCode::LowConfidence => "low_confidence",
+        redhop::HintCode::LowDiscriminationQuery => "low_discrimination_query",
+        redhop::HintCode::UnderdeterminedQuery => "underdetermined_query",
+        // `HintCode` is `#[non_exhaustive]` — future variants degrade
+        // to a stable sentinel rather than crash the binding.
+        _ => "unknown",
+    }
+}
+
+fn to_diagnosis(d: &redhop::Diagnosis) -> Diagnosis {
+    Diagnosis {
+        query_terms: d.query_terms.clone(),
+        corpus_stats_available: d.corpus_stats_available,
+        zero_match_terms: d.zero_match_terms.clone(),
+        term_stats: d
+            .term_stats
+            .iter()
+            .map(|t| TermStat {
+                term: t.term.clone(),
+                df: t.df,
+                df_ratio: t.df_ratio as f64,
+            })
+            .collect(),
+        terms_unmatched_in_candidates: d.terms_unmatched_in_candidates.clone(),
+        n_candidates: d.n_candidates as u32,
+        score_spread: d.score_spread.map(|s| s as f64),
+        empty_context: d.empty_context,
+        hints: d
+            .hints
+            .iter()
+            .map(|h| DiagnosisHint {
+                code: hint_code_to_str(h.code).to_string(),
+                message: h.message.clone(),
+                evidence: h.evidence.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -1128,6 +1232,210 @@ fn eval_report_to_rust(r: &EvalReport) -> redhop::EvalReport {
 ///
 /// Mirrors `redhop.summarize(reports)` in Python and `redhop::summarize(&[...])`
 /// in Rust.
+/// Aggregate per-query diagnoses across a workload into one summary
+/// with a single focus recommendation. Matches Python's
+/// `redhop.summarize_diagnoses(reports)` and Rust's
+/// `redhop::summarize_diagnoses(&[...])`. See the
+/// `docs/design/WORKLOAD_AUDIT.md` design and
+/// `docs/DIAGNOSE_YOUR_PIPELINE.md` user guide.
+#[napi]
+pub fn summarize_diagnoses(reports: Vec<Report>) -> DiagnosisSummary {
+    let rh_reports: Vec<redhop::ContextReport> = reports.iter().map(report_to_rust).collect();
+    let s = redhop::summarize_diagnoses(&rh_reports);
+    DiagnosisSummary {
+        n: s.n as u32,
+        hint_counts: s
+            .hint_counts
+            .iter()
+            .map(|hc| HintCountJs {
+                code: hint_code_to_str(hc.code).to_string(),
+                count: hc.count as u32,
+                share: hc.share as f64,
+            })
+            .collect(),
+        empty_context_rate: s.empty_context_rate as f64,
+        low_confidence_rate: s.low_confidence_rate as f64,
+        corpus_stats_coverage: s.corpus_stats_coverage as f64,
+        top_zero_match_terms: s
+            .top_zero_match_terms
+            .iter()
+            .map(|t| TermCountJs {
+                term: t.term.clone(),
+                count: t.count as u32,
+            })
+            .collect(),
+        mean_score_spread: s.mean_score_spread.map(|v| v as f64),
+        n_with_score_spread: s.n_with_score_spread as u32,
+        focus: WorkloadFocusJs {
+            code: focus_code_to_str(s.focus.code).to_string(),
+            message: s.focus.message.clone(),
+            evidence: s.focus.evidence.clone(),
+        },
+        rendered: s.render(),
+    }
+}
+
+fn focus_code_to_str(c: redhop::FocusCode) -> &'static str {
+    match c {
+        redhop::FocusCode::SampleTooSmall => "sample_too_small",
+        redhop::FocusCode::Healthy => "healthy",
+        redhop::FocusCode::VocabMismatch => "vocab_mismatch",
+        redhop::FocusCode::TemplatedQueries => "templated_queries",
+        redhop::FocusCode::UnderdeterminedQueries => "underdetermined_queries",
+        redhop::FocusCode::WeakRetrieval => "weak_retrieval",
+        _ => "unknown",
+    }
+}
+
+fn str_to_hint_code(s: &str) -> Option<redhop::HintCode> {
+    match s {
+        "empty_context" => Some(redhop::HintCode::EmptyContext),
+        "vocab_mismatch" => Some(redhop::HintCode::VocabMismatch),
+        "low_confidence" => Some(redhop::HintCode::LowConfidence),
+        "low_discrimination_query" => Some(redhop::HintCode::LowDiscriminationQuery),
+        "underdetermined_query" => Some(redhop::HintCode::UnderdeterminedQuery),
+        _ => None,
+    }
+}
+
+fn str_to_strategy(s: &str) -> redhop::ContextStrategy {
+    match s {
+        "raw_topk" => redhop::ContextStrategy::RawTopK,
+        "distractor_filtered" => redhop::ContextStrategy::DistractorFiltered,
+        "redundancy_pruned" => redhop::ContextStrategy::RedundancyPruned,
+        "max_density" => redhop::ContextStrategy::MaxDensity,
+        "reasoning_preserving" => redhop::ContextStrategy::ReasoningPreserving,
+        _ => redhop::ContextStrategy::Auto,
+    }
+}
+
+/// Reconstruct a minimal Rust `ContextReport` from a napi Report so
+/// `summarize_diagnoses` can read its `diagnosis` and rate signals
+/// without divergent re-implementation. Only fields the aggregator
+/// reads are populated; everything else gets a neutral default.
+fn report_to_rust(r: &Report) -> redhop::ContextReport {
+    let diag = redhop::Diagnosis {
+        query_terms: r.diagnosis.query_terms.clone(),
+        corpus_stats_available: r.diagnosis.corpus_stats_available,
+        zero_match_terms: r.diagnosis.zero_match_terms.clone(),
+        term_stats: r
+            .diagnosis
+            .term_stats
+            .iter()
+            .map(|t| redhop::TermStat {
+                term: t.term.clone(),
+                df: t.df,
+                df_ratio: t.df_ratio as f32,
+            })
+            .collect(),
+        terms_unmatched_in_candidates: r.diagnosis.terms_unmatched_in_candidates.clone(),
+        n_candidates: r.diagnosis.n_candidates as usize,
+        score_spread: r.diagnosis.score_spread.map(|v| v as f32),
+        empty_context: r.diagnosis.empty_context,
+        hints: r
+            .diagnosis
+            .hints
+            .iter()
+            .filter_map(|h| {
+                str_to_hint_code(&h.code).map(|code| redhop::DiagnosisHint {
+                    code,
+                    message: h.message.clone(),
+                    evidence: h.evidence.clone(),
+                })
+            })
+            .collect(),
+    };
+    redhop::ContextReport {
+        strategy: str_to_strategy(&r.strategy),
+        requested_strategy: str_to_strategy(&r.requested_strategy),
+        token_budget: r.token_budget as usize,
+        input_tokens: r.input_tokens as usize,
+        auto_gate_tokens: 0,
+        total_tokens: r.total_tokens as usize,
+        token_utilization: r.token_utilization as f32,
+        n_input_chunks: r.n_input_chunks as usize,
+        n_selected: r.n_selected as usize,
+        input_distractor_ratio: r.input_distractor_ratio as f32,
+        retained_evidence_ratio: r.retained_evidence_ratio as f32,
+        second_hop_rescue_count: r.second_hop_rescue_count as usize,
+        reasoning_preservation_delta: r.reasoning_preservation_delta as usize,
+        removed: Default::default(),
+        n_expanded: r.n_expanded as usize,
+        low_confidence_retrieval: r.low_confidence_retrieval,
+        low_confidence_threshold: r.low_confidence_threshold as f32,
+        economics: Default::default(),
+        query_rewrites: vec![],
+        diagnosis: diag,
+    }
+}
+
+/// Workload-level aggregation of per-query diagnoses. Returned by
+/// [`summarize_diagnoses`]. See `docs/design/WORKLOAD_AUDIT.md`.
+#[napi(object)]
+#[derive(Clone)]
+pub struct DiagnosisSummary {
+    /// Number of reports aggregated.
+    pub n: u32,
+    /// `{code, count, share}` per hint code; all five codes present.
+    pub hint_counts: Vec<HintCountJs>,
+    /// Fraction of reports with empty assembled context.
+    pub empty_context_rate: f64,
+    /// Fraction of reports with `lowConfidenceRetrieval == true`.
+    pub low_confidence_rate: f64,
+    /// Fraction of reports that carried corpus stats (Layer 2).
+    pub corpus_stats_coverage: f64,
+    /// `{term, count}` for zero-match terms, ranked by query
+    /// frequency. Capped at the registry's `TOP_TERMS_CAP`.
+    pub top_zero_match_terms: Vec<TermCountJs>,
+    /// Mean `scoreSpread` over reports where it was populated; `null`
+    /// when no report carried one.
+    pub mean_score_spread: Option<f64>,
+    /// Number of reports that carried a `scoreSpread`.
+    pub n_with_score_spread: u32,
+    /// `{code, message, evidence}`. Exactly one focus per summary.
+    pub focus: WorkloadFocusJs,
+    /// Human-readable rendered summary; unstable, parse the
+    /// structured fields for programmatic use.
+    pub rendered: String,
+}
+
+/// One entry in the workload's hint histogram.
+#[napi(object)]
+#[derive(Clone)]
+pub struct HintCountJs {
+    /// Hint code (snake_case string).
+    pub code: String,
+    /// Number of reports that fired this hint.
+    pub count: u32,
+    /// `count / n`.
+    pub share: f64,
+}
+
+/// One entry in the top-zero-match-terms ranking.
+#[napi(object)]
+#[derive(Clone)]
+pub struct TermCountJs {
+    /// The analyzed term.
+    pub term: String,
+    /// Number of queries whose diagnosis listed this term.
+    pub count: u32,
+}
+
+/// The single workload focus recommendation.
+#[napi(object)]
+#[derive(Clone)]
+pub struct WorkloadFocusJs {
+    /// Stable focus code (snake_case): `"sample_too_small"`,
+    /// `"healthy"`, `"vocab_mismatch"`, `"templated_queries"`,
+    /// `"underdetermined_queries"`, `"weak_retrieval"`.
+    pub code: String,
+    /// One or two sentences of observation. Never promises a lift.
+    pub message: String,
+    /// Repo-relative evidence path; empty for `healthy` and
+    /// `sample_too_small`.
+    pub evidence: String,
+}
+
 #[napi]
 pub fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
     let inner_reports: Vec<redhop::EvalReport> =

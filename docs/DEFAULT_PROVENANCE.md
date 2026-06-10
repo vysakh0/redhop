@@ -43,6 +43,29 @@ Each entry is classified as:
 | `low_confidence_max_grounding` | **0.10** | 🔵 derived (same as `distractor_min_grounding`) | If every selected chunk is at-or-below the distractor bar, the retrieval was weak: surface as `report.low_confidence_retrieval = true`. |
 | `analyzer` | **minimal raw analyzer** (tokenize → lowercase → ASCII fold) | 🟢 [`RAW_ANALYZER.md`](findings/RAW_ANALYZER.md) | Default flipped in 0.3.2: no stemming, no stopwords, no CamelCase split. Measured vs the previous English-Snowball default: CUAD +5, MuSiQue +7, HotpotQA tied, 1.5-2.5× faster. Opt back in with `language="english"` or any of the 18 Snowball builtins via `Document::with_analyzer`. |
 
+## `report.diagnosis` hint thresholds
+
+Constants that gate the closed hint registry in
+`crates/redhop/src/context/diagnosis.rs`. All 🟡 convention. Picked to
+fire on the documented failure shapes in `docs/CHOOSING_A_CONFIG.md`,
+not chosen by a measurement sweep.
+
+| Constant | Default | Provenance | Notes |
+| --- | --- | --- | --- |
+| `VOCAB_MISMATCH_MIN_SHARE` | **0.5** | 🟡 convention | "Half or more of the query terms missed" is a strong vocab signal. Lower and the hint will fire on partially-matched queries. |
+| `VOCAB_MISMATCH_MIN_TERMS` | **2** | 🟡 convention | Below 2 query terms, "fraction missed" isn't meaningful. |
+| `DF_RATIO_LOW_DISCRIMINATION` | **0.25** | 🟡 convention | A term in >25% of chunks carries little BM25 signal. Loose proxy for `analyze_query_set`'s 80% DF threshold which only makes sense over a query set. |
+| `LOW_DISCRIMINATION_MIN_TERMS` | **8** | 🟡 convention | Short queries don't have boilerplate dilution; the templated-query failure shape is about long boilerplate-heavy queries. |
+| `LOW_DISCRIMINATION_MIN_SHARE` | **0.6** | 🟡 convention | At least 60% of query terms must be low-discrimination before flagging the query as boilerplate-shaped. |
+| `UNDERDETERMINED_MAX_TERMS` | **2** | 🟡 convention | The polysemy failure shape from CHOOSING_A_CONFIG ("'vendor'", "'settle'") is single-word. |
+| `UNDERDETERMINED_MAX_SPREAD` | **0.15** | 🟡 convention | Relative spread of the top scores. Below 15% means the candidates are nearly tied. **Mode-dependent:** reasoned about on BM25 score distributions. Dense cosines compress into a narrower band, so the hint may over-fire under `Hybrid` / `Dense`. The re-validation sweep should run per retrieval mode. |
+| `UNDERDETERMINED_MIN_CANDIDATES` | **5** | 🟡 convention | Below 5, "spread is flat" can just mean "small pool". |
+| `SCORE_SPREAD_TOP_K` | **10** | 🟡 convention | Spread window. Matches `candidate_k`'s default ballpark. |
+| `SUMMARY_MIN_QUERIES` | **20** | 🟡 convention | `summarize_diagnoses` returns `sample_too_small` below this. A workload audit on <20 queries can swing on a single outlier; better to ask the user to collect more than emit a noisy recommendation. |
+| `DOMINANT_HINT_SHARE` | **0.20** | 🟡 convention | A hint must fire on at least 20% of queries before the summary will name it as the workload focus. Below the threshold, no failure shape "dominates" and the summary falls through to `weak_retrieval` or `healthy`. |
+| `WEAK_RETRIEVAL_MIN_RATE` | **0.30** | 🟡 convention | The fallback gate: 30%+ of queries are empty or low-confidence but no specific shape leads. Surfaces the "your corpus does not cover these questions" case. |
+| `TOP_TERMS_CAP` | **20** | 🟡 convention | Cap on the number of zero-match terms returned in the summary. Enough to be actionable as a `Vocabulary` seed, bounded to keep the JSON small. |
+
 ## Defaults flagged for re-validation in 0.3
 
 1. **`auto_passthrough_max_tokens = 1500`**: calibrated against
@@ -63,6 +86,19 @@ Each entry is classified as:
 4. **`overlap_sentences = 1`**: never measured. A 0-vs-1-vs-2 sweep
    across the existing benchmarks would settle whether the boundary-
    effects justification holds for RedHop's chunker shapes.
+
+5. **`report.diagnosis` hint thresholds**: nine 🟡 constants in the
+   diagnosis module (see the "hint thresholds" table above). A grid
+   sweep over each (others held at default) against the existing
+   CUAD / HotpotQA / MuSiQue corpora would surface the false-positive
+   and false-negative rates per hint, turning the constants 🟢. Cheap
+   to run: no LLM judge needed since we score against gold-evidence
+   recall and a corpus where we already know which queries are
+   templated, polysemous, or paraphrased. **Fold the four
+   `summarize_diagnoses` constants (`SUMMARY_MIN_QUERIES`,
+   `DOMINANT_HINT_SHARE`, `WEAK_RETRIEVAL_MIN_RATE`, `TOP_TERMS_CAP`)
+   into the same sweep** since the workload-audit precision depends on
+   the per-query hint precision.
 
 ## Defaults that don't need re-validation
 

@@ -67,7 +67,13 @@ use std::collections::HashSet;
 use crate::core::{Chunk, Embedding, Query, RetrievalResult};
 use serde::{Deserialize, Serialize};
 
+pub mod diagnosis;
 pub mod eval;
+
+pub use diagnosis::{
+    summarize_diagnoses, Diagnosis, DiagnosisHint, DiagnosisSummary, FocusCode, HintCode,
+    HintCount, TermCount, TermStat, WorkloadFocus,
+};
 
 /// Term-set Jaccard at/above which two chunks are treated as near-exact
 /// lexical duplicates by `RedundancyPruned` when embeddings are absent (the
@@ -404,6 +410,12 @@ pub struct ContextReport {
     /// reached BM25.
     #[serde(default)]
     pub query_rewrites: Vec<crate::rewrite::RewriteRecord>,
+    /// Query-level diagnosis: term/corpus match facts and a small set of
+    /// bounded hints citing the finding that justifies each one. See the
+    /// [`diagnosis`] module for the data model and
+    /// `docs/design/REPORT_DIAGNOSIS.md` for the design rationale.
+    #[serde(default)]
+    pub diagnosis: Diagnosis,
 }
 
 impl ContextReport {
@@ -545,6 +557,40 @@ impl ContextReport {
                 s.push_str(&format!("  - {w}\n"));
             }
         }
+
+        // ── Layer 4: query diagnosis ───────────────────────────────────────
+        // Render only when a hint fired. Real workloads routinely have a
+        // stray query term the corpus doesn't contain; rendering on
+        // zero-match alone would put a diagnosis section on healthy
+        // reports (alert fatigue). The facts stay in the structured
+        // `diagnosis` field either way.
+        let d = &self.diagnosis;
+        if !d.hints.is_empty() {
+            s.push_str("\nQuery diagnosis\n───────────────\n");
+            if d.corpus_stats_available && !d.zero_match_terms.is_empty() {
+                // Content words first, stopwords after, so the informative
+                // terms lead the line.
+                let ordered = diagnosis::display_order(&d.zero_match_terms);
+                let listed = ordered
+                    .iter()
+                    .take(8)
+                    .map(|t| format!("\"{}\"", t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let suffix = if ordered.len() > 8 {
+                    format!(", and {} more", ordered.len() - 8)
+                } else {
+                    String::new()
+                };
+                s.push_str(&format!(
+                    "  Zero-match query terms: {listed}{suffix}\n"
+                ));
+            }
+            for h in &d.hints {
+                s.push_str(&format!("  - {}\n", h.message));
+                s.push_str(&format!("      evidence: {}\n", h.evidence));
+            }
+        }
         s
     }
 
@@ -675,6 +721,22 @@ pub fn attach_rewrite_trail(ctx: &mut BuiltContext, trail: Vec<crate::rewrite::R
     ctx.report.query_rewrites = trail;
 }
 
+/// Layer 2 enrichment for [`ContextReport::diagnosis`]: add corpus
+/// vocabulary stats and re-evaluate the hint registry. Called from
+/// [`crate::Document::context`] after [`build_context`] returns; direct
+/// `build_context` callers (multi-source patterns where the caller
+/// supplies the candidate pool) skip this and leave
+/// `Diagnosis::corpus_stats_available = false`. Same post-hoc-mutation
+/// shape as [`attach_rewrite_trail`].
+pub fn enrich_diagnosis(
+    ctx: &mut BuiltContext,
+    vocab: &std::collections::HashMap<String, u32>,
+    n_corpus_chunks: usize,
+) {
+    let low_conf = ctx.report.low_confidence_retrieval;
+    diagnosis::enrich(&mut ctx.report.diagnosis, vocab, n_corpus_chunks, low_conf);
+}
+
 /// Build a context from a query, after running it through a chain of
 /// [`crate::rewrite::QueryRewrite`] stages. The rewritten query is the
 /// one passed to the strategy; the per-stage trail is attached to
@@ -708,6 +770,14 @@ pub fn build_context(
 
     // Per-chunk grounding + density, computed once.
     let mut items = characterize(&q_terms, retrieved, cfg);
+
+    // Union of candidate term sets for the diagnosis, captured before the
+    // strategy match filters/consumes `items`. Reuses the c_terms that
+    // characterize() just produced, so candidates are tokenized once.
+    let candidate_terms: HashSet<String> = items
+        .iter()
+        .flat_map(|i| i.c_terms.iter().cloned())
+        .collect();
 
     let n_distractor_total = items.iter().filter(|i| i.is_distractor).count();
     let mut n_dropped_distractor = 0;
@@ -810,7 +880,7 @@ pub fn build_context(
     }
 
     let economics = economics(&q_terms, &selected, n_distractor_total, cfg);
-    let report = make_report(
+    let mut report = make_report(
         cfg,
         strategy,
         total_input_tokens,
@@ -825,6 +895,17 @@ pub fn build_context(
             total: n_dropped_distractor + n_dropped_redundant + n_dropped_budget,
         },
         economics,
+    );
+    // Layer 1 diagnosis: candidate-level facts and hints that don't need
+    // corpus stats. Document::context_inner enriches this with vocab stats
+    // (Layer 2) before returning.
+    report.diagnosis = diagnosis::compute(
+        query,
+        retrieved,
+        &candidate_terms,
+        selected.is_empty(),
+        report.low_confidence_retrieval,
+        analyzer,
     );
     // Optional final-ordering override: when `preserve_order` is set, present
     // the selected chunks in source-document order instead of relevance order.
@@ -997,6 +1078,10 @@ fn make_report(
         // empty here; populated by `build_context_with_rewrites` (and the
         // Document-level wrappers that thread the chain through).
         query_rewrites: vec![],
+        // Diagnosis is filled by the caller (build_context / analyze_context)
+        // which has access to the raw query + retrieved set; make_report only
+        // sees the post-selection Items.
+        diagnosis: Diagnosis::default(),
     }
 }
 
@@ -1080,6 +1165,20 @@ pub fn analyze_context(
         economics,
         // analyze_context observes the input — no rewrite chain ran.
         query_rewrites: vec![],
+        // analyze_context shares the report shape; fill the same Layer 1
+        // facts. Treat the entire input as "selected" since analyze
+        // doesn't drop anything.
+        diagnosis: diagnosis::compute(
+            query,
+            retrieved,
+            &items
+                .iter()
+                .flat_map(|i| i.c_terms.iter().cloned())
+                .collect(),
+            items.is_empty(),
+            low_confidence_retrieval,
+            cfg.analyzer.as_ref(),
+        ),
     }
 }
 

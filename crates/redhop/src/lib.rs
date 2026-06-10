@@ -91,7 +91,9 @@ pub use crate::rewrite::{
 // The built context + its telemetry, and the lower-level context entry points.
 pub use crate::context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
-    link_strength, AutoDecision, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
+    link_strength, summarize_diagnoses, AutoDecision, BuiltContext, ContextConfig, ContextReport,
+    ContextStrategy, Diagnosis, DiagnosisHint, DiagnosisSummary, FocusCode, HintCode, HintCount,
+    TermCount, TermStat, WorkloadFocus,
 };
 // In-process evaluation — score a `BuiltContext` against optional gold signals,
 // no LLM judge required. See `crate::context::eval` for the rationale.

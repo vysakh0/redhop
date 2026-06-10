@@ -170,4 +170,53 @@ fs.rmSync(pdir, { recursive: true, force: true });
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// report.diagnosis surface and the vocab-mismatch hint case.
+{
+  const refundDoc = Document.fromChunks([
+    new Chunk("Refund Policy. Refunds are available within thirty days of purchase.", { id: "a", source: "policy.md" }),
+    new Chunk("Termination for convenience. Either party may terminate this agreement.", { id: "b", source: "policy.md" }),
+    new Chunk("Governing Law. This agreement is governed by the laws of California.", { id: "c", source: "policy.md" }),
+  ]);
+
+  const healthy = refundDoc.context("refund policy thirty days").report;
+  assert.ok(healthy.diagnosis, "report.diagnosis should be present on every report");
+  assert.strictEqual(healthy.diagnosis.corpusStatsAvailable, true, "Document path should populate Layer 2");
+  assert.ok(Array.isArray(healthy.diagnosis.queryTerms) && healthy.diagnosis.queryTerms.length > 0);
+  assert.deepStrictEqual(healthy.diagnosis.hints, [], "healthy query should fire no hints");
+
+  const mismatch = refundDoc.context("How long do I have to cancel and get my money back?").report;
+  assert.ok(mismatch.diagnosis.zeroMatchTerms.includes("cancel"), "expected 'cancel' in zeroMatchTerms");
+  const codes = mismatch.diagnosis.hints.map((h) => h.code);
+  assert.ok(codes.includes("vocab_mismatch"), `expected vocab_mismatch hint, got ${codes}`);
+  const h2 = mismatch.diagnosis.hints.find((h) => h.code === "vocab_mismatch");
+  assert.ok(h2.evidence.endsWith("MULTIHOP_HYBRID.md"), `wrong evidence: ${h2.evidence}`);
+  assert.ok(!h2.message.includes("—"), "hint message must not contain an em dash");
+}
+
+// summarize_diagnoses: workload-level aggregation across many reports.
+{
+  const { summarizeDiagnoses } = require("../index.js");
+  const refundDoc = Document.fromChunks([
+    new Chunk("Refund Policy. Refunds are available within thirty days of purchase.", { id: "a", source: "policy.md" }),
+    new Chunk("Termination for convenience. Either party may terminate this agreement.", { id: "b", source: "policy.md" }),
+    new Chunk("Governing Law. This agreement is governed by the laws of California.", { id: "c", source: "policy.md" }),
+  ]);
+  // Repeat the canonical vocab-mismatch query 25 times to clear SUMMARY_MIN_QUERIES.
+  const reports = [];
+  for (let i = 0; i < 25; i++) {
+    reports.push(refundDoc.context("how do I cancel and get my money back?").report);
+  }
+  const summary = summarizeDiagnoses(reports);
+  assert.strictEqual(summary.n, 25);
+  assert.strictEqual(summary.hintCounts.length, 5, "all five hint codes present in the histogram");
+  assert.strictEqual(summary.focus.code, "vocab_mismatch", `expected vocab_mismatch, got ${summary.focus.code}`);
+  assert.ok(summary.focus.evidence.endsWith("MULTIHOP_HYBRID.md"));
+  assert.ok(summary.rendered.includes("RedHop Workload Audit"));
+
+  // Healthy below-min path: returns sample_too_small with no panic.
+  const fewReports = reports.slice(0, 5);
+  const tinySummary = summarizeDiagnoses(fewReports);
+  assert.strictEqual(tinySummary.focus.code, "sample_too_small");
+}
+
 console.log("✓ node smoke tests passed");

@@ -202,8 +202,73 @@ export interface Report {
    * `Document.contextWithRewrites`.
    */
   queryRewrites: Array<RewriteRecord>
+  /**
+   * Query-level diagnosis: term/corpus match facts and a small set
+   * of bounded hints with evidence citations. See the design doc
+   * `docs/design/REPORT_DIAGNOSIS.md`.
+   */
+  diagnosis: Diagnosis
   /** The human-readable Decision Report. */
   rendered: string
+}
+/**
+ * Query-level facts and bounded hints. See the design doc
+ * `docs/design/REPORT_DIAGNOSIS.md`.
+ */
+export interface Diagnosis {
+  /** Analyzed query terms, in first-occurrence order. */
+  queryTerms: Array<string>
+  /**
+   * `true` when corpus-level stats were computed (the call went
+   * through a `Document`); `false` for direct `buildContext` callers.
+   */
+  corpusStatsAvailable: boolean
+  /** Query terms that appear in zero chunks of the corpus. */
+  zeroMatchTerms: Array<string>
+  /** Per-term corpus stats for terms that do appear (`df > 0`). */
+  termStats: Array<TermStat>
+  /** Query terms that appear in no retrieved candidate chunk. */
+  termsUnmatchedInCandidates: Array<string>
+  /** Number of candidates handed to assembly. */
+  nCandidates: number
+  /**
+   * Relative score spread across the top candidates.
+   * `null` when fewer than 2 candidates or the top score is `<= 0`.
+   */
+  scoreSpread?: number
+  /** `true` when assembly selected zero chunks. */
+  emptyContext: boolean
+  /** Hints that fired, from the closed registry. */
+  hints: Array<DiagnosisHint>
+}
+/**
+ * Per-term corpus statistics for one query term that appears in the
+ * corpus.
+ */
+export interface TermStat {
+  /** The analyzed term (matches how the corpus was indexed). */
+  term: string
+  /** Number of corpus chunks containing the term. */
+  df: number
+  /** `df / total corpus chunks`, in `[0, 1]`. */
+  dfRatio: number
+}
+/**
+ * One bounded hint from the closed registry. Carries the observation,
+ * a code clients can branch on, and a path to the doc or finding that
+ * justifies it.
+ */
+export interface DiagnosisHint {
+  /**
+   * Stable identifier (snake_case): `"empty_context"`,
+   * `"vocab_mismatch"`, `"low_confidence"`,
+   * `"low_discrimination_query"`, `"underdetermined_query"`.
+   */
+  code: string
+  /** One or two sentences. Observation only. */
+  message: string
+  /** Repo-relative path of the doc or finding grounding this hint. */
+  evidence: string
 }
 /**
  * One step in the rewrite chain — what the stage matched / added /
@@ -516,7 +581,81 @@ export declare function evaluate(query: string, context: BuiltContext, options?:
  *
  * Mirrors `redhop.summarize(reports)` in Python and `redhop::summarize(&[...])`
  * in Rust.
+ * Aggregate per-query diagnoses across a workload into one summary
+ * with a single focus recommendation. Matches Python's
+ * `redhop.summarize_diagnoses(reports)` and Rust's
+ * `redhop::summarize_diagnoses(&[...])`. See the
+ * `docs/design/WORKLOAD_AUDIT.md` design and
+ * `docs/DIAGNOSE_YOUR_PIPELINE.md` user guide.
  */
+export declare function summarizeDiagnoses(reports: Array<Report>): DiagnosisSummary
+/**
+ * Workload-level aggregation of per-query diagnoses. Returned by
+ * [`summarize_diagnoses`]. See `docs/design/WORKLOAD_AUDIT.md`.
+ */
+export interface DiagnosisSummary {
+  /** Number of reports aggregated. */
+  n: number
+  /** `{code, count, share}` per hint code; all five codes present. */
+  hintCounts: Array<HintCountJs>
+  /** Fraction of reports with empty assembled context. */
+  emptyContextRate: number
+  /** Fraction of reports with `lowConfidenceRetrieval == true`. */
+  lowConfidenceRate: number
+  /** Fraction of reports that carried corpus stats (Layer 2). */
+  corpusStatsCoverage: number
+  /**
+   * `{term, count}` for zero-match terms, ranked by query
+   * frequency. Capped at the registry's `TOP_TERMS_CAP`.
+   */
+  topZeroMatchTerms: Array<TermCountJs>
+  /**
+   * Mean `scoreSpread` over reports where it was populated; `null`
+   * when no report carried one.
+   */
+  meanScoreSpread?: number
+  /** Number of reports that carried a `scoreSpread`. */
+  nWithScoreSpread: number
+  /** `{code, message, evidence}`. Exactly one focus per summary. */
+  focus: WorkloadFocusJs
+  /**
+   * Human-readable rendered summary; unstable, parse the
+   * structured fields for programmatic use.
+   */
+  rendered: string
+}
+/** One entry in the workload's hint histogram. */
+export interface HintCountJs {
+  /** Hint code (snake_case string). */
+  code: string
+  /** Number of reports that fired this hint. */
+  count: number
+  /** `count / n`. */
+  share: number
+}
+/** One entry in the top-zero-match-terms ranking. */
+export interface TermCountJs {
+  /** The analyzed term. */
+  term: string
+  /** Number of queries whose diagnosis listed this term. */
+  count: number
+}
+/** The single workload focus recommendation. */
+export interface WorkloadFocusJs {
+  /**
+   * Stable focus code (snake_case): `"sample_too_small"`,
+   * `"healthy"`, `"vocab_mismatch"`, `"templated_queries"`,
+   * `"underdetermined_queries"`, `"weak_retrieval"`.
+   */
+  code: string
+  /** One or two sentences of observation. Never promises a lift. */
+  message: string
+  /**
+   * Repo-relative evidence path; empty for `healthy` and
+   * `sample_too_small`.
+   */
+  evidence: string
+}
 export declare function summarize(reports: Array<EvalReport>): EvalSummary
 /**
  * Aggregate stats for a test set. Returned by `summarize(reports)`.

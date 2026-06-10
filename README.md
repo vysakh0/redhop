@@ -85,8 +85,22 @@ Every call returns a **Decision Report**: what it kept, what it dropped, and
 </p>
 
 The same fields are available programmatically: `ctx.report.auto_decision`,
-`ctx.report.total_tokens`, `ctx.report.retained_evidence_ratio`. Call
-`doc.analyze(query)` to get the report **without** assembling a context. Query
+`ctx.report.total_tokens`, `ctx.report.retained_evidence_ratio`. When retrieval
+looks weak, `ctx.report.diagnosis` lists the query terms that appear nowhere
+in the corpus and fires bounded hints (e.g. vocabulary mismatch, templated
+boilerplate, polysemy) with a link to the finding behind each one. See
+[`examples/python/12_diagnosis.py`](examples/python/12_diagnosis.py).
+
+**Already running retrieval somewhere else?** Point the same diagnostics at
+your existing LangChain / LlamaIndex / pgvector pipeline without migrating.
+`redhop.analyze_context(query, your_chunks)` returns a Decision Report,
+`redhop.summarize_diagnoses([...])` aggregates a workload into a single
+findings-cited focus recommendation, and `redhop.otel.report_to_attributes(report)`
+flattens it into OpenTelemetry or Langfuse-compatible attributes. Walk-through:
+[`docs/DIAGNOSE_YOUR_PIPELINE.md`](docs/DIAGNOSE_YOUR_PIPELINE.md). Example:
+[`examples/python/13_workload_audit.py`](examples/python/13_workload_audit.py).
+
+Call `doc.analyze(query)` to get the report **without** assembling a context. Query
 rewrites (boilerplate stripping, synonym expansion) land on the same report as
 a per-stage audit trail via `ctx.report.query_rewrites`.
 

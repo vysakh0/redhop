@@ -11,9 +11,9 @@ scenarios.
 
 | Language | Folder | Status |
 | -------- | ------ | ------ |
-| Python | [`python/`](python/) | ✓ 11 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing |
-| Node.js | [`nodejs/`](nodejs/) | ✓ 11 examples: same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
-| Rust | [`rust/`](rust/) | ✓ 11 examples: same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
+| Python | [`python/`](python/) | ✓ 13 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing, query diagnosis, workload audit (BYO pipeline) |
+| Node.js | [`nodejs/`](nodejs/) | ✓ 13 examples: same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
+| Rust | [`rust/`](rust/) | ✓ 13 examples: same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
 
 Each language folder has its own `README.md` describing the demos and
 how to run them.
@@ -49,3 +49,10 @@ here.
 - **Want to A/B before adopting a knob?**
   [`python/05_evaluate_ab.py`](python/05_evaluate_ab.py) shows the
   deterministic eval surface with no LLM judge.
+- **Already running retrieval somewhere else** (LangChain,
+  LlamaIndex, pgvector, hand-rolled)? See
+  [`python/13_workload_audit.py`](python/13_workload_audit.py) for the
+  BYO loop: point RedHop's diagnostics at your existing pipeline,
+  aggregate across a workload, get one focus recommendation. The full
+  walk-through lives in
+  [`docs/DIAGNOSE_YOUR_PIPELINE.md`](../docs/DIAGNOSE_YOUR_PIPELINE.md).
