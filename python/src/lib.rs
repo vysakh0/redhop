@@ -1579,7 +1579,7 @@ impl Document {
 }
 
 // ─── Query-set analyzer (templated-workload diagnostics) ─────────────────────
-// Backed by `redhop::analyze_query_set` + `redhop::drop_template_terms`. See
+// Backed by `redhop::analyze_query_set` (pair with `Stripper` to act on it). See
 // docs/findings/QUERY_SET_ANALYZER.md for the cross-workload probe that
 // validated the heuristic.
 
@@ -1622,7 +1622,7 @@ impl QuerySetReport {
         self.inner.template_word_share
     }
     /// Words appearing in ≥ 80% of the query set, sorted by frequency desc.
-    /// Pass to [`drop_template_terms`].
+    /// Pass to [`Stripper`] to strip them at retrieval time.
     #[getter]
     fn boilerplate_terms(&self) -> Vec<String> {
         self.inner.boilerplate_terms.clone()
