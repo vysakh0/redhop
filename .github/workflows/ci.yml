@@ -172,3 +172,11 @@ jobs:
         with:
           name: coverage-lcov
           path: lcov.info
+
+  docs-numbers:
+    name: Docs number-drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check README/COMPARISON headline numbers against the claims registry
+        run: python3 scripts/check_readme_numbers.py

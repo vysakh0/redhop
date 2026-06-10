@@ -6,7 +6,7 @@ ReasoningPreserving rescues second hops an aggressive relevance filter
 drops. That is *reachability*. This script tests *reasoning success*:
 does keeping the second hop produce better answers?
 
-NeoRAG (Rust, emit_reasoning_qa) built, per gap-qualified multi-hop
+RedHop (Rust, emit_reasoning_qa) built, per gap-qualified multi-hop
 HotpotQA query, four contexts from the SAME polluted input at an
 aggressive filter threshold:
 
@@ -25,7 +25,7 @@ second hop. We isolate the RESCUED subset — queries where reasoning kept
 the second hop but filtered dropped it — and test whether the answer
 improvement concentrates there, as the second-hop-tax theory predicts.
 
-Boundary: NeoRAG builds contexts; this lab script judges answers.
+Boundary: RedHop builds contexts; this lab script judges answers.
 LLM access: the `claude` CLI. Responses are cached to disk (resumable).
 
 Usage:
