@@ -81,12 +81,12 @@
     81.3%
   </text>
 
-  <!-- ===== Arm B: + drop_template_terms — 87.7% ===== -->
+  <!-- ===== Arm B: + Stripper(boilerplate) at 87.7% ===== -->
   <!-- Width = 87.7 * 4.8 = 421 -->
   <text x="210" y="225" text-anchor="end"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
         font-size="13" font-weight="500" fill="#0f172a">
-    + drop_template_terms
+    + Stripper(boilerplate)
   </text>
   <text x="210" y="241" text-anchor="end"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -105,28 +105,28 @@
     +6.4
   </text>
 
-  <!-- ===== Arm C: + expand_query_terms — 90.3% ===== -->
-  <!-- Width = 90.3 * 4.8 = 433 -->
+  <!-- ===== Arm C: + Vocabulary(synonyms) at 90.7% ===== -->
+  <!-- Width = 90.7 * 4.8 = 435 -->
   <text x="210" y="315" text-anchor="end"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
         font-size="13" font-weight="500" fill="#0f172a">
-    + expand_query_terms
+    + Vocabulary(synonyms)
   </text>
   <text x="210" y="331" text-anchor="end"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
         font-size="10" fill="#64748b">
     (add workload synonyms to the query)
   </text>
-  <rect x="220" y="300" width="433" height="36" rx="3" fill="url(#bar-expand)" stroke="#9f1239" stroke-width="0.8"/>
-  <text x="658" y="323"
+  <rect x="220" y="300" width="435" height="36" rx="3" fill="url(#bar-expand)" stroke="#9f1239" stroke-width="0.8"/>
+  <text x="660" y="323"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
         font-size="14" font-weight="700" fill="#0f172a">
-    90.3%
+    90.7%
   </text>
   <text x="687" y="336"
         font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
         font-size="10" font-weight="600" fill="#16a34a">
-    +2.7
+    +3.0
   </text>
 
   <!-- Best-in-class flag for the top bar -->
