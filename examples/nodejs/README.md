@@ -44,6 +44,13 @@ node examples/nodejs/01_quickstart.cjs
 | -- | ---- | -------------------- |
 | 11 | [`11_folder_indexing.cjs`](11_folder_indexing.cjs) | `Document.fromFolder(path, { ... })` with `.gitignore`, custom `ignore` globs, `persist: true` for incremental on-disk caching, and `fromBytes(...)` for S3 / GCS / DB blobs. |
 
+**Observability:**
+
+| # | File | What it demonstrates |
+| -- | ---- | -------------------- |
+| 12 | [`12_diagnosis.cjs`](12_diagnosis.cjs) | `ctx.report.diagnosis` carries per-query facts about how the query met the corpus (`queryTerms`, `zeroMatchTerms`, `termStats`, `scoreSpread`) plus bounded hints (vocab mismatch, polysemy, templated boilerplate) each citing the measured finding behind it. Healthy queries fire no hints. |
+| 13 | [`13_workload_audit.cjs`](13_workload_audit.cjs) | The bring-your-own-pipeline (BYO) loop: `analyzeContext(query, yourChunks)` observes what an external retriever returned, `summarizeDiagnoses(reports)` aggregates a workload into one focus recommendation, plus the OTel / Langfuse attribute snippet for shipping reports to telemetry. Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](../../docs/DIAGNOSE_YOUR_PIPELINE.md). |
+
 ## How to read these in order
 
 If you're new to RedHop, run them top-to-bottom:

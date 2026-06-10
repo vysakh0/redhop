@@ -116,7 +116,35 @@ including when it deliberately leaves a small context untouched.
 
 Read the fields directly via `ctx.report.auto_decision`, `total_tokens`,
 `retained_evidence_ratio`, or call `doc.analyze(query)` for the report **without**
-assembling a context.
+assembling a context. When retrieval looks weak, `ctx.report.diagnosis` lists
+the query terms that appear nowhere in the corpus and fires bounded hints
+(vocab mismatch, templated boilerplate, polysemy) with a link to the
+measured finding behind each one. Example:
+[`12_diagnosis.py`](https://github.com/vysakh0/redhop/blob/main/examples/python/12_diagnosis.py).
+
+## Already running retrieval somewhere else?
+
+Point the same diagnostics at your existing LangChain / LlamaIndex /
+pgvector pipeline without migrating. Three calls, no behavior change:
+
+```python
+# Hand the candidates your retriever returned to RedHop for diagnosis.
+texts = your_retriever.invoke(query)        # whatever you have today
+chunks = [redhop.Chunk(t, id=str(i), source="external") for i, t in enumerate(texts)]
+report = redhop.analyze_context(query, chunks)
+
+# Aggregate across a workload: one focus recommendation, citing the finding.
+reports = [redhop.analyze_context(q, retrieve(q)) for q in production_queries]
+summary = redhop.summarize_diagnoses(reports)
+print(summary)
+
+# Ship the report to your telemetry (OpenTelemetry, Langfuse, anything).
+from redhop.otel import report_to_attributes
+span.set_attributes(report_to_attributes(report))
+```
+
+Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](https://github.com/vysakh0/redhop/blob/main/docs/DIAGNOSE_YOUR_PIPELINE.md).
+Example: [`13_workload_audit.py`](https://github.com/vysakh0/redhop/blob/main/examples/python/13_workload_audit.py).
 
 ## Cite the evidence
 
@@ -377,6 +405,9 @@ if report.is_templated:
 | `Document.context_with_rewrites(query, [stripper, vocab])` | Runs the chain through retrieval. Per-stage audit lands on `report.query_rewrites` | (same finding as above) |
 | `evaluate(query, ctx, gold_chunks=, gold_answer=, judge=, decompose_faithfulness=, decompose_correctness=)` | A/B scoring against gold. Deterministic-by-default (lexical, no LLM). Opt-in `judge=` adds LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
 | `critique(answer, aspects, judge=)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect, polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
+| `ctx.report.diagnosis` | Query-level facts (terms missing from the corpus, score spread, per-term DF) plus a closed registry of bounded hints (vocab mismatch, polysemy, templated boilerplate). Every hint cites the measured finding behind it. Always computed, observation only | [REPORT_DIAGNOSIS](https://github.com/vysakh0/redhop/blob/main/docs/design/REPORT_DIAGNOSIS.md) · [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md) |
+| `summarize_diagnoses(reports)` | Workload-level aggregation: hint histogram, failure rates, top vocabulary gaps, and at most one focus recommendation citing the finding behind it. Six focus codes (`vocab_mismatch`, `templated_queries`, `underdetermined_queries`, `weak_retrieval`, `healthy`, `sample_too_small`) | [WORKLOAD_AUDIT](https://github.com/vysakh0/redhop/blob/main/docs/design/WORKLOAD_AUDIT.md) |
+| `redhop.otel.report_to_attributes(report)` | Flattens any Decision Report into OpenTelemetry / Langfuse-compatible span attributes under a `redhop.` namespace. Zero new dependencies. Pair with `analyze_context` to instrument an existing LangChain / LlamaIndex / pgvector pipeline | [DIAGNOSE_YOUR_PIPELINE](https://github.com/vysakh0/redhop/blob/main/docs/DIAGNOSE_YOUR_PIPELINE.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).

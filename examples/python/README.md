@@ -45,6 +45,13 @@ python examples/python/01_quickstart.py
 | -- | ---- | -------------------- |
 | 11 | [`11_folder_indexing.py`](11_folder_indexing.py) | `Document.from_folder(path, ...)` with `.gitignore`, custom `ignore` globs, `persist=True` for incremental on-disk caching, and `from_bytes(...)` for S3/GCS/DB blobs. |
 
+**Observability:**
+
+| # | File | What it demonstrates |
+| -- | ---- | -------------------- |
+| 12 | [`12_diagnosis.py`](12_diagnosis.py) | `ctx.report.diagnosis` carries per-query facts about how the query met the corpus (`query_terms`, `zero_match_terms`, `term_stats`, `score_spread`) plus bounded hints (vocab mismatch, polysemy, templated boilerplate) each citing the measured finding behind it. Healthy queries fire no hints. |
+| 13 | [`13_workload_audit.py`](13_workload_audit.py) | The bring-your-own-pipeline (BYO) loop: `redhop.analyze_context(query, your_chunks)` observes what an external retriever returned, `redhop.summarize_diagnoses(reports)` aggregates a workload into one focus recommendation, `redhop.otel.report_to_attributes(report)` flattens any report into OpenTelemetry / Langfuse-compatible attributes. Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](../../docs/DIAGNOSE_YOUR_PIPELINE.md). |
+
 ## What's not here (yet)
 
 - **Spider / BIRD schema retrieval** — the natural positive probe for

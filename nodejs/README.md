@@ -108,7 +108,36 @@ evidence-backed default that traces to a finding in
 `ctx.report.rendered` carries the human-readable text above. Individual fields
 (`autoDecision`, `totalTokens`, `retainedEvidenceRatio`, etc.) are on
 `ctx.report` directly. `Document.analyze(query)` returns the same `Report`
-shape without paying assembly cost.
+shape without paying assembly cost. When retrieval looks weak,
+`ctx.report.diagnosis` lists the query terms that appear nowhere in the
+corpus and fires bounded hints (vocab mismatch, templated boilerplate,
+polysemy) with a link to the measured finding behind each one. Example:
+[`12_diagnosis.cjs`](https://github.com/vysakh0/redhop/blob/main/examples/nodejs/12_diagnosis.cjs).
+
+## Already running retrieval somewhere else?
+
+Point the same diagnostics at your existing LangChain.js / LlamaIndex.ts /
+hand-rolled pipeline without migrating. Three calls, no behavior change:
+
+```javascript
+const { Chunk, analyzeContext, summarizeDiagnoses } = require("redhop");
+
+// Hand the candidates your retriever returned to RedHop for diagnosis.
+const texts = await yourRetrieve(query);
+const chunks = texts.map((t, i) => new Chunk(t, { id: String(i), source: "external" }));
+const report = analyzeContext(query, chunks);
+
+// Aggregate across a workload: one focus recommendation, citing the finding.
+const reports = await Promise.all(productionQueries.map(async (q) =>
+  analyzeContext(q, (await yourRetrieve(q)).map((t, i) => new Chunk(t, { id: String(i), source: "external" })))
+));
+const summary = summarizeDiagnoses(reports);
+console.log(summary.rendered);
+```
+
+Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](https://github.com/vysakh0/redhop/blob/main/docs/DIAGNOSE_YOUR_PIPELINE.md).
+Example: [`13_workload_audit.cjs`](https://github.com/vysakh0/redhop/blob/main/examples/nodejs/13_workload_audit.cjs).
+OTel / Langfuse attribute mapping snippet is on the docs page.
 
 ## Show your work: query rewrites with an audit trail
 
@@ -402,6 +431,9 @@ if (report.isTemplated) {
 | `evaluate(query, ctx, { goldChunks, goldAnswer })` · `evaluateWithJudge(query, ctx, judge, { answer, goldAnswer, decomposeFaithfulness, decomposeCorrectness })` | A/B scoring against gold. Sync `evaluate` is deterministic-only (no LLM). Async `evaluateWithJudge` opts into LLM-judged faithfulness/relevancy/correctness, with claim-decomposition and TP/FP/FN modes. Same primitives the Decision Report uses | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) · [COMPARISON_RAGAS](https://github.com/vysakh0/redhop/blob/main/docs/COMPARISON_RAGAS.md) |
 | `critique(answer, aspects, judge)` | LLM-judged scoring for user-defined dimensions (harmfulness, conciseness, brand voice…). One judge call per aspect, polarity-corrected so high = good | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
 | `summarize(reports)` | Test-set aggregation: means + medians + per-metric subset counts (`meanOverall`, `meanFaithfulnessJudged` + `nWithFaithfulnessJudged`, …). Same shape as Python's `redhop.summarize` and Rust's `redhop::summarize(&[…])` | [ANSWER_QUALITY_EVAL](https://github.com/vysakh0/redhop/blob/main/docs/findings/ANSWER_QUALITY_EVAL.md) |
+| `ctx.report.diagnosis` | Query-level facts (`queryTerms`, `zeroMatchTerms`, `termStats`, `scoreSpread`) plus a closed registry of bounded hints (vocab mismatch, polysemy, templated boilerplate). Every hint cites the measured finding behind it. Always computed, observation only | [REPORT_DIAGNOSIS](https://github.com/vysakh0/redhop/blob/main/docs/design/REPORT_DIAGNOSIS.md) · [CHOOSING_A_CONFIG](https://github.com/vysakh0/redhop/blob/main/docs/CHOOSING_A_CONFIG.md) |
+| `summarizeDiagnoses(reports)` | Workload-level aggregation: hint histogram, failure rates, top vocabulary gaps, and at most one focus recommendation citing the finding behind it. Six focus codes (`vocab_mismatch`, `templated_queries`, `underdetermined_queries`, `weak_retrieval`, `healthy`, `sample_too_small`) | [WORKLOAD_AUDIT](https://github.com/vysakh0/redhop/blob/main/docs/design/WORKLOAD_AUDIT.md) |
+| `analyzeContext(query, chunks)` | Observe what an external retriever returned without modifying it. Returns a Decision Report with Layer-1 diagnosis. Pair with the OTel snippet on the docs page to instrument a LangChain.js / LlamaIndex.ts pipeline | [DIAGNOSE_YOUR_PIPELINE](https://github.com/vysakh0/redhop/blob/main/docs/DIAGNOSE_YOUR_PIPELINE.md) |
 
 Decision rule + the recipe on the docs site:
 [Choosing a configuration → "Templated queries with heavy boilerplate"](https://www.redhopai.com/docs/choosing-a-config/#3-templated-queries-with-heavy-boilerplate).
