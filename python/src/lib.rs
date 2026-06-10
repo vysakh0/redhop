@@ -14,7 +14,7 @@ use pyo3::types::{PyDict, PyList};
 use redhop::context::{
     analyze_context as rh_analyze, build_context as rh_build, context_economics as rh_economics,
     filter_context as rh_filter, grounding_score as rh_grounding, link_strength as rh_link,
-    AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy,
+    AutoDecision, ContextConfig, ContextReport as RhReport, ContextStrategy, HintCode,
 };
 use redhop::core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
@@ -43,6 +43,19 @@ fn strategy_to_str(s: ContextStrategy) -> &'static str {
         ContextStrategy::MaxDensity => "max_density",
         ContextStrategy::ReasoningPreserving => "reasoning_preserving",
         ContextStrategy::Auto => "auto",
+    }
+}
+
+fn hint_code_to_str(c: HintCode) -> &'static str {
+    match c {
+        HintCode::EmptyContext => "empty_context",
+        HintCode::VocabMismatch => "vocab_mismatch",
+        HintCode::LowConfidence => "low_confidence",
+        HintCode::LowDiscriminationQuery => "low_discrimination_query",
+        HintCode::UnderdeterminedQuery => "underdetermined_query",
+        // The enum is `#[non_exhaustive]`; future variants degrade to a
+        // stable sentinel rather than crash the binding.
+        _ => "unknown",
     }
 }
 
@@ -457,6 +470,45 @@ impl ContextReport {
             .cloned()
             .map(|r| RewriteRecord { inner: r })
             .collect()
+    }
+    /// Query-level diagnosis: term/corpus match facts and a small set
+    /// of bounded hints with evidence citations. See
+    /// `docs/design/REPORT_DIAGNOSIS.md` and the `Decision Report`
+    /// section of `docs/CHOOSING_A_CONFIG.md` for what triggers each
+    /// hint and how to act on it.
+    #[getter]
+    fn diagnosis<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let d = &self.inner.diagnosis;
+        let out = PyDict::new(py);
+        out.set_item("query_terms", d.query_terms.clone())?;
+        out.set_item("corpus_stats_available", d.corpus_stats_available)?;
+        out.set_item("zero_match_terms", d.zero_match_terms.clone())?;
+        let term_stats = PyList::empty(py);
+        for ts in &d.term_stats {
+            let row = PyDict::new(py);
+            row.set_item("term", &ts.term)?;
+            row.set_item("df", ts.df)?;
+            row.set_item("df_ratio", ts.df_ratio)?;
+            term_stats.append(row)?;
+        }
+        out.set_item("term_stats", term_stats)?;
+        out.set_item(
+            "terms_unmatched_in_candidates",
+            d.terms_unmatched_in_candidates.clone(),
+        )?;
+        out.set_item("n_candidates", d.n_candidates)?;
+        out.set_item("score_spread", d.score_spread)?;
+        out.set_item("empty_context", d.empty_context)?;
+        let hints = PyList::empty(py);
+        for h in &d.hints {
+            let row = PyDict::new(py);
+            row.set_item("code", hint_code_to_str(h.code))?;
+            row.set_item("message", &h.message)?;
+            row.set_item("evidence", &h.evidence)?;
+            hints.append(row)?;
+        }
+        out.set_item("hints", hints)?;
+        Ok(out)
     }
     /// The full report as a JSON string (Python wrapper exposes `.to_dict()`).
     fn json(&self) -> PyResult<String> {

@@ -85,7 +85,11 @@ Every call returns a **Decision Report**: what it kept, what it dropped, and
 </p>
 
 The same fields are available programmatically: `ctx.report.auto_decision`,
-`ctx.report.total_tokens`, `ctx.report.retained_evidence_ratio`. Call
+`ctx.report.total_tokens`, `ctx.report.retained_evidence_ratio`. When retrieval
+looks weak, `ctx.report.diagnosis` lists the query terms that appear nowhere
+in the corpus and fires bounded hints (e.g. vocabulary mismatch, templated
+boilerplate, polysemy) with a link to the finding behind each one. See
+[`examples/python/12_diagnosis.py`](examples/python/12_diagnosis.py). Call
 `doc.analyze(query)` to get the report **without** assembling a context. Query
 rewrites (boilerplate stripping, synonym expansion) land on the same report as
 a per-stage audit trail via `ctx.report.query_rewrites`.

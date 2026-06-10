@@ -232,8 +232,68 @@ pub struct Report {
     /// chain order). Empty when no rewrite chain was used. See
     /// `Document.contextWithRewrites`.
     pub query_rewrites: Vec<RewriteRecord>,
+    /// Query-level diagnosis: term/corpus match facts and a small set
+    /// of bounded hints with evidence citations. See the design doc
+    /// `docs/design/REPORT_DIAGNOSIS.md`.
+    pub diagnosis: Diagnosis,
     /// The human-readable Decision Report.
     pub rendered: String,
+}
+
+/// Query-level facts and bounded hints. See the design doc
+/// `docs/design/REPORT_DIAGNOSIS.md`.
+#[napi(object)]
+#[derive(Clone)]
+pub struct Diagnosis {
+    /// Analyzed query terms, in first-occurrence order.
+    pub query_terms: Vec<String>,
+    /// `true` when corpus-level stats were computed (the call went
+    /// through a `Document`); `false` for direct `buildContext` callers.
+    pub corpus_stats_available: bool,
+    /// Query terms that appear in zero chunks of the corpus.
+    pub zero_match_terms: Vec<String>,
+    /// Per-term corpus stats for terms that do appear (`df > 0`).
+    pub term_stats: Vec<TermStat>,
+    /// Query terms that appear in no retrieved candidate chunk.
+    pub terms_unmatched_in_candidates: Vec<String>,
+    /// Number of candidates handed to assembly.
+    pub n_candidates: u32,
+    /// Relative score spread across the top candidates.
+    /// `null` when fewer than 2 candidates or the top score is `<= 0`.
+    pub score_spread: Option<f64>,
+    /// `true` when assembly selected zero chunks.
+    pub empty_context: bool,
+    /// Hints that fired, from the closed registry.
+    pub hints: Vec<DiagnosisHint>,
+}
+
+/// Per-term corpus statistics for one query term that appears in the
+/// corpus.
+#[napi(object)]
+#[derive(Clone)]
+pub struct TermStat {
+    /// The analyzed term (matches how the corpus was indexed).
+    pub term: String,
+    /// Number of corpus chunks containing the term.
+    pub df: u32,
+    /// `df / total corpus chunks`, in `[0, 1]`.
+    pub df_ratio: f64,
+}
+
+/// One bounded hint from the closed registry. Carries the observation,
+/// a code clients can branch on, and a path to the doc or finding that
+/// justifies it.
+#[napi(object)]
+#[derive(Clone)]
+pub struct DiagnosisHint {
+    /// Stable identifier (snake_case): `"empty_context"`,
+    /// `"vocab_mismatch"`, `"low_confidence"`,
+    /// `"low_discrimination_query"`, `"underdetermined_query"`.
+    pub code: String,
+    /// One or two sentences. Observation only.
+    pub message: String,
+    /// Repo-relative path of the doc or finding grounding this hint.
+    pub evidence: String,
 }
 
 /// One step in the rewrite chain — what the stage matched / added /
@@ -363,7 +423,51 @@ fn to_report(r: &redhop::ContextReport) -> Report {
         low_confidence_retrieval: r.low_confidence_retrieval,
         low_confidence_threshold: r.low_confidence_threshold as f64,
         query_rewrites: r.query_rewrites.iter().map(to_record).collect(),
+        diagnosis: to_diagnosis(&r.diagnosis),
         rendered: r.render(None),
+    }
+}
+
+fn hint_code_to_str(c: redhop::HintCode) -> &'static str {
+    match c {
+        redhop::HintCode::EmptyContext => "empty_context",
+        redhop::HintCode::VocabMismatch => "vocab_mismatch",
+        redhop::HintCode::LowConfidence => "low_confidence",
+        redhop::HintCode::LowDiscriminationQuery => "low_discrimination_query",
+        redhop::HintCode::UnderdeterminedQuery => "underdetermined_query",
+        // `HintCode` is `#[non_exhaustive]` — future variants degrade
+        // to a stable sentinel rather than crash the binding.
+        _ => "unknown",
+    }
+}
+
+fn to_diagnosis(d: &redhop::Diagnosis) -> Diagnosis {
+    Diagnosis {
+        query_terms: d.query_terms.clone(),
+        corpus_stats_available: d.corpus_stats_available,
+        zero_match_terms: d.zero_match_terms.clone(),
+        term_stats: d
+            .term_stats
+            .iter()
+            .map(|t| TermStat {
+                term: t.term.clone(),
+                df: t.df,
+                df_ratio: t.df_ratio as f64,
+            })
+            .collect(),
+        terms_unmatched_in_candidates: d.terms_unmatched_in_candidates.clone(),
+        n_candidates: d.n_candidates as u32,
+        score_spread: d.score_spread.map(|s| s as f64),
+        empty_context: d.empty_context,
+        hints: d
+            .hints
+            .iter()
+            .map(|h| DiagnosisHint {
+                code: hint_code_to_str(h.code).to_string(),
+                message: h.message.clone(),
+                evidence: h.evidence.clone(),
+            })
+            .collect(),
     }
 }
 

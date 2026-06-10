@@ -202,8 +202,73 @@ export interface Report {
    * `Document.contextWithRewrites`.
    */
   queryRewrites: Array<RewriteRecord>
+  /**
+   * Query-level diagnosis: term/corpus match facts and a small set
+   * of bounded hints with evidence citations. See the design doc
+   * `docs/design/REPORT_DIAGNOSIS.md`.
+   */
+  diagnosis: Diagnosis
   /** The human-readable Decision Report. */
   rendered: string
+}
+/**
+ * Query-level facts and bounded hints. See the design doc
+ * `docs/design/REPORT_DIAGNOSIS.md`.
+ */
+export interface Diagnosis {
+  /** Analyzed query terms, in first-occurrence order. */
+  queryTerms: Array<string>
+  /**
+   * `true` when corpus-level stats were computed (the call went
+   * through a `Document`); `false` for direct `buildContext` callers.
+   */
+  corpusStatsAvailable: boolean
+  /** Query terms that appear in zero chunks of the corpus. */
+  zeroMatchTerms: Array<string>
+  /** Per-term corpus stats for terms that do appear (`df > 0`). */
+  termStats: Array<TermStat>
+  /** Query terms that appear in no retrieved candidate chunk. */
+  termsUnmatchedInCandidates: Array<string>
+  /** Number of candidates handed to assembly. */
+  nCandidates: number
+  /**
+   * Relative score spread across the top candidates.
+   * `null` when fewer than 2 candidates or the top score is `<= 0`.
+   */
+  scoreSpread?: number
+  /** `true` when assembly selected zero chunks. */
+  emptyContext: boolean
+  /** Hints that fired, from the closed registry. */
+  hints: Array<DiagnosisHint>
+}
+/**
+ * Per-term corpus statistics for one query term that appears in the
+ * corpus.
+ */
+export interface TermStat {
+  /** The analyzed term (matches how the corpus was indexed). */
+  term: string
+  /** Number of corpus chunks containing the term. */
+  df: number
+  /** `df / total corpus chunks`, in `[0, 1]`. */
+  dfRatio: number
+}
+/**
+ * One bounded hint from the closed registry. Carries the observation,
+ * a code clients can branch on, and a path to the doc or finding that
+ * justifies it.
+ */
+export interface DiagnosisHint {
+  /**
+   * Stable identifier (snake_case): `"empty_context"`,
+   * `"vocab_mismatch"`, `"low_confidence"`,
+   * `"low_discrimination_query"`, `"underdetermined_query"`.
+   */
+  code: string
+  /** One or two sentences. Observation only. */
+  message: string
+  /** Repo-relative path of the doc or finding grounding this hint. */
+  evidence: string
 }
 /**
  * One step in the rewrite chain — what the stage matched / added /

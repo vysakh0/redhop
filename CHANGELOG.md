@@ -5,6 +5,30 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [Unreleased]
+
+### Added — self-service retrieval diagnostic
+
+- **`ctx.report.diagnosis`** (Rust + Python + Node). The Decision
+  Report now carries query-level facts about how the query interacted
+  with the corpus and the retrieved candidates, plus a small closed
+  registry of bounded hints that fire on documented failure shapes.
+  Every hint cites a findings or docs file. The three failure shapes
+  catalogued in `docs/CHOOSING_A_CONFIG.md` (vocabulary mismatch,
+  polysemy, templated boilerplate) each produce a recognizable hint
+  with the evidence path attached. Healthy queries produce zero hints.
+  Always computed, never alters retrieval, no new configuration knobs.
+  Design: `docs/design/REPORT_DIAGNOSIS.md`. Examples:
+  `examples/{python,nodejs,rust}/12_diagnosis.*`.
+
+### Fixed
+
+- **`docs/CHOOSING_A_CONFIG.md`**: removed the stale "hybrid sometimes
+  returns fewer candidates than lexical" warning that pointed at issue
+  #1. The strict-superset contract was restored in 0.3.1 by the
+  pure-rerank + BM25-tail fill, with a regression test
+  (`local_rerank.rs::pure_rerank_lets_dense_win_when_it_disagrees_with_bm25`).
+
 ## [0.3.3] — 2026-06-09
 
 **Answer-quality eval surface (Rust + Python + Node) + audit of

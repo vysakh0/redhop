@@ -112,7 +112,15 @@ cost. **Verify on your corpus before adopting.**
 ## Query writing: the part the user controls
 
 The library can only retrieve what your query gives it. Two patterns we
-saw fail in this eval that no config fixed:
+saw fail in this eval that no config fixed.
+
+> **The report now flags these.** `ctx.report.diagnosis` surfaces
+> facts about how the query interacted with the corpus
+> (`query_terms`, `zero_match_terms`, `term_stats`) and fires a
+> bounded hint for each of the three shapes below. Every hint links
+> to the relevant section of this page or the measured finding
+> behind it. See `examples/python/12_diagnosis.py` (and the Node and
+> Rust mirrors).
 
 ### 1. One-word polysemy queries
 
@@ -124,7 +132,9 @@ agreed.** This is a structural ambiguity in the doc, not a tier failure.
 
 **Fix it in the query, not the config:** add one disambiguating word.
 `'liability cap for vendor'` correctly finds §7.2. `'arbitration forum
-to settle disputes'` finds §9.2.
+to settle disputes'` finds §9.2. The report flags this shape with the
+`underdetermined_query` hint when a short query produces a nearly flat
+score spread across many candidates.
 
 ### 2. Natural-language paraphrase with no shared vocabulary
 
@@ -139,7 +149,8 @@ window?"* finds §3.4 immediately. **Fix at the config level (sometimes):**
 *cancel* through semantic similarity. Hybrid is a strict superset of
 lexical (BM25-tail fallback fills any chunks the dense pool missed), so
 you never lose candidates by turning it on. The cost is the ~80MB
-embedder download and ~3× warm latency.
+embedder download and ~3× warm latency. The report flags this shape
+with the `vocab_mismatch` hint and lists the exact zero-match terms.
 
 ### 3. Templated queries with heavy boilerplate
 
@@ -148,7 +159,9 @@ the parts (if any) of this contract related to X that should be reviewed
 by a lawyer. Details: …"*, *"Help me with X, my account is Y, the error
 is Z"*, form-filled queries from structured UIs), BM25 weights each term
 in the query by corpus IDF, not query-set frequency. So the 19 boilerplate
-words **dilute** the 5 real signal words.
+words **dilute** the 5 real signal words. The report flags this shape
+with the `low_discrimination_query` hint when most query terms appear
+in a large fraction of the corpus.
 
 **Two paths up the same hill: pick one, don't combine.** Measured on
 CUAD ([findings/CUAD_HYBRID_RERANK.md](findings/CUAD_HYBRID_RERANK.md)):

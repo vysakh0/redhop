@@ -92,6 +92,7 @@ pub use crate::rewrite::{
 pub use crate::context::{
     analyze_context, build_context, context_economics, filter_context, grounding_score,
     link_strength, AutoDecision, BuiltContext, ContextConfig, ContextReport, ContextStrategy,
+    Diagnosis, DiagnosisHint, HintCode, TermStat,
 };
 // In-process evaluation — score a `BuiltContext` against optional gold signals,
 // no LLM judge required. See `crate::context::eval` for the rationale.
