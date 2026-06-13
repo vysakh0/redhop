@@ -4,7 +4,7 @@
 //! The user-facing answer to "how good was that context assembly — and did
 //! the LLM stay on it?", computed from the same primitives the runtime
 //! already uses to make decisions — grounding scores, the existing
-//! [`ContextReport`] fields — with **no LLM judge in the loop** by default.
+//! [`crate::context::ContextReport`] fields — with **no LLM judge in the loop** by default.
 //!
 //! There are two flavors of answer-quality metrics in this module:
 //!
@@ -17,7 +17,7 @@
 //!   fields named with the `_judged` suffix.
 //!
 //! The differentiator: a low [`EvalReport::overall`] and a `true`
-//! [`ContextReport::low_confidence_retrieval`] correlate *by construction* —
+//! [`crate::context::ContextReport::low_confidence_retrieval`] correlate *by construction* —
 //! both are computed from the same grounding signal. If the runtime says
 //! "this is low-confidence" and the eval says "this scored 0.2", you are not
 //! looking at two independent measurements; you're looking at one signal

@@ -1,6 +1,6 @@
 //! pyo3 bindings for RedHop context optimization.
 //!
-//! Thin wrapper over the stable `redhop-context` public API — no logic is
+//! Thin wrapper over the stable `redhop` crate's public API — no logic is
 //! duplicated here. Rust remains the source of truth; this module only maps
 //! Pythonic inputs (dicts/lists/strings) to the Rust types and wraps the
 //! results in small Python classes.

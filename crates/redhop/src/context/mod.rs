@@ -1,5 +1,3 @@
-//! # redhop-context
-//!
 //! Finite-attention-aware context construction. Given a query and the
 //! chunks a retriever returned, build the *prompt context* a downstream
 //! LLM actually sees — under a token budget, optimizing for

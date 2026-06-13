@@ -1,5 +1,3 @@
-//! # redhop-chunking
-//!
 //! Chunking strategies built on top of [`crate::core::Chunker`].
 //!
 //! RedHop ships three chunkers covering the practical quality/cost spectrum:

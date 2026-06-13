@@ -1,5 +1,3 @@
-//! # redhop-reranking
-//!
 //! Rerankers that take a candidate list and reorder it using a secondary
 //! signal. Rerankers compose: a `HybridRetriever` can be followed by a
 //! lexical-grounding reranker, which can be followed by a cross-encoder.

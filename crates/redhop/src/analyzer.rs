@@ -514,7 +514,7 @@ pub struct QuerySetReport {
     pub template_word_share: f32,
     /// Words appearing in at least 80% of the query set, sorted by
     /// document-frequency descending. These are the candidates you would
-    /// pass to [`drop_template_terms`].
+    /// pass to [`crate::rewrite::Stripper`].
     pub boilerplate_terms: Vec<String>,
     /// Coarse band derived from `template_word_share`.
     pub estimated_dilution_cost: DilutionCost,

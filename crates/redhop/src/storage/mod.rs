@@ -1,5 +1,3 @@
-//! # redhop-storage
-//!
 //! Storage backends used by retrievers.
 //!
 //! Two abstractions live here:

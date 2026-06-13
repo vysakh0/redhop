@@ -48,6 +48,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 // ── Modules (the consolidated workspace; each was its own crate pre-0.2) ────
 pub mod analyzer;

@@ -1,5 +1,3 @@
-//! # redhop-embeddings
-//!
 //! Pluggable embedding backends implementing
 //! [`crate::core::EmbeddingProvider`].
 //!

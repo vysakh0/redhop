@@ -32,9 +32,8 @@ Low-level surface — you already have chunks (still first-class):
         token_budget=12000,
     )
 
-This package is a thin binding over the Rust `redhop-context` /
-`redhop-document` crates (built with pyo3/maturin). Rust is the source of
-truth; no logic is duplicated here.
+This package is a thin binding over the Rust `redhop` crate (built with
+pyo3/maturin). Rust is the source of truth; no logic is duplicated here.
 """
 
 from __future__ import annotations

@@ -1,7 +1,8 @@
-//! Loader orchestration — the ergonomic constructors over the `redhop-document`
-//! core: text/chunks/file/bytes/folder loading, retrieval/chunking config, the
-//! semantic embedder, folder persistence, and a citations accessor. This is the
-//! same surface the Python and Node bindings expose, in Rust.
+//! Loader orchestration — the ergonomic constructors over the
+//! [`crate::document`] module: text/chunks/file/bytes/folder loading,
+//! retrieval/chunking config, the semantic embedder, folder persistence,
+//! and a citations accessor. This is the same surface the Python and Node
+//! bindings expose, in Rust.
 
 use crate::{
     BuiltContext, Chunk, ContextConfig, ContextStrategy, Document, DocumentConfig, Error, Result,
