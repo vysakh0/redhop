@@ -8,7 +8,7 @@
 //! caller-supplied closure. **We do not ship a built-in HTTP client to
 //! OpenAI / Anthropic / etc.** Users bring their own LLM client (the
 //! `openai` Python SDK, `litellm`, the `anthropic` crate, etc.) and wrap
-//! it with [`Judge::from_callable`] in three lines.
+//! it with [`CallableJudge::new`] in three lines.
 //!
 //! Why no built-in HTTP client:
 //!

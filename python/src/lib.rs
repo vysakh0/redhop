@@ -1,6 +1,6 @@
 //! pyo3 bindings for RedHop context optimization.
 //!
-//! Thin wrapper over the stable `redhop-context` public API — no logic is
+//! Thin wrapper over the stable `redhop` crate's public API — no logic is
 //! duplicated here. Rust remains the source of truth; this module only maps
 //! Pythonic inputs (dicts/lists/strings) to the Rust types and wraps the
 //! results in small Python classes.
@@ -22,9 +22,7 @@ use redhop::core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
-use redhop::document::{
-    Document as RhDocument, DocumentConfig, RetrievalMode, Section as RhSection,
-};
+use redhop::document::Document as RhDocument;
 use redhop::judge::{
     CachedJudge as RhCachedJudge, CallableJudge, Judge as RhJudge, JudgeRequest, JudgeResponse,
 };
@@ -799,344 +797,158 @@ fn to_py<T>(r: redhop::core::Result<T>) -> PyResult<T> {
     r.map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Thin forwarder over [`redhop::retrieval_from_str`] — the canonical
-/// string→enum mapping lives in the Rust crate so every binding shares it
-/// and the unknown-mode error message can't drift.
-fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> PyResult<RetrievalMode> {
-    redhop::retrieval_from_str(retrieval, candidate_pool)
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn doc_config(
-    strategy: Option<String>,
-    token_budget: usize,
-    candidate_k: usize,
-    chunk_size: usize,
-    chunk_overlap: usize,
-    retrieval_mode: RetrievalMode,
-    language: Option<String>,
-    preserve_order: bool,
-    code_neighbors_default: usize,
-    prose_heading_default: bool,
-) -> PyResult<DocumentConfig> {
-    let base = DocumentConfig::default();
-    let strategy = match strategy {
-        Some(s) => strategy_from_str(&s)?,
-        None => base.context.strategy,
-    };
-    // Route language string → SnowballAnalyzer builtin, or `"raw"`/`"none"`
-    // → RawAnalyzer (minimal pipeline; faster warm queries, no stemming —
-    // see docs/findings/FRAMEWORK_MULTIQUERY.md). Errors on unknown names
-    // so a typo'd `"germann"` surfaces, not silently falls back.
-    let analyzer: std::sync::Arc<dyn redhop::analyzer::Analyzer> = match language.as_deref() {
-        None => base.context.analyzer.clone(),
-        Some("raw") | Some("none") => {
-            std::sync::Arc::new(redhop::analyzer::RawAnalyzer::new())
-        }
-        Some(name) => match redhop::analyzer::SnowballAnalyzer::by_name(name) {
-            Some(a) => std::sync::Arc::new(a),
-            None => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown language '{name}'; supported: arabic, danish, dutch, \
-                     english, finnish, french, german, greek, hungarian, italian, \
-                     norwegian, portuguese, romanian, russian, spanish, swedish, \
-                     tamil, turkish — or 'raw' / 'none' for the minimal \
-                     no-stemming pipeline"
-                )));
-            }
-        },
-    };
-    let context = ContextConfig {
-        token_budget,
-        strategy,
-        analyzer,
-        preserve_order,
-        ..base.context
-    };
-    Ok(DocumentConfig {
-        // chunk_size is the target tokens/chunk; cap (max) at 2x so an
-        // occasional long sentence isn't split mid-thought.
-        target_tokens: chunk_size,
-        max_tokens: chunk_size * 2,
-        overlap_sentences: chunk_overlap,
-        candidate_k,
-        retrieval_mode,
-        rerank_pool: base.rerank_pool,
-        context,
-        // Inherits the Rust-side default (0 = off). Surface this as a Python
-        // kwarg once a real user asks; for now the issue-#1 fix
-        // restored the documented hybrid contract on its own.
-        min_candidates: base.min_candidates,
-        code_neighbors_default,
-        prose_heading_default,
-    })
-}
-
-/// Attach a dense embedder for `retrieval="semantic"`/`"hybrid"`. The embedding
-/// engine + model live behind the crate's `semantic` feature; the lean (lexical)
-/// wheel raises a clear error rather than silently degrading.
-#[cfg(feature = "semantic")]
-#[allow(clippy::too_many_arguments)]
-fn apply_dense_embedder(
-    doc: RhDocument,
-    model: Option<String>,
-    embedder_model: Option<String>,
-    embedder_tokenizer: Option<String>,
-    embedder_dim: usize,
-    embedder_pooling: Option<String>,
-    embedder_query_prefix: Option<String>,
-    embedder_passage_prefix: Option<String>,
-) -> PyResult<RhDocument> {
-    // Path A — explicit model files (custom / offline / power user). These win
-    // if given; `model=` is ignored.
-    if let (Some(m), Some(t)) = (embedder_model.as_ref(), embedder_tokenizer.as_ref()) {
-        let pooling = match embedder_pooling.as_deref() {
-            None | Some("cls") => redhop::embeddings::Pooling::Cls,
-            Some("mean") => redhop::embeddings::Pooling::Mean,
-            Some(other) => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown embedder_pooling '{other}'; use 'cls' (default, e.g. BGE) or 'mean' \
-                     (e.g. MiniLM / GTE / E5)"
-                )))
-            }
-        };
-        let load = |prefix: &str| -> PyResult<redhop::embeddings::OnnxEmbedder> {
-            let mut config = redhop::embeddings::EmbedderConfig::bge(embedder_dim);
-            config.pooling = pooling;
-            config.prefix = prefix.to_string();
-            redhop::embeddings::OnnxEmbedder::load(m, t, config)
-                .map_err(|e| PyValueError::new_err(e.to_string()))
-        };
-        return match (embedder_query_prefix, embedder_passage_prefix) {
-            (q, p) if q.is_some() || p.is_some() => {
-                let passage = load(p.as_deref().unwrap_or(""))?;
-                let query = load(q.as_deref().unwrap_or(""))?;
-                Ok(doc
-                    .with_embedder(std::sync::Arc::new(passage))
-                    .with_query_embedder(std::sync::Arc::new(query)))
-            }
-            _ => Ok(doc.with_embedder(std::sync::Arc::new(load("")?))),
-        };
-    }
-
-    // Path B — model-by-name, auto-downloaded from HuggingFace (cached). With
-    // neither `model` nor explicit paths, fall back to the recommended default.
-    let name = model
-        .as_deref()
-        .unwrap_or(redhop::embeddings::DEFAULT_MODEL);
-    let resolved = redhop::embeddings::resolve_model(name)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let load = |prefix: &str| -> PyResult<redhop::embeddings::OnnxEmbedder> {
-        redhop::embeddings::OnnxEmbedder::load(
-            &resolved.model_path,
-            &resolved.tokenizer_path,
-            resolved.config(prefix),
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-    };
-    if resolved.is_asymmetric() {
-        let passage = load(&resolved.passage_prefix)?;
-        let query = load(&resolved.query_prefix)?;
-        Ok(doc
-            .with_embedder(std::sync::Arc::new(passage))
-            .with_query_embedder(std::sync::Arc::new(query)))
-    } else {
-        // passage_prefix == query_prefix (usually ""): one embedder for both sides.
-        Ok(doc.with_embedder(std::sync::Arc::new(load(&resolved.passage_prefix)?)))
-    }
-}
-
-#[cfg(not(feature = "semantic"))]
-#[allow(clippy::too_many_arguments)]
-fn apply_dense_embedder(
-    _doc: RhDocument,
-    _model: Option<String>,
-    _embedder_model: Option<String>,
-    _embedder_tokenizer: Option<String>,
-    _embedder_dim: usize,
-    _embedder_pooling: Option<String>,
-    _embedder_query_prefix: Option<String>,
-    _embedder_passage_prefix: Option<String>,
-) -> PyResult<RhDocument> {
-    Err(PyValueError::new_err(
-        "retrieval='semantic'/'hybrid' needs the semantic tier, which this build was compiled \
-         without. The standard `pip install redhop` includes it — reinstall that; if you built \
-         from source, add `--features semantic`.",
-    ))
-}
-
-/// Attach a second-stage cross-encoder reranker named by `rerank` (no-op when
-/// `None`). `"cross-encoder"` auto-downloads the MS-MARCO MiniLM model.
-#[cfg(feature = "semantic")]
-fn apply_reranker(doc: RhDocument, rerank: Option<String>) -> PyResult<RhDocument> {
-    let Some(name) = rerank else { return Ok(doc) };
-    let r = redhop::embeddings::resolve_reranker(&name)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let ce =
-        redhop::reranking::OnnxCrossEncoder::load(&r.model_path, &r.tokenizer_path, r.max_seq_len)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(doc.with_reranker(std::sync::Arc::new(ce)))
-}
-
-#[cfg(not(feature = "semantic"))]
-fn apply_reranker(doc: RhDocument, rerank: Option<String>) -> PyResult<RhDocument> {
-    match rerank {
-        None => Ok(doc),
-        Some(_) => Err(PyValueError::new_err(
-            "rerank='cross-encoder' needs the semantic tier, which this build was compiled \
-             without. The standard `pip install redhop` includes it.",
-        )),
-    }
-}
-
-/// Read a file to `(source, sections)` for `from_file`.
+/// Chunking / assembly / retrieval options for the `Document.from_*`
+/// constructors. Mirrors the Node binding's `Options` shape. Every field is
+/// optional; omit for evidence-backed defaults.
 ///
-/// With the `files` feature, `redhop-files` parses text/markdown/code + DOCX/PPTX/
-/// XLSX/PDF. Without it, only UTF-8 text files are read; binary formats return a
-/// clear, helpful error.
-#[cfg(feature = "files")]
-fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let doc = redhop::files::extract(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok((doc.source, to_rh_sections(doc.sections)))
+/// ```python
+/// opts = redhop.DocumentOptions(retrieval="hybrid", language="german")
+/// doc = redhop.Document.from_text(text, options=opts)
+/// ```
+#[pyclass(name = "DocumentOptions")]
+#[derive(Default, Clone)]
+pub struct PyDocumentOptions {
+    inner: redhop::LoadOptions,
 }
 
-/// Map `redhop-files` sections to the binding's `RhSection`.
-#[cfg(feature = "files")]
-fn to_rh_sections(sections: Vec<redhop::files::Section>) -> Vec<RhSection> {
-    sections
-        .into_iter()
-        .map(|s| RhSection {
-            text: s.text,
-            page: s.page,
-            heading: s.heading,
-            line: s.line,
-        })
-        .collect()
-}
-
-/// Parse already-in-memory `bytes` to `(source, sections)` for `from_bytes`.
-/// `name` (e.g. `"contract.pdf"`) selects the parser by extension and becomes the
-/// citation source.
-#[cfg(feature = "files")]
-fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let doc = redhop::files::extract_bytes(data, name)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok((doc.source, to_rh_sections(doc.sections)))
-}
-
-#[cfg(not(feature = "files"))]
-fn extract_bytes_sections(data: &[u8], name: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let lower = name.to_lowercase();
-    const NEEDS_PARSER: &[&str] = &[
-        ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp", ".ods", ".rtf",
-    ];
-    if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
-        return Err(PyValueError::new_err(format!(
-            "from_bytes can't parse {} — this build was compiled without the document parsers. \
-             The standard `pip install redhop` includes them. Or decode the text yourself and \
-             use from_text().",
-            ext.trim_start_matches('.')
-        )));
+#[pymethods]
+impl PyDocumentOptions {
+    #[new]
+    #[pyo3(signature = (
+        *,
+        source = None,
+        chunk_size = None,
+        chunk_overlap = None,
+        token_budget = None,
+        candidate_k = None,
+        strategy = None,
+        retrieval = None,
+        model = None,
+        embedder_model = None,
+        embedder_tokenizer = None,
+        embedder_dim = None,
+        embedder_pooling = None,
+        embedder_query_prefix = None,
+        embedder_passage_prefix = None,
+        candidate_pool = None,
+        rerank = None,
+        min_candidates = None,
+        language = None,
+        preserve_order = None,
+        code_neighbors_default = None,
+        prose_heading_default = None,
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn py_new(
+        source: Option<String>,
+        chunk_size: Option<usize>,
+        chunk_overlap: Option<usize>,
+        token_budget: Option<usize>,
+        candidate_k: Option<usize>,
+        strategy: Option<String>,
+        retrieval: Option<String>,
+        model: Option<String>,
+        embedder_model: Option<String>,
+        embedder_tokenizer: Option<String>,
+        embedder_dim: Option<usize>,
+        embedder_pooling: Option<String>,
+        embedder_query_prefix: Option<String>,
+        embedder_passage_prefix: Option<String>,
+        candidate_pool: Option<usize>,
+        rerank: Option<String>,
+        min_candidates: Option<usize>,
+        language: Option<String>,
+        preserve_order: Option<bool>,
+        code_neighbors_default: Option<usize>,
+        prose_heading_default: Option<bool>,
+    ) -> Self {
+        Self {
+            inner: redhop::LoadOptions {
+                source,
+                chunk_size,
+                chunk_overlap,
+                token_budget,
+                candidate_k,
+                strategy,
+                retrieval,
+                model,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+                embedder_query_prefix,
+                embedder_passage_prefix,
+                candidate_pool,
+                rerank,
+                min_candidates,
+                language,
+                preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
+            },
+        }
     }
-    let text = String::from_utf8_lossy(data).into_owned();
-    Ok((
-        name.to_string(),
-        vec![RhSection {
-            text,
-            page: None,
-            heading: None,
-            line: None,
-        }],
-    ))
+
+    fn __repr__(&self) -> String {
+        "DocumentOptions(...)".to_string()
+    }
 }
 
-#[cfg(not(feature = "files"))]
-fn extract_file_text(path: &str) -> PyResult<(String, Vec<RhSection>)> {
-    let lower = path.to_lowercase();
-    const NEEDS_PARSER: &[&str] = &[
-        ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".odt", ".odp", ".ods", ".rtf",
-    ];
-    if let Some(ext) = NEEDS_PARSER.iter().find(|e| lower.ends_with(**e)) {
-        return Err(PyValueError::new_err(format!(
-            "from_file can't parse {} — this build was compiled without the document parsers. \
-             The standard `pip install redhop` includes them (reinstall that); from source, add \
-             `--features files`. Or extract the text yourself and use from_text().",
-            ext.trim_start_matches('.')
-        )));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| {
-        PyValueError::new_err(format!(
-            "could not read '{path}' as text ({e}). This build reads UTF-8 text files; \
-             PDF/DOCX/PPTX/XLSX parsing is in the standard `pip install redhop`."
-        ))
-    })?;
-    Ok((
-        path.to_string(),
-        vec![RhSection {
-            text,
-            page: None,
-            heading: None,
-            line: None,
-        }],
-    ))
+/// Extra options for `Document.from_folder` (recursion, gitignore, persistence)
+/// plus a nested [`DocumentOptions`] for chunking/retrieval. Mirrors the Node
+/// binding's `FolderOptions`.
+///
+/// ```python
+/// opts = redhop.FolderOptions(
+///     persist=True,
+///     ignore=["*.lock"],
+///     options=redhop.DocumentOptions(language="german"),
+/// )
+/// doc = redhop.Document.from_folder("./docs", options=opts)
+/// ```
+#[pyclass(name = "FolderOptions")]
+#[derive(Default, Clone)]
+pub struct PyFolderOptions {
+    inner: redhop::FolderOptions,
 }
 
-/// Shared construction for text-backed documents (used by `from_text` and
-/// `from_file`): resolve the tier, build the config, chunk+index, attach the
-/// embedder if the tier needs one.
-#[allow(clippy::too_many_arguments)]
-fn build_text_doc(
-    files: Vec<(String, Vec<RhSection>)>,
-    strategy: Option<String>,
-    chunk_size: usize,
-    chunk_overlap: usize,
-    token_budget: usize,
-    candidate_k: usize,
-    retrieval: Option<String>,
-    model: Option<String>,
-    embedder_model: Option<String>,
-    embedder_tokenizer: Option<String>,
-    embedder_dim: usize,
-    embedder_pooling: Option<String>,
-    embedder_query_prefix: Option<String>,
-    embedder_passage_prefix: Option<String>,
-    candidate_pool: usize,
-    rerank: Option<String>,
-    language: Option<String>,
-    preserve_order: bool,
-    code_neighbors_default: usize,
-    prose_heading_default: bool,
-) -> PyResult<RhDocument> {
-    let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-    let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-    let cfg = doc_config(
-        strategy,
-        token_budget,
-        candidate_k,
-        chunk_size,
-        chunk_overlap,
-        mode,
-        language,
-        preserve_order,
-        code_neighbors_default,
-        prose_heading_default,
-    )?;
-    let mut inner = to_py(RhDocument::from_sources_with(files, cfg))?;
-    if needs_embedder {
-        inner = apply_dense_embedder(
-            inner,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-        )?;
+#[pymethods]
+impl PyFolderOptions {
+    #[new]
+    #[pyo3(signature = (
+        *,
+        recursive = None,
+        gitignore = None,
+        ignore = None,
+        persist = None,
+        index_dir = None,
+        options = None,
+    ))]
+    fn py_new(
+        recursive: Option<bool>,
+        gitignore: Option<bool>,
+        ignore: Option<Vec<String>>,
+        persist: Option<bool>,
+        index_dir: Option<String>,
+        options: Option<PyDocumentOptions>,
+    ) -> Self {
+        Self {
+            inner: redhop::FolderOptions {
+                recursive,
+                gitignore,
+                ignore: ignore.unwrap_or_default(),
+                persist: persist.unwrap_or(false),
+                index_dir,
+                load: options.map(|o| o.inner).unwrap_or_default(),
+            },
+        }
     }
-    apply_reranker(inner, rerank)
+
+    fn __repr__(&self) -> String {
+        "FolderOptions(...)".to_string()
+    }
 }
+
 
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
 /// internal retrieval, and reasoning-preserving context allocation. Retrieval is an
@@ -1161,71 +973,19 @@ impl Document {
 impl Document {
     /// Build from raw text (chunked + indexed internally).
     ///
-    /// `chunk_size` (target tokens/chunk) and `chunk_overlap` are **index-time**
-    /// — they fix how the document is split and cannot change per query.
-    /// `token_budget` is the *default* assembly budget; override it per call on
-    /// `context(query, budget=...)` (query-time, no re-indexing). `strategy`
-    /// defaults to the size-gated Auto policy.
+    /// All knobs (chunking, retrieval, embedder, analyzer) ride on the
+    /// `options=` [`DocumentOptions`] instance; omit it for evidence-backed
+    /// defaults. `token_budget` is the *default* assembly budget; override it
+    /// per call on `context(query, budget=...)`.
     #[staticmethod]
-    #[pyo3(signature = (text, source="document", strategy=None, chunk_size=128,
-                        chunk_overlap=1, token_budget=8192, candidate_k=20,
-                        retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
-                        embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (text, *, options = None))]
     fn from_text(
-        text: &str,
-        source: &str,
-        strategy: Option<String>,
-        chunk_size: usize,
-        chunk_overlap: usize,
-        token_budget: usize,
-        candidate_k: usize,
-        retrieval: Option<String>,
-        model: Option<String>,
-        embedder_model: Option<String>,
-        embedder_tokenizer: Option<String>,
-        embedder_dim: usize,
-        embedder_pooling: Option<String>,
-        embedder_query_prefix: Option<String>,
-        embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
-        rerank: Option<String>,
-
-        language: Option<String>,
-        preserve_order: bool,
-        code_neighbors_default: usize,
-        prose_heading_default: bool,
+        py: Python<'_>,
+        text: String,
+        options: Option<PyDocumentOptions>,
     ) -> PyResult<Self> {
-        let sections = vec![RhSection {
-            text: text.to_string(),
-            page: None,
-            heading: None,
-            line: None,
-        }];
-        let inner = build_text_doc(
-            vec![(source.to_string(), sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
+        let opts = options.unwrap_or_default().inner;
+        let inner = py.allow_threads(|| to_py(redhop::text(text, &opts)))?;
         Ok(Self::single(inner))
     }
 
@@ -1237,60 +997,29 @@ impl Document {
     /// `.json`, `.csv`, logs, …). The standard `pip install redhop` also parses PDF, DOCX,
     /// PPTX, and XLSX.
     #[staticmethod]
-    #[pyo3(signature = (path, strategy=None, chunk_size=128, chunk_overlap=1,
-                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
-                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
-                        embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (path, *, options = None))]
     fn from_file(
+        py: Python<'_>,
         path: &str,
-        strategy: Option<String>,
-        chunk_size: usize,
-        chunk_overlap: usize,
-        token_budget: usize,
-        candidate_k: usize,
-        retrieval: Option<String>,
-        model: Option<String>,
-        embedder_model: Option<String>,
-        embedder_tokenizer: Option<String>,
-        embedder_dim: usize,
-        embedder_pooling: Option<String>,
-        embedder_query_prefix: Option<String>,
-        embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
-        rerank: Option<String>,
-
-        language: Option<String>,
-        preserve_order: bool,
-        code_neighbors_default: usize,
-        prose_heading_default: bool,
+        options: Option<PyDocumentOptions>,
     ) -> PyResult<Self> {
-        let (source, sections) = extract_file_text(path)?;
-        let inner = build_text_doc(
-            vec![(source, sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
-        Ok(Self::single(inner))
+        #[cfg(feature = "files")]
+        {
+            let path = path.to_string();
+            let opts = options.unwrap_or_default().inner;
+            let inner =
+                py.allow_threads(|| to_py(redhop::read_file_with(&path, &opts)))?;
+            Ok(Self::single(inner))
+        }
+        #[cfg(not(feature = "files"))]
+        {
+            let _ = (py, path, options);
+            Err(PyValueError::new_err(
+                "from_file requires the file-parsing tier. The standard \
+                 `pip install redhop` includes it; if you built from source, \
+                 add `--features files`.",
+            ))
+        }
     }
 
     /// Build from in-memory **bytes** you already fetched — RedHop parses, chunks,
@@ -1302,192 +1031,59 @@ impl Document {
     /// client, hand them here. RedHop never touches your cloud credentials. Same
     /// formats as `from_file` (PDF/DOCX/PPTX/XLSX + text/code).
     #[staticmethod]
-    #[pyo3(signature = (data, source, strategy=None, chunk_size=128, chunk_overlap=1,
-                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
-                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
-                        embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (data, source, *, options = None))]
     fn from_bytes(
+        py: Python<'_>,
         data: Vec<u8>,
         source: &str,
-        strategy: Option<String>,
-        chunk_size: usize,
-        chunk_overlap: usize,
-        token_budget: usize,
-        candidate_k: usize,
-        retrieval: Option<String>,
-        model: Option<String>,
-        embedder_model: Option<String>,
-        embedder_tokenizer: Option<String>,
-        embedder_dim: usize,
-        embedder_pooling: Option<String>,
-        embedder_query_prefix: Option<String>,
-        embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
-        rerank: Option<String>,
-
-        language: Option<String>,
-        preserve_order: bool,
-        code_neighbors_default: usize,
-        prose_heading_default: bool,
+        options: Option<PyDocumentOptions>,
     ) -> PyResult<Self> {
-        let (source, sections) = extract_bytes_sections(&data, source)?;
-        let inner = build_text_doc(
-            vec![(source, sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
-        Ok(Self::single(inner))
+        #[cfg(feature = "files")]
+        {
+            let source = source.to_string();
+            let opts = options.unwrap_or_default().inner;
+            let inner = py.allow_threads(|| {
+                to_py(redhop::read_bytes_with(&data, &source, &opts))
+            })?;
+            Ok(Self::single(inner))
+        }
+        #[cfg(not(feature = "files"))]
+        {
+            let _ = (py, data, source, options);
+            Err(PyValueError::new_err(
+                "from_bytes requires the file-parsing tier. The standard \
+                 `pip install redhop` includes it; if you built from source, \
+                 add `--features files`.",
+            ))
+        }
     }
 
     /// Build one document from **every readable file in a folder** — RedHop walks
     /// the directory, reads/chunks/indexes each file it can, and keeps each chunk's
-    /// own file path as its `source` (so citations point at the right file).
+    /// own file path as its `source`.
     ///
-    /// Files it can't parse (unsupported formats, unreadable bytes) are skipped;
-    /// hidden entries and build/cache dirs (`node_modules`, `target`, `__pycache__`,
-    /// …) are ignored. With the base install only text/code files are read; install
-    /// the standard install also parses PDF/DOCX/PPTX/XLSX. `recursive=False` stays in
-    /// the top level.
-    ///
-    /// Set `persist=True` to save the index to disk and **incrementally reload** it:
-    /// on the next run, files whose modified-time and size are unchanged are reused
-    /// from the cache (no re-parsing, no re-embedding), only new/changed files are
-    /// processed, and removed files are dropped. The index defaults to
-    /// `<folder>/.redhop`; pass `index_dir=` to put it elsewhere. Without `persist`
-    /// (the default) the index is in-memory and rebuilt each run.
-    ///
-    /// Hidden entries (`.git`, dotfiles) and build/cache dirs (`node_modules`,
-    /// `target`, …) are always skipped. By default it also honors **`.gitignore`**
-    /// (set `gitignore=False` to index ignored files too), and you can pass extra
-    /// **`ignore=[...]`** gitignore-style globs (e.g. `["*.lock", "tests/**"]`).
+    /// All knobs (recursion, `.gitignore` honoring, extra ignore globs, disk
+    /// persistence, plus the same chunking/retrieval knobs as the other
+    /// constructors) ride on `options=` [`FolderOptions`]; omit it for the
+    /// recursive default.
     #[staticmethod]
-    #[pyo3(signature = (path, recursive=true, persist=false, index_dir=None,
-                        strategy=None, chunk_size=128, chunk_overlap=1,
-                        token_budget=8192, candidate_k=20, retrieval=None, model=None,
-                        embedder_model=None, embedder_tokenizer=None, embedder_dim=384,
-                        embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50,
-                        ignore=None, gitignore=true, rerank=None, language=None,
-                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (path, *, options = None))]
     fn from_folder(
+        py: Python<'_>,
         path: &str,
-        recursive: bool,
-        persist: bool,
-        index_dir: Option<String>,
-        strategy: Option<String>,
-        chunk_size: usize,
-        chunk_overlap: usize,
-        token_budget: usize,
-        candidate_k: usize,
-        retrieval: Option<String>,
-        model: Option<String>,
-        embedder_model: Option<String>,
-        embedder_tokenizer: Option<String>,
-        embedder_dim: usize,
-        embedder_pooling: Option<String>,
-        embedder_query_prefix: Option<String>,
-        embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
-        ignore: Option<Vec<String>>,
-        gitignore: bool,
-        rerank: Option<String>,
-
-        language: Option<String>,
-        preserve_order: bool,
-        code_neighbors_default: usize,
-        prose_heading_default: bool,
+        options: Option<PyFolderOptions>,
     ) -> PyResult<Self> {
-        // The walk + persist + cache-format + skipped-tracking all live in
-        // Rust's `redhop::read_folder_with` so Python and Node share one
-        // implementation. The Document carries `n_files()` and
-        // `skipped_files()` accessors, which surface as Python getters
-        // further down.
         #[cfg(feature = "files")]
         {
-            let fo = redhop::FolderOptions {
-                recursive: Some(recursive),
-                gitignore: Some(gitignore),
-                ignore: ignore.unwrap_or_default(),
-                persist,
-                index_dir,
-                load: redhop::LoadOptions {
-                    source: None,
-                    chunk_size: Some(chunk_size),
-                    chunk_overlap: Some(chunk_overlap),
-                    token_budget: Some(token_budget),
-                    candidate_k: Some(candidate_k),
-                    strategy,
-                    retrieval,
-                    model,
-                    embedder_model,
-                    embedder_tokenizer,
-                    embedder_dim: Some(embedder_dim),
-                    embedder_pooling,
-                    embedder_query_prefix,
-                    embedder_passage_prefix,
-                    candidate_pool: Some(candidate_pool),
-                    rerank,
-                    min_candidates: None,
-                    language,
-                    preserve_order: Some(preserve_order),
-                    code_neighbors_default: Some(code_neighbors_default),
-                    prose_heading_default: Some(prose_heading_default),
-                },
-            };
-            let inner = to_py(redhop::read_folder_with(path, &fo))?;
+            let path = path.to_string();
+            let fo = options.unwrap_or_default().inner;
+            let inner =
+                py.allow_threads(|| to_py(redhop::read_folder_with(&path, &fo)))?;
             Ok(Self { inner })
         }
         #[cfg(not(feature = "files"))]
         {
-            // Suppress unused-kwarg warnings under the lean (no-files) build.
-            let _ = (
-                path,
-                recursive,
-                persist,
-                index_dir,
-                strategy,
-                chunk_size,
-                chunk_overlap,
-                token_budget,
-                candidate_k,
-                retrieval,
-                model,
-                embedder_model,
-                embedder_tokenizer,
-                embedder_dim,
-                embedder_pooling,
-                embedder_query_prefix,
-                embedder_passage_prefix,
-                candidate_pool,
-                ignore,
-                gitignore,
-                rerank,
-                language,
-                preserve_order,
-                code_neighbors_default,
-                prose_heading_default,
-            );
+            let _ = (py, path, options);
             Err(PyValueError::new_err(
                 "from_folder requires the file-parsing tier. The standard \
                  `pip install redhop` includes it; if you built from source, \
@@ -1496,68 +1092,22 @@ impl Document {
         }
     }
 
-    /// Build from chunks you already produced (strings or `{"text", ...}` dicts).
-    /// `chunk_size`/`chunk_overlap` don't apply here (you chunked already).
+    /// Build from typed `Chunk` instances you already produced (bypasses the
+    /// chunker; metadata + source + id ride through to the index).
     #[staticmethod]
-    #[pyo3(signature = (chunks, strategy=None, token_budget=8192, candidate_k=20,
-                        retrieval=None, model=None, embedder_model=None, embedder_tokenizer=None,
-                        embedder_dim=384, embedder_pooling=None, embedder_query_prefix=None,
-                        embedder_passage_prefix=None, candidate_pool=50, rerank=None, language=None,
-                        preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (chunks, *, options = None))]
     fn from_chunks(
+        py: Python<'_>,
         chunks: &Bound<'_, PyAny>,
-        strategy: Option<String>,
-        token_budget: usize,
-        candidate_k: usize,
-        retrieval: Option<String>,
-        model: Option<String>,
-        embedder_model: Option<String>,
-        embedder_tokenizer: Option<String>,
-        embedder_dim: usize,
-        embedder_pooling: Option<String>,
-        embedder_query_prefix: Option<String>,
-        embedder_passage_prefix: Option<String>,
-        candidate_pool: usize,
-        rerank: Option<String>,
-
-        language: Option<String>,
-        preserve_order: bool,
-        code_neighbors_default: usize,
-        prose_heading_default: bool,
+        options: Option<PyDocumentOptions>,
     ) -> PyResult<Self> {
+        // Materialize the chunks (Python-side work) before releasing the GIL.
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(
-            strategy,
-            token_budget,
-            candidate_k,
-            256,
-            1,
-            mode,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
-        let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
-        if needs_embedder {
-            inner = apply_dense_embedder(
-                inner,
-                model,
-                embedder_model,
-                embedder_tokenizer,
-                embedder_dim,
-                embedder_pooling,
-                embedder_query_prefix,
-                embedder_passage_prefix,
-            )?;
-        }
-        let inner = apply_reranker(inner, rerank)?;
+        let opts = options.unwrap_or_default().inner;
+        let inner = py.allow_threads(|| to_py(redhop::chunks_typed(chunk_vec, &opts)))?;
         Ok(Self::single(inner))
     }
 
@@ -1575,17 +1125,23 @@ impl Document {
     #[pyo3(signature = (query, budget=None, neighbors=0, include_heading=false))]
     fn context(
         &mut self,
+        py: Python<'_>,
         query: &str,
         budget: Option<usize>,
         neighbors: usize,
         include_heading: bool,
     ) -> PyResult<BuiltContext> {
-        let built = if neighbors == 0 && !include_heading {
-            self.inner.context_with(query, budget, None)
-        } else {
-            self.inner
-                .context_expanded(query, budget, None, neighbors, include_heading)
-        };
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        // Retrieval + assembly is the hot per-query path. Released GIL lets
+        // a server handle many queries concurrently across Python threads.
+        let built = py.allow_threads(|| {
+            if neighbors == 0 && !include_heading {
+                inner.context_with(&query, budget, None)
+            } else {
+                inner.context_expanded(&query, budget, None, neighbors, include_heading)
+            }
+        });
         Ok(py_built(to_py(built)?))
     }
 
@@ -1600,18 +1156,26 @@ impl Document {
     #[pyo3(signature = (query, rewrites))]
     fn context_with_rewrites(
         &mut self,
+        py: Python<'_>,
         query: &str,
         rewrites: &Bound<'_, PyAny>,
     ) -> PyResult<BuiltContext> {
         let owned = extract_rewrites(rewrites)?;
-        let refs = rewrite_refs(&owned);
-        Ok(py_built(to_py(self.inner.context_with_rewrites(query, &refs))?))
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        let built = py.allow_threads(|| {
+            let refs = rewrite_refs(&owned);
+            inner.context_with_rewrites(&query, &refs)
+        });
+        Ok(py_built(to_py(built)?))
     }
 
     /// Diagnose retrieval for a query **without** modifying anything (pure
     /// observability). For `strategy="auto"`, `report.strategy` is the decision.
-    fn analyze(&mut self, query: &str) -> PyResult<ContextReport> {
-        let report = to_py(self.inner.analyze(query))?;
+    fn analyze(&mut self, py: Python<'_>, query: &str) -> PyResult<ContextReport> {
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        let report = to_py(py.allow_threads(|| inner.analyze(&query)))?;
         let rendered = report.render(None);
         Ok(ContextReport {
             inner: report,
@@ -2857,6 +2421,8 @@ fn _redhop(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyChunk>()?;
     m.add_class::<ContextReport>()?;
     m.add_class::<Document>()?;
+    m.add_class::<PyDocumentOptions>()?;
+    m.add_class::<PyFolderOptions>()?;
     m.add_class::<QuerySetReport>()?;
     m.add_class::<EvalReport>()?;
     m.add_class::<EvalSummary>()?;

@@ -114,7 +114,7 @@ Rust trait objects don't cross FFI cleanly, so the bindings expose a
 **string-routed** view:
 
 ```python
-doc = redhop.Document.from_text(text, language="german")
+doc = redhop.Document.from_text(text, options=redhop.DocumentOptions(language="german"))
 ```
 
 ```javascript

@@ -82,7 +82,7 @@ structurally impossible).
 From Python:
 
 ```python
-doc = redhop.Document.from_text("ich habe viele Bücher", language="german")
+doc = redhop.Document.from_text("ich habe viele Bücher", options=redhop.DocumentOptions(language="german"))
 ctx = doc.context("Buch")     # finds it via Snowball German
 ```
 

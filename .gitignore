@@ -4,9 +4,16 @@ Cargo.lock
 .DS_Store
 node_modules/
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Experiment outputs (regenerable); curated results live in reports/
 /exports/
 
 # Local research / colleague-shared eval corpora — not for the public repo.
 # Anything published from here lives in docs/findings/.
 /research/
+
+# Claude Code session state
+.claude/

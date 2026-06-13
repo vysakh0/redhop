@@ -108,7 +108,7 @@ def main() -> None:
         # ── Arm B: add custom ignore globs ───────────────────────
         # We don't want vendored/ in the index.
         print("─── Arm B · ignore=['vendored/**'] ─────────────")
-        doc_b = redhop.Document.from_folder(str(root), ignore=["vendored/**"])
+        doc_b = redhop.Document.from_folder(str(root), options=redhop.FolderOptions(ignore=["vendored/**"]))
         print(f"  files indexed   : {doc_b.n_files}  "
               f"(vs Arm A: {doc_a.n_files})")
         print(f"  total chunks    : {len(doc_b)}")
@@ -123,11 +123,11 @@ def main() -> None:
         import time
 
         t0 = time.time()
-        redhop.Document.from_folder(str(root), persist=True)
+        redhop.Document.from_folder(str(root), options=redhop.FolderOptions(persist=True))
         first_run_ms = (time.time() - t0) * 1000
 
         t0 = time.time()
-        doc_c2 = redhop.Document.from_folder(str(root), persist=True)
+        doc_c2 = redhop.Document.from_folder(str(root), options=redhop.FolderOptions(persist=True))
         second_run_ms = (time.time() - t0) * 1000
 
         cache_path = root / ".redhop" / "index.json"
@@ -146,7 +146,7 @@ def main() -> None:
         # extension on the `source` argument.
         with open(root / "policies" / "refunds.md", "rb") as f:
             data = f.read()
-        doc_d = redhop.Document.from_bytes(data, source="refunds.md")
+        doc_d = redhop.Document.from_bytes(data, "refunds.md")
         print(f"  indexed         : {doc_d.n_files} file, {len(doc_d)} chunks")
         ctx_d = doc_d.context("refund window")
         if ctx_d.citations:

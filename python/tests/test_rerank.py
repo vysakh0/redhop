@@ -51,27 +51,19 @@ def test_invalid_retrieval_mode_errors_clearly():
     mode must error listing the valid options."""
     for bad in ("rerank", "dense", "bogus"):
         with pytest.raises(Exception) as e:
-            redhop.Document.from_text(TEXT, retrieval=bad)
+            redhop.Document.from_text(TEXT, options=redhop.DocumentOptions(retrieval=bad))
         msg = str(e.value).lower()
         assert "lexical" in msg and "hybrid" in msg and "semantic" in msg
 
 
 def test_lexical_default_still_works():
-    doc = redhop.Document.from_text(TEXT, chunk_size=16)
+    doc = redhop.Document.from_text(TEXT, options=redhop.DocumentOptions(chunk_size=16))
     assert doc.context("who was terminated?").text().strip()
 
 
 @pytest.mark.skipif(not _have_bge, reason="REDHOP_BGE_MODEL not set")
 def test_hybrid_bge_symmetric():
-    doc = redhop.Document.from_text(
-        TEXT,
-        chunk_size=16,
-        retrieval="hybrid",
-        embedder_model=BGE_MODEL,
-        embedder_tokenizer=BGE_TOK,
-        embedder_dim=384,
-        embedder_pooling="cls",
-    )
+    doc = redhop.Document.from_text(TEXT, options=redhop.DocumentOptions(chunk_size=16, retrieval="hybrid", embedder_model=BGE_MODEL, embedder_tokenizer=BGE_TOK, embedder_dim=384, embedder_pooling="cls"))
     text = doc.context(QUERY).text().lower()
     assert text.strip()
     assert "terminated" in text  # the paraphrase-matched chunk surfaced
@@ -82,17 +74,7 @@ def test_hybrid_bge_symmetric():
 )
 @pytest.mark.parametrize("mode", ["hybrid", "semantic"])
 def test_dense_e5_asymmetric_prefixes(mode):
-    doc = redhop.Document.from_text(
-        TEXT,
-        chunk_size=16,
-        retrieval=mode,
-        embedder_model=E5_MODEL,
-        embedder_tokenizer=E5_TOK,
-        embedder_dim=384,
-        embedder_pooling="mean",
-        embedder_query_prefix="query: ",
-        embedder_passage_prefix="passage: ",
-    )
+    doc = redhop.Document.from_text(TEXT, options=redhop.DocumentOptions(chunk_size=16, retrieval=mode, embedder_model=E5_MODEL, embedder_tokenizer=E5_TOK, embedder_dim=384, embedder_pooling="mean", embedder_query_prefix="query: ", embedder_passage_prefix="passage: "))
     text = doc.context(QUERY).text().lower()
     assert text.strip()
     assert "terminated" in text
@@ -101,10 +83,4 @@ def test_dense_e5_asymmetric_prefixes(mode):
 @pytest.mark.skipif(not _have_e5, reason="no E5 model available")
 def test_unknown_pooling_rejected():
     with pytest.raises(Exception):
-        redhop.Document.from_text(
-            TEXT,
-            retrieval="hybrid",
-            embedder_model=E5_MODEL,
-            embedder_tokenizer=E5_TOK,
-            embedder_pooling="bogus",
-        )
+        redhop.Document.from_text(TEXT, options=redhop.DocumentOptions(retrieval="hybrid", embedder_model=E5_MODEL, embedder_tokenizer=E5_TOK, embedder_pooling="bogus"))

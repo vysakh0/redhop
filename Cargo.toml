@@ -2,11 +2,6 @@
 resolver = "2"
 members = [
     "crates/redhop",
-    "crates/calibration",
-    "crates/diagnostics",
-    "crates/observability",
-    "crates/orchestration",
-    "crates/pipeline",
     "crates/benchmarks",
     "crates/examples",
     "crates/cli",
@@ -28,7 +23,7 @@ all = { level = "warn", priority = -1 }
 needless_range_loop = "allow"
 
 [workspace.package]
-version = "0.3.4"
+version = "0.4.0"
 edition = "2021"
 # Workspace-wide MSRV — set to the highest minimum any member requires.
 # napi-rs 2.x (used by `nodejs/`) needs 1.77; the published `redhop` crate
@@ -50,18 +45,9 @@ keywords = ["rag", "retrieval", "llm", "context", "nlp"]
 categories = ["text-processing", "science"]
 
 [workspace.dependencies]
-# The single published crate. Internal workspace members (cli, calibration,
-# diagnostics, observability, orchestration, pipeline, benchmarks) depend on
-# `redhop` directly — there is no more `redhop-core` / `redhop-context` / …
-# as separate crates; those are now modules: `redhop::core`, `redhop::context`, …
-redhop               = { path = "crates/redhop" }
-# Internal (publish = false). Dev / research / orchestration code that stays
-# in the workspace but is not part of the published Rust API.
-redhop-diagnostics   = { path = "crates/diagnostics" }
-redhop-observability = { path = "crates/observability" }
-redhop-orchestration = { path = "crates/orchestration" }
-redhop-pipeline      = { path = "crates/pipeline" }
-redhop-calibration   = { path = "crates/calibration" }
+# The single published crate. Internal workspace members (cli, benchmarks,
+# examples) depend on `redhop` directly.
+redhop = { path = "crates/redhop" }
 
 # Core runtime / concurrency
 tokio    = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }

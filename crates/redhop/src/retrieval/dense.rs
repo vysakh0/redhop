@@ -2,7 +2,7 @@
 //!
 //! [`DenseRetriever`] is a thin orchestrator over two collaborators:
 //!
-//! 1. A [`VectorIndex`] (typically `FlatVectorIndex` from `redhop-storage`,
+//! 1. A [`VectorIndex`] (typically [`crate::storage::FlatVectorIndex`],
 //!    or any user-supplied ANN implementation).
 //! 2. A [`ChunkStore`] that owns the chunk payloads, keyed by id.
 //!

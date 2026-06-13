@@ -1,13 +1,12 @@
 //! Core traits.
 //!
 //! Every pluggable subsystem in RedHop is defined here as a trait. Concrete
-//! implementations (in `redhop-chunking`, `redhop-retrieval`, …) implement
-//! these and the [`pipeline`] crate composes them.
-//!
-//! [`pipeline`]: ../../redhop_pipeline/index.html
+//! implementations live alongside the trait (chunkers in [`crate::chunking`],
+//! retrievers in [`crate::retrieval`], embedders behind the `semantic`
+//! feature in [`crate::embeddings`]).
 
 use crate::core::types::{
-    Chunk, DiagnosticsReport, Document, Embedding, Query, RetrievalResult, Sentence, TokenCount,
+    Chunk, Document, Embedding, Query, RetrievalResult, Sentence, TokenCount,
 };
 use crate::Result;
 use async_trait::async_trait;
@@ -172,44 +171,3 @@ pub trait Reranker: Send + Sync {
     fn name(&self) -> &'static str;
 }
 
-/// Computes a [`DiagnosticsReport`] for a query/result pair.
-///
-/// Diagnostics engines are deliberately stateless with respect to the
-/// retrieval that produced their input — they only see what the retriever
-/// returned. This keeps them swappable and testable in isolation.
-pub trait DiagnosticsEngine: Send + Sync {
-    /// Compute diagnostics for a query and its retrieval results.
-    fn diagnose(&self, query: &Query, results: &[RetrievalResult]) -> Result<DiagnosticsReport>;
-
-    /// Human-readable name, used in diagnostics.
-    fn name(&self) -> &'static str;
-}
-
-/// Maps a retrieval state's *measurements* (diagnostics + confidence) to a
-/// soft distribution over [`RetrievalRegime`][rrg]s.
-///
-/// Classifiers are intentionally narrow: they see the same observations the
-/// human dashboard sees and nothing else. They do *not* read the chunk text
-/// or the query embedding directly — only the metrics the diagnostics
-/// engines produced. This is what makes them swappable and what keeps
-/// later learned versions auditable: the input contract is small and
-/// stable.
-///
-/// Implementations must populate the returned distribution's
-/// [`ClassificationTrace`][trc] — interpretability is a hard requirement,
-/// not optional.
-///
-/// [rrg]: crate::core::state::RetrievalRegime
-/// [trc]: crate::core::state::ClassificationTrace
-pub trait RegimeClassifier: Send + Sync {
-    /// Produce a regime distribution from the given diagnostics and
-    /// confidence inputs.
-    fn classify(
-        &self,
-        diagnostics: &crate::core::types::DiagnosticsReport,
-        confidence: &crate::core::state::ConfidenceProfile,
-    ) -> crate::core::state::RegimeDistribution;
-
-    /// Human-readable name, used in diagnostics.
-    fn name(&self) -> &'static str;
-}

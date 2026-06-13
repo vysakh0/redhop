@@ -15,7 +15,6 @@ ONNX-Runtime-backed BGE/E5 embeddings and a cross-encoder reranker.
 | `OnnxEmbedder` (BGE/E5/jina/mxbai) | `redhop::embeddings` | feature `semantic` | **compile-verified** vs `ort` 2.0.0-rc.10 |
 | `apply_scores` (rerank decision logic) | `redhop::reranking` | feature `semantic` | unit-tested |
 | `OnnxCrossEncoder` (ms-marco MiniLM etc.) | `redhop::reranking` | feature `semantic` | **compile-verified** |
-| `bench_embedder` / `compare_embedders` | `redhop-calibration` | ✅ | unit-tested |
 | criterion embedding benches | `redhop-benchmarks` | ✅ | runs |
 
 "Compile-verified" means `cargo check --features semantic` passes against
@@ -32,7 +31,7 @@ unvalidated surface is tokenization + tensor-shape glue.
   `onnx` feature. `cargo build` (no features) never compiles them and
   works offline.
 - **No new abstractions.** Both backends implement the existing
-  `EmbeddingProvider` / `Reranker` traits. Nothing new in `redhop-core`.
+  `EmbeddingProvider` / `Reranker` traits. Nothing new in `redhop::core`.
 - **Math separated from inference.** The ONNX modules delegate every
   numeric operation to the hermetic `pooling` / `apply_scores`
   functions, shrinking the unverifiable surface to glue.
@@ -136,23 +135,7 @@ The tier trade-offs (and where the free tiers fall short) are measured in
 
 The harness is in place. The numbers below are what you fill in.
 
-**(a) Embedding bake-off** (`redhop-calibration::embedder_bench`):
-
-```rust
-let cmp = compare_embedders(
-    Arc::new(HashingProvider::with_dim(256)),  // baseline
-    Arc::new(CachedEmbedder::new(bge_embedder, 50_000)),  // candidate
-    &labeled_corpus, &chunk_texts, /*top_k*/ 4,
-).await?;
-println!("{}", render_comparison(&cmp));
-```
-
-Produces a table of `recall · query_embed_us · bytes/vec` for both
-arms plus the recall delta and latency multiple. Run it on the
-HotpotQA/MuSiQue `LabeledCorpus` (from the loaders) to get the real
-quality lift of BGE/E5 over the hashing baseline.
-
-**(b) Throughput/latency** (`redhop-benchmarks`, criterion):
+**Throughput/latency** (`redhop-benchmarks`, criterion):
 
 ```bash
 cargo bench -p redhop-benchmarks --bench embeddings
@@ -173,20 +156,10 @@ pulls in `redhop` with the `semantic` feature) with a loaded model.
    embedder should lift `mean_recall` on the loaders' corpora,
    especially on queries whose gold chunks share *meaning* but not
    *words*.
-2. **The recall lift widens the adaptive advantage.** Better embeddings
-   improve the semantic-tier diagnostics, which sharpens regime
-   classification, which should make selective escalation fire more
-   precisely. Re-run the adaptive eval with the ONNX embedder and
-   compare `fraction_useful` to the hashing-baseline run.
-3. **Caching dominates query latency on repeated workloads.** Enterprise
+2. **Caching dominates query latency on repeated workloads.** Enterprise
    query distributions are heavy-tailed. The `CachedEmbedder` hit rate
    should be high enough that mean query-embed latency approaches the
    cache-probe cost, not the model-inference cost.
-4. **Selective escalation makes the cross-encoder affordable.** With the
-   controller firing the ONNX cross-encoder on only ~44% of queries
-   (per `docs/findings/REAL_WORKLOAD.md`), the cross-encoder's high per-call
-   latency is paid only where it earns recall: the economics
-   become real latency numbers.
 
 These are deployment-machine experiments. The runtime is built. The
 numbers are a data run away.

@@ -115,10 +115,10 @@ The study earns its keep by separating the failure modes empirically.
 ## Boundaries held
 
 - PDF parsing stayed in Python (`extract_pdf_text.py`); Rust consumed
-  extracted text. The `INTEROPERABILITY.md` boundary is intact.
-- No new architecture: the corruption injector + study harness are
-  *evaluation tooling* in `redhop-calibration`, not new runtime
-  abstractions. The controller, policy, and diagnostics are unchanged.
+  extracted text.
+- No new architecture: the corruption injector + study harness were
+  one-shot evaluation tooling, not new runtime abstractions. The
+  retrieval and chunking surfaces are unchanged.
 - Hermetic: hashing embedder + flat index, no model files needed. The
   correlation result is reproducible from the committed code + the
   Python extractor.

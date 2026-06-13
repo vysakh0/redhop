@@ -5,6 +5,147 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [0.4.0] — 2026-06-13
+
+**Architecture cleanup + Python API breaking change.** Two changes worth
+your attention before upgrading.
+
+1. **Python `Document.from_*` takes `options=` instead of 18 keyword
+   arguments.** The new shape mirrors what the Node binding has had since
+   day one. Every existing call that passes any chunking / retrieval /
+   embedder / language knob must move it into a
+   `redhop.DocumentOptions(...)` (or `redhop.FolderOptions(...)` for
+   `from_folder`). Calls with no kwargs are unchanged.
+
+2. **The unused `AdaptiveOrchestrator` subsystem is removed.** Five
+   workspace crates (`crates/{orchestration,pipeline,diagnostics,calibration,observability}`,
+   all `publish = false`), their public trait surface in `redhop::core`
+   (`DiagnosticsEngine`, `RegimeClassifier`, `DiagnosticsReport`, the
+   whole `core::state` module), 39 dependent measurement probes, and 5
+   findings that measured the deleted controller. Net: −23,744 LOC of
+   Rust. None of it was reachable from the published `redhop` crate, the
+   FFI bindings, or the CLI. The project's stated discipline (no graphs /
+   agents / planners) is now reflected in the workspace it ships.
+
+### Changed (breaking)
+
+- **Python `Document.from_*`** — every constructor now accepts only the
+  positional payload plus a keyword-only `options=` struct:
+
+  ```python
+  # before
+  doc = redhop.Document.from_text(text, retrieval="hybrid", language="german")
+  doc = redhop.Document.from_folder("./docs", persist=True, ignore=["*.lock"])
+  doc = redhop.Document.from_bytes(data, source="x.pdf", retrieval="hybrid")
+
+  # after
+  doc = redhop.Document.from_text(
+      text,
+      options=redhop.DocumentOptions(retrieval="hybrid", language="german"),
+  )
+  doc = redhop.Document.from_folder(
+      "./docs",
+      options=redhop.FolderOptions(persist=True, ignore=["*.lock"]),
+  )
+  doc = redhop.Document.from_bytes(  # source is now positional, not a kwarg
+      data, "x.pdf",
+      options=redhop.DocumentOptions(retrieval="hybrid"),
+  )
+  ```
+
+  Two new pyclasses (`redhop.DocumentOptions`, `redhop.FolderOptions`)
+  carry every knob. `FolderOptions` has the folder-specific fields
+  (`recursive`, `gitignore`, `ignore`, `persist`, `index_dir`) at the top
+  level and nests `options=DocumentOptions(...)` for chunking / retrieval
+  knobs — same shape Node's `FolderOptions` has.
+
+- **Rust `redhop::core`** — no longer re-exports any of the orchestration
+  surface: `DiagnosticsEngine`, `RegimeClassifier`, `DiagnosticsReport`,
+  `DiagnosticsWarning`, `RetrievalState`, `RetrievalRegime`,
+  `RegimeDistribution`, `ConfidenceProfile`, `ClassificationTrace`,
+  `RuleFire`, `TakenAction`, `AbstainReason`, `ActionCost`, `Budget`,
+  `RerankerLevel`, `RetrievalAction`, `StopReason`. The
+  `redhop::core::state` module is gone. The corresponding traits in
+  `redhop::core::traits` are gone. None of these had any implementation
+  in the published surface — they were the trait/state surface of the
+  deleted orchestration layer.
+
+### Removed
+
+- **Workspace crates** — `crates/orchestration`, `crates/pipeline`,
+  `crates/diagnostics`, `crates/calibration`, `crates/observability`. All
+  were `publish = false`, never reached crates.io.
+- **Internal measurement probes** — 39 examples in `crates/examples` that
+  depended on the orchestration layer (`adaptive_loop`,
+  `adaptive_eval_*`, `bge_*`, `calibration_sweep`, `ce_escalation_*`,
+  `context_economics`, `diagnostics`, `emit_*`, `hybrid_old_vs_new`,
+  `ingestion_diagnostics`, `layered_diagnostics`, `method_pair_regret`,
+  `musique_chunk_sweep`, `musique_embedder_swap`,
+  `musique_hybrid_recall`, `musique_recall_diagnostic`,
+  `neotrace_import`, `observability_report`, `quickstart`,
+  `rag_with_claude`, `real_corpus_calibration`, `real_embedding_bakeoff`,
+  `real_pdf_validation`, `regime_classification`, `second_hop_retention`,
+  `semantic_local_rerank`, `semantic_natural`,
+  `semantic_reasoning_rerank`, `signal_ablation`,
+  `distractor_answer_correlation`, `export_semantic_pool`,
+  `export_rerank_pool`). The 20 still-useful probes (`cuad_*`, `eval_*`,
+  `query_set_analyzer_probe`, `multilingual_*`, `semantic_mismatch`,
+  `chat_rag`, `document_dense`, `enrich_code_search`,
+  `spider_enrich_probe`, `sub_idf_reweighting_probe`, `ce_smoke`) are
+  preserved.
+- **Architecture docs** — `docs/INTEROPERABILITY.md` and
+  `docs/NEOTRACE_SCHEMA.md` described the deleted Python ↔ Rust
+  orchestration seam. `docs/ARCHITECTURE.md` rewritten to match the
+  actual published surface.
+- **Findings** — `ADAPTIVE_CONTROLLER.md`, `ADAPTIVE_REAL_SUBSTRATE.md`,
+  `SUBSTRATE_COUPLING.md`, `REAL_WORKLOAD.md`, `EMBEDDING_BAKEOFF.md` —
+  all five measured the deleted controller.
+
+### Performance
+
+- **Python GIL** — every `Document.from_*` entry point plus
+  `Document.context`, `context_with_rewrites`, and `analyze` wraps its
+  pure-Rust work in `py.allow_threads(...)`. A Python server can now
+  answer requests on sibling threads while one folder index or one
+  retrieval is running. The previous behavior held the GIL across the
+  entire walk → parse → chunk → index pipeline.
+
+### Internal
+
+- **`embeddings::CachedEmbedder` mutex** — switched from
+  `std::sync::Mutex` to `parking_lot::Mutex` (already a workspace dep).
+  7 `.unwrap()`s on `.lock()` removed; the lock is now infallible. Holds
+  the same "never across `.await`" discipline as before.
+- **Module headers** — the legacy `//! # redhop-context`, `//! # redhop-core`,
+  `//! # redhop-chunking`, `//! # redhop-retrieval`, `//! # redhop-document`,
+  `//! # redhop-embeddings`, `//! # redhop-storage`, `//! # redhop-reranking`
+  headers (from before the pre-0.2 crate consolidation) are gone.
+- **Rustdoc broken-link guard** — `crates/redhop/src/lib.rs` now warns on
+  `rustdoc::broken_intra_doc_links`. Five preexisting broken links fixed.
+- **Python binding cleanup** — `python/src/lib.rs` shed 510 LOC of
+  duplicated logic now that all five entry points route through
+  `redhop::text` / `redhop::read_file_with` / `redhop::read_bytes_with` /
+  `redhop::chunks_typed` / `redhop::read_folder_with`. The Python and
+  Node bindings now use the same loader functions.
+
+### Migration
+
+Most callers only need to lift their kwargs into a `DocumentOptions`:
+
+| before | after |
+| --- | --- |
+| `Document.from_text(text)` | `Document.from_text(text)` (unchanged) |
+| `Document.from_text(text, language="german")` | `Document.from_text(text, options=DocumentOptions(language="german"))` |
+| `Document.from_file(p, token_budget=400, candidate_k=3)` | `Document.from_file(p, options=DocumentOptions(token_budget=400, candidate_k=3))` |
+| `Document.from_bytes(data, source="x.pdf")` | `Document.from_bytes(data, "x.pdf")` (`source` is now positional) |
+| `Document.from_folder(p, persist=True, ignore=["*.lock"])` | `Document.from_folder(p, options=FolderOptions(persist=True, ignore=["*.lock"]))` |
+| `Document.from_folder(p, persist=True, retrieval="hybrid")` | `Document.from_folder(p, options=FolderOptions(persist=True, options=DocumentOptions(retrieval="hybrid")))` |
+
+Node, Rust, and CLI users see no API change. Rust callers who depended
+on `redhop::core::DiagnosticsReport` or any of the deleted state types
+from the published crate — that was the orchestration layer that was
+never reachable end-to-end. File an issue if you had a real use case.
+
 ## [0.3.4] — 2026-06-10
 
 **Retrieval diagnostics + bring-your-own-pipeline observability.**

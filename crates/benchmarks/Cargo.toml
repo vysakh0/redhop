@@ -12,10 +12,8 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-redhop             = { workspace = true, features = ["semantic"] }
-redhop-pipeline    = { workspace = true }
-redhop-diagnostics = { workspace = true }
-tokio              = { workspace = true }
+redhop = { workspace = true, features = ["semantic"] }
+tokio  = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

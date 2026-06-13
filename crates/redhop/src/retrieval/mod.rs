@@ -1,5 +1,3 @@
-//! # redhop-retrieval
-//!
 //! Retrieval engines built on top of [`crate::core::Retriever`].
 //!
 //! Four concrete retrievers are provided:

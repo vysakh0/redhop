@@ -2,28 +2,26 @@
 
 ## What RedHop is
 
-RedHop is a Rust library for **retrieval infrastructure**: chunking,
-retrieval, reranking, and diagnostics. It does not generate text, embed
-text, or store vectors persistently. Those concerns are pushed to the
-caller through trait boundaries. The library's contribution is the
-*orchestration* layer between them and the *diagnostics* engine that makes
-retrieval quality observable.
+RedHop is a Rust library that turns a document and a query into the
+prompt context an LLM should see, and explains the decision: chunking,
+retrieval, reranking, context allocation, and a Decision Report. It does
+not generate text, embed text, or store vectors persistently. Those
+concerns are pushed to the caller through trait boundaries.
 
 ## What RedHop is not
 
 - Not an LLM framework. There is no model in this repository.
-- Not an agent framework. There is no planner, no tool dispatch.
+- Not an agent framework. There is no planner, no tool dispatch, no
+  closed-loop controller.
 - Not a vector database. `FlatVectorIndex` is a correctness baseline. Real
   ANN is delegated to whatever the user plugs in.
-- Not a graph retrieval system. We treat semantic topology as a research
-  topic, not an architectural commitment.
+- Not a graph retrieval system. Semantic topology is a research topic,
+  not an architectural commitment.
 
 ## Layering
 
-The published Rust crate is `redhop`. It is one consolidated crate
-organized as modules. Sibling crates handle the things that don't
-belong inside the published surface (the adaptive controller, the
-research/calibration tooling, the bindings).
+The published Rust crate is `redhop`, one consolidated crate organized
+as modules. The non-published siblings are thin tooling.
 
 ```
                 ┌─────────────────────────────────────────┐
@@ -36,15 +34,10 @@ research/calibration tooling, the bindings).
                               ▲           ▲
                               │           │
                 ┌─────────────┴─────┐ ┌───┴──────────────────────────┐
-                │ redhop-pipeline   │ │ redhop-py    (pyo3 bindings) │
-                │ redhop-diagnostics│ │ redhop-node  (napi bindings) │
-                │ redhop-orchestration│└──────────────────────────────┘
-                │ redhop-observability│
-                │ redhop-calibration │ ←- research / eval / metrics
-                │ redhop-benchmarks  │
-                │ redhop-cli         │ ←- thin CLI
-                │ redhop-examples    │ ←- finding-reproduction
-                └────────────────────┘
+                │ redhop-benchmarks │ │ redhop-py    (pyo3 bindings) │
+                │ redhop-cli        │ │ redhop-node  (napi bindings) │
+                │ redhop-examples   │ └──────────────────────────────┘
+                └───────────────────┘
 ```
 
 Inside `redhop`, every non-`core` module depends only on the trait
@@ -54,21 +47,19 @@ public surface (no `pub(crate)` reach-ins).
 
 ## Trait surface
 
-`redhop::core` defines six pluggable abstractions:
+`redhop::core` defines five pluggable abstractions:
 
-| Trait                | Owns                                          |
-| -------------------- | --------------------------------------------- |
-| `TokenizerBackend`   | Token counting, sentence segmentation, truncation. |
-| `Chunker`            | `Document → Vec<Chunk>`.                      |
-| `EmbeddingProvider`  | `&[String] → Vec<Embedding>`.                 |
-| `VectorIndex`        | Add + nearest-neighbor search over embeddings. |
-| `Retriever`          | `Query → Vec<RetrievalResult>` + ingest.       |
-| `Reranker`           | Reorder candidate `Vec<RetrievalResult>`.      |
-| `DiagnosticsEngine`  | `(Query, &[RetrievalResult]) → DiagnosticsReport`. |
+| Trait              | Owns                                          |
+| ------------------ | --------------------------------------------- |
+| `TokenizerBackend` | Token counting, sentence segmentation, truncation. |
+| `Chunker`          | `Document → Vec<Chunk>`.                      |
+| `EmbeddingProvider`| `&[String] → Vec<Embedding>`.                 |
+| `VectorIndex`      | Add + nearest-neighbor search over embeddings. |
+| `Retriever`        | `Query → Vec<RetrievalResult>` + ingest.       |
+| `Reranker`         | Reorder candidate `Vec<RetrievalResult>`.      |
 
-This is the entire contract a caller has to understand. The pipeline
-facade composes these. The language bindings (`pyo3`, `napi-rs`) expose
-them by name.
+That is the entire contract a caller has to understand. The language
+bindings (`pyo3`, `napi-rs`) expose them by name.
 
 ## Data flow
 
@@ -86,9 +77,9 @@ Vec<RetrievalResult>          ← carries score + ScoreBreakdown
     │  reranker.rerank (optional)
     ▼
 Vec<RetrievalResult>          ← reordered, top_k items
-    │  diagnostics.diagnose
+    │  build_context
     ▼
-DiagnosticsReport
+BuiltContext + ContextReport  ← the prompt + the explanation
 ```
 
 Hybrid retrieval fans out the query to several sub-retrievers in parallel
@@ -101,29 +92,25 @@ normalization is available when scores are commensurable.
 
 ### Embeddings are not in this repository
 
-We do not bundle any model. Forcing the embedding model into the library
-ties users to a single quality/latency/cost point and pulls in heavy
-runtime dependencies (ONNX, candle, …). The `EmbeddingProvider` trait is
-async and batch-friendly so any of those can plug in cleanly.
+We do not bundle any model by default. Forcing the embedding model into
+the library ties users to a single quality/latency/cost point and pulls in
+heavy runtime dependencies. The `EmbeddingProvider` trait is async and
+batch-friendly so any of them can plug in cleanly. The `semantic` feature
+ships an optional ONNX-backed embedder for convenience.
 
-### Diagnostics are first-class
+### The Decision Report is first-class
 
-Retrieval failure modes are observable from text alone: the LLM is not
-needed to know whether a context is full of distractors.
-`redhop-diagnostics` computes six metrics on every query without any
-model dependence. `DefaultDiagnosticsEngine` also emits *warnings* with
-machine-readable codes (`low_lexical_grounding`,
-`high_distractor_ratio`, `retrieval_saturated`) intended for monitoring,
-alerting, and adaptive routing decisions.
+Every `BuiltContext` carries a `ContextReport`: what was kept, what was
+dropped, what was rescued as a second hop, what the token economics look
+like, and why. The runtime narrates its own behavior so users can audit it
+without a separate observability stack.
 
 ### Chunking is core
 
 Chunk boundaries determine evidence density and topical purity, both of
-which dominate the diagnostics metrics that matter. `AdaptiveChunker`
-exists as the long-term home for evidence-aware chunking: today it
-combines sentence segmentation with a Jaccard cohesion gate; future work
-adds topic-purity scoring, embedding-based cohesion, and entropy/surprisal
-boundary detection (see roadmap in `crates/chunking/src/adaptive.rs`).
+which dominate retention. `AdaptiveChunker` exists as the long-term home
+for evidence-aware chunking: today it combines sentence segmentation with
+a Jaccard cohesion gate.
 
 ### Tantivy for BM25
 
@@ -153,29 +140,27 @@ throughput and BM25 retrieval latency. Run with `cargo bench`.
 
 ## Language bindings
 
-`Chunk`, `Document`, `Query`, `RetrievalResult`, and `DiagnosticsReport`
-are all `Serialize + Deserialize`, which makes them cross FFI cleanly:
+`Chunk`, `Document`, `Query`, `RetrievalResult`, `BuiltContext`, and
+`ContextReport` are all `Serialize + Deserialize`, which makes them cross
+FFI cleanly:
 
 - **`redhop-py`** (`pyo3 + maturin`) ships the Python wheel. It exposes
   `Document.from_text` / `from_chunks` / `from_file` / `from_bytes` /
-  `from_folder` (with `language=`, `strategy=`, `retrieval=` kwargs),
-  `Document.context` / `analyze` / `n_files` / `skipped_files`, plus
-  the top-level `build_context` / `filter_context` / `analyze_context`
-  / `context_economics` / `grounding_score` / `link_strength`.
-- **`redhop-node`** (`napi-rs`) ships the npm package. Mirrors the
-  Python surface: `Document.fromText` / `fromChunks` / `fromFile` /
-  `fromBytes` / `fromFolder` (with `language` option),
-  `Document.context` / `analyze` / `chunkCount` / `nFiles` /
-  `skippedFiles`, plus top-level `groundingScore` / `linkStrength`.
+  `from_folder`, `Document.context` / `analyze` / `n_files` /
+  `skipped_files`, plus the top-level `build_context` / `filter_context` /
+  `analyze_context` / `context_economics` / `grounding_score` /
+  `link_strength`.
+- **`redhop-node`** (`napi-rs`) ships the npm package and mirrors the
+  Python surface.
 
-The bindings wrap the consolidated `redhop` crate directly (no
-parallel implementations).
+The bindings wrap the consolidated `redhop` crate directly (no parallel
+implementations).
 
 ## What we explicitly avoided
 
 - Fake-AI boundary detection in chunking. Adaptive chunking ships a
-  conservative lexical-cohesion gate today and roadmaps the rest.
+  conservative lexical-cohesion gate today.
 - Speculative topology systems, knowledge-graph retrieval, or
   semantic-continuity heuristics. Those are research, not infrastructure.
-- LLM integrations. Once retrieval returns, RedHop is done. Whatever
-  comes after is the caller's problem.
+- LLM integrations. Once retrieval and context allocation return, RedHop
+  is done. Whatever comes after is the caller's problem.

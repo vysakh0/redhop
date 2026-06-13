@@ -237,11 +237,11 @@ Full API + field list:
 
 | On-ramp | For |
 | --- | --- |
-| `Document.from_text(text, source="document")` | text you already have |
+| `Document.from_text(text, options=DocumentOptions(source="document"))` | text you already have |
 | `Document.from_chunks([redhop.Chunk(...), ...])` | content you already chunked: pass typed `redhop.Chunk(text, source=..., id=..., metadata={...})` instances |
 | `Document.from_file("x.pdf")` | a file: PDF, DOCX, PPTX, XLSX, Markdown, or text/code |
-| `Document.from_bytes(data, source="x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) |
-| `Document.from_folder("./docs", persist=True)` | a whole directory, with an optional incremental on-disk index |
+| `Document.from_bytes(data, "x.pdf")` | bytes you fetched (S3 / GCS / HTTP / DB) — `source` is the second positional arg |
+| `Document.from_folder("./docs", options=FolderOptions(persist=True))` | a whole directory, with an optional incremental on-disk index |
 
 ## Retrieval tiers: no vector database
 
@@ -255,14 +255,15 @@ doc = redhop.Document.from_file("contract.pdf")
 ctx = doc.context("What is the governing law?")
 
 # Structured docs with parallel clauses (regional overrides, per-region sub-sections):
-doc = redhop.Document.from_file("msa.pdf", retrieval="hybrid", model="bge-small")
+doc = redhop.Document.from_file("msa.pdf",
+    options=redhop.DocumentOptions(retrieval="hybrid", model="bge-small"))
 ctx = doc.context("What law applies in the UK?", include_heading=True, neighbors=1)
 
 # Synonym-mismatch corpora (HR FAQs, support tickets where users phrase
 # things very differently from the docs). Cross-encoder adds 5–10× latency
 # — verify it helps on your corpus before enabling.
-doc = redhop.Document.from_file("support.md",
-    retrieval="hybrid", model="bge-small", rerank="cross-encoder")
+doc = redhop.Document.from_file("support.md", options=redhop.DocumentOptions(
+    retrieval="hybrid", model="bge-small", rerank="cross-encoder"))
 ```
 
 The 60-second decision guide with trade-offs and query-writing tips:
@@ -280,7 +281,7 @@ greek, hungarian, italian, norwegian, portuguese, romanian, russian,
 spanish, swedish, tamil, turkish`):
 
 ```python
-doc = redhop.Document.from_text(german_text, language="german")
+doc = redhop.Document.from_text(german_text, options=redhop.DocumentOptions(language="german"))
 # Now `Buch` finds chunks containing `Bücher` (and vice versa)
 ```
 

@@ -20,12 +20,16 @@ These are the supported entry points. Within 0.x we avoid breaking them, and any
 breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 
 **Python (`redhop`)**
-- `Document.from_text(text, source="document", chunk_size=…, chunk_overlap=…,
-  strategy=…, language=…, …)`, `Document.from_chunks(chunks, …, language=…)`,
-  `Document.from_file(path, …, language=…)`, `Document.from_bytes(data,
-  source, …, language=…)`, `Document.from_folder(path, …, language=…)`.
-  `chunk_size`/`chunk_overlap` are index-time. `language=` selects
-  any of the 18 Snowball Porter2 languages (or errors on unknown names).
+- `Document.from_text(text, options=DocumentOptions(...))`,
+  `Document.from_chunks(chunks, options=DocumentOptions(...))`,
+  `Document.from_file(path, options=DocumentOptions(...))`,
+  `Document.from_bytes(data, source, options=DocumentOptions(...))`,
+  `Document.from_folder(path, options=FolderOptions(...))`.
+  All chunking/retrieval/embedder knobs ride on `DocumentOptions`;
+  folder-specific knobs (recursive, gitignore, ignore, persist, index_dir)
+  ride on `FolderOptions`. `chunk_size`/`chunk_overlap` are index-time.
+  `language=` selects any of the 18 Snowball Porter2 languages (or errors
+  on unknown names).
 - `Document.context(query, budget=…)`. `budget` is a query-time
   override (no re-indexing). `Document.analyze(query)`,
   `Document.n_chunks`, `Document.n_files`, `Document.skipped_files`.
@@ -78,10 +82,9 @@ differ for idiomatic reasons. They are stable within 0.x. Call them as
 documented below: both are correct, neither will be silently flipped.
 
 1. **`from_text` arguments.**
-   - Python: `Document.from_text(text, source="document", …)`. `source`
-     is the second positional argument (with a default).
-   - Node: `Document.fromText(text, options?)`. `source` lives inside the
-     options bag: `Document.fromText(text, { source: "policy.md" })`.
+   - Python: `Document.from_text(text, options=DocumentOptions(source="..."))`.
+   - Node: `Document.fromText(text, { source: "policy.md" })`.
+   Both bindings now route through the same options-struct shape.
 2. **`BuiltContext.text`.**
    - Python: `ctx.text()`, a callable method (idiomatic for the pyo3 binding
      since the underlying Rust value is borrowed).

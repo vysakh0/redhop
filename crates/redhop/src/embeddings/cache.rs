@@ -14,14 +14,16 @@
 //!
 //! Concurrency: a single `Mutex<LruCache>` guards the cache. The lock is
 //! held only for synchronous get/put, never across the inner provider's
-//! `.await`, so it does not serialize inference.
+//! `.await`, so it does not serialize inference. We use
+//! [`parking_lot::Mutex`] (already a workspace dep): it never poisons, so
+//! `.lock()` is infallible — no `.unwrap()` noise on every access.
 
 use std::num::NonZeroUsize;
-use std::sync::Mutex;
 
 use crate::core::{Embedding, EmbeddingProvider, Result};
 use async_trait::async_trait;
 use lru::LruCache;
+use parking_lot::Mutex;
 
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
@@ -44,7 +46,10 @@ impl<E: EmbeddingProvider> CachedEmbedder<E> {
     /// Wrap `inner` with a cache of the given capacity (number of
     /// distinct texts retained).
     pub fn new(inner: E, capacity: usize) -> Self {
-        let cap = NonZeroUsize::new(capacity.max(1)).unwrap();
+        // `capacity.max(1)` guarantees nonzero so `NonZeroUsize::new` is
+        // total — pattern match it to keep the construction infallible.
+        let cap = NonZeroUsize::new(capacity.max(1))
+            .expect("capacity.max(1) is at least 1");
         Self {
             inner,
             cache: Mutex::new(LruCache::new(cap)),
@@ -56,7 +61,7 @@ impl<E: EmbeddingProvider> CachedEmbedder<E> {
     /// Cumulative (hits, misses) since construction. Useful for the
     /// observability layer to report cache effectiveness.
     pub fn stats(&self) -> (u64, u64) {
-        (*self.hits.lock().unwrap(), *self.misses.lock().unwrap())
+        (*self.hits.lock(), *self.misses.lock())
     }
 }
 
@@ -70,7 +75,7 @@ impl<E: EmbeddingProvider> EmbeddingProvider for CachedEmbedder<E> {
         let mut miss_indices: Vec<usize> = Vec::new();
         let mut miss_texts: Vec<String> = Vec::new();
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock();
             for (i, key) in keys.iter().enumerate() {
                 if let Some(e) = cache.get(key) {
                     results[i] = Some(e.clone());
@@ -81,14 +86,14 @@ impl<E: EmbeddingProvider> EmbeddingProvider for CachedEmbedder<E> {
             }
         } // lock released before the await below
 
-        *self.hits.lock().unwrap() += (texts.len() - miss_indices.len()) as u64;
-        *self.misses.lock().unwrap() += miss_indices.len() as u64;
+        *self.hits.lock() += (texts.len() - miss_indices.len()) as u64;
+        *self.misses.lock() += miss_indices.len() as u64;
 
         // Phase 2: embed the misses (no lock held).
         if !miss_texts.is_empty() {
             let embedded = self.inner.embed(&miss_texts).await?;
             // Phase 3: synchronous insert + fill.
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock();
             for (slot, emb) in miss_indices.iter().zip(embedded) {
                 cache.put(keys[*slot], emb.clone());
                 results[*slot] = Some(emb);

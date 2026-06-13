@@ -67,9 +67,7 @@ def show_arm(label: str, query: str, **opts: object) -> None:
     the *expansion* contrast is visible — otherwise on this small
     corpus the budget swallows everything and there's nothing to
     expand."""
-    doc = redhop.Document.from_text(
-        HANDBOOK, source="handbook.md", chunk_size=20, candidate_k=2
-    )
+    doc = redhop.Document.from_text(HANDBOOK, options=redhop.DocumentOptions(source="handbook.md", chunk_size=20, candidate_k=2))
     ctx = doc.context(query, **opts)  # type: ignore[arg-type]
     print(f"─── {label} ─────────────────────────")
     print(f"  n_selected     : {ctx.report.n_selected}")

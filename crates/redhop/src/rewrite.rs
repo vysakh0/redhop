@@ -203,7 +203,7 @@ impl Stripper {
     }
 
     /// Diagnose how this Stripper acts on `query`. Surfaces four things
-    /// the bare [`apply`] return value buries:
+    /// the bare [`QueryRewrite::apply`] return value buries:
     ///
     /// - **`original_tokens` / `stripped_tokens`** — the analyzer's view
     ///   of the query before and after stripping. Stripper matches
