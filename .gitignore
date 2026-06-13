@@ -4,6 +4,10 @@ Cargo.lock
 .DS_Store
 node_modules/
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Experiment outputs (regenerable); curated results live in reports/
 /exports/
 
