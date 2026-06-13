@@ -80,8 +80,7 @@ in full as the template model.
 | [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md) | **Partially falsified** | "Distractor filtering is a free win" — distractors hurt (causal, +0.033), but filtering's net benefit is sign-unstable on multi-hop (the n=20→30 flip) | `cargo run -p redhop-examples --example emit_qa_contexts --release` |
 | [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md) | **Confirmed** | Distractors hurt & density helps on real LLM outputs (pooled −0.375 / +0.539); max-density pruning drops the second hop | `cargo run -p redhop-examples --example context_economics --features onnx --release` |
 
-Supporting evidence: [EMBEDDING_BAKEOFF](EMBEDDING_BAKEOFF.md) (BGE +99% recall vs hashing),
-[REAL_WORKLOAD](REAL_WORKLOAD.md), [INGESTION_PDF](INGESTION_PDF.md).
+Supporting evidence: [INGESTION_PDF](INGESTION_PDF.md).
 
 ## Falsified-hypotheses registry
 
