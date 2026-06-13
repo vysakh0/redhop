@@ -79,11 +79,8 @@ in full as the template model.
 | [RERANKING_LIMITS](RERANKING_LIMITS.md) | **Falsified hypothesis** | "A stronger reranker recovers dense's missed recall" — uniform cross-encoder made recall *worse* (−0.029); helps 12% / hurts 17% | `cargo run -p redhop-examples --example ce_escalation_economics --features onnx --release` |
 | [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md) | **Partially falsified** | "Distractor filtering is a free win" — distractors hurt (causal, +0.033), but filtering's net benefit is sign-unstable on multi-hop (the n=20→30 flip) | `cargo run -p redhop-examples --example emit_qa_contexts --release` |
 | [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md) | **Confirmed** | Distractors hurt & density helps on real LLM outputs (pooled −0.375 / +0.539); max-density pruning drops the second hop | `cargo run -p redhop-examples --example context_economics --features onnx --release` |
-| [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md) | **Falsified hypothesis** | "Stronger first-stage retrieval → fewer interventions" — dense BGE *increased* intervention rate (28%→38%) and halved usefulness; controller actions are retriever-coupled | `cargo run -p redhop-examples --example bge_dense_retrieval --features onnx --release` |
-| [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md) | **Confirmed** | A better embedder in the *sensing* path alone doesn't move economics; it must be in the *action* path. Calibration is substrate-specific | `cargo run -p redhop-examples --example bge_recalibration --features onnx --release` |
 
-Supporting evidence: [ADAPTIVE_REAL_SUBSTRATE](ADAPTIVE_REAL_SUBSTRATE.md),
-[EMBEDDING_BAKEOFF](EMBEDDING_BAKEOFF.md) (BGE +99% recall vs hashing),
+Supporting evidence: [EMBEDDING_BAKEOFF](EMBEDDING_BAKEOFF.md) (BGE +99% recall vs hashing),
 [REAL_WORKLOAD](REAL_WORKLOAD.md), [INGESTION_PDF](INGESTION_PDF.md).
 
 ## Falsified-hypotheses registry
@@ -96,8 +93,6 @@ overturned it, and the overturning is what produced the real design.
 | A stronger reranker (cross-encoder) recovers multi-hop recall a bi-encoder missed | **Falsified** | Uniform CE made recall *worse* (−0.029); it *demotes* the low-query-relevance second hop most confidently | The reranking-limits law; selective (not uniform) escalation; reinforced the second-hop tax |
 | Aggressive distractor filtering is a free quality win | **Falsified (multi-hop)** | Net effect sign-flipped n=20→30; end-to-end the aggressive *filter* hurt more than the distractors (0.829→0.705) | `ReasoningPreserving`; "don't over-filter" default; the n=300 causal experiment |
 | Distractors strongly degrade strong-generator answers | **Falsified (this regime)** | On gap-qualified multi-hop, haiku was distractor-robust (polluted 0.829 ≈ gold 0.830) | Reframed the threat from "distractors" to "premature removal of reasoning evidence" |
-| Stronger first-stage retrieval reduces the controller's need to intervene | **Falsified** | Dense BGE *increased* intervention rate and *halved* usefulness — actions matched BM25's failure modes, not dense's | The retriever↔action coupling law; conservative controller's zero-harm guarantee held throughout |
-| A better embedder improves retrieval economics by sharpening diagnostics | **Partially falsified** | As a *sensing*-only upgrade it was a near-no-op; recall lift identical (0.062). It must drive the *action* path | The sensing-vs-action-path distinction; substrate-specific calibration |
 | ExpandTopK (more similar neighbors) can reach the missing evidence | **Falsified** | The missing chunk is *dissimilar* to the query (bridge-linked); more neighbors never reach it | Convergent first sighting of the second-hop tax |
 | MaxSim late-interaction (ColBERT-style) beats centroid on a corpus-graph reranker | **Falsified** | Semantic recall@3 *fell* 0.563→0.531; per-term best-match over sparse graph vectors rewards any doc with one loosely-related term — late interaction needs many query tokens, questions don't have them | Centroid (aggregated context) kept as the zero-dep rerank scorer ([SEMANTIC_ZERO_DEP](SEMANTIC_ZERO_DEP.md)) |
 | RM3 / pseudo-relevance feedback lifts lexical recall (semantic-mismatch workload) | **Falsified** | Monotonically harmful (semantic R@3 0.49→0.41); λ=1 (no feedback) is optimal. Low first-pass precision (R@1≈0.31) → feedback built on distractors | Don't bolt PRF onto BM25 here; another instance of the second-hop/relevance-feedback tax ([SEMANTIC_ZERO_DEP](SEMANTIC_ZERO_DEP.md)) |
@@ -119,7 +114,6 @@ built around that measured geometry.
 - `build_context` as dilution-pruner at large contexts (generic pruning, size-gated) → [CONTEXT_DILUTION](CONTEXT_DILUTION.md)
 - `build_context(strategy = DistractorFiltered)` (low threshold only) → [DISTRACTOR_ROBUSTNESS](DISTRACTOR_ROBUSTNESS.md), [CONTEXT_ECONOMICS](CONTEXT_ECONOMICS.md)
 - selective reranker escalation (not uniform) → [RERANKING_LIMITS](RERANKING_LIMITS.md)
-- conservative adaptive controller (zero-harm, retriever-coupled actions) → [ADAPTIVE_CONTROLLER](ADAPTIVE_CONTROLLER.md), [SUBSTRATE_COUPLING](SUBSTRATE_COUPLING.md)
 
 ## References
 

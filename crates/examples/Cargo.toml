@@ -5,135 +5,29 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "End-to-end examples for RedHop"
+description = "Internal measurement probes for RedHop (Rust-only; see top-level examples/ for the user-facing demos)"
 publish = false
-
-[lib]
-path = "src/lib.rs"
 
 [features]
 default = []
-# Enables ONNX-backed examples (real embedding bakeoff + cross-encoder).
-# Pulls the merged `semantic` feature on `redhop`.
+# Enables ONNX-backed probes (cross-encoder reranking, dense retrieval).
 onnx = ["redhop/semantic"]
 
 [dependencies]
 redhop               = { workspace = true, features = ["files"] }
-redhop-diagnostics   = { workspace = true }
-redhop-orchestration = { workspace = true }
-redhop-pipeline      = { workspace = true }
-redhop-calibration   = { workspace = true }
-redhop-observability = { workspace = true }
-tokio              = { workspace = true, features = ["rt-multi-thread", "macros"] }
-anyhow             = { workspace = true }
-tracing            = { workspace = true }
-tracing-subscriber = { workspace = true }
-async-trait        = "0.1"
-serde              = { workspace = true, features = ["derive"] }
-serde_json         = { workspace = true }
-parking_lot        = "0.12"
+tokio                = { workspace = true, features = ["rt-multi-thread", "macros"] }
+anyhow               = { workspace = true }
+tracing              = { workspace = true }
+tracing-subscriber   = { workspace = true }
+async-trait          = "0.1"
+serde                = { workspace = true, features = ["derive"] }
+serde_json           = { workspace = true }
+parking_lot          = "0.12"
 unicode-segmentation = "1.11"
-rust-stemmers      = "1.2"
+rust-stemmers        = "1.2"
 
-[[example]]
-name = "quickstart"
-path = "examples/quickstart.rs"
-
-[[example]]
-name = "diagnostics"
-path = "examples/diagnostics.rs"
-
-[[example]]
-name = "rag_with_claude"
-path = "examples/rag_with_claude.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "layered_diagnostics"
-path = "examples/layered_diagnostics.rs"
-
-[[example]]
-name = "regime_classification"
-path = "examples/regime_classification.rs"
-
-[[example]]
-name = "adaptive_loop"
-path = "examples/adaptive_loop.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "calibration_sweep"
-path = "examples/calibration_sweep.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "real_corpus_calibration"
-path = "examples/real_corpus_calibration.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "neotrace_import"
-path = "examples/neotrace_import.rs"
-
-[[example]]
-name = "adaptive_eval_hotpotqa"
-path = "examples/adaptive_eval_hotpotqa.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "adaptive_eval_musique"
-path = "examples/adaptive_eval_musique.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "method_pair_regret"
-path = "examples/method_pair_regret.rs"
-
-[[example]]
-name = "observability_report"
-path = "examples/observability_report.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "ingestion_diagnostics"
-path = "examples/ingestion_diagnostics.rs"
-
-[[example]]
-name = "distractor_answer_correlation"
-path = "examples/distractor_answer_correlation.rs"
-
-[[example]]
-name = "context_economics"
-path = "examples/context_economics.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "emit_qa_contexts"
-path = "examples/emit_qa_contexts.rs"
-
-[[example]]
-name = "real_pdf_validation"
-path = "examples/real_pdf_validation.rs"
-
-[[example]]
-name = "real_embedding_bakeoff"
-path = "examples/real_embedding_bakeoff.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "adaptive_real_vs_hashing"
-path = "examples/adaptive_real_vs_hashing.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "bge_recalibration"
-path = "examples/bge_recalibration.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "bge_dense_retrieval"
-path = "examples/bge_dense_retrieval.rs"
-required-features = ["onnx"]
+[lints]
+workspace = true
 
 [[example]]
 name = "ce_smoke"
@@ -141,116 +35,24 @@ path = "examples/ce_smoke.rs"
 required-features = ["onnx"]
 
 [[example]]
-name = "ce_escalation_economics"
-path = "examples/ce_escalation_economics.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "ce_gate_feature_log"
-path = "examples/ce_gate_feature_log.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "ce_gate_feature_log_musique"
-path = "examples/ce_gate_feature_log_musique.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "musique_recall_diagnostic"
-path = "examples/musique_recall_diagnostic.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "musique_hybrid_recall"
-path = "examples/musique_hybrid_recall.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "musique_chunk_sweep"
-path = "examples/musique_chunk_sweep.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "musique_embedder_swap"
-path = "examples/musique_embedder_swap.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "hybrid_old_vs_new"
-path = "examples/hybrid_old_vs_new.rs"
-required-features = ["onnx"]
-
-[lints]
-workspace = true
-
-[[example]]
-name = "semantic_mismatch"
-path = "examples/semantic_mismatch.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "semantic_natural"
-path = "examples/semantic_natural.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "semantic_local_rerank"
-path = "examples/semantic_local_rerank.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "export_semantic_pool"
-path = "examples/export_semantic_pool.rs"
-
-[[example]]
-name = "export_rerank_pool"
-path = "examples/export_rerank_pool.rs"
-
-[[example]]
-name = "document_dense"
-path = "examples/document_dense.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "semantic_reasoning_rerank"
-path = "examples/semantic_reasoning_rerank.rs"
-required-features = ["onnx"]
-
-[[example]]
-name = "cuad_chunk_strategy_sweep"
-path = "examples/cuad_chunk_strategy_sweep.rs"
-
-[[example]]
-name = "cuad_query_preprocessing"
-path = "examples/cuad_query_preprocessing.rs"
-
-[[example]]
-name = "cuad_perf"
-path = "examples/cuad_perf.rs"
-
-[[example]]
-name = "cuad_rust_vs_python_path"
-path = "examples/cuad_rust_vs_python_path.rs"
-
-[[example]]
-name = "cuad_prf"
-path = "examples/cuad_prf.rs"
+name = "chat_rag"
+path = "examples/chat_rag.rs"
 
 [[example]]
 name = "cuad_chunk_fragmentation"
 path = "examples/cuad_chunk_fragmentation.rs"
 
 [[example]]
-name = "multilingual_query_set_probe"
-path = "examples/multilingual_query_set_probe.rs"
+name = "cuad_chunk_strategy_sweep"
+path = "examples/cuad_chunk_strategy_sweep.rs"
 
 [[example]]
 name = "cuad_clause_expansion"
 path = "examples/cuad_clause_expansion.rs"
 
 [[example]]
-name = "sub_idf_reweighting_probe"
-path = "examples/sub_idf_reweighting_probe.rs"
+name = "cuad_enrich_definitions"
+path = "examples/cuad_enrich_definitions.rs"
 
 [[example]]
 name = "cuad_hybrid_rerank"
@@ -258,21 +60,55 @@ path = "examples/cuad_hybrid_rerank.rs"
 required-features = ["onnx"]
 
 [[example]]
-name = "chat_rag"
-path = "examples/chat_rag.rs"
+name = "cuad_perf"
+path = "examples/cuad_perf.rs"
+
+[[example]]
+name = "cuad_prf"
+path = "examples/cuad_prf.rs"
+
+[[example]]
+name = "cuad_query_preprocessing"
+path = "examples/cuad_query_preprocessing.rs"
+
+[[example]]
+name = "cuad_rust_vs_python_path"
+path = "examples/cuad_rust_vs_python_path.rs"
+
+[[example]]
+name = "document_dense"
+path = "examples/document_dense.rs"
+required-features = ["onnx"]
 
 [[example]]
 name = "enrich_code_search"
 path = "examples/enrich_code_search.rs"
 
 [[example]]
-name = "spider_enrich_probe"
-path = "examples/spider_enrich_probe.rs"
+name = "eval_cuad_documents"
+path = "examples/eval_cuad_documents.rs"
 
 [[example]]
-name = "cuad_enrich_definitions"
-path = "examples/cuad_enrich_definitions.rs"
+name = "eval_document_scaling"
+path = "examples/eval_document_scaling.rs"
+
+[[example]]
+name = "multilingual_query_set_probe"
+path = "examples/multilingual_query_set_probe.rs"
 
 [[example]]
 name = "query_set_analyzer_probe"
 path = "examples/query_set_analyzer_probe.rs"
+
+[[example]]
+name = "semantic_mismatch"
+path = "examples/semantic_mismatch.rs"
+required-features = ["onnx"]
+
+[[example]]
+name = "spider_enrich_probe"
+path = "examples/spider_enrich_probe.rs"
+
+[[example]]
+name = "sub_idf_reweighting_probe"
+path = "examples/sub_idf_reweighting_probe.rs"
