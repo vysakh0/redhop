@@ -1175,7 +1175,8 @@ impl Document {
                         preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_text(
-        text: &str,
+        py: Python<'_>,
+        text: String,
         source: &str,
         strategy: Option<String>,
         chunk_size: usize,
@@ -1198,34 +1199,39 @@ impl Document {
         code_neighbors_default: usize,
         prose_heading_default: bool,
     ) -> PyResult<Self> {
+        let source = source.to_string();
         let sections = vec![RhSection {
-            text: text.to_string(),
+            text,
             page: None,
             heading: None,
             line: None,
         }];
-        let inner = build_text_doc(
-            vec![(source.to_string(), sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
+        // Chunking + indexing is pure-Rust CPU work; release the GIL so
+        // other Python threads can run during it.
+        let inner = py.allow_threads(|| {
+            build_text_doc(
+                vec![(source, sections)],
+                strategy,
+                chunk_size,
+                chunk_overlap,
+                token_budget,
+                candidate_k,
+                retrieval,
+                model,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+                embedder_query_prefix,
+                embedder_passage_prefix,
+                candidate_pool,
+                rerank,
+                language,
+                preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
+            )
+        })?;
         Ok(Self::single(inner))
     }
 
@@ -1245,6 +1251,7 @@ impl Document {
                         preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_file(
+        py: Python<'_>,
         path: &str,
         strategy: Option<String>,
         chunk_size: usize,
@@ -1267,29 +1274,33 @@ impl Document {
         code_neighbors_default: usize,
         prose_heading_default: bool,
     ) -> PyResult<Self> {
-        let (source, sections) = extract_file_text(path)?;
-        let inner = build_text_doc(
-            vec![(source, sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
+        let path = path.to_string();
+        // Disk I/O + parsing + chunking + indexing all happen off-GIL.
+        let inner = py.allow_threads(|| -> PyResult<RhDocument> {
+            let (source, sections) = extract_file_text(&path)?;
+            build_text_doc(
+                vec![(source, sections)],
+                strategy,
+                chunk_size,
+                chunk_overlap,
+                token_budget,
+                candidate_k,
+                retrieval,
+                model,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+                embedder_query_prefix,
+                embedder_passage_prefix,
+                candidate_pool,
+                rerank,
+                language,
+                preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
+            )
+        })?;
         Ok(Self::single(inner))
     }
 
@@ -1310,6 +1321,7 @@ impl Document {
                         preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_bytes(
+        py: Python<'_>,
         data: Vec<u8>,
         source: &str,
         strategy: Option<String>,
@@ -1333,29 +1345,34 @@ impl Document {
         code_neighbors_default: usize,
         prose_heading_default: bool,
     ) -> PyResult<Self> {
-        let (source, sections) = extract_bytes_sections(&data, source)?;
-        let inner = build_text_doc(
-            vec![(source, sections)],
-            strategy,
-            chunk_size,
-            chunk_overlap,
-            token_budget,
-            candidate_k,
-            retrieval,
-            model,
-            embedder_model,
-            embedder_tokenizer,
-            embedder_dim,
-            embedder_pooling,
-            embedder_query_prefix,
-            embedder_passage_prefix,
-            candidate_pool,
-            rerank,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
+        let source = source.to_string();
+        // Parsing + chunking + indexing all happen off-GIL; `data` is
+        // already an owned Vec so no Python borrow crosses the boundary.
+        let inner = py.allow_threads(|| -> PyResult<RhDocument> {
+            let (source, sections) = extract_bytes_sections(&data, &source)?;
+            build_text_doc(
+                vec![(source, sections)],
+                strategy,
+                chunk_size,
+                chunk_overlap,
+                token_budget,
+                candidate_k,
+                retrieval,
+                model,
+                embedder_model,
+                embedder_tokenizer,
+                embedder_dim,
+                embedder_pooling,
+                embedder_query_prefix,
+                embedder_passage_prefix,
+                candidate_pool,
+                rerank,
+                language,
+                preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
+            )
+        })?;
         Ok(Self::single(inner))
     }
 
@@ -1391,6 +1408,7 @@ impl Document {
                         preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_folder(
+        py: Python<'_>,
         path: &str,
         recursive: bool,
         persist: bool,
@@ -1425,37 +1443,43 @@ impl Document {
         // further down.
         #[cfg(feature = "files")]
         {
-            let fo = redhop::FolderOptions {
-                recursive: Some(recursive),
-                gitignore: Some(gitignore),
-                ignore: ignore.unwrap_or_default(),
-                persist,
-                index_dir,
-                load: redhop::LoadOptions {
-                    source: None,
-                    chunk_size: Some(chunk_size),
-                    chunk_overlap: Some(chunk_overlap),
-                    token_budget: Some(token_budget),
-                    candidate_k: Some(candidate_k),
-                    strategy,
-                    retrieval,
-                    model,
-                    embedder_model,
-                    embedder_tokenizer,
-                    embedder_dim: Some(embedder_dim),
-                    embedder_pooling,
-                    embedder_query_prefix,
-                    embedder_passage_prefix,
-                    candidate_pool: Some(candidate_pool),
-                    rerank,
-                    min_candidates: None,
-                    language,
-                    preserve_order: Some(preserve_order),
-                    code_neighbors_default: Some(code_neighbors_default),
-                    prose_heading_default: Some(prose_heading_default),
-                },
-            };
-            let inner = to_py(redhop::read_folder_with(path, &fo))?;
+            let path = path.to_string();
+            // Folder walks dominate the wall-clock cost of from_folder; release
+            // the GIL across the whole walk + parse + index so Python threads
+            // can run other work meanwhile.
+            let inner = py.allow_threads(|| -> PyResult<RhDocument> {
+                let fo = redhop::FolderOptions {
+                    recursive: Some(recursive),
+                    gitignore: Some(gitignore),
+                    ignore: ignore.unwrap_or_default(),
+                    persist,
+                    index_dir,
+                    load: redhop::LoadOptions {
+                        source: None,
+                        chunk_size: Some(chunk_size),
+                        chunk_overlap: Some(chunk_overlap),
+                        token_budget: Some(token_budget),
+                        candidate_k: Some(candidate_k),
+                        strategy,
+                        retrieval,
+                        model,
+                        embedder_model,
+                        embedder_tokenizer,
+                        embedder_dim: Some(embedder_dim),
+                        embedder_pooling,
+                        embedder_query_prefix,
+                        embedder_passage_prefix,
+                        candidate_pool: Some(candidate_pool),
+                        rerank,
+                        min_candidates: None,
+                        language,
+                        preserve_order: Some(preserve_order),
+                        code_neighbors_default: Some(code_neighbors_default),
+                        prose_heading_default: Some(prose_heading_default),
+                    },
+                };
+                to_py(redhop::read_folder_with(&path, &fo))
+            })?;
             Ok(Self { inner })
         }
         #[cfg(not(feature = "files"))]
@@ -1506,6 +1530,7 @@ impl Document {
                         preserve_order=false, code_neighbors_default=1, prose_heading_default=true))]
     #[allow(clippy::too_many_arguments)]
     fn from_chunks(
+        py: Python<'_>,
         chunks: &Bound<'_, PyAny>,
         strategy: Option<String>,
         token_budget: usize,
@@ -1526,38 +1551,44 @@ impl Document {
         code_neighbors_default: usize,
         prose_heading_default: bool,
     ) -> PyResult<Self> {
+        // Materialize the chunks (Python-side work) before releasing the GIL.
         let chunk_vec: Vec<Chunk> = chunks_from_py(chunks)?
             .into_iter()
             .map(|r| r.chunk)
             .collect();
-        let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
-        let needs_embedder = matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
-        let cfg = doc_config(
-            strategy,
-            token_budget,
-            candidate_k,
-            256,
-            1,
-            mode,
-            language,
-            preserve_order,
-            code_neighbors_default,
-            prose_heading_default,
-        )?;
-        let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
-        if needs_embedder {
-            inner = apply_dense_embedder(
-                inner,
-                model,
-                embedder_model,
-                embedder_tokenizer,
-                embedder_dim,
-                embedder_pooling,
-                embedder_query_prefix,
-                embedder_passage_prefix,
+        // The indexing + (optional) embedder load is the slow part — run it
+        // off-GIL.
+        let inner = py.allow_threads(|| -> PyResult<RhDocument> {
+            let mode = retrieval_from_str(retrieval.as_deref(), candidate_pool)?;
+            let needs_embedder =
+                matches!(mode, RetrievalMode::Hybrid { .. } | RetrievalMode::Dense);
+            let cfg = doc_config(
+                strategy,
+                token_budget,
+                candidate_k,
+                256,
+                1,
+                mode,
+                language,
+                preserve_order,
+                code_neighbors_default,
+                prose_heading_default,
             )?;
-        }
-        let inner = apply_reranker(inner, rerank)?;
+            let mut inner = to_py(RhDocument::from_chunks_with(chunk_vec, cfg))?;
+            if needs_embedder {
+                inner = apply_dense_embedder(
+                    inner,
+                    model,
+                    embedder_model,
+                    embedder_tokenizer,
+                    embedder_dim,
+                    embedder_pooling,
+                    embedder_query_prefix,
+                    embedder_passage_prefix,
+                )?;
+            }
+            apply_reranker(inner, rerank)
+        })?;
         Ok(Self::single(inner))
     }
 
@@ -1575,17 +1606,23 @@ impl Document {
     #[pyo3(signature = (query, budget=None, neighbors=0, include_heading=false))]
     fn context(
         &mut self,
+        py: Python<'_>,
         query: &str,
         budget: Option<usize>,
         neighbors: usize,
         include_heading: bool,
     ) -> PyResult<BuiltContext> {
-        let built = if neighbors == 0 && !include_heading {
-            self.inner.context_with(query, budget, None)
-        } else {
-            self.inner
-                .context_expanded(query, budget, None, neighbors, include_heading)
-        };
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        // Retrieval + assembly is the hot per-query path. Released GIL lets
+        // a server handle many queries concurrently across Python threads.
+        let built = py.allow_threads(|| {
+            if neighbors == 0 && !include_heading {
+                inner.context_with(&query, budget, None)
+            } else {
+                inner.context_expanded(&query, budget, None, neighbors, include_heading)
+            }
+        });
         Ok(py_built(to_py(built)?))
     }
 
@@ -1600,18 +1637,26 @@ impl Document {
     #[pyo3(signature = (query, rewrites))]
     fn context_with_rewrites(
         &mut self,
+        py: Python<'_>,
         query: &str,
         rewrites: &Bound<'_, PyAny>,
     ) -> PyResult<BuiltContext> {
         let owned = extract_rewrites(rewrites)?;
-        let refs = rewrite_refs(&owned);
-        Ok(py_built(to_py(self.inner.context_with_rewrites(query, &refs))?))
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        let built = py.allow_threads(|| {
+            let refs = rewrite_refs(&owned);
+            inner.context_with_rewrites(&query, &refs)
+        });
+        Ok(py_built(to_py(built)?))
     }
 
     /// Diagnose retrieval for a query **without** modifying anything (pure
     /// observability). For `strategy="auto"`, `report.strategy` is the decision.
-    fn analyze(&mut self, query: &str) -> PyResult<ContextReport> {
-        let report = to_py(self.inner.analyze(query))?;
+    fn analyze(&mut self, py: Python<'_>, query: &str) -> PyResult<ContextReport> {
+        let query = query.to_string();
+        let inner = &mut self.inner;
+        let report = to_py(py.allow_threads(|| inner.analyze(&query)))?;
         let rendered = report.render(None);
         Ok(ContextReport {
             inner: report,
