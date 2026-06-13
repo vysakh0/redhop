@@ -229,7 +229,7 @@ else:
     #          of queries. See findings/EVALUATE_API.md for design.
     #          Each rewrite stage also lands on ctx.report.query_rewrites
     #          as an audit record.
-    doc = redhop.Document.from_text(your_document, strategy="raw_topk")
+    doc = redhop.Document.from_text(your_document, options=redhop.DocumentOptions(strategy="raw_topk"))
     ctx_a = doc.context(user_query)
     ctx_b = doc.context_with_rewrites(user_query, [stripper, vocab])
     eval_a = redhop.evaluate(user_query, ctx_a, gold_chunks=your_gold_chunk_ids)

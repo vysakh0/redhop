@@ -66,7 +66,7 @@ QUERY = "how do I send back something I do not want?"
 def try_tier(label: str, **options: object) -> None:
     """Build a Document with the given options, run QUERY, print the top hit."""
     t0 = time.time()
-    doc = redhop.Document.from_text(SUPPORT_FAQ, chunk_size=30, **options)  # type: ignore[arg-type]
+    doc = redhop.Document.from_text(SUPPORT_FAQ, options=redhop.DocumentOptions(chunk_size=30))  # type: ignore[arg-type]
     ctx = doc.context(QUERY)
     elapsed = time.time() - t0
     top = ctx.citations[0]["text"][:80] if ctx.citations else "(none)"

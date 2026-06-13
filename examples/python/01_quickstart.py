@@ -54,7 +54,7 @@ delivered to the address set forth on the signature page.
 def main() -> None:
     # 1. Load. `from_text` runs the default sentence chunker and indexes
     #    every chunk with BM25 — no model download, no vector DB.
-    doc = redhop.Document.from_text(MSA, source="acme_msa.txt")
+    doc = redhop.Document.from_text(MSA, options=redhop.DocumentOptions(source="acme_msa.txt"))
     print(f"Indexed {len(doc)} chunks from acme_msa.txt\n")
 
     # 2. Ask. RedHop retrieves, scores, and budgets the prompt all

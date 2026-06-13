@@ -170,9 +170,7 @@ def test_from_file_binary_formats(fname, query, want_key):
 # --------------------------------------------------------------------------- #
 def test_from_bytes_text_with_source_key():
     # e.g. data = s3.get_object(...)["Body"].read()
-    doc = redhop.Document.from_bytes(
-        b"the refund window is thirty days from purchase", source="s3://bucket/notes.txt"
-    )
+    doc = redhop.Document.from_bytes(b"the refund window is thirty days from purchase", "s3://bucket/notes.txt")
     c = doc.context("refund window").citations[0]
     assert c["source"] == "s3://bucket/notes.txt"
     assert c["page"] is None and c["heading"] is None
@@ -181,7 +179,7 @@ def test_from_bytes_text_with_source_key():
 @files_only
 def test_from_bytes_markdown_heading():
     md = b"# Title\nintro\n\n## Refunds\nrefund within thirty days\n"
-    cites = redhop.Document.from_bytes(md, source="policy.md").context("refund thirty").citations
+    cites = redhop.Document.from_bytes(md, "policy.md").context("refund thirty").citations
     hit = next((c for c in cites if "refund" in c["text"].lower()), None)
     assert hit and hit["heading"] == "Refunds"
 
@@ -190,7 +188,7 @@ def test_from_bytes_markdown_heading():
 @pytest.mark.skipif(not os.path.isdir(FIXTURES), reason="rust fixtures not found")
 def test_from_bytes_pdf_pages():
     data = open(os.path.join(FIXTURES, "sample.pdf"), "rb").read()
-    ctx = redhop.Document.from_bytes(data, source="contract.pdf").context(
+    ctx = redhop.Document.from_bytes(data, "contract.pdf").context(
         "governing law delaware terminate"
     )
     assert ctx.citations and ctx.citations[0]["source"] == "contract.pdf"
@@ -200,7 +198,7 @@ def test_from_bytes_pdf_pages():
 @files_only
 def test_from_bytes_unsupported_extension_errors():
     with pytest.raises(Exception):
-        redhop.Document.from_bytes(b"\x89PNG...", source="logo.png")
+        redhop.Document.from_bytes(b"\x89PNG...", "logo.png")
 
 
 # --------------------------------------------------------------------------- #
@@ -225,7 +223,7 @@ def test_from_folder_indexes_all_files_with_per_file_source(tmp_path):
 
 def test_from_folder_recursive_false_skips_subdirs(tmp_path):
     _mkfolder(tmp_path)
-    doc = redhop.Document.from_folder(str(tmp_path), recursive=False)
+    doc = redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(recursive=False))
     # the subdir file's distinctive content should not be retrievable
     assert not doc.context("orders ship business days").citations or all(
         not c["source"].endswith("shipping.txt")
@@ -251,7 +249,7 @@ def test_from_folder_respects_gitignore(tmp_path):
     # default: .gitignore honored even though tmp_path isn't a git repo
     assert len(redhop.Document.from_folder(str(tmp_path))) == 1
     # opt out: the ignored file comes back
-    assert len(redhop.Document.from_folder(str(tmp_path), gitignore=False)) == 2
+    assert len(redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(gitignore=False))) == 2
 
 
 def test_from_folder_custom_ignore_patterns(tmp_path):
@@ -259,16 +257,16 @@ def test_from_folder_custom_ignore_patterns(tmp_path):
     (tmp_path / "noise.log").write_text("verbose log line noise\n")
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "b.txt").write_text("subdir doc\n")
-    assert len(redhop.Document.from_folder(str(tmp_path), ignore=["*.log"])) == 2  # log excluded
+    assert len(redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(ignore=["*.log"]))) == 2  # log excluded
     assert (
-        len(redhop.Document.from_folder(str(tmp_path), ignore=["sub/**"])) == 2
+        len(redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(ignore=["sub/**"]))) == 2
     )  # subdir excluded
 
 
 def test_from_folder_invalid_ignore_pattern_raises(tmp_path):
     _mkfolder(tmp_path)
     with pytest.raises(Exception):
-        redhop.Document.from_folder(str(tmp_path), ignore=["["])  # malformed glob
+        redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(ignore=["["]))  # malformed glob
 
 
 def test_from_folder_empty_raises(tmp_path):
@@ -292,33 +290,33 @@ def _index_path(folder):
 
 def test_persist_creates_index_and_reuses_unchanged(tmp_path):
     _mkfolder(tmp_path)
-    redhop.Document.from_folder(str(tmp_path), persist=True)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     idx = _index_path(tmp_path)
     assert os.path.exists(idx)
     mtime = os.path.getmtime(idx)
     time.sleep(0.05)
     # second run, nothing changed → index file must NOT be rewritten
-    redhop.Document.from_folder(str(tmp_path), persist=True)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     assert os.path.getmtime(idx) == mtime
 
 
 def test_persist_incremental_edit_reflected(tmp_path):
     _mkfolder(tmp_path)
-    redhop.Document.from_folder(str(tmp_path), persist=True)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     time.sleep(0.05)
     (tmp_path / "refunds.txt").write_text("the warranty period is one whole calendar year\n")
-    doc = redhop.Document.from_folder(str(tmp_path), persist=True)
+    doc = redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     hit = doc.context("warranty calendar year").citations
     assert hit and "warranty" in hit[0]["text"].lower()
 
 
 def test_persist_add_and_remove(tmp_path):
     _mkfolder(tmp_path)
-    redhop.Document.from_folder(str(tmp_path), persist=True)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     # add a file, remove another
     (tmp_path / "privacy.txt").write_text("we never sell your personal data to third parties\n")
     os.remove(tmp_path / "refunds.txt")
-    redhop.Document.from_folder(str(tmp_path), persist=True)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True))
     sources = {f["source"] for f in json.load(open(_index_path(tmp_path)))["files"]}
     assert any(s.endswith("privacy.txt") for s in sources)
     assert not any(s.endswith("refunds.txt") for s in sources)
@@ -329,17 +327,17 @@ def test_persist_index_dir_override(tmp_path):
     folder.mkdir()
     (folder / "a.txt").write_text("the refund window is thirty days\n")
     idx_dir = tmp_path / "cache"
-    redhop.Document.from_folder(str(folder), persist=True, index_dir=str(idx_dir))
+    redhop.Document.from_folder(str(folder), options=redhop.FolderOptions(persist=True, index_dir=str(idx_dir)))
     assert os.path.exists(os.path.join(str(idx_dir), "index.json"))
     assert not os.path.exists(os.path.join(str(folder), ".redhop"))
 
 
 def test_persist_fingerprint_invalidates_on_settings_change(tmp_path):
     _mkfolder(tmp_path)
-    redhop.Document.from_folder(str(tmp_path), persist=True, chunk_size=128)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True, options=redhop.DocumentOptions(chunk_size=128)))
     fp1 = json.load(open(_index_path(tmp_path)))["fingerprint"]
     # different chunking → different fingerprint → rebuilt, not served stale
-    redhop.Document.from_folder(str(tmp_path), persist=True, chunk_size=64)
+    redhop.Document.from_folder(str(tmp_path), options=redhop.FolderOptions(persist=True, options=redhop.DocumentOptions(chunk_size=64)))
     fp2 = json.load(open(_index_path(tmp_path)))["fingerprint"]
     assert fp1 != fp2
 
@@ -369,13 +367,13 @@ EXP_TEXT = (
 
 
 def test_expansion_off_by_default():
-    doc = redhop.Document.from_text(EXP_TEXT, chunk_size=8)
+    doc = redhop.Document.from_text(EXP_TEXT, options=redhop.DocumentOptions(chunk_size=8))
     ctx = doc.context("xyzzy clause")
     assert ctx.report.n_expanded == 0
 
 
 def test_expansion_neighbors_adds_adjacent_in_document_order():
-    doc = redhop.Document.from_text(EXP_TEXT, chunk_size=8)
+    doc = redhop.Document.from_text(EXP_TEXT, options=redhop.DocumentOptions(chunk_size=8))
     base = doc.context("xyzzy clause")
     expanded = doc.context("xyzzy clause", neighbors=1)
     # neighbors pulled the adjacent chunk(s) in for continuity
@@ -404,10 +402,8 @@ def test_code_neighbors_default_kwarg_disables_auto_pull():
     if not os.path.exists(rs_path):
         pytest.skip("fusion.rs missing")
     q = "reciprocal rank fusion"
-    d_default = redhop.Document.from_file(rs_path, token_budget=400, candidate_k=3)
-    d_off = redhop.Document.from_file(
-        rs_path, token_budget=400, candidate_k=3, code_neighbors_default=0
-    )
+    d_default = redhop.Document.from_file(rs_path, options=redhop.DocumentOptions(token_budget=400, candidate_k=3))
+    d_off = redhop.Document.from_file(rs_path, options=redhop.DocumentOptions(token_budget=400, candidate_k=3, code_neighbors_default=0))
     r_default = d_default.context(q).report
     r_off = d_off.context(q).report
     # Auto path fires only on code chunks; this file IS code via .rs extension.
@@ -425,10 +421,8 @@ def test_code_neighbors_default_kwarg_raises_value():
     if not os.path.exists(rs_path):
         pytest.skip("fusion.rs missing")
     q = "reciprocal rank fusion"
-    d_default = redhop.Document.from_file(rs_path, token_budget=2000, candidate_k=3)
-    d_more = redhop.Document.from_file(
-        rs_path, token_budget=2000, candidate_k=3, code_neighbors_default=3
-    )
+    d_default = redhop.Document.from_file(rs_path, options=redhop.DocumentOptions(token_budget=2000, candidate_k=3))
+    d_more = redhop.Document.from_file(rs_path, options=redhop.DocumentOptions(token_budget=2000, candidate_k=3, code_neighbors_default=3))
     r_default = d_default.context(q).report
     r_more = d_more.context(q).report
     assert r_more.n_expanded > r_default.n_expanded, (
@@ -447,9 +441,9 @@ def test_prose_heading_default_kwarg_passes_through():
     # Default kwarg
     d_default = redhop.Document.from_text(text)
     # Explicit True (matches default)
-    d_on = redhop.Document.from_text(text, prose_heading_default=True)
+    d_on = redhop.Document.from_text(text, options=redhop.DocumentOptions(prose_heading_default=True))
     # Explicit False (the new opt-out path)
-    d_off = redhop.Document.from_text(text, prose_heading_default=False)
+    d_off = redhop.Document.from_text(text, options=redhop.DocumentOptions(prose_heading_default=False))
     # All three configurations must build a working document and respond to a query.
     for d in (d_default, d_on, d_off):
         ctx = d.context("refund window")

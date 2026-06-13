@@ -36,7 +36,7 @@ def _french_corpus():
 def test_german_analyzer_unifies_morphology_via_from_chunks():
     """German Snowball: query `Buch` should reach a chunk that only
     contains the plural form `Bücher`."""
-    doc = redhop.Document.from_chunks(_german_corpus(), language="german")
+    doc = redhop.Document.from_chunks(_german_corpus(), options=redhop.DocumentOptions(language="german"))
     ctx = doc.context("Buch")
     assert "Bücher" in ctx.text(), f"German analyzer should unify Bücher↔Buch; got: {ctx.text()!r}"
 
@@ -44,7 +44,7 @@ def test_german_analyzer_unifies_morphology_via_from_chunks():
 def test_french_analyzer_unifies_verb_inflections_via_from_chunks():
     """French Snowball: query `manger` should reach a chunk that only
     contains the conjugated form `mange`."""
-    doc = redhop.Document.from_chunks(_french_corpus(), language="french")
+    doc = redhop.Document.from_chunks(_french_corpus(), options=redhop.DocumentOptions(language="french"))
     ctx = doc.context("manger")
     assert "mange" in ctx.text(), f"French analyzer should unify manger↔mange; got: {ctx.text()!r}"
 
@@ -54,7 +54,7 @@ def test_german_analyzer_works_via_from_text():
     `from_text` and `from_chunks` are separate plumbing branches; both
     must route `language=`."""
     text = "ich habe viele Bücher im Regal stehen.\n\nein Kind spielt fröhlich im Garten."
-    doc = redhop.Document.from_text(text, language="german")
+    doc = redhop.Document.from_text(text, options=redhop.DocumentOptions(language="german"))
     ctx = doc.context("Buch")
     assert "Bücher" in ctx.text(), (
         f"from_text + language='german' should find Bücher; got: {ctx.text()!r}"
@@ -88,9 +88,9 @@ def test_unknown_language_raises(ctor):
     production. Mirrors Rust T44."""
     with pytest.raises(ValueError) as excinfo:
         if ctor == "from_chunks":
-            redhop.Document.from_chunks(_german_corpus(), language="germann")
+            redhop.Document.from_chunks(_german_corpus(), options=redhop.DocumentOptions(language="germann"))
         else:
-            redhop.Document.from_text("ich habe Bücher", language="germann")
+            redhop.Document.from_text("ich habe Bücher", options=redhop.DocumentOptions(language="germann"))
     msg = str(excinfo.value).lower()
     assert "unknown language" in msg, (
         f"error should mention 'unknown language'; got: {excinfo.value!r}"
@@ -130,10 +130,7 @@ def test_all_18_snowball_builtins_accepted(language):
     """Every name advertised in the unknown-language error message must
     actually be a valid `language=` value — a typo in either list would
     leave a builtin unreachable from Python while looking supported."""
-    doc = redhop.Document.from_chunks(
-        [redhop.Chunk("the quick brown fox jumps over the lazy dog", id="a")],
-        language=language,
-    )
+    doc = redhop.Document.from_chunks([redhop.Chunk("the quick brown fox jumps over the lazy dog", id="a")], options=redhop.DocumentOptions(language=language))
     # Just need it to round-trip without raising.
     ctx = doc.context("fox")
     assert isinstance(ctx.text(), str)

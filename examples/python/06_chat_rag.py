@@ -53,7 +53,7 @@ def build_doc(preserve_order: bool) -> redhop.Document:
         redhop.Chunk(text, source="chat", id=tid, metadata={"heading": tid})
         for tid, text in CHAT_HISTORY
     ]
-    return redhop.Document.from_chunks(chunks, preserve_order=preserve_order)
+    return redhop.Document.from_chunks(chunks, options=redhop.DocumentOptions(preserve_order=preserve_order))
 
 
 def show_arm(label: str, preserve_order: bool, query: str) -> None:

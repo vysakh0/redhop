@@ -117,7 +117,7 @@ def main() -> None:
 
     # ── Step 3: Run a query through the chain ────────────────────────
     print("─── Step 3 · Run a query through the chain ───────")
-    doc = redhop.Document.from_text(CONTRACT, source="msa.txt")
+    doc = redhop.Document.from_text(CONTRACT, options=redhop.DocumentOptions(source="msa.txt"))
     query = SAMPLE_QUERIES[0]
     print(f"  raw query: {query!r}\n")
 

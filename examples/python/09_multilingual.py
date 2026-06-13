@@ -49,7 +49,7 @@ FRENCH_CORPUS = [
 
 
 def demo(label: str, corpus: list[redhop.Chunk], query: str, language: str) -> None:
-    doc = redhop.Document.from_chunks(corpus, language=language)
+    doc = redhop.Document.from_chunks(corpus, options=redhop.DocumentOptions(language=language))
     ctx = doc.context(query)
     print(f"─── {label} ────────────────────────────────")
     print(f"  language={language!r}, query={query!r}")
@@ -84,7 +84,7 @@ def main() -> None:
     # the user knows what's available.
     print("─── Arm D · Unknown language string ──────────────")
     try:
-        redhop.Document.from_chunks(GERMAN_CORPUS, language="germann")
+        redhop.Document.from_chunks(GERMAN_CORPUS, options=redhop.DocumentOptions(language="germann"))
         print("  (oops — should have raised)")
     except ValueError as e:
         print(f"  ValueError: {str(e)[:140]}…")
