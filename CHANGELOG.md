@@ -5,7 +5,7 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
-## [Unreleased]
+## [0.5.0] — 2026-06-15
 
 **Catalog-regime levers (all additive, zero default change).** Re-derived an
 external short-query / high-cardinality / near-duplicate regime on a redhop rig

@@ -28,8 +28,11 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
   All chunking/retrieval/embedder knobs ride on `DocumentOptions`;
   folder-specific knobs (recursive, gitignore, ignore, persist, index_dir)
   ride on `FolderOptions`. `chunk_size`/`chunk_overlap` are index-time.
-  `language=` selects any of the 18 Snowball Porter2 languages (or errors
-  on unknown names).
+  `language=` selects the lexical analyzer: any of the 18 Snowball Porter2
+  languages, `"raw"`/`"none"` (the minimal pipeline), or `"char_ngram"`
+  (the subword typo / short-token tier, also `"char_ngram:MIN-MAX"`);
+  unknown names error. `bm25_field_weights=[text, source, heading]` sets
+  per-field BM25 boosts (default equal weight, a no-op).
 - `Document.context(query, budget=…)`. `budget` is a query-time
   override (no re-indexing). `Document.analyze(query)`,
   `Document.n_chunks`, `Document.n_files`, `Document.skipped_files`.
@@ -45,8 +48,11 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
 **Node (`redhop`)**
 - `Document.fromText(text, opts)`, `Document.fromChunks(chunks, opts)`,
   `Document.fromFile(path, opts)`, `Document.fromBytes(data, source, opts)`,
-  `Document.fromFolder(path, folderOpts)`. `opts.language` selects any
-  of the 18 Snowball Porter2 languages (or throws on unknown names).
+  `Document.fromFolder(path, folderOpts)`. `opts.language` selects the
+  analyzer: any of the 18 Snowball Porter2 languages, `"raw"`/`"none"`, or
+  `"char_ngram"` (subword typo tier); unknown names throw.
+  `opts.bm25FieldWeights = [text, source, heading]` sets per-field BM25
+  boosts (default equal weight).
 - `Document.context(query, budget?, neighbors?, includeHeading?)` →
   `BuiltContext { text, chunks, citations, report }`.
 - `Document.analyze(query)` → `Report` (same shape as
@@ -62,8 +68,12 @@ breaking change is called out in [CHANGELOG.md](../CHANGELOG.md).
   context_economics, ContextConfig, ContextStrategy, ContextReport,
   BuiltContext, AutoDecision, grounding_score, link_strength}`,
   re-exported from `redhop::context`.
-- `redhop::analyzer::{Analyzer, SnowballAnalyzer, default_english}`:
-  the pluggable analyzer surface attached via `Document::with_analyzer`.
+- `redhop::analyzer::{Analyzer, SnowballAnalyzer, CharNgramAnalyzer,
+  default_english}`: the pluggable analyzer surface attached via
+  `Document::with_analyzer`.
+- `redhop::retrieval::{Bm25Retriever, FieldWeights}` +
+  `Bm25Retriever::with_field_weights(...)` / `DocumentConfig::bm25_field_weights`:
+  per-field BM25 boosts (default `FieldWeights::uniform()` is a no-op).
 - `redhop::{citations, Citation, FolderOptions, LoadOptions}` plus, behind
   the `files` feature, `redhop::{read_file, read_bytes, read_folder,
   read_folder_with}`.

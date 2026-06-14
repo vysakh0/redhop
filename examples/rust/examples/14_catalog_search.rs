@@ -37,15 +37,51 @@ const CATALOG: &[(&str, &str, &str)] = &[
     ("summit-cola-12", "Summit Cola", "Summit Cola 12 oz 1.49"),
     ("summit-cola-20", "Summit Cola", "Summit Cola 20 oz 1.99"),
     ("summit-cola-2l", "Summit Cola", "Summit Cola 2 liter 2.49"),
-    ("summit-diet-12", "Summit Diet Cola", "Summit Diet Cola 12 oz 1.49"),
-    ("summit-diet-20", "Summit Diet Cola", "Summit Diet Cola 20 oz 1.99"),
-    ("liberty-rb-12", "Liberty Root Beer", "Liberty Root Beer 12 oz 1.49"),
-    ("liberty-rb-20", "Liberty Root Beer", "Liberty Root Beer 20 oz 1.99"),
-    ("eagle-bbq-2", "Eagle Potato Chips", "Eagle Potato Chips BBQ 2 oz 1.29"),
-    ("eagle-bbq-8", "Eagle Potato Chips", "Eagle Potato Chips BBQ 8 oz 3.49"),
-    ("eagle-salt-2", "Eagle Potato Chips", "Eagle Potato Chips Salted 2 oz 1.29"),
-    ("pioneer-jerky-3", "Pioneer Beef Jerky", "Pioneer Beef Jerky Original 3 oz 5.99"),
-    ("coastal-mix-6", "Coastal Trail Mix", "Coastal Trail Mix 6 oz 4.29"),
+    (
+        "summit-diet-12",
+        "Summit Diet Cola",
+        "Summit Diet Cola 12 oz 1.49",
+    ),
+    (
+        "summit-diet-20",
+        "Summit Diet Cola",
+        "Summit Diet Cola 20 oz 1.99",
+    ),
+    (
+        "liberty-rb-12",
+        "Liberty Root Beer",
+        "Liberty Root Beer 12 oz 1.49",
+    ),
+    (
+        "liberty-rb-20",
+        "Liberty Root Beer",
+        "Liberty Root Beer 20 oz 1.99",
+    ),
+    (
+        "eagle-bbq-2",
+        "Eagle Potato Chips",
+        "Eagle Potato Chips BBQ 2 oz 1.29",
+    ),
+    (
+        "eagle-bbq-8",
+        "Eagle Potato Chips",
+        "Eagle Potato Chips BBQ 8 oz 3.49",
+    ),
+    (
+        "eagle-salt-2",
+        "Eagle Potato Chips",
+        "Eagle Potato Chips Salted 2 oz 1.29",
+    ),
+    (
+        "pioneer-jerky-3",
+        "Pioneer Beef Jerky",
+        "Pioneer Beef Jerky Original 3 oz 5.99",
+    ),
+    (
+        "coastal-mix-6",
+        "Coastal Trail Mix",
+        "Coastal Trail Mix 6 oz 4.29",
+    ),
 ];
 
 fn build(language: Option<&str>, field_weights: Option<Vec<f32>>) -> anyhow::Result<Document> {
@@ -104,7 +140,10 @@ fn main() -> anyhow::Result<()> {
     // ── 2. Per-field weighting is a knob (default = equal weight) ─────────
     println!("2) Field weights — boost the brand/product 'heading' field 2x\n");
     let mut boosted = build(Some("char_ngram"), Some(vec![1.0, 1.0, 2.0]))?;
-    println!("   'summit cola' -> {:?}", products(&boosted.context("summit cola")?));
+    println!(
+        "   'summit cola' -> {:?}",
+        products(&boosted.context("summit cola")?)
+    );
     println!("   (a domain lever: sweep on your own gold set, it is not a");
     println!("    guaranteed lift; see docs/findings/CATALOG_REGIME.md)\n");
 

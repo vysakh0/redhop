@@ -52,7 +52,7 @@ fn labeled_queries() -> Vec<(&'static str, Option<&'static str>)> {
         ("when are you open on sunday", Some("faq-hours")),
         ("how do I track my package", Some("faq-track")),
         ("do gift cards expire", Some("faq-giftcard")),
-        ("can you help me", None),            // too vague — should ask
+        ("can you help me", None),                // too vague — should ask
         ("do you price match competitors", None), // not in the KB — should ask
     ]
 }
@@ -79,10 +79,12 @@ fn build() -> anyhow::Result<Document> {
 fn main() -> anyhow::Result<()> {
     let mut doc = build()?;
     println!("Routing each query AUTO vs CLARIFY on redhop's confidence signals.");
-    println!("(AUTO only when retrieval is confident: not low_confidence AND grounding >= {TAU})\n");
     println!(
-        "  {:<38} {:>9} {:>9} {:>8}  {}",
-        "query", "low_conf", "grounding", "route", "outcome"
+        "(AUTO only when retrieval is confident: not low_confidence AND grounding >= {TAU})\n"
+    );
+    println!(
+        "  {:<38} {:>9} {:>9} {:>8}  outcome",
+        "query", "low_conf", "grounding", "route"
     );
 
     let (mut auto_total, mut auto_correct, mut unsafe_auto, mut clarify_total) = (0, 0, 0, 0);
@@ -97,7 +99,14 @@ fn main() -> anyhow::Result<()> {
         } else {
             EvalGold::Chunks(&gold_slice)
         };
-        let r = evaluate(&Query::new(q), &ctx, None, gold_eval, None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new(q),
+            &ctx,
+            None,
+            gold_eval,
+            None,
+            EvalConfig::default(),
+        );
 
         let low = ctx.report.low_confidence_retrieval;
         let grounding = r.mean_grounding;
@@ -138,10 +147,18 @@ fn main() -> anyhow::Result<()> {
         1.0
     };
     println!("\n─── Scorecard ────────────────────────────────────");
-    println!("  auto-resolve rate   : {auto_total}/{} answered without asking", labeled_queries().len());
-    println!("  auto-precision ⭐    : {auto_precision:.3}  (correct among auto-answered; aim >= 0.99)");
+    println!(
+        "  auto-resolve rate   : {auto_total}/{} answered without asking",
+        labeled_queries().len()
+    );
+    println!(
+        "  auto-precision ⭐    : {auto_precision:.3}  (correct among auto-answered; aim >= 0.99)"
+    );
     println!("  unsafe-auto ☠       : {unsafe_auto}      (auto-answered when it should have asked; target 0)");
-    println!("  clarify rate        : {clarify_total}/{} routed to a question", labeled_queries().len());
+    println!(
+        "  clarify rate        : {clarify_total}/{} routed to a question",
+        labeled_queries().len()
+    );
     println!("\nThe gate degrades weak retrievals to clarify, so the bot");
     println!("'gets cautious, not wrong'. DERIVE tau on your own dev set by");
     println!("sweeping it to your precision target — see the safe-auto-answers guide.");
