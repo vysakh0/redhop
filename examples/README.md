@@ -11,9 +11,9 @@ scenarios.
 
 | Language | Folder | Status |
 | -------- | ------ | ------ |
-| Python | [`python/`](python/) | ✓ 13 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing, query diagnosis, workload audit (BYO pipeline) |
-| Node.js | [`nodejs/`](nodejs/) | ✓ 13 examples: same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
-| Rust | [`rust/`](rust/) | ✓ 13 examples: same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the 59 measurement probes (evidence layer) |
+| Python | [`python/`](python/) | ✓ 15 examples covering the 3-call surface, typed Chunk, rewrite chain + audit, chunk enrich, A/B eval, chat RAG, retrieval tiers (lexical/hybrid/semantic), structural expansion, multilingual analyzer, assembly strategies, folder indexing, query diagnosis, workload audit (BYO pipeline), catalog search (char-ngram + field weights + set-coverage), safe auto-answers (confidence routing) |
+| Node.js | [`nodejs/`](nodejs/) | ✓ 15 examples: same scenarios as Python, `.cjs` mirrors using the Node.js camelCase API surface |
+| Rust | [`rust/`](rust/) | ✓ 15 examples: same scenarios mirrored against the Rust core API. `crates/examples/examples/` continues to house the measurement probes (evidence layer) |
 
 Each language folder has its own `README.md` describing the demos and
 how to run them.

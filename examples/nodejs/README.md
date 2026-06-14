@@ -50,6 +50,8 @@ node examples/nodejs/01_quickstart.cjs
 | -- | ---- | -------------------- |
 | 12 | [`12_diagnosis.cjs`](12_diagnosis.cjs) | `ctx.report.diagnosis` carries per-query facts about how the query met the corpus (`queryTerms`, `zeroMatchTerms`, `termStats`, `scoreSpread`) plus bounded hints (vocab mismatch, polysemy, templated boilerplate) each citing the measured finding behind it. Healthy queries fire no hints. |
 | 13 | [`13_workload_audit.cjs`](13_workload_audit.cjs) | The bring-your-own-pipeline (BYO) loop: `analyzeContext(query, yourChunks)` observes what an external retriever returned, `summarizeDiagnoses(reports)` aggregates a workload into one focus recommendation, plus the OTel / Langfuse attribute snippet for shipping reports to telemetry. Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](../../docs/DIAGNOSE_YOUR_PIPELINE.md). |
+| 14 | [`14_catalog_search.cjs`](14_catalog_search.cjs) | Catalog regime: short, noisy queries over a near-duplicate catalog. `language: "char_ngram"` recovers transcription typos word-token BM25 misses, `bm25FieldWeights` boosts the discriminating field, and `evaluate(..., { goldFamilies })` → `setCoverage` checks a whole variant family was retrieved. See [`findings/CATALOG_REGIME.md`](../../docs/findings/CATALOG_REGIME.md). |
+| 15 | [`15_safe_auto_answer.cjs`](15_safe_auto_answer.cjs) | Safe auto-answers: gate AUTO vs CLARIFY on `ctx.report.lowConfidenceRetrieval` + `evaluate(...).meanGrounding`, then measure auto-precision and unsafe-auto (target 0) on a labeled set. The "gets cautious, not wrong" pattern; pairs with the [safe-auto-answers guide](https://www.redhopai.com/guides/safe-auto-answers/). |
 
 ## How to read these in order
 

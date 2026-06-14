@@ -57,6 +57,8 @@ anyhow = "1"
 | -- | ---- | -------------------- |
 | 12 | [`12_diagnosis.rs`](examples/12_diagnosis.rs) | `ctx.report.diagnosis` carries per-query facts about how the query met the corpus (`query_terms`, `zero_match_terms`, `term_stats`, `score_spread`) plus bounded hints (`VocabMismatch`, `LowDiscriminationQuery`, `UnderdeterminedQuery`, …) each citing the measured finding behind it. Healthy queries fire no hints. |
 | 13 | [`13_workload_audit.rs`](examples/13_workload_audit.rs) | The bring-your-own-pipeline (BYO) loop: `analyze_context(&query, &results, &cfg)` observes what an external retriever returned, `summarize_diagnoses(&reports)` aggregates a workload into one focus recommendation. Walk-through: [`docs/DIAGNOSE_YOUR_PIPELINE.md`](../../docs/DIAGNOSE_YOUR_PIPELINE.md). |
+| 14 | [`14_catalog_search.rs`](examples/14_catalog_search.rs) | Catalog regime: short, noisy queries over a near-duplicate catalog. `language="char_ngram"` recovers transcription typos word-token BM25 misses, `bm25_field_weights` boosts the discriminating field, and `EvalGold::AllOf` → `set_coverage` checks a whole variant family was retrieved. See [`findings/CATALOG_REGIME.md`](../../docs/findings/CATALOG_REGIME.md). |
+| 15 | [`15_safe_auto_answer.rs`](examples/15_safe_auto_answer.rs) | Safe auto-answers: gate AUTO vs CLARIFY on `ctx.report.low_confidence_retrieval` + `evaluate(...).mean_grounding`, then measure auto-precision and unsafe-auto (target 0) on a labeled set. The "gets cautious, not wrong" pattern; pairs with the [safe-auto-answers guide](https://www.redhopai.com/guides/safe-auto-answers/). |
 
 ## How these relate to `crates/examples/`
 
