@@ -24,6 +24,9 @@ replicate and is recorded as a null with the knob shipped anyway.
   near-duplicates word-BM25 leaves tied). New
   `Analyzer::union_subword_query()` (default `false`) controls whether a
   multi-token query word is run as a bag-of-terms union (OR) instead of a phrase.
+  Selectable from **all three languages**: Rust `Document::with_analyzer`, or the
+  string option `language="char_ngram"` (also `"char_ngram:MIN-MAX"`, e.g.
+  `"char_ngram:2-4"`) in Python/Node `DocumentOptions` / `Options`.
 - **`EvalGold::AllOf(&[&[&str]])` + `EvalReport::set_coverage`** (and
   `EvalSummary::mean_set_coverage` / `n_with_set_coverage`) — strict
   variant-family coverage, the fraction of families *fully* present in the
@@ -38,7 +41,9 @@ replicate and is recorded as a null with the knob shipped anyway.
   a universal win. The set-coverage lift was an exact null on the synthetic
   catalog (a boost on a field the near-duplicates share is inert), so equal weight
   stays the default and the guidance is "sweep on your own eval" (see
-  CATALOG_REGIME Panel D).
+  CATALOG_REGIME Panel D). Exposed in **all three languages**: Rust
+  `with_field_weights` / `DocumentConfig`, or the `bm25_field_weights` option
+  (a `[text, source, heading]` list) in Python/Node `DocumentOptions` / `Options`.
 - **`crates/examples/examples/catalog_regime_probe.rs`** — the hermetic,
   deterministic rig behind the finding.
 - Guidance: a "When your corpus is a catalog, not prose" section in

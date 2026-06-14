@@ -58,20 +58,28 @@ pub struct LoadOptions {
     /// effect under `lexical`. Pair with `report.low_confidence_retrieval` to
     /// detect when the fallback fired with weak chunks (issue #1).
     pub min_candidates: Option<usize>,
-    /// Lexical analyzer language (`"english"` default; also `"french"`,
-    /// `"german"`, `"spanish"`, `"italian"`, `"portuguese"`, `"dutch"`,
-    /// `"russian"`, `"swedish"`, `"norwegian"`, `"danish"`, `"finnish"`,
-    /// `"romanian"`, `"hungarian"`, `"turkish"`, `"arabic"`, `"greek"`,
-    /// `"tamil"` — the 18 Snowball Porter2 languages). Drives both BM25
-    /// retrieval and the grounding scorer's term extraction so the two
-    /// layers agree on what counts as "the same term".
+    /// Analyzer selector (the field is named `language` for historical
+    /// reasons, but it picks the whole lexical analyzer). Default `None`
+    /// keeps the minimal raw analyzer.
     ///
-    /// Routes to [`crate::analyzer::SnowballAnalyzer::by_name`]; unknown
-    /// language strings return an error (we don't silently fall back to
-    /// English — a typo'd `"germann"` should surface, not silently degrade
-    /// to English ranking). For a custom analyzer (e.g. a CJK tokenizer),
-    /// drop the string config and call `Document::with_analyzer` directly
-    /// with your `Arc<dyn Analyzer>`.
+    /// Accepts:
+    /// - one of the 18 Snowball Porter2 languages (`"english"`, `"french"`,
+    ///   `"german"`, `"spanish"`, `"italian"`, `"portuguese"`, `"dutch"`,
+    ///   `"russian"`, `"swedish"`, `"norwegian"`, `"danish"`, `"finnish"`,
+    ///   `"romanian"`, `"hungarian"`, `"turkish"`, `"arabic"`, `"greek"`,
+    ///   `"tamil"`) — stemming + stopwords for that language;
+    /// - `"raw"` / `"none"` — the minimal no-stemming pipeline;
+    /// - `"char_ngram"` — the subword typo / short-token tier
+    ///   ([`crate::analyzer::CharNgramAnalyzer`], default grams 3..=5), or
+    ///   `"char_ngram:MIN-MAX"` (e.g. `"char_ngram:2-4"`) to tune the gram
+    ///   range. Recovers transcription-typo'd tokens token-exact BM25 misses;
+    ///   a recall booster for short noisy queries, not a prose default (see
+    ///   `docs/findings/CATALOG_REGIME.md`).
+    ///
+    /// Drives both BM25 retrieval and the grounding scorer so the two layers
+    /// agree on "the same term". Unknown values return an error (no silent
+    /// fallback — a typo'd `"germann"` should surface). For a fully custom
+    /// analyzer, drop the string config and call `Document::with_analyzer`.
     pub language: Option<String>,
     /// Preserve source-document order of selected chunks instead of the
     /// strategy's relevance order. Useful for chat histories / transcripts
@@ -91,6 +99,14 @@ pub struct LoadOptions {
     /// (saves a small amount of budget when the heading isn't load-bearing).
     /// See `docs/findings/PROSE_HEADING_DEFAULT.md` for the measurement.
     pub prose_heading_default: Option<bool>,
+    /// Per-field BM25 query boosts as `[text, source, heading]` (exactly 3
+    /// values). `None` (default) is the equal-weight behavior, bit-for-bit.
+    /// A domain lever for near-duplicate / title-heavy corpora: boost the
+    /// field carrying the discriminating token. Not a universal win — a
+    /// boost on a field the near-duplicates share is inert, and over-boosting
+    /// starves recall. Sweep on a held-out set with your own eval. See
+    /// `docs/CHOOSING_A_CONFIG.md` and `docs/findings/CATALOG_REGIME.md`.
+    pub bm25_field_weights: Option<Vec<f32>>,
 }
 
 /// Options for `read_folder_with` (plus the chunking/retrieval [`LoadOptions`]).
@@ -190,6 +206,44 @@ pub fn retrieval_from_str(retrieval: Option<&str>, candidate_pool: usize) -> Res
     })
 }
 
+/// Parse a `language` value selecting the char-ngram analyzer: `"char_ngram"`
+/// (default grams 3..=5) or `"char_ngram:MIN-MAX"` (e.g. `"char_ngram:2-4"`).
+/// Validates `1 <= MIN <= MAX` and returns a clear error rather than panicking
+/// in [`crate::analyzer::CharNgramAnalyzer::new`].
+fn parse_char_ngram_spec(s: &str) -> Result<(usize, usize)> {
+    let rest = s.strip_prefix("char_ngram").unwrap_or("");
+    if rest.is_empty() {
+        return Ok((3, 5));
+    }
+    let spec = rest.strip_prefix(':').ok_or_else(|| {
+        Error::Other(format!(
+            "invalid char_ngram spec {s:?}; use \"char_ngram\" or \
+             \"char_ngram:MIN-MAX\" (e.g. \"char_ngram:3-5\")"
+        ))
+    })?;
+    let (min_s, max_s) = spec.split_once('-').ok_or_else(|| {
+        Error::Other(format!(
+            "invalid char_ngram spec {s:?}; expected \"char_ngram:MIN-MAX\" \
+             (e.g. \"char_ngram:3-5\")"
+        ))
+    })?;
+    let parse = |v: &str, which: &str| -> Result<usize> {
+        v.trim().parse::<usize>().map_err(|_| {
+            Error::Other(format!(
+                "invalid char_ngram {which} in {s:?} (expected an integer)"
+            ))
+        })
+    };
+    let n_min = parse(min_s, "min")?;
+    let n_max = parse(max_s, "max")?;
+    if n_min < 1 || n_min > n_max {
+        return Err(Error::Other(format!(
+            "char_ngram requires 1 <= min <= max, got {n_min}-{n_max}"
+        )));
+    }
+    Ok((n_min, n_max))
+}
+
 fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
     let base = DocumentConfig::default();
     let strategy = match &o.strategy {
@@ -197,14 +251,19 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         None => base.context.strategy,
     };
     let chunk_size = o.chunk_size.unwrap_or(128);
-    // Route LoadOptions::language → SnowballAnalyzer builtin, or `"raw"` /
+    // Route LoadOptions::language → SnowballAnalyzer builtin, `"raw"` /
     // `"none"` → RawAnalyzer (minimal pipeline; trades recall for warm-query
-    // latency, see docs/findings/FRAMEWORK_MULTIQUERY.md). Unknown names
-    // error out so a typo can't silently fall back to English (which would
-    // hide the misconfiguration).
+    // latency, see docs/findings/FRAMEWORK_MULTIQUERY.md), or `"char_ngram"`
+    // [`:MIN-MAX`] → CharNgramAnalyzer (the subword typo tier,
+    // docs/findings/CATALOG_REGIME.md). Unknown names error out so a typo
+    // can't silently fall back to English (which would hide the misconfig).
     let analyzer: std::sync::Arc<dyn crate::analyzer::Analyzer> = match o.language.as_deref() {
         None => base.context.analyzer.clone(),
         Some("raw") | Some("none") => std::sync::Arc::new(crate::analyzer::RawAnalyzer::new()),
+        Some(s) if s == "char_ngram" || s.starts_with("char_ngram:") => {
+            let (n_min, n_max) = parse_char_ngram_spec(s)?;
+            std::sync::Arc::new(crate::analyzer::CharNgramAnalyzer::new(n_min, n_max))
+        }
         Some(name) => match crate::analyzer::SnowballAnalyzer::by_name(name) {
             Some(a) => std::sync::Arc::new(a),
             None => {
@@ -213,10 +272,25 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
                      english, finnish, french, german, greek, hungarian, italian, \
                      norwegian, portuguese, romanian, russian, spanish, swedish, \
                      tamil, turkish — or 'raw' / 'none' for the minimal \
-                     no-stemming pipeline"
+                     no-stemming pipeline, or 'char_ngram' (optionally \
+                     'char_ngram:MIN-MAX') for the subword typo tier"
                 )));
             }
         },
+    };
+    let bm25_field_weights = match o.bm25_field_weights.as_deref() {
+        None => base.bm25_field_weights,
+        Some([text, source, heading]) => crate::retrieval::FieldWeights {
+            text: *text,
+            source: *source,
+            heading: *heading,
+        },
+        Some(w) => {
+            return Err(Error::Other(format!(
+                "bm25_field_weights must have exactly 3 values [text, source, heading], got {}",
+                w.len()
+            )));
+        }
     };
     let context = ContextConfig {
         token_budget: o.token_budget.unwrap_or(8192),
@@ -240,9 +314,7 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         prose_heading_default: o
             .prose_heading_default
             .unwrap_or(base.prose_heading_default),
-        // Field weights are a Rust-API lever (DocumentConfig / Bm25Retriever);
-        // the string-options load path inherits the equal-weight default.
-        bm25_field_weights: base.bm25_field_weights,
+        bm25_field_weights,
     })
 }
 
@@ -674,3 +746,140 @@ mod files_loaders {
 pub use files_loaders::{
     read_bytes, read_bytes_with, read_file, read_file_with, read_folder, read_folder_with,
 };
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn char_ngram_spec_parses_default_and_range() {
+        assert_eq!(parse_char_ngram_spec("char_ngram").unwrap(), (3, 5));
+        assert_eq!(parse_char_ngram_spec("char_ngram:2-4").unwrap(), (2, 4));
+        assert_eq!(parse_char_ngram_spec("char_ngram:3-3").unwrap(), (3, 3));
+    }
+
+    #[test]
+    fn char_ngram_spec_rejects_bad_ranges() {
+        assert!(parse_char_ngram_spec("char_ngram:5-3").is_err()); // min > max
+        assert!(parse_char_ngram_spec("char_ngram:0-3").is_err()); // min < 1
+        assert!(parse_char_ngram_spec("char_ngram:x-3").is_err()); // non-integer
+        assert!(parse_char_ngram_spec("char_ngram:3").is_err()); // missing range
+        assert!(parse_char_ngram_spec("char_ngram3-5").is_err()); // missing colon
+    }
+
+    #[test]
+    fn language_char_ngram_selects_the_subword_analyzer() {
+        let o = LoadOptions {
+            language: Some("char_ngram".into()),
+            ..Default::default()
+        };
+        let cfg = doc_config(&o, RetrievalMode::Lexical).unwrap();
+        assert_eq!(cfg.context.analyzer.name(), "char_ngram_3_5");
+
+        let o = LoadOptions {
+            language: Some("char_ngram:2-4".into()),
+            ..Default::default()
+        };
+        let cfg = doc_config(&o, RetrievalMode::Lexical).unwrap();
+        assert_eq!(cfg.context.analyzer.name(), "char_ngram_2_4");
+    }
+
+    #[test]
+    fn language_still_routes_raw_and_snowball_and_rejects_unknown() {
+        let raw = doc_config(
+            &LoadOptions {
+                language: Some("raw".into()),
+                ..Default::default()
+            },
+            RetrievalMode::Lexical,
+        )
+        .unwrap();
+        assert_eq!(raw.context.analyzer.name(), "raw");
+
+        let en = doc_config(
+            &LoadOptions {
+                language: Some("english".into()),
+                ..Default::default()
+            },
+            RetrievalMode::Lexical,
+        )
+        .unwrap();
+        assert_eq!(en.context.analyzer.name(), "english");
+
+        assert!(doc_config(
+            &LoadOptions {
+                language: Some("klingon".into()),
+                ..Default::default()
+            },
+            RetrievalMode::Lexical,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn bm25_field_weights_option_builds_and_validates() {
+        // Default (None) is uniform.
+        let cfg = doc_config(&LoadOptions::default(), RetrievalMode::Lexical).unwrap();
+        assert!(cfg.bm25_field_weights.is_uniform());
+
+        // A 3-vec maps to [text, source, heading].
+        let cfg = doc_config(
+            &LoadOptions {
+                bm25_field_weights: Some(vec![1.0, 1.0, 2.0]),
+                ..Default::default()
+            },
+            RetrievalMode::Lexical,
+        )
+        .unwrap();
+        assert_eq!(cfg.bm25_field_weights.text, 1.0);
+        assert_eq!(cfg.bm25_field_weights.source, 1.0);
+        assert_eq!(cfg.bm25_field_weights.heading, 2.0);
+
+        // Wrong arity errors rather than silently truncating.
+        for bad in [vec![1.0, 1.0], vec![1.0, 1.0, 2.0, 3.0], vec![]] {
+            assert!(doc_config(
+                &LoadOptions {
+                    bm25_field_weights: Some(bad),
+                    ..Default::default()
+                },
+                RetrievalMode::Lexical,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn char_ngram_via_load_path_recovers_a_typo_word_token_misses() {
+        // End-to-end: the string option drives the retriever, so a brand typo
+        // that token-exact BM25 zeroes is recovered through the load path.
+        let docs = vec![
+            "lays classic salted potato chips".to_string(),
+            "kurkure masala munch namkeen".to_string(),
+            "bingo mad angles tomato".to_string(),
+        ];
+        let mut raw = chunks(
+            docs.clone(),
+            &LoadOptions {
+                language: Some("raw".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut ng = chunks(
+            docs,
+            &LoadOptions {
+                language: Some("char_ngram".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let raw_hit = raw.context("1ays").unwrap().text().contains("lays");
+        let ng_hit = ng.context("1ays").unwrap().text().contains("lays");
+        assert!(!raw_hit, "word-token analyzer should miss the typo'd brand");
+        assert!(
+            ng_hit,
+            "char_ngram analyzer should recover the typo'd brand"
+        );
+    }
+}

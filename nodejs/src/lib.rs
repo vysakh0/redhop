@@ -71,8 +71,11 @@ pub struct Options {
     /// `"finnish"`, `"french"`, `"german"`, `"greek"`, `"hungarian"`,
     /// `"italian"`, `"norwegian"`, `"portuguese"`, `"romanian"`,
     /// `"russian"`, `"spanish"`, `"swedish"`, `"tamil"`, `"turkish"` —
-    /// the 18 Snowball Porter2 languages. Unknown strings ERROR (no
-    /// silent fallback to English; a typo'd `"germann"` surfaces).
+    /// the 18 Snowball Porter2 languages — plus `"raw"`/`"none"` (the
+    /// minimal no-stemming pipeline) and `"char_ngram"` (the subword typo /
+    /// short-token tier, optionally `"char_ngram:MIN-MAX"` like
+    /// `"char_ngram:2-4"`). Unknown strings ERROR (no silent fallback to
+    /// English; a typo'd `"germann"` surfaces).
     pub language: Option<String>,
     /// Preserve source-document order of selected chunks instead of the
     /// strategy's relevance order. Useful for chat histories / transcripts
@@ -90,6 +93,14 @@ pub struct Options {
     /// context. Default `true`. See
     /// `docs/findings/PROSE_HEADING_DEFAULT.md` for the measurement.
     pub prose_heading_default: Option<bool>,
+    /// Per-field BM25 query boosts as `[text, source, heading]` (exactly 3
+    /// values). Omit for the equal-weight default (bit-for-bit). A domain
+    /// lever for near-duplicate / title-heavy corpora: boost the field
+    /// carrying the discriminating token. Not a universal win — a boost on a
+    /// field the near-duplicates share is inert, and over-boosting starves
+    /// recall. Sweep with your own eval. See `docs/CHOOSING_A_CONFIG.md` and
+    /// `docs/findings/CATALOG_REGIME.md`.
+    pub bm25_field_weights: Option<Vec<f64>>,
 }
 
 impl Options {
@@ -117,6 +128,9 @@ impl Options {
             preserve_order: self.preserve_order,
             code_neighbors_default: u(self.code_neighbors_default),
             prose_heading_default: self.prose_heading_default,
+            bm25_field_weights: self
+                .bm25_field_weights
+                .map(|w| w.into_iter().map(|x| x as f32).collect()),
         }
     }
 }

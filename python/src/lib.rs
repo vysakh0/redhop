@@ -805,6 +805,14 @@ fn to_py<T>(r: redhop::core::Result<T>) -> PyResult<T> {
 /// ```python
 /// opts = redhop.DocumentOptions(retrieval="hybrid", language="german")
 /// doc = redhop.Document.from_text(text, options=opts)
+///
+/// # Catalog regime (short, noisy, near-duplicate corpus):
+/// #   language="char_ngram"  -> subword typo tier (also "char_ngram:2-4")
+/// #   bm25_field_weights=[text, source, heading]  -> per-field BM25 boosts
+/// catalog = redhop.DocumentOptions(
+///     language="char_ngram",
+///     bm25_field_weights=[1.0, 1.0, 2.0],
+/// )
 /// ```
 #[pyclass(name = "DocumentOptions")]
 #[derive(Default, Clone)]
@@ -838,6 +846,7 @@ impl PyDocumentOptions {
         preserve_order = None,
         code_neighbors_default = None,
         prose_heading_default = None,
+        bm25_field_weights = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn py_new(
@@ -862,6 +871,7 @@ impl PyDocumentOptions {
         preserve_order: Option<bool>,
         code_neighbors_default: Option<usize>,
         prose_heading_default: Option<bool>,
+        bm25_field_weights: Option<Vec<f32>>,
     ) -> Self {
         Self {
             inner: redhop::LoadOptions {
@@ -886,6 +896,7 @@ impl PyDocumentOptions {
                 preserve_order,
                 code_neighbors_default,
                 prose_heading_default,
+                bm25_field_weights,
             },
         }
     }

@@ -134,3 +134,45 @@ def test_all_18_snowball_builtins_accepted(language):
     # Just need it to round-trip without raising.
     ctx = doc.context("fox")
     assert isinstance(ctx.text(), str)
+
+
+# ── Char-ngram subword tier + per-field BM25 weights (catalog regime) ──────
+
+
+def _catalog_corpus():
+    return [
+        redhop.Chunk("lays classic salted potato chips", id="lays"),
+        redhop.Chunk("kurkure masala munch namkeen", id="kurkure"),
+        redhop.Chunk("bingo mad angles tomato", id="bingo"),
+    ]
+
+
+def test_char_ngram_recovers_a_transcription_typo():
+    """`language="char_ngram"` recovers a brand typo (`lays` -> `1ays`) that
+    the word-token analyzer scores at zero. Pins the string -> CharNgramAnalyzer
+    mapping at the pyo3 boundary."""
+    raw = redhop.Document.from_chunks(_catalog_corpus(), options=redhop.DocumentOptions(language="raw"))
+    ng = redhop.Document.from_chunks(_catalog_corpus(), options=redhop.DocumentOptions(language="char_ngram"))
+    assert "lays" not in raw.context("1ays").text(), "word-token analyzer should miss the typo'd brand"
+    assert "lays" in ng.context("1ays").text(), "char_ngram should recover the typo'd brand"
+
+
+def test_char_ngram_range_spec_is_accepted():
+    """The `char_ngram:MIN-MAX` tuning form round-trips through the binding."""
+    doc = redhop.Document.from_chunks(_catalog_corpus(), options=redhop.DocumentOptions(language="char_ngram:2-4"))
+    assert "lays" in doc.context("1ays").text()
+
+
+def test_bm25_field_weights_accepted_and_arity_validated():
+    """A 3-vector `[text, source, heading]` is accepted; a wrong-arity vector
+    raises at the boundary rather than silently truncating."""
+    doc = redhop.Document.from_chunks(
+        _catalog_corpus(),
+        options=redhop.DocumentOptions(bm25_field_weights=[1.0, 1.0, 2.0]),
+    )
+    assert doc.context("chips").text()  # builds + retrieves under non-uniform weights
+    with pytest.raises(Exception):
+        redhop.Document.from_chunks(
+            _catalog_corpus(),
+            options=redhop.DocumentOptions(bm25_field_weights=[1.0, 1.0]),
+        )

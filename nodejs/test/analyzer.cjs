@@ -108,4 +108,39 @@ for (const language of ALL_18) {
   assert.ok(typeof ctx.text === "string", `language="${language}" should round-trip`);
 }
 
-console.log(`✓ node analyzer tests passed (${4 + 2 + ALL_18.length} assertions)`);
+// ── Char-ngram subword tier + per-field BM25 weights (catalog regime) ─────
+//
+// Pins the string -> CharNgramAnalyzer mapping and the bm25FieldWeights
+// option at the napi boundary.
+const catalogCorpus = () => [
+  new Chunk("lays classic salted potato chips"),
+  new Chunk("kurkure masala munch namkeen"),
+  new Chunk("bingo mad angles tomato"),
+];
+
+// language="char_ngram" recovers a brand typo ("lays" -> "1ays") that the
+// word-token analyzer scores at zero.
+{
+  const raw = Document.fromChunks(catalogCorpus(), { language: "raw" }).context("1ays");
+  const ng = Document.fromChunks(catalogCorpus(), { language: "char_ngram" }).context("1ays");
+  assert.ok(!raw.text.includes("lays"), "word-token analyzer should miss the typo'd brand");
+  assert.ok(ng.text.includes("lays"), "char_ngram should recover the typo'd brand");
+}
+
+// The "char_ngram:MIN-MAX" tuning form round-trips.
+{
+  const ctx = Document.fromChunks(catalogCorpus(), { language: "char_ngram:2-4" }).context("1ays");
+  assert.ok(ctx.text.includes("lays"), "char_ngram:2-4 should recover the typo'd brand");
+}
+
+// Per-field BM25 weights: a 3-vector is accepted; wrong arity throws.
+{
+  const ctx = Document.fromChunks(catalogCorpus(), { bm25FieldWeights: [1.0, 1.0, 2.0] }).context("chips");
+  assert.ok(ctx.text.length > 0, "field-weighted retrieval should build + retrieve");
+  assert.throws(
+    () => Document.fromChunks(catalogCorpus(), { bm25FieldWeights: [1.0, 1.0] }),
+    "wrong-arity bm25FieldWeights should throw",
+  );
+}
+
+console.log(`✓ node analyzer tests passed (${4 + 2 + ALL_18.length + 5} assertions)`);

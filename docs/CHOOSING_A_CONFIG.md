@@ -129,7 +129,14 @@ token-exact BM25. A dense model does not rescue a 1 to 2 token query either (see
 [findings/SEMANTIC_ZERO_DEP.md](findings/SEMANTIC_ZERO_DEP.md), the 0.56 ceiling).
 The lever is subword lexical matching with no model.
 
+```python
+# Python / Node: select it with the analyzer string option (also
+# "char_ngram:2-4" to tune the gram range).
+doc = redhop.Document.from_text(catalog, options=redhop.DocumentOptions(language="char_ngram"))
+```
+
 ```rust
+// Rust: select the analyzer directly.
 use std::sync::Arc;
 use redhop::analyzer::CharNgramAnalyzer;
 use redhop::retrieval::Bm25Retriever;
@@ -168,12 +175,21 @@ default, which is the measured default for prose
 near-duplicate catalog you can boost the field that carries the discriminating
 token.
 
+```python
+# Python / Node: pass the three weights as [text, source, heading].
+doc = redhop.Document.from_text(
+    catalog,
+    options=redhop.DocumentOptions(bm25_field_weights=[1.0, 1.0, 2.0]),
+)
+# Node: { bm25FieldWeights: [1.0, 1.0, 2.0] }
+```
+
 ```rust
+// Rust: on the retriever, or via DocumentConfig.bm25_field_weights.
 use redhop::retrieval::{Bm25Retriever, FieldWeights};
 
 let retriever = Bm25Retriever::new()?
     .with_field_weights(FieldWeights { text: 1.0, source: 1.0, heading: 2.0 });
-// On a Document: set DocumentConfig.bm25_field_weights instead.
 ```
 
 A weight of 1.0 is the exact default (it is skipped before it reaches the index),
