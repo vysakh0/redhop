@@ -220,6 +220,7 @@ doc = redhop.Document.from_file("support.md",
 | Code, API refs, runbooks, handbooks, financials, folders | `Document.from_file(path).context(q)` |
 | A contract with regional overrides / near-duplicate parallel clauses | `... retrieval="hybrid", model="bge-small"` + `context(q, include_heading=True, neighbors=1)` |
 | HR / support corpora where queries use very different words than the docs | `... rerank="cross-encoder"` (verify; adds 5-10x latency) |
+| A catalog / parts list with short, noisy (typo'd) queries | `... language="char_ngram"` (subword typo tier, no model); score disambiguation with `evaluate(..., gold_families=...)` -> `set_coverage`. See https://www.redhopai.com/guides/retrieval-for-catalogs/ |
 
 ---
 
@@ -244,6 +245,8 @@ Retrieval (index-time):
 | `rerank` | `None` | `"cross-encoder"` to add a second-stage reranker (slow, narrow usefulness) |
 | `candidate_pool` | `50` | how many BM25 candidates to dense-rerank in hybrid mode |
 | `candidate_k` | `20` | how many chunks to consider at assembly time |
+| `language` | `None` (raw) | lexical analyzer: a Snowball language (`"english"`, `"german"`, ...), `"raw"`/`"none"`, or `"char_ngram"` (subword typo tier for short noisy tokens, also `"char_ngram:2-4"`). Drives BM25 + grounding. |
+| `bm25_field_weights` | `[1,1,1]` | per-field BM25 boosts `[text, source, heading]` (Node: `bm25FieldWeights`). Default equal = bit-for-bit current behavior. A domain lever for near-duplicate catalogs; a boost on a field the duplicates share is inert, so sweep don't assume. |
 | `embedder_*` | various | full embedder customization (model/tokenizer paths, dim, pooling, prefixes) -- see source for details |
 
 Assembly defaults (per-call overridable):

@@ -183,6 +183,28 @@ Static-embedding rerankers do **not** beat the free corpus-graph tier.
 → Evidence: [SEMANTIC_ZERO_DEP.md](findings/SEMANTIC_ZERO_DEP.md),
 [DENSE_RERANK_CEILING.md](findings/DENSE_RERANK_CEILING.md).
 
+### 12. Short, noisy tokens are a lexical problem: char-ngram, not dense
+When queries are short and noisy (2 to 5 token product references, dealer orders,
+voice/OCR transcripts where `lays` arrives as `1ays`), the gap is *lexical*, not
+semantic. Dense does not help (it cannot rescue a 1 to 2 token query, the ~0.56
+ceiling above applies). The lever is subword lexical matching with **no model**:
+`language="char_ngram"` (also `"char_ngram:MIN-MAX"`). On brand-typo'd queries it
+held early precision ~0.98 where word-BM25 fell to ~0.10.
+→ **Caveat:** a recall booster, not a drop-in. Its clean set-coverage erodes at
+scale (it reranks the near-duplicates word-BM25 leaves tied), so pair it with
+word-BM25 rather than replacing it. → [CATALOG_REGIME.md](findings/CATALOG_REGIME.md).
+
+### 13. For set-valued queries, measure whole-set coverage, and sweep field weights honestly
+A catalog query maps to a *set* (all variants of a product), and `recall@k`
+against a single gold hides a half-retrieved family (a `recall@20` of 1.000 can
+sit on top of 0.25 strict set-coverage). Score it with `EvalGold::AllOf` /
+`gold_families` → `set_coverage`, and optimize *that*. Per-field BM25 weights
+(`bm25_field_weights = [text, source, heading]`) are a domain lever, but a boost
+on a field the near-duplicates *share* is inert (a measured null). A boost helps
+only when the boosted field separates the answer from its near-duplicates, so
+sweep on a held-out set and keep it only if set-coverage rises.
+→ [CATALOG_REGIME.md](findings/CATALOG_REGIME.md), `docs/CHOOSING_A_CONFIG.md`.
+
 ---
 
 ## Measure what you did (observability > cleverness)
@@ -217,6 +239,8 @@ Useful fields on the report: `strategy`, `total_tokens`, `n_input_chunks` →
 | `token_budget` | — | hard cap on assembled tokens | set to your prompt budget |
 | `distractor_min_grounding` | `0.10` | grounding bar below which a chunk is "junk" | keep low, raising it risks the second-hop tax |
 | `link_min_jaccard` | `0.12` | linkage at/above which a low-relevance chunk is rescued as a second hop | lower to rescue more aggressively |
+| `language` | raw (no stem) | the lexical analyzer: a Snowball language, `"raw"`/`"none"`, or `"char_ngram"` (subword typo tier) | `"char_ngram"` for short, noisy, near-duplicate corpora (tip 12) |
+| `bm25_field_weights` | equal (`[1,1,1]`) | per-field BM25 boosts `[text, source, heading]` | a near-duplicate catalog where one field discriminates, sweep don't assume (tip 13) |
 
 ---
 
