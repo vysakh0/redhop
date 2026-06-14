@@ -330,9 +330,8 @@ pub fn parse_score(text: &str) -> Result<f32> {
             break;
         }
     }
-    let start = start.ok_or_else(|| {
-        Error::Other(format!("judge response has no numeric content: {text:?}"))
-    })?;
+    let start = start
+        .ok_or_else(|| Error::Other(format!("judge response has no numeric content: {text:?}")))?;
     let n: f32 = stripped[start..end]
         .parse()
         .map_err(|e| Error::Other(format!("judge response parse failed ({e}): {text:?}")))?;
@@ -356,8 +355,8 @@ pub fn parse_score(text: &str) -> Result<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     fn stub_judge<F>(f: F) -> CallableJudge<F>
     where
@@ -437,7 +436,11 @@ mod tests {
         let r1 = j.score(&req).unwrap();
         let r2 = j.score(&req).unwrap();
         // Inner judge called once; second call served from cache.
-        assert_eq!(counter.load(Ordering::SeqCst), 1, "second call must hit cache");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "second call must hit cache"
+        );
         assert_eq!(r1.score, r2.score);
         assert_eq!(j.hits(), 1);
         assert_eq!(j.misses(), 1);
@@ -487,7 +490,10 @@ mod tests {
             })
             .unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("boom"), "underlying error should propagate: {msg}");
+        assert!(
+            msg.contains("boom"),
+            "underlying error should propagate: {msg}"
+        );
     }
 
     #[test]

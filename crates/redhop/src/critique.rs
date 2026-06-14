@@ -310,7 +310,10 @@ mod tests {
         );
         let score = report.get("harmfulness").expect("scored");
         // 1.0 - 0.9 = 0.1
-        assert!((score - 0.1).abs() < 1e-5, "expected inverted ≈ 0.1, got {score}");
+        assert!(
+            (score - 0.1).abs() < 1e-5,
+            "expected inverted ≈ 0.1, got {score}"
+        );
     }
 
     #[test]
@@ -358,7 +361,10 @@ mod tests {
             &judge,
         );
         assert!(report.get("a").is_some());
-        assert!(report.scores[1].1.is_none(), "b should be None on transient error");
+        assert!(
+            report.scores[1].1.is_none(),
+            "b should be None on transient error"
+        );
         assert!(report.get("c").is_some());
     }
 
@@ -390,10 +396,22 @@ mod tests {
             &judge,
         );
         let prompt = captured.lock().expect("lock").clone();
-        assert!(prompt.contains("QUERY_TOKEN"), "query must appear in prompt");
-        assert!(prompt.contains("CTX_TOKEN"), "context must appear in prompt");
-        assert!(prompt.contains("ANSWER_TOKEN"), "answer must appear in prompt");
-        assert!(prompt.contains("Some property"), "aspect definition must appear");
+        assert!(
+            prompt.contains("QUERY_TOKEN"),
+            "query must appear in prompt"
+        );
+        assert!(
+            prompt.contains("CTX_TOKEN"),
+            "context must appear in prompt"
+        );
+        assert!(
+            prompt.contains("ANSWER_TOKEN"),
+            "answer must appear in prompt"
+        );
+        assert!(
+            prompt.contains("Some property"),
+            "aspect definition must appear"
+        );
     }
 
     #[test]

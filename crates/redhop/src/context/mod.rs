@@ -580,9 +580,7 @@ impl ContextReport {
                 } else {
                     String::new()
                 };
-                s.push_str(&format!(
-                    "  Zero-match query terms: {listed}{suffix}\n"
-                ));
+                s.push_str(&format!("  Zero-match query terms: {listed}{suffix}\n"));
             }
             for h in &d.hints {
                 s.push_str(&format!("  - {}\n", h.message));

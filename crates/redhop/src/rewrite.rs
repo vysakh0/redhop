@@ -246,12 +246,8 @@ impl Stripper {
         let original_tokens = self.analyzer.tokens(query);
         let stripped_tokens = self.analyzer.tokens(&result.text);
 
-        let matched_set: std::collections::HashSet<&str> = result
-            .record
-            .matched
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
+        let matched_set: std::collections::HashSet<&str> =
+            result.record.matched.iter().map(|s| s.as_str()).collect();
         let mut removed_terms = Vec::new();
         let mut unused_boilerplate = Vec::new();
         for form in &self.surface_forms {

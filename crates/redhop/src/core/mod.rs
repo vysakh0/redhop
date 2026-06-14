@@ -13,9 +13,7 @@ pub mod traits;
 pub mod types;
 
 pub use error::{Error, Result};
-pub use traits::{
-    Chunker, EmbeddingProvider, Reranker, Retriever, TokenizerBackend, VectorIndex,
-};
+pub use traits::{Chunker, EmbeddingProvider, Reranker, Retriever, TokenizerBackend, VectorIndex};
 pub use types::{
     Chunk, ChunkId, ChunkMetadata, Document, Embedding, Query, RetrievalMethod, RetrievalResult,
     Score, ScoreBreakdown, Sentence, TokenCount,

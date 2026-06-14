@@ -48,8 +48,7 @@ impl<E: EmbeddingProvider> CachedEmbedder<E> {
     pub fn new(inner: E, capacity: usize) -> Self {
         // `capacity.max(1)` guarantees nonzero so `NonZeroUsize::new` is
         // total — pattern match it to keep the construction infallible.
-        let cap = NonZeroUsize::new(capacity.max(1))
-            .expect("capacity.max(1) is at least 1");
+        let cap = NonZeroUsize::new(capacity.max(1)).expect("capacity.max(1) is at least 1");
         Self {
             inner,
             cache: Mutex::new(LruCache::new(cap)),

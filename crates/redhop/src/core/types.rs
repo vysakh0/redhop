@@ -313,4 +313,3 @@ impl RetrievalResult {
         }
     }
 }
-

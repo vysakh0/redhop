@@ -192,11 +192,7 @@ fn evaluate_hints(d: &mut Diagnosis, low_confidence: bool) {
         && (d.empty_context || low_confidence)
     {
         let share = d.zero_match_terms.len() as f32 / n_terms as f32;
-        if share >= VOCAB_MISMATCH_MIN_SHARE {
-            true
-        } else {
-            false
-        }
+        share >= VOCAB_MISMATCH_MIN_SHARE
     } else {
         false
     };
@@ -234,11 +230,10 @@ fn evaluate_hints(d: &mut Diagnosis, low_confidence: bool) {
     if low_confidence && !d.empty_context && !h2_fired {
         d.hints.push(DiagnosisHint {
             code: HintCode::LowConfidence,
-            message:
-                "Every selected chunk is at or below the grounding bar. \
+            message: "Every selected chunk is at or below the grounding bar. \
                  Retrieval matched something, but weakly. \
                  Check diagnosis.term_stats to see which terms carried the match."
-                    .to_string(),
+                .to_string(),
             evidence: EVIDENCE_CHOOSING_A_CONFIG.to_string(),
         });
     }
@@ -785,7 +780,6 @@ fn hint_code_label(c: HintCode) -> &'static str {
         HintCode::LowConfidence => "low_confidence",
         HintCode::LowDiscriminationQuery => "low_discrimination_query",
         HintCode::UnderdeterminedQuery => "underdetermined_query",
-        _ => "unknown",
     }
 }
 
@@ -797,7 +791,6 @@ fn focus_code_label(c: FocusCode) -> &'static str {
         FocusCode::TemplatedQueries => "templated_queries",
         FocusCode::UnderdeterminedQueries => "underdetermined_queries",
         FocusCode::WeakRetrieval => "weak_retrieval",
-        _ => "unknown",
     }
 }
 
@@ -976,10 +969,8 @@ mod tests {
                 )
             })
             .collect();
-        reports.extend(
-            (0..15)
-                .map(|_| make_report(diagnosis_with(vec![], vec!["zanzibar"]), false)),
-        );
+        reports
+            .extend((0..15).map(|_| make_report(diagnosis_with(vec![], vec!["zanzibar"]), false)));
 
         let summary = summarize_diagnoses(&reports);
         assert_eq!(summary.n, 25);

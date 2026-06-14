@@ -170,4 +170,3 @@ pub trait Reranker: Send + Sync {
     /// Human-readable name, used in diagnostics.
     fn name(&self) -> &'static str;
 }
-

@@ -298,8 +298,10 @@ impl Retriever for LocalRerankRetriever {
         let target = top_k.max(1);
         let mut out: Vec<RetrievalResult> = dense.into_iter().take(target).collect();
         if out.len() < target {
-            let in_out: std::collections::HashSet<String> =
-                out.iter().map(|r| r.chunk.id.as_str().to_string()).collect();
+            let in_out: std::collections::HashSet<String> = out
+                .iter()
+                .map(|r| r.chunk.id.as_str().to_string())
+                .collect();
             for c in cand.iter() {
                 if out.len() >= target {
                     break;

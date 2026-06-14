@@ -35,8 +35,11 @@ const CORPUS: &[&str] = &[
 
 /// Stand-in for "your existing retriever". Word overlap, top-k.
 fn external_search(query: &str, k: usize) -> Vec<&'static str> {
-    let q_terms: std::collections::HashSet<String> =
-        query.to_lowercase().split_whitespace().map(String::from).collect();
+    let q_terms: std::collections::HashSet<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     let mut scored: Vec<(i32, &'static str)> = CORPUS
         .iter()
         .map(|text| {
