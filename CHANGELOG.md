@@ -5,6 +5,48 @@ All notable changes to RedHop are recorded here. The format follows
 versioning policy in [docs/API_STABILITY.md](docs/API_STABILITY.md) (0.x alpha:
 minor releases may break; breaking changes are noted here).
 
+## [Unreleased]
+
+**Catalog-regime levers (all additive, zero default change).** Re-derived an
+external short-query / high-cardinality / near-duplicate regime on a redhop rig
+([docs/findings/CATALOG_REGIME.md](docs/findings/CATALOG_REGIME.md)) and shipped
+only what the measurement supported. The char-ngram tier and the set-coverage
+metric earned their place; the per-field-weight set-coverage *lift* did not
+replicate and is recorded as a null with the knob shipped anyway.
+
+### Added
+
+- **`analyzer::CharNgramAnalyzer`** — a subword (character n-gram) analyzer, the
+  model-free typo / short-token tier. Recovers transcription-noised tokens that
+  token-exact BM25 scores at zero (`lays` vs `1ays` still share grams). Behind
+  the existing `Analyzer` trait. Document it as a recall booster for a hybrid,
+  not a drop-in (its clean set-coverage erodes at scale because it reranks the
+  near-duplicates word-BM25 leaves tied). New
+  `Analyzer::union_subword_query()` (default `false`) controls whether a
+  multi-token query word is run as a bag-of-terms union (OR) instead of a phrase.
+- **`EvalGold::AllOf(&[&[&str]])` + `EvalReport::set_coverage`** (and
+  `EvalSummary::mean_set_coverage` / `n_with_set_coverage`) — strict
+  variant-family coverage, the fraction of families *fully* present in the
+  context. Catches the disambiguation failure a single-gold `context_recall`
+  hides (a healthy recall@k while a whole variant family is un-offerable).
+  Surfaced in the Python (`gold_families=`) and Node (`goldFamilies`) bindings.
+- **`retrieval::FieldWeights` + `Bm25Retriever::with_field_weights(...)` +
+  `DocumentConfig::bm25_field_weights`** — per-field BM25 query boosts
+  (`text` / `source` / `heading`). **Default `FieldWeights::uniform()` is
+  bit-for-bit the equal-weight behavior** (a `1.0` weight is skipped before it
+  reaches Tantivy). A domain lever for near-duplicate / title-heavy corpora, not
+  a universal win. The set-coverage lift was an exact null on the synthetic
+  catalog (a boost on a field the near-duplicates share is inert), so equal weight
+  stays the default and the guidance is "sweep on your own eval" (see
+  CATALOG_REGIME Panel D).
+- **`crates/examples/examples/catalog_regime_probe.rs`** — the hermetic,
+  deterministic rig behind the finding.
+- Guidance: a "When your corpus is a catalog, not prose" section in
+  [docs/CHOOSING_A_CONFIG.md](docs/CHOOSING_A_CONFIG.md) (the typo tier, corpus
+  size as an axis, choosing field weights with the cliff guardrail, measuring
+  whole sets), and [docs/findings/FACET_FILTER_SOFT.md](docs/findings/FACET_FILTER_SOFT.md)
+  (the soft-filter rule for if/when a metadata filter is built — no code today).
+
 ## [0.4.0] — 2026-06-13
 
 **Architecture cleanup + Python API breaking change.** Two changes worth

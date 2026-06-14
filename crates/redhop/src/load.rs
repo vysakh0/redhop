@@ -240,6 +240,9 @@ fn doc_config(o: &LoadOptions, mode: RetrievalMode) -> Result<DocumentConfig> {
         prose_heading_default: o
             .prose_heading_default
             .unwrap_or(base.prose_heading_default),
+        // Field weights are a Rust-API lever (DocumentConfig / Bm25Retriever);
+        // the string-options load path inherits the equal-weight default.
+        bm25_field_weights: base.bm25_field_weights,
     })
 }
 

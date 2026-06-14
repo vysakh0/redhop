@@ -1007,6 +1007,12 @@ pub struct EvaluateOptions {
     pub answer: Option<String>,
     /// IDs of chunks that should appear in the assembled context.
     pub gold_chunks: Option<Vec<String>>,
+    /// Variant families for the disambiguation / multi-answer case: each
+    /// inner array is one family whose chunks must ALL be retrieved for the
+    /// family to count as covered. Unlocks `setCoverage` (and, over the
+    /// union of every family, `contextRecall` / `contextPrecision`). Takes
+    /// precedence over `goldChunks` when both are supplied.
+    pub gold_families: Option<Vec<Vec<String>>>,
     /// Ground-truth answer text.
     pub gold_answer: Option<String>,
     /// **Opt-in**: compute `faithfulness_judged` via two-pass claim
@@ -1039,6 +1045,11 @@ pub struct EvalReport {
     /// Fraction of stemmed content terms in the gold answer that appear in
     /// the assembled context. `null` unless `goldAnswer` was supplied.
     pub answer_token_recall: Option<f64>,
+    /// Fraction of variant families fully present in the assembled context
+    /// (strict set-coverage — every chunk of the family retrieved). `null`
+    /// unless `goldFamilies` was supplied. Catches the silent failure where
+    /// a family is half-retrieved and so cannot be offered for disambiguation.
+    pub set_coverage: Option<f64>,
     /// Sentence-level token-overlap proxy for faithfulness: fraction of
     /// the answer's sentences with at least half their content terms in
     /// the assembled context. **Lexical proxy, NOT real faithfulness** —
@@ -1134,6 +1145,7 @@ pub fn evaluate(
     let opts = options.unwrap_or(EvaluateOptions {
         answer: None,
         gold_chunks: None,
+        gold_families: None,
         gold_answer: None,
         decompose_faithfulness: None,
         decompose_correctness: None,
@@ -1143,15 +1155,19 @@ pub fn evaluate(
         .gold_chunks
         .as_ref()
         .map(|v| v.iter().map(|s| s.as_str()).collect());
-    let gold = match (chunk_refs.as_deref(), opts.gold_answer.as_deref()) {
-        (None, None) => redhop::EvalGold::None,
-        (Some(c), None) => redhop::EvalGold::Chunks(c),
-        (None, Some(a)) => redhop::EvalGold::Answer(a),
-        (Some(c), Some(a)) => redhop::EvalGold::Both {
-            gold_chunk_ids: c,
-            gold_answer: a,
-        },
-    };
+    let family_refs: Option<Vec<Vec<&str>>> = opts.gold_families.as_ref().map(|fams| {
+        fams.iter()
+            .map(|f| f.iter().map(|s| s.as_str()).collect())
+            .collect()
+    });
+    let family_slices: Option<Vec<&[&str]>> = family_refs
+        .as_ref()
+        .map(|fams| fams.iter().map(|f| f.as_slice()).collect());
+    let gold = build_gold(
+        chunk_refs.as_deref(),
+        family_slices.as_deref(),
+        opts.gold_answer.as_deref(),
+    );
     // Sync evaluate intentionally passes `None` for the judge — JS
     // callbacks can't safely fire during a sync napi call. Use
     // `evaluateWithJudge` (async) for judged metrics; the
@@ -1168,11 +1184,35 @@ pub fn evaluate(
     eval_report_from_rust(r)
 }
 
+/// Build a borrowed `EvalGold` from the binding's optional inputs. Variant
+/// families (`AllOf`) take precedence over flat `goldChunks` when both are
+/// present. The borrowed slices must outlive the returned value, so callers
+/// keep `chunk_refs` / `family_slices` alive in their own scope.
+fn build_gold<'a>(
+    chunk_refs: Option<&'a [&'a str]>,
+    family_slices: Option<&'a [&'a [&'a str]]>,
+    gold_answer: Option<&'a str>,
+) -> redhop::EvalGold<'a> {
+    if let Some(fs) = family_slices {
+        return redhop::EvalGold::AllOf(fs);
+    }
+    match (chunk_refs, gold_answer) {
+        (None, None) => redhop::EvalGold::None,
+        (Some(c), None) => redhop::EvalGold::Chunks(c),
+        (None, Some(a)) => redhop::EvalGold::Answer(a),
+        (Some(c), Some(a)) => redhop::EvalGold::Both {
+            gold_chunk_ids: c,
+            gold_answer: a,
+        },
+    }
+}
+
 fn eval_report_from_rust(r: redhop::EvalReport) -> EvalReport {
     EvalReport {
         context_recall: r.context_recall.map(|v| v as f64),
         context_precision: r.context_precision.map(|v| v as f64),
         answer_token_recall: r.answer_token_recall.map(|v| v as f64),
+        set_coverage: r.set_coverage.map(|v| v as f64),
         faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f64),
         relevancy_lexical: r.relevancy_lexical.map(|v| v as f64),
         correctness_lexical: r.correctness_lexical.map(|v| v as f64),
@@ -1201,6 +1241,7 @@ fn eval_report_to_rust(r: &EvalReport) -> redhop::EvalReport {
         context_recall: r.context_recall.map(|v| v as f32),
         context_precision: r.context_precision.map(|v| v as f32),
         answer_token_recall: r.answer_token_recall.map(|v| v as f32),
+        set_coverage: r.set_coverage.map(|v| v as f32),
         faithfulness_lexical: r.faithfulness_lexical.map(|v| v as f32),
         relevancy_lexical: r.relevancy_lexical.map(|v| v as f32),
         correctness_lexical: r.correctness_lexical.map(|v| v as f32),
@@ -1438,8 +1479,7 @@ pub struct WorkloadFocusJs {
 
 #[napi]
 pub fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
-    let inner_reports: Vec<redhop::EvalReport> =
-        reports.iter().map(eval_report_to_rust).collect();
+    let inner_reports: Vec<redhop::EvalReport> = reports.iter().map(eval_report_to_rust).collect();
     let s = redhop::summarize(&inner_reports);
     EvalSummary {
         n: s.n as u32,
@@ -1454,6 +1494,8 @@ pub fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
         n_with_context_precision: s.n_with_context_precision as u32,
         mean_answer_token_recall: s.mean_answer_token_recall.map(|v| v as f64),
         n_with_answer_token_recall: s.n_with_answer_token_recall as u32,
+        mean_set_coverage: s.mean_set_coverage.map(|v| v as f64),
+        n_with_set_coverage: s.n_with_set_coverage as u32,
         mean_faithfulness_lexical: s.mean_faithfulness_lexical.map(|v| v as f64),
         n_with_faithfulness_lexical: s.n_with_faithfulness_lexical as u32,
         mean_relevancy_lexical: s.mean_relevancy_lexical.map(|v| v as f64),
@@ -1494,6 +1536,10 @@ pub struct EvalSummary {
     pub n_with_context_recall: u32,
     pub mean_context_precision: Option<f64>,
     pub n_with_context_precision: u32,
+    /// Mean `setCoverage` over reports that supplied `goldFamilies`.
+    pub mean_set_coverage: Option<f64>,
+    /// Number of reports where `setCoverage` was populated.
+    pub n_with_set_coverage: u32,
     pub mean_answer_token_recall: Option<f64>,
     pub n_with_answer_token_recall: u32,
     pub mean_faithfulness_lexical: Option<f64>,
@@ -1583,10 +1629,7 @@ impl Judge {
         // `err` (null on success); the actual prompt/system args are
         // shifted to positions 1 and 2. JS-side helpers can wrap this
         // shape ergonomically — see `Judge.fromCallable` docs.
-        callable: ThreadsafeFunction<
-            (String, Option<String>),
-            ErrorStrategy::CalleeHandled,
-        >,
+        callable: ThreadsafeFunction<(String, Option<String>), ErrorStrategy::CalleeHandled>,
         name: Option<String>,
     ) -> Self {
         let name = name.unwrap_or_else(|| "callable".to_string());
@@ -1609,9 +1652,7 @@ impl Judge {
                 // path) or a string return (raw LLM text — needed by the
                 // claim-decomposition extraction call, where the
                 // judge response is a list of claims rather than a score).
-                let future = cb_tsfn.call_async::<Either<f64, String>>(
-                    Ok((prompt, system)),
-                );
+                let future = cb_tsfn.call_async::<Either<f64, String>>(Ok((prompt, system)));
                 let handle = tokio::runtime::Handle::current();
                 let value = handle.block_on(future).map_err(|e| {
                     redhop::core::Error::Other(format!(
@@ -1686,6 +1727,7 @@ pub async fn evaluate_with_judge(
     let opts = options.unwrap_or(EvaluateOptions {
         answer: None,
         gold_chunks: None,
+        gold_families: None,
         gold_answer: None,
         decompose_faithfulness: None,
         decompose_correctness: None,
@@ -1698,22 +1740,32 @@ pub async fn evaluate_with_judge(
             .gold_chunks
             .as_ref()
             .map(|v| v.iter().map(|s| s.as_str()).collect());
-        let gold = match (chunk_refs.as_deref(), opts.gold_answer.as_deref()) {
-            (None, None) => redhop::EvalGold::None,
-            (Some(c), None) => redhop::EvalGold::Chunks(c),
-            (None, Some(a)) => redhop::EvalGold::Answer(a),
-            (Some(c), Some(a)) => redhop::EvalGold::Both {
-                gold_chunk_ids: c,
-                gold_answer: a,
-            },
-        };
-        let judge_ref: Option<&dyn redhop::judge::Judge> =
-            Some(judge_inner.as_ref());
+        let family_refs: Option<Vec<Vec<&str>>> = opts.gold_families.as_ref().map(|fams| {
+            fams.iter()
+                .map(|f| f.iter().map(|s| s.as_str()).collect())
+                .collect()
+        });
+        let family_slices: Option<Vec<&[&str]>> = family_refs
+            .as_ref()
+            .map(|fams| fams.iter().map(|f| f.as_slice()).collect());
+        let gold = build_gold(
+            chunk_refs.as_deref(),
+            family_slices.as_deref(),
+            opts.gold_answer.as_deref(),
+        );
+        let judge_ref: Option<&dyn redhop::judge::Judge> = Some(judge_inner.as_ref());
         let config = redhop::EvalConfig {
             decompose_faithfulness: opts.decompose_faithfulness.unwrap_or(false),
             decompose_correctness: opts.decompose_correctness.unwrap_or(false),
         };
-        redhop::evaluate(&q, &ctx_inner, opts.answer.as_deref(), gold, judge_ref, config)
+        redhop::evaluate(
+            &q,
+            &ctx_inner,
+            opts.answer.as_deref(),
+            gold,
+            judge_ref,
+            config,
+        )
     })
     .await
     .map_err(|e| napi::Error::from_reason(format!("evaluate join: {e}")))?;

@@ -104,6 +104,24 @@ pub trait Analyzer: Send + Sync + std::fmt::Debug {
         }
         out
     }
+
+    /// When a single query word analyzes into multiple tokens, should the
+    /// [`crate::retrieval::Bm25Retriever`] combine them as a bag-of-terms
+    /// **union (OR)** rather than the default ordered **phrase (AND-at-slot)**?
+    ///
+    /// Default `false` is the standard Tantivy `QueryParser` behavior, which
+    /// is correct for word pipelines: the word and CamelCase analyzers emit
+    /// one token per word (or same-position synonyms that should *all* be
+    /// present), so a phrase is right.
+    ///
+    /// Subword analyzers like [`CharNgramAnalyzer`] override to `true`: a
+    /// transcription typo only shares *some* character grams with the clean
+    /// token, so the grams must OR (any shared gram contributes BM25 score),
+    /// never AND (which a single typo would always break). Has no effect on
+    /// analyzers that emit at most one token per query word.
+    fn union_subword_query(&self) -> bool {
+        false
+    }
 }
 
 // ── SnowballAnalyzer ────────────────────────────────────────────────────────
@@ -357,6 +375,87 @@ impl Analyzer for RawAnalyzer {
 
     fn build_text_analyzer(&self) -> TextAnalyzer {
         crate::retrieval::build_raw_pipeline()
+    }
+}
+
+// ── CharNgramAnalyzer ───────────────────────────────────────────────────────
+
+/// Character n-gram analyzer: a **subword, model-free typo / short-token
+/// tier**. Tokenizes into overlapping character n-grams (length `n_min..=n_max`)
+/// of the lowercased, space-collapsed, space-padded text, so a token survives
+/// transcription noise that token-exact BM25 scores at zero (`"lays"` vs
+/// `"1ays"` still share `"ays"`, `"ays "`). No stemmer, no stopwords, no
+/// model — a better fit for the zero-dependency ethos than dense ONNX when the
+/// failure is *lexical* (short noisy tokens) rather than *semantic*
+/// (paraphrase). See `docs/findings/SEMANTIC_ZERO_DEP.md` for why dense can't
+/// rescue a 1-2 token query.
+///
+/// **This is a recall booster, not a drop-in retriever.** On a large
+/// near-duplicate corpus the dense gram vocabulary collides and recall
+/// *inverts* — char-ngram wins early precision at small scale but collapses on
+/// the recall floor at large scale, while word-BM25 holds (measured in
+/// `docs/findings/CATALOG_REGIME.md`). Position it in a hybrid with
+/// word-BM25 (char-ngram for recall, word-BM25 for precision), never alone.
+///
+/// The default `(3, 5)` matches the catalog-regime evidence. The grams drive
+/// BOTH BM25 retrieval and the grounding scorer (via the default
+/// [`Analyzer::tokens`]), so the two layers stay in lockstep — but note that
+/// char-gram grounding is higher-recall / lower-precision than word grounding,
+/// which can inflate evidence density. Measure on your workload.
+///
+/// ```rust,no_run
+/// # use std::sync::Arc;
+/// use redhop::analyzer::{Analyzer, CharNgramAnalyzer};
+/// let a: Arc<dyn Analyzer> = Arc::new(CharNgramAnalyzer::default());
+/// ```
+#[derive(Clone, Debug)]
+pub struct CharNgramAnalyzer {
+    n_min: usize,
+    n_max: usize,
+    // The Tantivy tokenizer-registration key. Encodes the gram range so that
+    // two CharNgramAnalyzers with different ranges register distinct
+    // tokenizers on the same index rather than silently aliasing.
+    name: String,
+}
+
+impl CharNgramAnalyzer {
+    /// Construct a char n-gram analyzer over gram lengths `n_min..=n_max`.
+    ///
+    /// # Panics
+    /// Panics if `n_min == 0` or `n_min > n_max` — a degenerate gram range.
+    pub fn new(n_min: usize, n_max: usize) -> Self {
+        assert!(
+            n_min >= 1 && n_min <= n_max,
+            "CharNgramAnalyzer requires 1 <= n_min <= n_max, got ({n_min}, {n_max})"
+        );
+        Self {
+            n_min,
+            n_max,
+            name: format!("char_ngram_{n_min}_{n_max}"),
+        }
+    }
+}
+
+impl Default for CharNgramAnalyzer {
+    /// `(3, 5)` — the gram range the catalog-regime evidence used.
+    fn default() -> Self {
+        Self::new(3, 5)
+    }
+}
+
+impl Analyzer for CharNgramAnalyzer {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn build_text_analyzer(&self) -> TextAnalyzer {
+        crate::retrieval::build_char_ngram_pipeline(self.n_min, self.n_max)
+    }
+
+    fn union_subword_query(&self) -> bool {
+        // A typo'd token shares only some grams with the clean token, so the
+        // grams must OR, not phrase-AND. See the trait method's note.
+        true
     }
 }
 
@@ -804,6 +903,60 @@ mod tests {
             out
         };
         assert_eq!(direct, via_analyzer);
+    }
+
+    #[test]
+    fn char_ngram_tokens_and_build_agree() {
+        // Same parity contract as Snowball: grounding (tokens) and BM25
+        // (build_text_analyzer) must see identical grams.
+        let a = CharNgramAnalyzer::default();
+        let text = "Lay's Chips 20";
+        let direct = a.tokens(text);
+        let via_analyzer = {
+            let mut ta = a.build_text_analyzer();
+            let mut stream = ta.token_stream(text);
+            let mut out = Vec::new();
+            while stream.advance() {
+                out.push(stream.token().text.to_string());
+            }
+            out
+        };
+        assert_eq!(direct, via_analyzer);
+        assert!(!direct.is_empty());
+    }
+
+    #[test]
+    fn char_ngram_shares_grams_across_a_one_char_transcription_typo() {
+        // The whole point of the tier: a typo that zeroes token-exact overlap
+        // still shares subword grams, so BM25 over the grams scores a match.
+        let a = CharNgramAnalyzer::new(3, 4);
+        let clean: std::collections::HashSet<String> = a.tokens("lays").into_iter().collect();
+        let typo: std::collections::HashSet<String> = a.tokens("1ays").into_iter().collect();
+        let shared = clean.intersection(&typo).count();
+        assert!(
+            shared >= 2,
+            "a one-char typo must still share subword grams; clean={clean:?} typo={typo:?}"
+        );
+        // The registration key encodes the gram range so distinct ranges don't
+        // alias on the same index.
+        assert_eq!(a.name(), "char_ngram_3_4");
+        assert_ne!(a.name(), CharNgramAnalyzer::default().name());
+    }
+
+    #[test]
+    fn char_ngram_pads_word_boundaries() {
+        // Padding makes a leading/trailing subword a first-class gram, so a
+        // boundary token still matches.
+        let a = CharNgramAnalyzer::new(3, 3);
+        let toks = a.tokens("lay");
+        assert!(
+            toks.iter().any(|t| t == " la"),
+            "leading boundary gram present: {toks:?}"
+        );
+        assert!(
+            toks.iter().any(|t| t == "ay "),
+            "trailing boundary gram present: {toks:?}"
+        );
     }
 
     /// Smoke every advertised Snowball builtin. Catches: (a) a missing

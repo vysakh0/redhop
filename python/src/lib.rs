@@ -22,11 +22,11 @@ use redhop::core::{
     Chunk, ChunkId, Embedding, Query, RetrievalMethod, RetrievalResult, Score, ScoreBreakdown,
     TokenCount,
 };
+use redhop::critique::{Aspect as RhAspect, CritiqueInputs};
 use redhop::document::Document as RhDocument;
 use redhop::judge::{
     CachedJudge as RhCachedJudge, CallableJudge, Judge as RhJudge, JudgeRequest, JudgeResponse,
 };
-use redhop::critique::{Aspect as RhAspect, CritiqueInputs};
 
 /// Thin forwarder over [`redhop::strategy_from_str`] — the canonical
 /// string→enum mapping lives in the Rust crate so every binding shares it
@@ -112,6 +112,11 @@ fn py_to_json(v: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
 
 /// Inverse of [`py_to_json`]: convert a `serde_json::Value` back to a
 /// Python object for the metadata getter.
+// pyo3 0.23 deprecated `IntoPy`/`into_py` in favor of `IntoPyObject`. The
+// `into_py` path still works; the migration is its own (binding-wide) task and
+// is tracked separately, so allow the deprecation here rather than do a risky
+// partial port. See https://pyo3.rs/v0.23.0/migration.
+#[allow(deprecated)]
 fn json_to_py(py: Python<'_>, v: &serde_json::Value) -> PyResult<PyObject> {
     use pyo3::IntoPy;
     Ok(match v {
@@ -199,12 +204,8 @@ impl PyChunk {
         let tok = self
             .token_count
             .unwrap_or_else(|| self.text.split_whitespace().count().max(1));
-        let mut chunk = redhop::core::Chunk::new(
-            ChunkId::new(id),
-            self.text.clone(),
-            source,
-            TokenCount(tok),
-        );
+        let mut chunk =
+            redhop::core::Chunk::new(ChunkId::new(id), self.text.clone(), source, TokenCount(tok));
         chunk.metadata = self.metadata.clone();
         if let Some(e) = &self.embedding {
             chunk = chunk.with_embedding(Embedding::from(e.clone()));
@@ -949,7 +950,6 @@ impl PyFolderOptions {
     }
 }
 
-
 /// A document you reason over. Bring your own parser/OCR; RedHop owns chunking,
 /// internal retrieval, and reasoning-preserving context allocation. Retrieval is an
 /// internal detail — you think in documents and queries, not retrievers.
@@ -998,17 +998,12 @@ impl Document {
     /// PPTX, and XLSX.
     #[staticmethod]
     #[pyo3(signature = (path, *, options = None))]
-    fn from_file(
-        py: Python<'_>,
-        path: &str,
-        options: Option<PyDocumentOptions>,
-    ) -> PyResult<Self> {
+    fn from_file(py: Python<'_>, path: &str, options: Option<PyDocumentOptions>) -> PyResult<Self> {
         #[cfg(feature = "files")]
         {
             let path = path.to_string();
             let opts = options.unwrap_or_default().inner;
-            let inner =
-                py.allow_threads(|| to_py(redhop::read_file_with(&path, &opts)))?;
+            let inner = py.allow_threads(|| to_py(redhop::read_file_with(&path, &opts)))?;
             Ok(Self::single(inner))
         }
         #[cfg(not(feature = "files"))]
@@ -1042,9 +1037,8 @@ impl Document {
         {
             let source = source.to_string();
             let opts = options.unwrap_or_default().inner;
-            let inner = py.allow_threads(|| {
-                to_py(redhop::read_bytes_with(&data, &source, &opts))
-            })?;
+            let inner =
+                py.allow_threads(|| to_py(redhop::read_bytes_with(&data, &source, &opts)))?;
             Ok(Self::single(inner))
         }
         #[cfg(not(feature = "files"))]
@@ -1068,17 +1062,12 @@ impl Document {
     /// recursive default.
     #[staticmethod]
     #[pyo3(signature = (path, *, options = None))]
-    fn from_folder(
-        py: Python<'_>,
-        path: &str,
-        options: Option<PyFolderOptions>,
-    ) -> PyResult<Self> {
+    fn from_folder(py: Python<'_>, path: &str, options: Option<PyFolderOptions>) -> PyResult<Self> {
         #[cfg(feature = "files")]
         {
             let path = path.to_string();
             let fo = options.unwrap_or_default().inner;
-            let inner =
-                py.allow_threads(|| to_py(redhop::read_folder_with(&path, &fo)))?;
+            let inner = py.allow_threads(|| to_py(redhop::read_folder_with(&path, &fo)))?;
             Ok(Self { inner })
         }
         #[cfg(not(feature = "files"))]
@@ -1307,6 +1296,9 @@ impl RewriteRecord {
         self.inner.stage.clone()
     }
     /// Input query handed to this stage.
+    // `from_query` is a pyo3 `#[getter]` for the field named `from`, not a
+    // constructor; renaming it would break the Python property name.
+    #[allow(clippy::wrong_self_convention)]
     #[getter]
     fn from_query(&self) -> String {
         self.inner.from.clone()
@@ -1454,10 +1446,8 @@ impl Vocabulary {
             .iter()
             .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
             .collect();
-        let final_refs: Vec<(&str, &[&str])> = borrowed
-            .iter()
-            .map(|(k, v)| (*k, v.as_slice()))
-            .collect();
+        let final_refs: Vec<(&str, &[&str])> =
+            borrowed.iter().map(|(k, v)| (*k, v.as_slice())).collect();
         Self {
             inner: redhop::Vocabulary::new(&final_refs),
         }
@@ -1472,10 +1462,8 @@ impl Vocabulary {
             .iter()
             .map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect()))
             .collect();
-        let final_refs: Vec<(&str, &[&str])> = borrowed
-            .iter()
-            .map(|(k, v)| (*k, v.as_slice()))
-            .collect();
+        let final_refs: Vec<(&str, &[&str])> =
+            borrowed.iter().map(|(k, v)| (*k, v.as_slice())).collect();
         Self {
             inner: redhop::Vocabulary::bidirectional(&final_refs),
         }
@@ -1658,10 +1646,7 @@ impl PyJudge {
     /// don't reappear as `claude-haiku` scores.
     #[staticmethod]
     #[pyo3(signature = (callable, name=None))]
-    fn from_callable(
-        callable: PyObject,
-        name: Option<String>,
-    ) -> PyResult<Self> {
+    fn from_callable(callable: PyObject, name: Option<String>) -> PyResult<Self> {
         let name = name.unwrap_or_else(|| "callable".to_string());
         let py_callable = std::sync::Arc::new(callable);
         let cb = py_callable.clone();
@@ -1704,9 +1689,7 @@ impl PyJudge {
                             ))
                         })?
                         .ok_or_else(|| {
-                            redhop::core::Error::Other(
-                                "python judge dict missing 'score'".into(),
-                            )
+                            redhop::core::Error::Other("python judge dict missing 'score'".into())
                         })?
                         .extract()
                         .map_err(|e| {
@@ -1733,7 +1716,8 @@ impl PyJudge {
                     });
                 }
                 Err(redhop::core::Error::Other(
-                    "python judge returned neither a float, a string, nor a dict with 'score'".into(),
+                    "python judge returned neither a float, a string, nor a dict with 'score'"
+                        .into(),
                 ))
             })
         });
@@ -1794,6 +1778,16 @@ impl EvalReport {
     #[getter]
     fn answer_token_recall(&self) -> Option<f32> {
         self.inner.answer_token_recall
+    }
+    /// Fraction of variant families fully present in the assembled context
+    /// (strict set-coverage — every chunk of the family retrieved). `None`
+    /// unless `gold_families=` was supplied. Where `context_recall` measures
+    /// "did I get any gold chunk", this measures "did I get a WHOLE family",
+    /// catching a half-retrieved family that cannot be offered for
+    /// disambiguation.
+    #[getter]
+    fn set_coverage(&self) -> Option<f32> {
+        self.inner.set_coverage
     }
     /// Sentence-level token-overlap proxy for faithfulness: fraction of the
     /// answer's sentences with at least half their content terms appearing
@@ -1960,14 +1954,16 @@ impl EvalReport {
 #[pyfunction]
 #[pyo3(signature = (
     query, context, *,
-    answer=None, gold_chunks=None, gold_answer=None, judge=None,
+    answer=None, gold_chunks=None, gold_families=None, gold_answer=None, judge=None,
     decompose_faithfulness=false, decompose_correctness=false,
 ))]
+#[allow(clippy::too_many_arguments)]
 fn evaluate(
     query: &str,
     context: &BuiltContext,
     answer: Option<&str>,
     gold_chunks: Option<Vec<String>>,
+    gold_families: Option<Vec<Vec<String>>>,
     gold_answer: Option<&str>,
     judge: Option<&PyJudge>,
     decompose_faithfulness: bool,
@@ -1978,14 +1974,28 @@ fn evaluate(
     let chunk_refs: Option<Vec<&str>> = gold_chunks
         .as_ref()
         .map(|v| v.iter().map(|s| s.as_str()).collect());
-    let gold = match (chunk_refs.as_deref(), gold_answer) {
-        (None, None) => redhop::EvalGold::None,
-        (Some(c), None) => redhop::EvalGold::Chunks(c),
-        (None, Some(a)) => redhop::EvalGold::Answer(a),
-        (Some(c), Some(a)) => redhop::EvalGold::Both {
-            gold_chunk_ids: c,
-            gold_answer: a,
-        },
+    // Variant families (the disambiguation / multi-answer case). Borrow down
+    // to &[&[&str]]; takes precedence over flat gold_chunks when supplied.
+    let family_refs: Option<Vec<Vec<&str>>> = gold_families.as_ref().map(|fams| {
+        fams.iter()
+            .map(|f| f.iter().map(|s| s.as_str()).collect())
+            .collect()
+    });
+    let family_slices: Option<Vec<&[&str]>> = family_refs
+        .as_ref()
+        .map(|fams| fams.iter().map(|f| f.as_slice()).collect());
+    let gold = if let Some(fs) = family_slices.as_deref() {
+        redhop::EvalGold::AllOf(fs)
+    } else {
+        match (chunk_refs.as_deref(), gold_answer) {
+            (None, None) => redhop::EvalGold::None,
+            (Some(c), None) => redhop::EvalGold::Chunks(c),
+            (None, Some(a)) => redhop::EvalGold::Answer(a),
+            (Some(c), Some(a)) => redhop::EvalGold::Both {
+                gold_chunk_ids: c,
+                gold_answer: a,
+            },
+        }
     };
     let judge_ref: Option<&dyn RhJudge> = judge.map(|j| j.inner.as_ref());
     let config = redhop::EvalConfig {
@@ -2078,6 +2088,14 @@ impl EvalSummary {
         self.inner.n_with_answer_token_recall
     }
     #[getter]
+    fn mean_set_coverage(&self) -> Option<f32> {
+        self.inner.mean_set_coverage
+    }
+    #[getter]
+    fn n_with_set_coverage(&self) -> usize {
+        self.inner.n_with_set_coverage
+    }
+    #[getter]
     fn mean_faithfulness_lexical(&self) -> Option<f32> {
         self.inner.mean_faithfulness_lexical
     }
@@ -2142,8 +2160,7 @@ impl EvalSummary {
 /// subset of reports where it was populated.
 #[pyfunction]
 fn summarize(reports: Vec<EvalReport>) -> EvalSummary {
-    let inner_reports: Vec<redhop::EvalReport> =
-        reports.into_iter().map(|r| r.inner).collect();
+    let inner_reports: Vec<redhop::EvalReport> = reports.into_iter().map(|r| r.inner).collect();
     EvalSummary {
         inner: redhop::summarize(&inner_reports),
     }

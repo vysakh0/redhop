@@ -15,7 +15,9 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use serde_json::Value as JsonValue;
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
+use tantivy::query::{
+    BooleanQuery, BoostQuery, Occur, Query as TantivyQuery, QueryParser, TermQuery,
+};
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, FAST, STORED, STRING,
 };
@@ -23,6 +25,7 @@ use tantivy::tokenizer::{
     AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer,
     StopWordFilter, TextAnalyzer, Token, TokenFilter, TokenStream, Tokenizer,
 };
+use tantivy::Term;
 use tantivy::{doc, Index, IndexReader, IndexWriter, TantivyDocument};
 
 const WRITER_HEAP_BYTES: usize = 64 * 1024 * 1024;
@@ -77,6 +80,57 @@ impl Schema_ {
     }
 }
 
+/// Per-field BM25 query boosts for the three searchable fields
+/// (`text` / `source` / `heading`).
+///
+/// The default ([`FieldWeights::uniform`], all `1.0`) reproduces the
+/// equal-weight behavior **bit-for-bit**: a boost of `1.0` is the identity
+/// (Tantivy multiplies the parser boost into the score), and the retriever
+/// skips the `set_field_boost` call entirely when a weight is `1.0`, so the
+/// default query path is literally unchanged.
+///
+/// Non-uniform weights are a **domain lever**, not a universal win. In a
+/// near-duplicate / title-heavy corpus (a product catalog, an API surface
+/// where the symbol name disambiguates) boosting the field that carries the
+/// discriminative token (often `heading`) lifts strict set-coverage; but
+/// over-boosting starves recall — the brand index is a lever, not free lift.
+/// Sweep on a held-out set with your own eval before shipping a weight. See
+/// `docs/findings/CATALOG_REGIME.md` and
+/// `docs/CHOOSING_A_CONFIG.md` (Choosing field weights).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FieldWeights {
+    /// Boost on the chunk body (`text`). Carries recall.
+    pub text: f32,
+    /// Boost on the source path (`source`).
+    pub source: f32,
+    /// Boost on the section heading / symbol name (`heading`). The usual
+    /// lever for near-duplicate variant families.
+    pub heading: f32,
+}
+
+impl FieldWeights {
+    /// All-`1.0` weights — bit-for-bit the equal-weight default behavior.
+    pub const fn uniform() -> Self {
+        Self {
+            text: 1.0,
+            source: 1.0,
+            heading: 1.0,
+        }
+    }
+
+    /// `true` when every weight is `1.0` (the default query path, no boosts
+    /// applied).
+    pub fn is_uniform(&self) -> bool {
+        self.text == 1.0 && self.source == 1.0 && self.heading == 1.0
+    }
+}
+
+impl Default for FieldWeights {
+    fn default() -> Self {
+        Self::uniform()
+    }
+}
+
 /// BM25 retriever over an in-memory Tantivy index.
 pub struct Bm25Retriever {
     inner: Arc<RwLock<Inner>>,
@@ -87,6 +141,15 @@ struct Inner {
     index: Index,
     writer: IndexWriter,
     reader: IndexReader,
+    field_weights: FieldWeights,
+    /// Registered analyzer name — used to fetch the query-side tokenizer for
+    /// the bag-of-grams (union) path.
+    analyzer_name: String,
+    /// When `true`, a query word that analyzes into multiple tokens is run as
+    /// a boolean union of per-token term queries instead of a phrase. Set from
+    /// [`crate::analyzer::Analyzer::union_subword_query`]. See
+    /// [`crate::analyzer::CharNgramAnalyzer`].
+    union_subword: bool,
 }
 
 /// Build redhop's standard analyzer pipeline as a Tantivy `TextAnalyzer`.
@@ -121,6 +184,25 @@ pub fn build_raw_pipeline() -> TextAnalyzer {
         .filter(AsciiFoldingFilter)
         .filter(LowerCaser)
         .build()
+}
+
+/// Build the character n-gram pipeline used by
+/// [`crate::analyzer::CharNgramAnalyzer`]: a [`CharNgramTokenizer`] that
+/// lowercases, collapses every run of non-`[a-z0-9]` characters to a single
+/// space, pads the result with a leading and trailing space, and emits every
+/// character n-gram of length `n_min..=n_max` over that normalized string.
+///
+/// The padding makes word-boundary grams (e.g. `" la"`, `"ys "`) first-class,
+/// so a leading or trailing subword still matches — the lever that recovers a
+/// transcription-typo'd token (`"lays"` vs `"1ays"` still share `"ays"`,
+/// `"ays "`) that token-exact BM25 scores at zero. No model, no dependency.
+///
+/// This is a recall booster for short, noisy tokens, NOT a drop-in retriever:
+/// at large near-duplicate corpus sizes the dense gram vocabulary collides and
+/// recall inverts (see `docs/findings/CATALOG_REGIME.md`). Position
+/// it in a hybrid with word-BM25, not standalone.
+pub fn build_char_ngram_pipeline(n_min: usize, n_max: usize) -> TextAnalyzer {
+    TextAnalyzer::builder(CharNgramTokenizer { n_min, n_max }).build()
 }
 
 impl Bm25Retriever {
@@ -161,8 +243,31 @@ impl Bm25Retriever {
                 index,
                 writer,
                 reader,
+                field_weights: FieldWeights::uniform(),
+                analyzer_name: analyzer.name().to_string(),
+                union_subword: analyzer.union_subword_query(),
             })),
         })
+    }
+
+    /// Set per-field query boosts (`text` / `source` / `heading`).
+    ///
+    /// Defaults to [`FieldWeights::uniform`] (all `1.0`), which is bit-for-bit
+    /// the equal-weight behavior. Pass non-uniform weights only when a
+    /// held-out sweep shows a lift on your workload — over-boosting starves
+    /// recall (see [`FieldWeights`]). Cheap to call: it only stores the
+    /// weights, applied at query time.
+    ///
+    /// ```no_run
+    /// # fn main() -> redhop::Result<()> {
+    /// use redhop::retrieval::{Bm25Retriever, FieldWeights};
+    /// let r = Bm25Retriever::new()?
+    ///     .with_field_weights(FieldWeights { text: 1.0, source: 1.0, heading: 2.0 });
+    /// # let _ = r; Ok(()) }
+    /// ```
+    pub fn with_field_weights(self, weights: FieldWeights) -> Self {
+        self.inner.write().field_weights = weights;
+        self
     }
 }
 
@@ -220,18 +325,6 @@ impl Retriever for Bm25Retriever {
             tokio::task::spawn_blocking(move || -> crate::core::Result<Vec<RetrievalResult>> {
                 let g = inner.read();
                 let searcher = g.reader.searcher();
-                // Search across all three analyzed fields. Equal weights — let
-                // BM25's TF-IDF settle the ranking rather than baking a prior
-                // (a heading-boost would, e.g., over-favor short headings on
-                // queries that aren't really about the heading).
-                let qp = QueryParser::for_index(
-                    &g.index,
-                    vec![
-                        g.schema.text_field,
-                        g.schema.source_field,
-                        g.schema.heading_field,
-                    ],
-                );
                 // Some queries reduce to nothing after the analyzer pipeline
                 // — `""`, `"   "`, `"!!!???"`, or `"the and is of"` (all
                 // stopwords) all produce a parse error from Tantivy ("Only
@@ -244,19 +337,81 @@ impl Retriever for Bm25Retriever {
                 if parsed_text.is_empty() {
                     return Ok(Vec::new());
                 }
-                let q = match qp.parse_query(&parsed_text) {
-                    Ok(q) => q,
-                    Err(e) => {
-                        let msg = e.to_string();
-                        if msg.contains("Only excluding terms") || msg.contains("empty query") {
-                            return Ok(Vec::new());
+                let fw = g.field_weights;
+                let fields = [
+                    g.schema.text_field,
+                    g.schema.source_field,
+                    g.schema.heading_field,
+                ];
+                let hits = if g.union_subword {
+                    // Bag-of-grams union path (subword analyzers such as
+                    // CharNgramAnalyzer). A query word here analyzes into many
+                    // character grams; the default QueryParser would fold them
+                    // into a phrase (AND-at-slot), which a transcription typo
+                    // always breaks (it shares only SOME grams). So OR every
+                    // gram across all three fields as Should clauses, scored by
+                    // BM25 — any shared gram contributes, partial overlap ranks.
+                    let mut analyzer =
+                        g.index.tokenizers().get(&g.analyzer_name).ok_or_else(|| {
+                            Error::Retrieval(format!(
+                                "tokenizer '{}' not registered",
+                                g.analyzer_name
+                            ))
+                        })?;
+                    let weights = [fw.text, fw.source, fw.heading];
+                    let mut clauses: Vec<(Occur, Box<dyn TantivyQuery>)> = Vec::new();
+                    let mut ts = analyzer.token_stream(&parsed_text);
+                    ts.process(&mut |tok| {
+                        for (fi, &field) in fields.iter().enumerate() {
+                            let term = Term::from_field_text(field, &tok.text);
+                            let tq: Box<dyn TantivyQuery> =
+                                Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs));
+                            let clause: Box<dyn TantivyQuery> = if weights[fi] != 1.0 {
+                                Box::new(BoostQuery::new(tq, weights[fi]))
+                            } else {
+                                tq
+                            };
+                            clauses.push((Occur::Should, clause));
                         }
-                        return Err(Error::Retrieval(format!("parse: {e}")));
+                    });
+                    if clauses.is_empty() {
+                        return Ok(Vec::new());
                     }
+                    let bq = BooleanQuery::new(clauses);
+                    searcher
+                        .search(&bq, &TopDocs::with_limit(top_k))
+                        .map_err(|e| Error::Retrieval(format!("search: {e}")))?
+                } else {
+                    // Default phrase path via the multi-field QueryParser. Equal
+                    // weights let BM25's TF-IDF settle the ranking rather than
+                    // baking a prior; a caller can override per field via
+                    // `with_field_weights` for near-duplicate / title-heavy
+                    // corpora (a weight of 1.0 is the identity and is skipped,
+                    // so the default path is bit-for-bit unchanged).
+                    let mut qp = QueryParser::for_index(&g.index, fields.to_vec());
+                    if fw.text != 1.0 {
+                        qp.set_field_boost(g.schema.text_field, fw.text);
+                    }
+                    if fw.source != 1.0 {
+                        qp.set_field_boost(g.schema.source_field, fw.source);
+                    }
+                    if fw.heading != 1.0 {
+                        qp.set_field_boost(g.schema.heading_field, fw.heading);
+                    }
+                    let q = match qp.parse_query(&parsed_text) {
+                        Ok(q) => q,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if msg.contains("Only excluding terms") || msg.contains("empty query") {
+                                return Ok(Vec::new());
+                            }
+                            return Err(Error::Retrieval(format!("parse: {e}")));
+                        }
+                    };
+                    searcher
+                        .search(&q, &TopDocs::with_limit(top_k))
+                        .map_err(|e| Error::Retrieval(format!("search: {e}")))?
                 };
-                let hits = searcher
-                    .search(&q, &TopDocs::with_limit(top_k))
-                    .map_err(|e| Error::Retrieval(format!("search: {e}")))?;
                 let mut out = Vec::with_capacity(hits.len());
                 for (score, address) in hits {
                     let d: TantivyDocument = searcher
@@ -430,6 +585,101 @@ impl<S: TokenStream> TokenStream for CamelCaseSplitterStream<S> {
             self.queued.push(t);
         }
         true
+    }
+
+    fn token(&self) -> &Token {
+        &self.current
+    }
+
+    fn token_mut(&mut self) -> &mut Token {
+        &mut self.current
+    }
+}
+
+/// Lowercase `text`, collapse every maximal run of non-`[a-z0-9]` characters
+/// to a single space, and pad with one leading + one trailing space. The
+/// output is pure ASCII (`a-z`, `0-9`, and single spaces), so a char index is
+/// also a byte offset. Mirrors the char-n-gram TF-IDF normalizer the
+/// catalog-regime evidence used (drops non-ASCII rather than folding it — the
+/// regime is transliterated/ASCII noise; fold upstream if you need accents).
+fn normalize_for_char_ngram(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push(' ');
+    let mut prev_space = true;
+    for ch in text.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            prev_space = false;
+        } else if !prev_space {
+            out.push(' ');
+            prev_space = true;
+        }
+    }
+    if !out.ends_with(' ') {
+        out.push(' ');
+    }
+    out
+}
+
+/// Tantivy tokenizer emitting character n-grams (length `n_min..=n_max`) over
+/// the normalized form of the input (see [`normalize_for_char_ngram`]). Used
+/// by [`build_char_ngram_pipeline`]. All grams share `position = 0` (matching
+/// Tantivy's own `NgramTokenizer`); offsets are byte ranges into the
+/// normalized string (used only for highlighting, never for BM25 scoring).
+#[derive(Clone)]
+struct CharNgramTokenizer {
+    n_min: usize,
+    n_max: usize,
+}
+
+struct CharNgramTokenStream {
+    tokens: Vec<Token>,
+    idx: usize,
+    current: Token,
+}
+
+impl Tokenizer for CharNgramTokenizer {
+    type TokenStream<'a> = CharNgramTokenStream;
+    fn token_stream<'a>(&'a mut self, text: &'a str) -> CharNgramTokenStream {
+        let norm = normalize_for_char_ngram(text);
+        // Pure ASCII after normalization, so byte length == char count and a
+        // char index is a valid byte offset.
+        let bytes = norm.as_bytes();
+        let len = bytes.len();
+        let mut tokens = Vec::new();
+        for n in self.n_min..=self.n_max {
+            if len < n {
+                continue;
+            }
+            for i in 0..=(len - n) {
+                let gram = &norm[i..i + n];
+                tokens.push(Token {
+                    offset_from: i,
+                    offset_to: i + n,
+                    position: 0,
+                    text: gram.to_string(),
+                    position_length: 1,
+                });
+            }
+        }
+        CharNgramTokenStream {
+            tokens,
+            idx: 0,
+            current: Token::default(),
+        }
+    }
+}
+
+impl TokenStream for CharNgramTokenStream {
+    fn advance(&mut self) -> bool {
+        if self.idx < self.tokens.len() {
+            self.current = self.tokens[self.idx].clone();
+            self.idx += 1;
+            true
+        } else {
+            false
+        }
     }
 
     fn token(&self) -> &Token {
@@ -782,6 +1032,138 @@ mod tests {
                 r3.iter().any(|h| h.chunk.id.as_str() == "camel"),
                 "the original camelCase identifier must still match itself; got {:?}",
                 r3.iter().map(|h| h.chunk.id.as_str()).collect::<Vec<_>>(),
+            );
+        });
+    }
+
+    #[test]
+    fn field_weights_uniform_is_bit_for_bit_the_default() {
+        // The zero-regression contract: FieldWeights::uniform() must produce
+        // exactly the same ranking AND scores as the no-weights default,
+        // because a boost of 1.0 is skipped entirely (never reaches Tantivy).
+        rt().block_on(async {
+            let chunks = [
+                mk("a", "rust is a systems programming language"),
+                mk("b", "python is a scripting language"),
+                mk("c", "go has built-in concurrency support"),
+            ];
+            let mut base = Bm25Retriever::new().unwrap();
+            base.index(&chunks).await.unwrap();
+            let mut uniform = Bm25Retriever::new()
+                .unwrap()
+                .with_field_weights(FieldWeights::uniform());
+            uniform.index(&chunks).await.unwrap();
+
+            for q in ["rust language", "python", "concurrency support"] {
+                let a = base.retrieve(&Query::new(q), 3).await.unwrap();
+                let b = uniform.retrieve(&Query::new(q), 3).await.unwrap();
+                let ids_a: Vec<_> = a.iter().map(|h| h.chunk.id.as_str()).collect();
+                let ids_b: Vec<_> = b.iter().map(|h| h.chunk.id.as_str()).collect();
+                assert_eq!(
+                    ids_a, ids_b,
+                    "uniform weights must match default order for {q:?}"
+                );
+                for (x, y) in a.iter().zip(b.iter()) {
+                    assert_eq!(
+                        x.score.value, y.score.value,
+                        "uniform weights must match default scores bit-for-bit for {q:?}"
+                    );
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn field_weights_heading_boost_changes_ranking() {
+        // A heavy heading boost lifts a chunk that matches only in its heading
+        // above a chunk that out-scores it on raw text-field term frequency —
+        // the near-duplicate-catalog lever (boost the field carrying the
+        // discriminative brand/title token).
+        rt().block_on(async {
+            let mut by_heading = Chunk::new("h", "generic filler words here", "doc", TokenCount(4));
+            by_heading
+                .metadata
+                .insert("heading".into(), serde_json::json!("acme"));
+            // High term frequency for "acme" in the body, nothing in heading.
+            let by_text = mk("t", "acme acme acme acme acme product line");
+
+            // Default weights: the high-TF text chunk wins.
+            let mut base = Bm25Retriever::new().unwrap();
+            base.index(&[by_heading.clone(), by_text.clone()])
+                .await
+                .unwrap();
+            let unboosted = base.retrieve(&Query::new("acme"), 2).await.unwrap();
+            assert_eq!(
+                unboosted[0].chunk.id.as_str(),
+                "t",
+                "without a boost the high-frequency text chunk ranks first; got {:?}",
+                unboosted
+                    .iter()
+                    .map(|h| h.chunk.id.as_str())
+                    .collect::<Vec<_>>(),
+            );
+
+            // Heavy heading boost flips it: the heading-matching chunk leads.
+            let mut boosted_r = Bm25Retriever::new()
+                .unwrap()
+                .with_field_weights(FieldWeights {
+                    text: 1.0,
+                    source: 1.0,
+                    heading: 20.0,
+                });
+            boosted_r.index(&[by_heading, by_text]).await.unwrap();
+            let boosted = boosted_r.retrieve(&Query::new("acme"), 2).await.unwrap();
+            assert_eq!(
+                boosted[0].chunk.id.as_str(),
+                "h",
+                "a heading boost must lift the heading-matching chunk to #1; got {:?}",
+                boosted
+                    .iter()
+                    .map(|h| h.chunk.id.as_str())
+                    .collect::<Vec<_>>(),
+            );
+        });
+    }
+
+    #[test]
+    fn char_ngram_analyzer_recovers_a_typo_word_bm25_misses() {
+        use std::sync::Arc;
+        rt().block_on(async {
+            let chunks = [
+                mk("lays", "lays classic salted potato chips"),
+                mk("kurkure", "kurkure masala munch namkeen"),
+                mk("bingo", "bingo mad angles tomato"),
+            ];
+
+            // Word-BM25 (default): a transcription-typo'd token (`lays` ->
+            // `1ays`) shares no whole token, so it cannot reach the chunk.
+            let mut word = Bm25Retriever::new().unwrap();
+            word.index(&chunks).await.unwrap();
+            let word_hits = word.retrieve(&Query::new("1ays"), 3).await.unwrap();
+            assert!(
+                word_hits.iter().all(|h| h.chunk.id.as_str() != "lays"),
+                "word-BM25 should miss the typo'd token (no exact overlap); got {:?}",
+                word_hits
+                    .iter()
+                    .map(|h| h.chunk.id.as_str())
+                    .collect::<Vec<_>>(),
+            );
+
+            // Char-ngram analyzer: subword grams bridge the typo, no model.
+            let mut ng = Bm25Retriever::with_analyzer(Arc::new(
+                crate::analyzer::CharNgramAnalyzer::default(),
+            ))
+            .unwrap();
+            ng.index(&chunks).await.unwrap();
+            let ng_hits = ng.retrieve(&Query::new("1ays"), 3).await.unwrap();
+            assert_eq!(
+                ng_hits[0].chunk.id.as_str(),
+                "lays",
+                "char-ngram must recover the typo'd token; got {:?}",
+                ng_hits
+                    .iter()
+                    .map(|h| h.chunk.id.as_str())
+                    .collect::<Vec<_>>(),
             );
         });
     }

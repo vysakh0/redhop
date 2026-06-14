@@ -35,6 +35,10 @@ path = "examples/ce_smoke.rs"
 required-features = ["onnx"]
 
 [[example]]
+name = "catalog_regime_probe"
+path = "examples/catalog_regime_probe.rs"
+
+[[example]]
 name = "chat_rag"
 path = "examples/chat_rag.rs"
 

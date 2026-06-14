@@ -126,14 +126,6 @@ fn claim_extraction_prompt(answer: &str) -> String {
     )
 }
 
-fn claim_verification_prompt(context: &str, claim: &str) -> String {
-    format!(
-        "CONTEXT:\n{context}\n\nCLAIM:\n{claim}\n\nIs the CLAIM supported by the CONTEXT? \
-         Reply with a single number from 0 (unsupported or contradicted) to 1 (fully \
-         supported). Reply with the number only."
-    )
-}
-
 /// Batched verification — score N claims in a single LLM call instead
 /// of N. The prompt asks for one line per claim in `N: SCORE` format;
 /// the parser is robust to commentary, missing lines, and number
@@ -406,7 +398,7 @@ fn parse_correctness_classification(
             }
         } else if tag.eq_ignore_ascii_case("FN") {
             // verdict is the reference-claim id, e.g. "R3".
-            let rest = verdict.trim_start_matches(|c: char| c == 'R' || c == 'r');
+            let rest = verdict.trim_start_matches(['R', 'r']);
             if let Ok(idx) = rest.parse::<usize>() {
                 if idx > 0 && idx <= n_gold {
                     gold_missed[idx - 1] = true;
@@ -415,7 +407,10 @@ fn parse_correctness_classification(
         }
     }
     let tp = answer_verdicts.iter().filter(|v| **v == Some(true)).count();
-    let fp = answer_verdicts.iter().filter(|v| **v == Some(false)).count();
+    let fp = answer_verdicts
+        .iter()
+        .filter(|v| **v == Some(false))
+        .count();
     let fn_ = gold_missed.iter().filter(|m| **m).count();
     (tp, fp, fn_)
 }
@@ -476,7 +471,8 @@ fn correctness_judged_decomposed(
         system: Some(CORRECTNESS_CLASSIFICATION_SYSTEM),
     };
     let text = judge.score(&classify_req).ok()?.raw_text;
-    let (tp, fp, fn_) = parse_correctness_classification(&text, answer_claims.len(), gold_claims.len());
+    let (tp, fp, fn_) =
+        parse_correctness_classification(&text, answer_claims.len(), gold_claims.len());
     Some((f_beta(tp, fp, fn_, 1.0), tp, fp, fn_))
 }
 
@@ -544,9 +540,7 @@ fn split_sentences(text: &str) -> Vec<&str> {
         // "U.S.A." or "3.14".
         let split_here = match c {
             b'\n' => true,
-            b'.' | b'?' | b'!' => {
-                i + 1 == bytes.len() || bytes[i + 1].is_ascii_whitespace()
-            }
+            b'.' | b'?' | b'!' => i + 1 == bytes.len() || bytes[i + 1].is_ascii_whitespace(),
             _ => false,
         };
         if split_here {
@@ -588,15 +582,12 @@ fn faithfulness_lexical_score(answer: &str, context_text: &str, analyzer: &dyn A
             continue;
         }
         let unique: HashSet<&str> = s_terms.iter().map(|s| s.as_str()).collect();
-        let overlap = unique
-            .iter()
-            .filter(|t| ctx_terms.contains(**t))
-            .count();
+        let overlap = unique.iter().filter(|t| ctx_terms.contains(**t)).count();
         // Majority rule: at least half the content terms must appear in
         // context. This is a deliberately loose bar — strict-equal would
         // miss any paraphrase; this catches "the answer mentions tokens
         // never in the context."
-        let threshold = (unique.len() + 1) / 2;
+        let threshold = unique.len().div_ceil(2);
         if overlap >= threshold {
             supported += 1;
         }
@@ -661,6 +652,20 @@ pub enum EvalGold<'a> {
         /// Same shape as `EvalGold::Answer(...)`.
         gold_answer: &'a str,
     },
+    /// N variant families. Each inner slice is one family whose chunks must
+    /// ALL appear in the assembled context for that family to count as
+    /// covered. Unlocks `set_coverage` (the fraction of families fully
+    /// present) and, treating the union of every family as a flat gold set,
+    /// `context_recall` / `context_precision`.
+    ///
+    /// This is the disambiguation / multi-answer case: a single query
+    /// legitimately maps to a *set* of chunks (all price or size variants of
+    /// a product, both evidence chains of a multi-hop question), and
+    /// `set_coverage` asks "did I retrieve a WHOLE family" — which a single
+    /// flat gold's `context_recall` cannot see (it scores 2-of-3 variants as
+    /// healthy 0.67 recall while the family is un-offerable). List at least
+    /// one chunk id per family; an empty family counts as vacuously covered.
+    AllOf(&'a [&'a [&'a str]]),
 }
 
 /// In-process evaluation report for a single (query, BuiltContext) pair.
@@ -685,6 +690,14 @@ pub struct EvalReport {
     /// uses, so a token reachable via stemming counts. `None` if no gold
     /// answer was provided.
     pub answer_token_recall: Option<f32>,
+    /// Fraction of *variant families* fully present in the assembled context
+    /// (every chunk of the family retrieved). The strict set-coverage metric
+    /// for disambiguation / multi-answer queries — `Some` only when the
+    /// caller passes [`EvalGold::AllOf`]. Where `context_recall` measures
+    /// "did I get *any* of the gold chunks", `set_coverage` measures "did I
+    /// get a *whole* family", catching the silent failure where a family is
+    /// half-retrieved and so cannot be offered to a user for disambiguation.
+    pub set_coverage: Option<f32>,
 
     // ── Lexical answer-quality metrics (deterministic proxies, no LLM) ──
     // Populated when the caller supplies the LLM's `answer` text. Token-
@@ -819,6 +832,7 @@ pub struct EvalReport {
 /// | `query`, `ctx` (always) | `mean_grounding`, `evidence_density`, `retained_evidence_ratio`, `second_hop_rescues`, `low_confidence`, `estimated_waste_tokens` |
 /// | `answer` ≠ `None` | `faithfulness_lexical`, `relevancy_lexical` |
 /// | `gold` contains chunks | `context_recall`, `context_precision` |
+/// | `gold` is `AllOf` families | `set_coverage`, `context_recall`, `context_precision` |
 /// | `gold` contains an answer | `answer_token_recall` |
 /// | `answer` + `gold` contains an answer | `correctness_lexical` |
 /// | `answer` + `judge` | `faithfulness_judged`, `relevancy_judged` |
@@ -858,24 +872,39 @@ pub fn evaluate(
     let estimated_waste_tokens = ctx.report.economics.estimated_waste_tokens;
 
     // ── Gold-relative metrics ──
-    let (gold_chunks, gold_answer) = match gold {
-        EvalGold::None => (None, None),
-        EvalGold::Chunks(ids) => (Some(ids), None),
-        EvalGold::Answer(a) => (None, Some(a)),
-        EvalGold::Both {
-            gold_chunk_ids,
-            gold_answer,
-        } => (Some(gold_chunk_ids), Some(gold_answer)),
+    let gold_answer: Option<&str> = match gold {
+        EvalGold::Answer(a) | EvalGold::Both { gold_answer: a, .. } => Some(a),
+        _ => None,
+    };
+    // Variant families, present only for `EvalGold::AllOf`. Drives set_coverage.
+    let gold_families: Option<&[&[&str]]> = match gold {
+        EvalGold::AllOf(fams) => Some(fams),
+        _ => None,
+    };
+    // Flat gold-chunk set: the listed chunks (`Chunks` / `Both`) or the union
+    // of every variant family (`AllOf`). Drives context_recall / precision so
+    // `AllOf` is a strict superset of `Chunks`.
+    let gold_chunk_set: Option<HashSet<&str>> = match gold {
+        EvalGold::Chunks(ids)
+        | EvalGold::Both {
+            gold_chunk_ids: ids,
+            ..
+        } => Some(ids.iter().copied().collect()),
+        EvalGold::AllOf(fams) => Some(fams.iter().flat_map(|f| f.iter().copied()).collect()),
+        EvalGold::None | EvalGold::Answer(_) => None,
     };
 
-    let (context_recall, context_precision) = match gold_chunks {
+    let selected_ids: HashSet<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
+
+    let (context_recall, context_precision) = match &gold_chunk_set {
         None => (None, None),
-        Some([]) => (Some(1.0), None),
+        // An explicitly-empty gold set means "no gold chunks to find", so
+        // recall is vacuously perfect and precision is undefined (no
+        // denominator that means anything).
+        Some(gold) if gold.is_empty() => (Some(1.0), None),
         Some(gold) => {
-            let gold_set: HashSet<&str> = gold.iter().copied().collect();
-            let selected_ids: HashSet<&str> = ctx.chunks.iter().map(|c| c.id.as_str()).collect();
-            let intersection = gold_set.intersection(&selected_ids).count();
-            let recall = intersection as f32 / gold_set.len() as f32;
+            let intersection = gold.intersection(&selected_ids).count();
+            let recall = intersection as f32 / gold.len() as f32;
             let precision = if selected_ids.is_empty() {
                 0.0
             } else {
@@ -884,6 +913,23 @@ pub fn evaluate(
             (Some(recall), Some(precision))
         }
     };
+
+    // set_coverage: fraction of variant families whose chunks are ALL present
+    // in the assembled context. The strict "did I fetch the WHOLE set" metric
+    // — a flat context_recall scores a family with 2 of its 3 variants present
+    // as a healthy 0.67, hiding that the family is un-offerable (you cannot
+    // ask the user to disambiguate among options you never retrieved). Only
+    // populated for `EvalGold::AllOf`.
+    let set_coverage = gold_families.map(|fams| {
+        if fams.is_empty() {
+            return 1.0;
+        }
+        let covered = fams
+            .iter()
+            .filter(|fam| fam.iter().all(|id| selected_ids.contains(id)))
+            .count();
+        covered as f32 / fams.len() as f32
+    });
 
     let answer_token_recall = gold_answer.map(|gold| {
         // Use the runtime's term-extraction primitive (Snowball-stemmed,
@@ -958,10 +1004,14 @@ pub fn evaluate(
                     None,
                 )
             };
-            let r = judge_score(j, RELEVANCY_SYSTEM, &relevancy_prompt(query.text.as_str(), a));
+            let r = judge_score(
+                j,
+                RELEVANCY_SYSTEM,
+                &relevancy_prompt(query.text.as_str(), a),
+            );
             let c = gold_answer.filter(|g| !g.trim().is_empty()).and_then(|g| {
                 if config.decompose_correctness {
-                    None  // populated separately via correctness_judged_decomposed below
+                    None // populated separately via correctness_judged_decomposed below
                 } else {
                     judge_score(j, CORRECTNESS_SYSTEM, &correctness_prompt(g, a))
                 }
@@ -974,13 +1024,9 @@ pub fn evaluate(
     // ── decomposed correctness (two-pass TP/FP/FN) ──
     let (correctness_judged, n_correctness_tp, n_correctness_fp, n_correctness_fn) =
         match (answer.filter(|a| !a.trim().is_empty()), judge, gold_answer) {
-            (Some(a), Some(j), Some(g))
-                if config.decompose_correctness && !g.trim().is_empty() =>
-            {
+            (Some(a), Some(j), Some(g)) if config.decompose_correctness && !g.trim().is_empty() => {
                 match correctness_judged_decomposed(j, a, g) {
-                    Some((score, tp, fp, fn_)) => {
-                        (Some(score), Some(tp), Some(fp), Some(fn_))
-                    }
+                    Some((score, tp, fp, fn_)) => (Some(score), Some(tp), Some(fp), Some(fn_)),
                     None => (None, None, None, None),
                 }
             }
@@ -1003,6 +1049,11 @@ pub fn evaluate(
     }
     if let Some(r) = answer_token_recall {
         add(r, 2.0);
+    }
+    if let Some(c) = set_coverage {
+        // Strict variant-family completeness — a recall-style signal, so
+        // weighted like context_recall.
+        add(c, 3.0);
     }
     // lexical answer-quality metrics weighted lighter than gold-relative
     // ones (they're lexical proxies, not direct correctness signals) but
@@ -1053,6 +1104,7 @@ pub fn evaluate(
         context_recall,
         context_precision,
         answer_token_recall,
+        set_coverage,
         faithfulness_lexical,
         relevancy_lexical,
         correctness_lexical,
@@ -1104,24 +1156,45 @@ pub struct EvalSummary {
     // many that was. The convention "None if zero present" lets callers
     // distinguish "all reports had 0 score" from "no reports had the
     // metric".
+    /// Mean `context_recall` over reports that had it (passed gold chunks).
     pub mean_context_recall: Option<f32>,
     /// Number of reports where `context_recall` was populated.
     pub n_with_context_recall: usize,
+    /// Mean `context_precision` over reports that had it (passed gold chunks).
     pub mean_context_precision: Option<f32>,
+    /// Number of reports where `context_precision` was populated.
     pub n_with_context_precision: usize,
+    /// Mean `answer_token_recall` over reports that had it (passed a gold answer).
     pub mean_answer_token_recall: Option<f32>,
+    /// Number of reports where `answer_token_recall` was populated.
     pub n_with_answer_token_recall: usize,
+    /// Mean `set_coverage` over reports that had it (passed `EvalGold::AllOf`).
+    pub mean_set_coverage: Option<f32>,
+    /// Number of reports where `set_coverage` was populated.
+    pub n_with_set_coverage: usize,
+    /// Mean `faithfulness_lexical` over reports that had it (passed an answer).
     pub mean_faithfulness_lexical: Option<f32>,
+    /// Number of reports where `faithfulness_lexical` was populated.
     pub n_with_faithfulness_lexical: usize,
+    /// Mean `relevancy_lexical` over reports that had it (passed an answer).
     pub mean_relevancy_lexical: Option<f32>,
+    /// Number of reports where `relevancy_lexical` was populated.
     pub n_with_relevancy_lexical: usize,
+    /// Mean `correctness_lexical` over reports that had it (answer + gold answer).
     pub mean_correctness_lexical: Option<f32>,
+    /// Number of reports where `correctness_lexical` was populated.
     pub n_with_correctness_lexical: usize,
+    /// Mean `faithfulness_judged` over reports that had it (answer + judge).
     pub mean_faithfulness_judged: Option<f32>,
+    /// Number of reports where `faithfulness_judged` was populated.
     pub n_with_faithfulness_judged: usize,
+    /// Mean `relevancy_judged` over reports that had it (answer + judge).
     pub mean_relevancy_judged: Option<f32>,
+    /// Number of reports where `relevancy_judged` was populated.
     pub n_with_relevancy_judged: usize,
+    /// Mean `correctness_judged` over reports that had it (answer + gold + judge).
     pub mean_correctness_judged: Option<f32>,
+    /// Number of reports where `correctness_judged` was populated.
     pub n_with_correctness_judged: usize,
 }
 
@@ -1148,6 +1221,8 @@ pub fn summarize(reports: &[EvalReport]) -> EvalSummary {
             n_with_context_precision: 0,
             mean_answer_token_recall: None,
             n_with_answer_token_recall: 0,
+            mean_set_coverage: None,
+            n_with_set_coverage: 0,
             mean_faithfulness_lexical: None,
             n_with_faithfulness_lexical: 0,
             mean_relevancy_lexical: None,
@@ -1166,10 +1241,8 @@ pub fn summarize(reports: &[EvalReport]) -> EvalSummary {
     let n_f = n as f32;
     let mean_overall: f32 = reports.iter().map(|r| r.overall).sum::<f32>() / n_f;
     let mean_grounding: f32 = reports.iter().map(|r| r.mean_grounding).sum::<f32>() / n_f;
-    let mean_evidence_density: f32 =
-        reports.iter().map(|r| r.evidence_density).sum::<f32>() / n_f;
-    let low_confidence_rate: f32 =
-        reports.iter().filter(|r| r.low_confidence).count() as f32 / n_f;
+    let mean_evidence_density: f32 = reports.iter().map(|r| r.evidence_density).sum::<f32>() / n_f;
+    let low_confidence_rate: f32 = reports.iter().filter(|r| r.low_confidence).count() as f32 / n_f;
 
     // Median of overall — sort a copy.
     let mut overalls: Vec<f32> = reports.iter().map(|r| r.overall).collect();
@@ -1207,6 +1280,7 @@ pub fn summarize(reports: &[EvalReport]) -> EvalSummary {
         mean_of_some(reports, |r| r.context_precision);
     let (mean_answer_token_recall, n_with_answer_token_recall) =
         mean_of_some(reports, |r| r.answer_token_recall);
+    let (mean_set_coverage, n_with_set_coverage) = mean_of_some(reports, |r| r.set_coverage);
     let (mean_faithfulness_lexical, n_with_faithfulness_lexical) =
         mean_of_some(reports, |r| r.faithfulness_lexical);
     let (mean_relevancy_lexical, n_with_relevancy_lexical) =
@@ -1233,6 +1307,8 @@ pub fn summarize(reports: &[EvalReport]) -> EvalSummary {
         n_with_context_precision,
         mean_answer_token_recall,
         n_with_answer_token_recall,
+        mean_set_coverage,
+        n_with_set_coverage,
         mean_faithfulness_lexical,
         n_with_faithfulness_lexical,
         mean_relevancy_lexical,
@@ -1287,7 +1363,14 @@ mod tests {
             "refund window",
             &[rr("a", "the refund window is thirty days")],
         );
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            None,
+            EvalGold::None,
+            None,
+            EvalConfig::default(),
+        );
         assert!(r.context_recall.is_none());
         assert!(r.context_precision.is_none());
         assert!(r.answer_token_recall.is_none());
@@ -1314,7 +1397,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Chunks(&["hit1", "hit2"]),
-        None,
+            None,
             EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(1.0));
@@ -1343,6 +1426,72 @@ mod tests {
     }
 
     #[test]
+    fn set_coverage_full_when_every_family_present() {
+        let ctx = build(
+            "chips",
+            &[
+                rr("a1", "acme chips salted 20"),
+                rr("a2", "acme chips salted 50"),
+                rr("b1", "acme chips spicy 20"),
+                rr("b2", "acme chips spicy 50"),
+            ],
+        );
+        let r = evaluate(
+            &Query::new("acme chips"),
+            &ctx,
+            None,
+            EvalGold::AllOf(&[&["a1", "a2"], &["b1", "b2"]]),
+            None,
+            EvalConfig::default(),
+        );
+        assert_eq!(r.set_coverage, Some(1.0));
+        // AllOf is a strict superset of Chunks — recall/precision over the union.
+        assert_eq!(r.context_recall, Some(1.0));
+    }
+
+    #[test]
+    fn set_coverage_is_strict_a_half_retrieved_family_counts_as_uncovered() {
+        // This is the headline: flat context_recall looks healthy (0.75) while
+        // a WHOLE variant family is un-offerable. set_coverage catches it.
+        let ctx = build(
+            "chips",
+            &[
+                rr("a1", "acme chips salted 20"),
+                rr("a2", "acme chips salted 50"),
+                rr("b1", "acme chips spicy 20"),
+                // b2 ("acme chips spicy 50") was never retrieved.
+            ],
+        );
+        let r = evaluate(
+            &Query::new("acme chips"),
+            &ctx,
+            None,
+            EvalGold::AllOf(&[&["a1", "a2"], &["b1", "b2"]]),
+            None,
+            EvalConfig::default(),
+        );
+        // Family A fully present, family B half present -> 1 of 2 families covered.
+        assert_eq!(r.set_coverage, Some(0.5));
+        // Yet 3 of the 4 union chunks are present, so flat recall reads 0.75 —
+        // exactly the deceptively-healthy number set_coverage exists to expose.
+        assert_eq!(r.context_recall, Some(0.75));
+    }
+
+    #[test]
+    fn set_coverage_is_none_without_allof_gold() {
+        let ctx = build("chips", &[rr("a1", "acme chips salted 20")]);
+        let r = evaluate(
+            &Query::new("acme chips"),
+            &ctx,
+            None,
+            EvalGold::Chunks(&["a1"]),
+            None,
+            EvalConfig::default(),
+        );
+        assert!(r.set_coverage.is_none());
+    }
+
+    #[test]
     fn answer_token_recall_uses_stemming() {
         // Gold answer says "refunds within thirty days"; assembled context
         // contains "refund window is thirty days". Stemming should map
@@ -1356,7 +1505,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("refunds within thirty days"),
-        None,
+            None,
             EvalConfig::default(),
         );
         let recall = r.answer_token_recall.expect("answer recall populated");
@@ -1382,7 +1531,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         assert!(
@@ -1402,7 +1551,14 @@ mod tests {
         // chunks need to be retrieved" — vacuously perfect. Not the same as
         // EvalGold::None (which means "no gold available; skip the metric").
         let ctx = build("query", &[rr("a", "some text")]);
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&[]), None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new("query"),
+            &ctx,
+            None,
+            EvalGold::Chunks(&[]),
+            None,
+            EvalConfig::default(),
+        );
         assert_eq!(r.context_recall, Some(1.0));
         // precision is undefined when gold is empty — we report None here so
         // a caller doesn't accidentally treat 0 as a real precision number.
@@ -1425,7 +1581,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("thirty days"),
-        None,
+            None,
             EvalConfig::default(),
         );
         assert!(r.context_recall.is_none());
@@ -1492,7 +1648,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Chunks(&["hit", "missing"]),
-        None,
+            None,
             EvalConfig::default(),
         );
         assert_eq!(r.context_recall, Some(0.5)); // 1 of 2 gold present
@@ -1525,13 +1681,27 @@ mod tests {
         );
 
         // No gold — every self-eval field must be finite.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::None, None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new("query"),
+            &ctx,
+            None,
+            EvalGold::None,
+            None,
+            EvalConfig::default(),
+        );
         assert!(r.mean_grounding.is_finite());
         assert!(r.overall.is_finite());
         assert!((0.0..=1.0).contains(&r.overall));
 
         // Chunk-gold provided — recall must be 0 (nothing selected), not NaN.
-        let r = evaluate(&Query::new("query"), &ctx, None, EvalGold::Chunks(&["expected"]), None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new("query"),
+            &ctx,
+            None,
+            EvalGold::Chunks(&["expected"]),
+            None,
+            EvalConfig::default(),
+        );
         assert_eq!(r.context_recall, Some(0.0));
         // precision on an empty selection is reported as 0.0 (not NaN) so
         // callers can treat the field as always-finite when chunk gold is
@@ -1544,7 +1714,14 @@ mod tests {
     #[test]
     fn lexical_metrics_none_when_no_answer_provided() {
         let ctx = build("refund window", &[rr("a", "refund window thirty days")]);
-        let r = evaluate(&Query::new("refund window"), &ctx, None, EvalGold::None, None, EvalConfig::default());
+        let r = evaluate(
+            &Query::new("refund window"),
+            &ctx,
+            None,
+            EvalGold::None,
+            None,
+            EvalConfig::default(),
+        );
         assert!(r.faithfulness_lexical.is_none());
         assert!(r.relevancy_lexical.is_none());
         assert!(r.correctness_lexical.is_none());
@@ -1567,7 +1744,7 @@ mod tests {
             &ctx,
             Some("The refund window is thirty days from purchase."),
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         let f = r.faithfulness_lexical.expect("populated");
@@ -1583,21 +1760,20 @@ mod tests {
         // hallucination shape). Lexical faithfulness should drop.
         let ctx = build(
             "refund window",
-            &[rr(
-                "a",
-                "the refund window is thirty days from purchase",
-            )],
+            &[rr("a", "the refund window is thirty days from purchase")],
         );
         let r = evaluate(
             &Query::new("refund window"),
             &ctx,
             // Three sentences, all about unrelated tokens (quantum
             // mechanics) — context never mentions any of these terms.
-            Some("Quantum chromodynamics couples gluons. \
+            Some(
+                "Quantum chromodynamics couples gluons. \
                   Schrödinger equations describe quantum states. \
-                  Heisenberg uncertainty bounds measurement."),
+                  Heisenberg uncertainty bounds measurement.",
+            ),
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         let f = r.faithfulness_lexical.expect("populated");
@@ -1616,7 +1792,7 @@ mod tests {
             &ctx,
             Some("The refund window is thirty days."),
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         // Answer with zero query-term overlap — low relevancy.
@@ -1625,7 +1801,7 @@ mod tests {
             &ctx,
             Some("Photosynthesis converts sunlight into glucose."),
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         let r_on = on_topic.relevancy_lexical.expect("populated");
@@ -1645,7 +1821,7 @@ mod tests {
             &ctx,
             Some("Thirty days from purchase."),
             EvalGold::None,
-        None,
+            None,
             EvalConfig::default(),
         );
         assert!(r_answer_only.correctness_lexical.is_none());
@@ -1656,7 +1832,7 @@ mod tests {
             &ctx,
             None,
             EvalGold::Answer("thirty days"),
-        None,
+            None,
             EvalConfig::default(),
         );
         assert!(r_gold_only.correctness_lexical.is_none());
@@ -1667,13 +1843,16 @@ mod tests {
             &ctx,
             Some("Thirty days from purchase."),
             EvalGold::Answer("thirty days"),
-        None,
+            None,
             EvalConfig::default(),
         );
         let c = r_both
             .correctness_lexical
             .expect("populated when both answer and gold_answer supplied");
-        assert!(c > 0.0, "correctness should be positive on overlap; got {c}");
+        assert!(
+            c > 0.0,
+            "correctness should be positive on overlap; got {c}"
+        );
     }
 
     #[test]
@@ -1686,7 +1865,7 @@ mod tests {
             &ctx,
             Some("   "),
             EvalGold::Answer("thirty days"),
-        None,
+            None,
             EvalConfig::default(),
         );
         assert!(r.faithfulness_lexical.is_none());
@@ -1727,6 +1906,7 @@ mod tests {
             context_recall: None,
             context_precision: None,
             answer_token_recall: None,
+            set_coverage: None,
             faithfulness_lexical: faith_lex,
             relevancy_lexical: None,
             correctness_lexical: None,
@@ -1783,17 +1963,16 @@ mod tests {
         let s = summarize(&reports);
         assert_eq!(s.n_with_faithfulness_lexical, 2);
         // Mean is over the 2 reports that have it — (0.8 + 0.6) / 2 = 0.7
-        let f = s.mean_faithfulness_lexical.expect("at least one report has it");
+        let f = s
+            .mean_faithfulness_lexical
+            .expect("at least one report has it");
         assert!((f - 0.7).abs() < 1e-5);
     }
 
     #[test]
     fn summarize_none_when_no_report_has_field() {
         // 0 reports with faithfulness_lexical → mean is None.
-        let reports = vec![
-            synthetic_report(0.5, None),
-            synthetic_report(0.5, None),
-        ];
+        let reports = vec![synthetic_report(0.5, None), synthetic_report(0.5, None)];
         let s = summarize(&reports);
         assert!(s.mean_faithfulness_lexical.is_none());
         assert_eq!(s.n_with_faithfulness_lexical, 0);
@@ -1801,12 +1980,16 @@ mod tests {
 
     // ── judged judged metrics () ─────────────────────────────────────
 
-    use crate::judge::{CallableJudge, Judge, JudgeRequest, JudgeResponse};
+    use crate::judge::{CallableJudge, JudgeRequest, JudgeResponse};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     /// Stub judge that returns a fixed score and counts invocations.
-    fn const_judge(score: f32, counter: Arc<AtomicUsize>) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync> {
+    fn const_judge(
+        score: f32,
+        counter: Arc<AtomicUsize>,
+    ) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync>
+    {
         CallableJudge::with_name("stub", move |_req| {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(JudgeResponse {
@@ -1819,13 +2002,16 @@ mod tests {
 
     /// Stub judge that returns different scores per system prompt — so
     /// faithfulness / relevancy / correctness can be distinguished.
-    fn keyed_judge(counter: Arc<AtomicUsize>) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync> {
+    fn keyed_judge(
+        counter: Arc<AtomicUsize>,
+    ) -> CallableJudge<impl Fn(&JudgeRequest<'_>) -> crate::core::Result<JudgeResponse> + Send + Sync>
+    {
         CallableJudge::with_name("keyed", move |req| {
             counter.fetch_add(1, Ordering::SeqCst);
             let score = match req.system.unwrap_or("") {
-                s if s.contains("supported by a given CONTEXT") => 0.7,  // faithfulness
-                s if s.contains("addresses a question") => 0.9,           // relevancy
-                s if s.contains("factual correctness") => 0.6,            // correctness
+                s if s.contains("supported by a given CONTEXT") => 0.7, // faithfulness
+                s if s.contains("addresses a question") => 0.9,         // relevancy
+                s if s.contains("factual correctness") => 0.6,          // correctness
                 _ => 0.0,
             };
             Ok(JudgeResponse {
@@ -1945,7 +2131,10 @@ mod tests {
         // A judge returning high scores should produce a higher overall
         // than the same call without a judge — verifies the judged
         // fields are actually wired into the composite.
-        let ctx = build("refund window", &[rr("a", "the refund window is thirty days")]);
+        let ctx = build(
+            "refund window",
+            &[rr("a", "the refund window is thirty days")],
+        );
         let counter = Arc::new(AtomicUsize::new(0));
         let high_judge = const_judge(1.0, counter.clone());
         let no_judge_overall = evaluate(
@@ -2047,7 +2236,10 @@ mod tests {
 
     #[test]
     fn decomposition_extracts_and_verifies_each_claim() {
-        let ctx = build("refund window", &[rr("a", "the refund window is thirty days")]);
+        let ctx = build(
+            "refund window",
+            &[rr("a", "the refund window is thirty days")],
+        );
         let counter = Arc::new(AtomicUsize::new(0));
         let judge = decomposer_judge(counter.clone(), 3, 0.8);
         let r = evaluate(
@@ -2131,10 +2323,8 @@ mod tests {
     #[test]
     fn parse_batched_scores_tolerates_commentary_and_out_of_order() {
         // LLM might add a preamble and order differently.
-        let scores = parse_batched_scores(
-            "Here are the verdicts:\n3: 0.7\n1: 0.9\n2: 0.4\n\nDone.",
-            3,
-        );
+        let scores =
+            parse_batched_scores("Here are the verdicts:\n3: 0.7\n1: 0.9\n2: 0.4\n\nDone.", 3);
         // Reordered correctly by N.
         assert!((scores[0] - 0.9).abs() < 1e-5);
         assert!((scores[1] - 0.4).abs() < 1e-5);
@@ -2302,8 +2492,7 @@ mod tests {
         let ctx = build("q", &[rr("a", "ctx")]);
         let counter = Arc::new(AtomicUsize::new(0));
         // Answer has 3 claims (2 TP, 1 FP); gold has 2 claims (1 FN).
-        let judge =
-            correctness_classifier_judge(counter.clone(), 3, 2, 2, 1);
+        let judge = correctness_classifier_judge(counter.clone(), 3, 2, 2, 1);
         let r = evaluate(
             &Query::new("q"),
             &ctx,
@@ -2320,7 +2509,10 @@ mod tests {
         assert_eq!(r.n_correctness_fn, Some(1));
         // F1 with tp=2, fp=1, fn=1 → 2/3
         let score = r.correctness_judged.expect("populated");
-        assert!((score - 2.0 / 3.0).abs() < 1e-3, "expected ~0.667, got {score}");
+        assert!(
+            (score - 2.0 / 3.0).abs() < 1e-3,
+            "expected ~0.667, got {score}"
+        );
     }
 
     #[test]

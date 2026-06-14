@@ -109,6 +109,115 @@ cost. **Verify on your corpus before adopting.**
 
 ---
 
+## When your corpus is a catalog, not prose
+
+The decision tree above keys on content *type*. Two other axes change the answer
+and the tree does not see them. **Corpus size** (how many near-duplicate items
+you hold) and **query length** (a 2 to 5 token product reference is not a 15
+token question). When your corpus is a product catalog, a parts list, an API
+surface, or anything with a high-cardinality family of near-identical items, read
+this section. The evidence is
+[findings/CATALOG_REGIME.md](findings/CATALOG_REGIME.md), a synthetic
+re-derivation of an external regime, so treat the numbers as direction and
+measure on your own data before you ship a default.
+
+### The typo and short-token tier (char-ngram)
+
+Short tokens carry no redundancy, so one transcription or OCR error (a brand
+arriving as `1ays` instead of `lays`, `kurkur` instead of `kurkure`) zeroes
+token-exact BM25. A dense model does not rescue a 1 to 2 token query either (see
+[findings/SEMANTIC_ZERO_DEP.md](findings/SEMANTIC_ZERO_DEP.md), the 0.56 ceiling).
+The lever is subword lexical matching with no model.
+
+```rust
+use std::sync::Arc;
+use redhop::analyzer::CharNgramAnalyzer;
+use redhop::retrieval::Bm25Retriever;
+
+let retriever = Bm25Retriever::with_analyzer(Arc::new(CharNgramAnalyzer::default()))?;
+```
+
+On brand-typo'd queries this held early precision near 0.98 at every catalog size
+while word-BM25 fell to 0.10, and it held clarify set-coverage (0.83 to 1.0) where
+word-BM25's cratered to 0.25 (CATALOG_REGIME Panel A).
+
+**The catch, and why you do not make it your only retriever.** Char-ngram is a
+recall booster, not a drop-in. Its clean-query set-coverage erodes at scale (1.000
+to 0.833 at 2500 items) because it actually reranks the near-duplicates word-BM25
+leaves tied, a cost that rides along with its typo robustness (CATALOG_REGIME
+Panel C). Position it as the recall leg of a hybrid (char-ngram for noisy recall,
+word-BM25 for clean precision), not standalone. The default analyzer stays
+word-token for prose.
+
+### Corpus size as a config axis (the retriever can invert)
+
+Holding content constant, the best retriever can flip as the corpus grows. At a
+small catalog char-ngram and word-BM25 tie. At a large one word-BM25 holds the
+recall floor that char-ngram loses. Size is a first-class axis, not a footnote.
+There is no auto-selector yet (an adaptive `semantic` by corpus size is still
+future work, see [findings/GLOBAL_DENSE.md](findings/GLOBAL_DENSE.md)), so the
+procedure is manual. Run both arms on a held-out sample at your real catalog size
+and pick on your own metric. Do not carry a small-corpus choice to a large corpus
+unmeasured.
+
+### Choosing field weights (and why a boost can hurt)
+
+BM25 indexes three fields (`text`, `source`, `heading`) at equal weight by
+default, which is the measured default for prose
+([findings/BM25_SOURCE_FIELD.md](findings/BM25_SOURCE_FIELD.md)). For a
+near-duplicate catalog you can boost the field that carries the discriminating
+token.
+
+```rust
+use redhop::retrieval::{Bm25Retriever, FieldWeights};
+
+let retriever = Bm25Retriever::new()?
+    .with_field_weights(FieldWeights { text: 1.0, source: 1.0, heading: 2.0 });
+// On a Document: set DocumentConfig.bm25_field_weights instead.
+```
+
+A weight of 1.0 is the exact default (it is skipped before it reaches the index),
+so the knob is zero regression. But a boost is not free lift. In our
+re-derivation, boosting a structured field had **no effect at all** on
+set-coverage (CATALOG_REGIME Panel D). The reason is the rule to remember. **A
+field boost helps only when the boosted field separates the answer from its
+near-duplicates.** Boosting a field that the near-duplicates also share (a brand
+shared across every product, a key shared across every variant) scales the
+distractors as much as the answer, so it reorders nothing and is inert.
+
+How to use the knob without falling off the cliff.
+
+1. Boost the field that carries the **discriminating** token for your hard
+   queries, not just any structured field.
+2. Sweep the weight on a held-out set with your own eval. Watch **set-coverage**
+   (`EvalGold::AllOf`), not just recall@k, because recall@k can read a healthy
+   1.000 while a whole variant family is missing.
+3. Stop before the cliff. Past some point the boosted field drowns the rest of
+   the query and recall or set-coverage falls. Equal weight stays the right
+   default for prose and the right starting point everywhere.
+
+### Measuring the whole set, not just one answer
+
+A catalog query often maps to a SET (every size or flavor of a product), and
+recall@k against a single gold chunk hides a half-retrieved family. Use
+`EvalGold::AllOf` to score strict set-coverage.
+
+```python
+r = redhop.evaluate(
+    query, ctx,
+    gold_families=[["sku_a1", "sku_a2"], ["sku_b1", "sku_b2"]],
+)
+print(r.set_coverage)  # fraction of families fully present in the context
+```
+
+This caught families that a recall@20 of 1.000 reported as fine but that were
+actually un-offerable for disambiguation (CATALOG_REGIME Panel B). If answers can
+span a metadata facet (the same product at many prices), prefer a soft rerank
+over a hard categorical filter for the same reason, see
+[findings/FACET_FILTER_SOFT.md](findings/FACET_FILTER_SOFT.md).
+
+---
+
 ## Query writing: the part the user controls
 
 The library can only retrieve what your query gives it. Two patterns we

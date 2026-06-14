@@ -52,7 +52,7 @@ use crate::core::{
     Chunk, Chunker, Document as SourceDoc, EmbeddingProvider, Query, Reranker, Result,
     RetrievalResult, Retriever, TokenizerBackend,
 };
-use crate::retrieval::{Bm25Retriever, LocalRerankRetriever};
+use crate::retrieval::{Bm25Retriever, FieldWeights, LocalRerankRetriever};
 use tokio::runtime::{Builder, Runtime};
 
 /// How a [`Document`] retrieves candidates internally.
@@ -132,6 +132,17 @@ pub struct DocumentConfig {
     /// hierarchical structure (markdown, DOCX, PPTX, XLSX, and now PDF).
     /// Set to `false` to keep citations strictly to the retrieved chunks.
     pub prose_heading_default: bool,
+    /// Per-field BM25 query boosts for the `text` / `source` / `heading`
+    /// fields. **Default [`FieldWeights::uniform`]** (all `1.0`) is
+    /// bit-for-bit the equal-weight behavior. Non-uniform weights are a
+    /// domain lever for near-duplicate / title-heavy corpora (a product
+    /// catalog, an API surface): boosting the field that carries the
+    /// discriminative token lifts strict set-coverage, but over-boosting
+    /// starves recall. Sweep on a held-out set with your own eval before
+    /// shipping a weight — see `docs/CHOOSING_A_CONFIG.md` (Choosing field
+    /// weights) and `docs/findings/CATALOG_REGIME.md`. Applies to
+    /// [`RetrievalMode::Lexical`] and the lexical fallback.
+    pub bm25_field_weights: FieldWeights,
 }
 
 impl Default for DocumentConfig {
@@ -167,6 +178,10 @@ impl Default for DocumentConfig {
             // chunk so the LLM has the topic context. Cheap (one extra chunk
             // per cited section), bounded by the token budget.
             prose_heading_default: true,
+            // Equal weights: the measured default for general document QA
+            // (BM25_SOURCE_FIELD). Non-uniform is a domain lever the user
+            // opts into after a held-out sweep, never a silent default.
+            bm25_field_weights: FieldWeights::uniform(),
         }
     }
 }
@@ -872,9 +887,10 @@ impl Document {
     fn ensure_indexed(&mut self) -> Result<()> {
         if self.retriever.is_none() {
             let mut r: Box<dyn Retriever> = match self.cfg.retrieval_mode {
-                RetrievalMode::Lexical => {
-                    Box::new(Bm25Retriever::with_analyzer(self.analyzer.clone())?)
-                }
+                RetrievalMode::Lexical => Box::new(
+                    Bm25Retriever::with_analyzer(self.analyzer.clone())?
+                        .with_field_weights(self.cfg.bm25_field_weights),
+                ),
                 RetrievalMode::Hybrid { candidate_pool } => {
                     let embedder = self.embedder.clone().ok_or_else(|| {
                         crate::core::Error::InvalidConfig(
@@ -989,7 +1005,8 @@ impl Document {
         // notion of "matches the query" would diverge from the primary's,
         // which is exactly the silent-search-miss class we're architecturally
         // avoiding.
-        let mut bm25 = Bm25Retriever::with_analyzer(self.analyzer.clone())?;
+        let mut bm25 = Bm25Retriever::with_analyzer(self.analyzer.clone())?
+            .with_field_weights(self.cfg.bm25_field_weights);
         self.rt.block_on(bm25.index(&self.chunks))?;
         self.fallback_bm25 = Some(bm25);
         Ok(())
@@ -1354,13 +1371,15 @@ mod tests {
         let chunks = refund_corpus();
         let retrieved: Vec<RetrievalResult> = chunks
             .into_iter()
-            .map(|c| RetrievalResult::new(
-                c,
-                Score {
-                    value: 1.0,
-                    method: RetrievalMethod::Lexical,
-                },
-            ))
+            .map(|c| {
+                RetrievalResult::new(
+                    c,
+                    Score {
+                        value: 1.0,
+                        method: RetrievalMethod::Lexical,
+                    },
+                )
+            })
             .collect();
         let q = Query::new("cancel money back");
         let ctx = build_context(&q, &retrieved, &cfg);
@@ -1435,10 +1454,7 @@ mod tests {
         let mut doc = Document::from_chunks(refund_corpus()).unwrap();
         let stripper = Stripper::new(&["highlight", "parts", "contract"]);
         let ctx = doc
-            .context_with_rewrites(
-                "Highlight parts of contract about refund",
-                &[&stripper],
-            )
+            .context_with_rewrites("Highlight parts of contract about refund", &[&stripper])
             .unwrap();
         let d = &ctx.report.diagnosis;
         // "highlight", "parts", and "contract" were stripped, so they
